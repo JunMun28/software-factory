@@ -101,16 +101,8 @@ interface ActivityRow {
                 </div>
               }
 
-              <div class="section-eyebrow" style="margin:20px 0 10px">Attachments <span style="color:var(--faint);font-weight:500">· 2</span></div>
+              <div class="section-eyebrow" style="margin:20px 0 10px">Attachments</div>
               <div class="attach-grid">
-                <div class="attach">
-                  <div class="attach__thumb" style="background:linear-gradient(135deg,#EDE7F6,#F8EDFB)"><sf-icon name="image" [size]="26" color="var(--a400)" /></div>
-                  <div class="attach__meta"><div class="attach__name">screenshot.png</div><div class="attach__sub">214 KB · PNG</div></div>
-                </div>
-                <div class="attach">
-                  <div class="attach__thumb" style="background:var(--surface-3)"><sf-icon name="app" [size]="24" color="var(--muted)" /></div>
-                  <div class="attach__meta"><div class="attach__name">current-export.csv</div><div class="attach__sub">9 KB · CSV</div></div>
-                </div>
                 <div class="attach-drop"><sf-icon name="plus" [size]="20" /><span style="font-size:11.5px;font-weight:500">Drop or attach</span></div>
               </div>
 
@@ -191,7 +183,11 @@ interface ActivityRow {
                 @if (r.assignee) { <sf-avatar [sm]="true" [color]="r.assignee_color ?? '#7A6E9A'">{{ r.assignee_initials }}</sf-avatar> {{ r.assignee }} } @else { <span style="color:var(--faint)">Unassigned</span> }
               </span></div>
               <div class="idmeta"><span class="idmeta__k">Reporter</span><span class="idmeta__v row" style="gap:7px"><sf-avatar [sm]="true" color="#7A6E9A">{{ r.reporter_initials }}</sf-avatar> {{ r.reporter }}</span></div>
-              <div class="idmeta"><span class="idmeta__k">Priority</span><span class="idmeta__v row" style="gap:6px"><sf-icon name="chevUp" [size]="14" color="var(--amber)" /> {{ r.priority }}</span></div>
+              <div class="idmeta"><span class="idmeta__k">Priority</span><span class="idmeta__v row" style="gap:6px">
+                <sf-icon [name]="r.urgency === 'low' ? 'chevDown' : 'chevUp'" [size]="14"
+                  [color]="r.urgency === 'high' ? 'var(--a600)' : 'var(--muted)'" />
+                {{ r.urgency === 'high' ? 'High' : r.urgency === 'low' ? 'Low' : 'Normal' }}
+              </span></div>
               <div class="idmeta"><span class="idmeta__k">App</span><span class="idmeta__v row" style="gap:5px"><span style="color:var(--faint)">#</span>{{ r.app_name }}</span></div>
               @if (r.repo) { <div class="idmeta"><span class="idmeta__k">Repo</span><span class="idmeta__v reflink">{{ r.repo }}</span></div> }
               <div class="idmeta"><span class="idmeta__k">Created</span><span class="idmeta__v">{{ r.created_at | date: 'yyyy-MM-dd' }} · {{ ago(r.created_at) }} ago</span></div>

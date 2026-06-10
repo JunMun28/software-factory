@@ -90,9 +90,34 @@ import { SubShell } from './sub-shell';
             @if (draft.type === 'bug') {
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
                 <div><label class="field-label">Where did you see it?</label><input class="input" placeholder="Page or screen" [(ngModel)]="draft.bugWhere" /></div>
-                <div><label class="field-label">How often?</label><div class="input"><span class="ph">Every time</span><sf-icon name="chevDown" [size]="16" style="margin-left:auto" color="var(--faint)" /></div></div>
+                <div>
+                  <label class="field-label">How often?</label>
+                  <div style="position:relative">
+                    <button class="input" style="cursor:pointer;text-align:left" (click)="freqOpen.set(!freqOpen())">
+                      <span [class.ph]="!draft.bugFreq">{{ draft.bugFreq || 'Every time' }}</span>
+                      <sf-icon name="chevDown" [size]="16" style="margin-left:auto" color="var(--faint)" />
+                    </button>
+                    @if (freqOpen()) {
+                      <div style="position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:9;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-pop);padding:5px">
+                        @for (f of freqs; track f) {
+                          <button style="display:flex;width:100%;text-align:left;padding:8px 11px;border:none;border-radius:6px;background:none;cursor:pointer;font-family:var(--body);font-size:14px"
+                            [style.background]="draft.bugFreq === f ? 'var(--a50)' : ''"
+                            (click)="draft.bugFreq = f; freqOpen.set(false)">{{ f }}</button>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
               </div>
             }
+            <div>
+              <label class="field-label">How urgent is it?</label>
+              <div class="seg">
+                @for (u of urgencies; track u[0]) {
+                  <button [class.on]="draft.urgency === u[0]" (click)="draft.urgency = $any(u[0])">{{ u[1] }}</button>
+                }
+              </div>
+            </div>
             <div class="row" style="justify-content:flex-end;margin-top:4px">
               <button class="btn primary lg" [disabled]="!canContinue() || saving()" (click)="continue_()">
                 {{ saving() ? 'Saving…' : 'Continue to questions' }} <sf-icon name="arrowRight" [size]="16" />
@@ -111,7 +136,10 @@ export class NewRequest {
 
   apps = signal<AppEntry[]>([]);
   appsOpen = signal(false);
+  freqOpen = signal(false);
   saving = signal(false);
+  freqs = ['Every time', 'Most of the time', 'Sometimes', 'Only once so far'];
+  urgencies: [string, string][] = [['low', 'Low'], ['normal', 'Normal'], ['high', 'High']];
 
   types = [
     { t: 'bug', icon: 'bug', title: 'Bug fix', help: "Something's broken" },

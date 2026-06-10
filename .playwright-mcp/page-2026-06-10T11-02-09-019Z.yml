@@ -1,0 +1,210 @@
+- generic "Approval queue" [ref=e4]:
+  - generic [ref=e5]:
+    - complementary [ref=e6]:
+      - generic [ref=e7]:
+        - img [ref=e9]
+        - generic [ref=e19]: Factory
+      - button "New issue C" [ref=e20] [cursor=pointer]:
+        - img [ref=e22]
+        - text: New issue
+        - generic [ref=e24]: C
+      - generic [ref=e25]: Primary
+      - button "Pipeline Pipeline G P" [ref=e26] [cursor=pointer]:
+        - img [ref=e29]
+        - generic [ref=e31]: Pipeline
+        - generic:
+          - text: Pipeline
+          - generic: G
+          - generic: P
+      - button "Board Board G B" [ref=e32] [cursor=pointer]:
+        - img [ref=e35]
+        - generic [ref=e38]: Board
+        - generic:
+          - text: Board
+          - generic: G
+          - generic: B
+      - button "List List G L" [ref=e39] [cursor=pointer]:
+        - img [ref=e42]
+        - generic [ref=e44]: List
+        - generic:
+          - text: List
+          - generic: G
+          - generic: L
+      - button "Needs me 5 Inbox G I" [ref=e45] [cursor=pointer]:
+        - img [ref=e48]
+        - generic [ref=e51]: Needs me
+        - generic [ref=e52]: "5"
+        - generic:
+          - text: Inbox
+          - generic: G
+          - generic: I
+      - button "Approval queue Triage G T" [ref=e53] [cursor=pointer]:
+        - img [ref=e56]
+        - generic [ref=e59]: Approval queue
+        - generic:
+          - text: Triage
+          - generic: G
+          - generic: T
+      - generic [ref=e60]: Apps
+      - button "Northwind Expenses" [ref=e61] [cursor=pointer]:
+        - img [ref=e64]
+        - generic [ref=e66]: Northwind Expenses
+      - button "Vendor Portal" [ref=e68] [cursor=pointer]:
+        - img [ref=e71]
+        - generic [ref=e73]: Vendor Portal
+      - button "FieldOps" [ref=e75] [cursor=pointer]:
+        - img [ref=e78]
+        - generic [ref=e80]: FieldOps
+      - button "Inventory Sync" [ref=e82] [cursor=pointer]:
+        - img [ref=e85]
+        - generic [ref=e88]: Inventory Sync
+      - button "Billing Portal" [ref=e89] [cursor=pointer]:
+        - img [ref=e92]
+        - generic [ref=e94]: Billing Portal
+      - generic [ref=e96]:
+        - button "App registry Registry G R" [ref=e97] [cursor=pointer]:
+          - img [ref=e100]
+          - generic [ref=e103]: App registry
+          - generic:
+            - text: Registry
+            - generic: G
+            - generic: R
+        - button "Settings Settings G S" [ref=e104] [cursor=pointer]:
+          - img [ref=e107]
+          - generic [ref=e110]: Settings
+          - generic:
+            - text: Settings
+            - generic: G
+            - generic: S
+        - button "KP Kim P. Admin" [ref=e112] [cursor=pointer]:
+          - generic [ref=e114]: KP
+          - generic [ref=e115]: Kim P.
+          - generic [ref=e116]: Admin
+    - generic [ref=e117]:
+      - banner [ref=e118]:
+        - generic [ref=e119]:
+          - generic [ref=e120]: Approval queue
+          - generic [ref=e121]: J/K move · ↵ open
+        - generic [ref=e122]:
+          - generic "Which agents drive Stages 2–6 (FACTORY_RUNNER)" [ref=e123]: "Agents: Claude Code"
+          - generic [ref=e124]: Updated just now
+          - button "Search ⌘K" [ref=e126] [cursor=pointer]:
+            - img [ref=e128]
+            - text: Search
+            - generic [ref=e131]: ⌘K
+      - generic [ref=e132]:
+        - generic [ref=e133]:
+          - generic [ref=e134]:
+            - button "FieldOps Offline sync mode Needs human" [ref=e135] [cursor=pointer]:
+              - img [ref=e137]
+              - generic [ref=e139]:
+                - generic [ref=e140]: FieldOps
+                - generic [ref=e141]: Offline sync mode
+              - generic [ref=e143]: Needs human
+            - button "Northwind Expenses Receipts attach one at a time and each upload takes ~20 seconds Approve" [active] [ref=e144] [cursor=pointer]:
+              - img [ref=e146]
+              - generic [ref=e149]:
+                - generic [ref=e150]: Northwind Expenses
+                - generic [ref=e151]: Receipts attach one at a time and each upload takes ~20 seconds
+              - generic [ref=e153]: Approve
+            - button "Vendor Portal CSV import for vendors Approve" [ref=e154] [cursor=pointer]:
+              - img [ref=e156]
+              - generic [ref=e159]:
+                - generic [ref=e160]: Vendor Portal
+                - generic [ref=e161]: CSV import for vendors
+              - generic [ref=e163]: Approve
+            - button "Northwind Expenses Faster expense export Merge" [ref=e164] [cursor=pointer]:
+              - img [ref=e166]
+              - generic [ref=e169]:
+                - generic [ref=e170]: Northwind Expenses
+                - generic [ref=e171]: Faster expense export
+              - generic [ref=e173]: Merge
+            - button "Northwind Expenses Approval email typo Approve" [ref=e174] [cursor=pointer]:
+              - img [ref=e176]
+              - generic [ref=e179]:
+                - generic [ref=e180]: Northwind Expenses
+                - generic [ref=e181]: Approval email typo
+              - generic [ref=e183]: Approve
+            - button "Billing Portal Migrate auth to SSO Merge" [ref=e184] [cursor=pointer]:
+              - img [ref=e186]
+              - generic [ref=e189]:
+                - generic [ref=e190]: Billing Portal
+                - generic [ref=e191]: Migrate auth to SSO
+              - generic [ref=e193]: Merge
+          - generic [ref=e195]:
+            - generic [ref=e196]:
+              - img [ref=e221]
+              - generic [ref=e200]: Enhancement
+              - generic [ref=e201]: Northwind Expenses · REQ-2045
+            - heading "Receipts attach one at a time and each upload takes ~20 seconds" [level=2] [ref=e223]
+            - button "Original request" [ref=e214] [cursor=pointer]:
+              - img [ref=e216]
+              - text: Original request
+            - button "Interview answers (3)" [ref=e225] [cursor=pointer]:
+              - img [ref=e227]
+              - text: Interview answers (3)
+            - generic [ref=e229]:
+              - generic [ref=e230]:
+                - img [ref=e232]
+                - generic [ref=e242]: Suggested triage
+                - generic [ref=e243]: review before approving
+                - button "Accept all" [ref=e245] [cursor=pointer]
+              - generic [ref=e246]:
+                - generic [ref=e247]: App
+                - generic [ref=e248]: Northwind Expenses
+                - generic [ref=e249]: — matches the app named in intake
+                - generic [ref=e250]:
+                  - button "Accept" [ref=e251] [cursor=pointer]:
+                    - img [ref=e253]
+                  - button "Reject" [ref=e255] [cursor=pointer]:
+                    - img [ref=e257]
+              - generic [ref=e259]:
+                - generic [ref=e260]: Owner
+                - generic [ref=e261]: Kim P.
+                - generic [ref=e262]: — owns the recent specs for this app
+                - generic [ref=e263]:
+                  - button "Accept" [ref=e264] [cursor=pointer]:
+                    - img [ref=e266]
+                  - button "Reject" [ref=e268] [cursor=pointer]:
+                    - img [ref=e270]
+              - generic [ref=e272]:
+                - generic [ref=e273]: Priority
+                - generic [ref=e274]: Normal
+                - generic [ref=e275]: — no urgency flag from the submitter
+                - generic [ref=e276]:
+                  - button "Accept" [ref=e277] [cursor=pointer]:
+                    - img [ref=e279]
+                  - button "Reject" [ref=e281] [cursor=pointer]:
+                    - img [ref=e283]
+            - generic [ref=e218]: Draft spec
+            - generic [ref=e285]:
+              - generic [ref=e286]: •
+              - generic [ref=e287]: "Deliver: Receipts attach one at a time and each upload takes ~20 seconds. (from: request)"
+            - generic [ref=e288]:
+              - generic [ref=e289]: •
+              - generic [ref=e290]: "Receipts attach one at a time and each upload takes ~20 seconds. Let me drag a whole folder of receipts in at once. (from: request)"
+            - generic [ref=e291]:
+              - generic [ref=e292]: •
+              - generic [ref=e293]: "Filing a week of receipts takes me 15 minutes of clicking — it should be one drag-and-drop. (from: Q1)"
+            - generic [ref=e294]:
+              - generic [ref=e295]: •
+              - generic [ref=e296]: "A few hundred. (from: Q2)"
+            - generic [ref=e297]:
+              - generic [ref=e298]: •
+              - generic [ref=e299]: Work is scoped to the existing app's current integrations only. (ASSUMPTION — not stated)
+            - generic [ref=e300]:
+              - generic [ref=e301]:
+                - img [ref=e303]
+                - generic [ref=e305]: Open questions · assumptions
+              - generic [ref=e306]: 1 assumption needs confirming before approval — and 1 interview question were skipped.
+        - generic [ref=e307]:
+          - button "Approve spec A" [ref=e308] [cursor=pointer]:
+            - text: Approve spec
+            - generic [ref=e309]: A
+          - button "Send back S" [ref=e310] [cursor=pointer]:
+            - text: Send back
+            - generic [ref=e311]: S
+          - generic [ref=e312]: Approve creates repo · writes SPEC.md PR · starts Architecture
+          - button "Cancel request C" [ref=e314] [cursor=pointer]:
+            - text: Cancel request
+            - generic [ref=e315]: C

@@ -45,7 +45,7 @@ import { SubShell } from './sub-shell';
             }
             <div class="summ-row" style="border-bottom:none">
               <span class="summ-k">Submitted by</span>
-              <div class="summ-v">{{ session.user().name }}</div><span></span>
+              <div class="summ-v">{{ session.user().name }} <span style="color:var(--muted)">· {{ session.user().email }}</span></div><span></span>
             </div>
           </div>
         }

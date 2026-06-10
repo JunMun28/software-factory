@@ -16,23 +16,28 @@ export class IntakeDraft {
   desc = '';
   newName = '';
   bugWhere = '';
+  bugFreq = '';
+  urgency: 'low' | 'normal' | 'high' = 'normal';
   appId: number | null = null;
   extra = '';
 
   reset() {
     this.requestId = null;
     this.type = null;
-    this.title = this.desc = this.newName = this.bugWhere = this.extra = '';
+    this.title = this.desc = this.newName = this.bugWhere = this.bugFreq = this.extra = '';
+    this.urgency = 'normal';
     this.appId = null;
   }
 
   /** Persist-first: create the Request on first Continue, PATCH on later edits. */
   async save(): Promise<number> {
     const u = this.session.user();
+    const where = [this.bugWhere, this.bugFreq && `happens ${this.bugFreq.toLowerCase()}`]
+      .filter(Boolean).join(' · ');
     const body = {
       type: this.type, title: this.title || this.autoTitle(), description: this.desc,
       app_id: this.type === 'new' ? null : this.appId, new_app_name: this.type === 'new' ? this.newName || null : null,
-      bug_where: this.bugWhere || null, urgency: 'normal',
+      bug_where: where || null, urgency: this.urgency,
       reporter: u.name, reporter_initials: u.initials,
     };
     if (this.requestId == null) {

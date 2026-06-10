@@ -87,19 +87,38 @@ import { AdminShell, Autofocus } from './admin-shell';
 
               <!-- AI triage — propose, human confirms -->
               @if (!r.needs_human) {
-                <div class="triage" style="margin-bottom:16px">
-                  <div class="row" style="gap:8px;margin-bottom:8px">
-                    <sf-mark [size]="14" color="var(--a600)" /><span style="font-size:12.5px;font-weight:600">Suggested triage</span>
-                    <span style="font-size:11px;color:var(--faint)">review before approving</span>
-                    <span class="row" style="margin-left:auto;gap:7px"><button class="btn sm">Accept all <kbd class="kbd">⌥A</kbd></button><button class="btn ghost sm">Edit</button></span>
+                @if (triageDone()) {
+                  <div class="triage row" style="margin-bottom:16px;gap:9px;padding:10px 15px">
+                    <sf-glyph type="check" [size]="15" color="var(--a600)" />
+                    <span style="font-size:12.5px;color:var(--fg2)">Triage applied —
+                      @for (row of triage(r); track row[0]; let last = $last) {
+                        <b style="font-weight:600">{{ row[1] }}</b>@if (!last) { <span style="color:var(--faint)"> · </span> }
+                      }
+                    </span>
+                    <button class="btn ghost sm" style="margin-left:auto" (click)="triageDone.set(false)">Undo</button>
                   </div>
-                  @for (row of triage(r); track row[0]) {
-                    <div class="triage__row">
-                      <span class="triage__k">{{ row[0] }}</span><span class="triage__v">{{ row[1] }}</span><span class="triage__why">— {{ row[2] }}</span>
-                      <span style="display:flex;gap:6px;color:var(--faint)"><sf-icon name="check" [size]="13" /><sf-icon name="x" [size]="13" /></span>
+                } @else {
+                  <div class="triage" style="margin-bottom:16px">
+                    <div class="row" style="gap:8px;margin-bottom:8px">
+                      <sf-mark [size]="14" color="var(--a600)" /><span style="font-size:12.5px;font-weight:600">Suggested triage</span>
+                      <span style="font-size:11px;color:var(--faint)">review before approving</span>
+                      <span class="row" style="margin-left:auto;gap:7px"><button class="btn sm" (click)="acceptAllTriage(r)">Accept all</button></span>
                     </div>
-                  }
-                </div>
+                    @for (row of triage(r); track row[0]; let i = $index) {
+                      <div class="triage__row" [style.opacity]="triageRow()[i] === 'no' ? 0.45 : 1">
+                        <span class="triage__k">{{ row[0] }}</span>
+                        <span class="triage__v" [style.text-decoration]="triageRow()[i] === 'no' ? 'line-through' : ''">{{ row[1] }}</span>
+                        <span class="triage__why">— {{ row[2] }}</span>
+                        <span style="display:flex;gap:6px">
+                          <button class="btn ghost sm" style="padding:2px 5px" [style.color]="triageRow()[i] === 'ok' ? 'var(--a600)' : 'var(--faint)'"
+                            title="Accept" (click)="setTriage(i, 'ok')"><sf-icon name="check" [size]="13" /></button>
+                          <button class="btn ghost sm" style="padding:2px 5px" [style.color]="triageRow()[i] === 'no' ? 'var(--fg2)' : 'var(--faint)'"
+                            title="Reject" (click)="setTriage(i, 'no')"><sf-icon name="x" [size]="13" /></button>
+                        </span>
+                      </div>
+                    }
+                  </div>
+                }
               }
 
               <div class="section-eyebrow" style="margin-bottom:10px">Draft spec</div>
@@ -203,6 +222,8 @@ export class ApprovalQueue {
   dupDismissed = signal(false);
   showOrig = signal(false);
   showTurns = signal(false);
+  triageDone = signal(false);
+  triageRow = signal<Record<number, 'ok' | 'no'>>({});
   private wantSel = Number(inject(ActivatedRoute).snapshot.queryParamMap.get('sel')) || null;
 
   constructor() {
@@ -224,17 +245,27 @@ export class ApprovalQueue {
       this.dupDismissed.set(false);
       this.showOrig.set(false);
       this.showTurns.set(false);
+      this.triageDone.set(false);
+      this.triageRow.set({});
       if (q[i]) this.api.request(q[i].id).subscribe((d) => this.detail.set(d));
       else this.detail.set(null);
     });
   }
 
   triage(r: RequestDetail): [string, string, string][] {
+    const prio = r.urgency === 'high' ? 'High' : r.urgency === 'low' ? 'Low' : 'Normal';
     return [
       ['App', r.app_name, r.app_id ? 'matches the app named in intake' : 'new app — repo created on approval'],
       ['Owner', r.assignee ?? 'Kim P.', 'owns the recent specs for this app'],
-      ['Priority', r.priority, r.urgency === 'high' ? 'submitter flagged it urgent' : 'no urgency flag from the submitter'],
+      ['Priority', prio, r.urgency === 'high' ? 'submitter flagged it urgent' : 'no urgency flag from the submitter'],
     ];
+  }
+  setTriage(i: number, v: 'ok' | 'no') {
+    this.triageRow.update((m) => ({ ...m, [i]: m[i] === v ? undefined as never : v }));
+  }
+  acceptAllTriage(r: RequestDetail) {
+    this.triageRow.set({ 0: 'ok', 1: 'ok', 2: 'ok' });
+    this.triageDone.set(true);
   }
   confirmSteps(r: RequestDetail): [string, string][] {
     if (r.gate === 'approve_merge') {

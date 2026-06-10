@@ -84,8 +84,8 @@ import { SubShell } from './sub-shell';
               </div>
             }
             <div class="dcomposer fade-in">
-              <button class="dcomposer__add" aria-label="Add detail"><sf-icon name="plus" [size]="16" /></button>
-              <input class="dcomposer__field" [ngModel]="msg()" (ngModelChange)="msg.set($event)"
+              <button class="dcomposer__add" aria-label="Type a custom answer" title="Type a custom answer" (click)="field.focus()"><sf-icon name="plus" [size]="16" /></button>
+              <input #field class="dcomposer__field" [ngModel]="msg()" (ngModelChange)="msg.set($event)"
                 [placeholder]="composerPlaceholder()" (keydown.enter)="enter()" />
               @if (msg().trim()) {
                 <button class="btn primary sm" (click)="enter()">Send <sf-icon name="arrowRight" [size]="16" /></button>

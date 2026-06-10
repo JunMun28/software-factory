@@ -15,9 +15,9 @@ interface Band { key: string; label: string; glyph: string; items: FactoryReques
   selector: 'sf-list-page',
   imports: [AdminShell, Glyph, Icon, Avatar, Sig, ViewSeg],
   template: `
-    <admin-shell active="list" title="Waiting on me">
+    <admin-shell active="list" title="Requests">
       <span headerExtra class="row" style="gap:9px">
-        <span style="font-size:12.5px;color:var(--muted)">Group: stage</span>
+        <span style="font-size:12.5px;color:var(--muted)">grouped by stage</span>
       </span>
       <sf-view-seg headerRight active="list" />
       <div class="list scroll">

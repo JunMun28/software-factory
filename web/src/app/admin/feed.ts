@@ -35,8 +35,25 @@ interface FeedMsg {
           <span style="font:700 16px/1 var(--display)"># {{ app()?.name }}</span>
           @if (app()?.repo) { <span class="reflink">{{ app()?.repo }}</span> }
           <span class="row" style="margin-left:auto;gap:8px">
-            <span class="row" style="margin-right:4px"><sf-avatar [sm]="true" color="#6E5A8A">KP</sf-avatar><sf-avatar [sm]="true" color="#7A6E9A">JD</sf-avatar><sf-avatar [sm]="true" color="#5A6E8A">RM</sf-avatar></span>
-            <button class="btn ghost sm">Following: All <sf-icon name="chevDown" [size]="13" /></button>
+            <span class="row" style="margin-right:4px" [title]="'People on this channel’s requests'">
+              @for (m of members(); track m.initials) { <sf-avatar [sm]="true" [color]="m.color">{{ m.initials }}</sf-avatar> }
+            </span>
+            <span style="position:relative">
+              <button class="btn ghost sm" (click)="followOpen = !followOpen">Following: {{ follow() }} <sf-icon name="chevDown" [size]="13" /></button>
+              @if (followOpen) {
+                <span style="position:fixed;inset:0;z-index:19" (click)="followOpen = false"></span>
+                <span style="position:absolute;top:calc(100% + 5px);right:0;z-index:20;display:block;width:200px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:5px">
+                  @for (lvl of followLevels; track lvl) {
+                    <button style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:none;cursor:pointer;font-family:var(--body);font-size:13px"
+                      [style.background]="follow() === lvl ? 'var(--a50)' : ''" [style.color]="follow() === lvl ? 'var(--a700)' : 'var(--fg2)'"
+                      (click)="setFollow(lvl)">
+                      <span style="flex:1">{{ lvl }}</span>
+                      @if (follow() === lvl) { <sf-icon name="check" [size]="14" color="var(--a600)" /> }
+                    </button>
+                  }
+                </span>
+              }
+            </span>
           </span>
         </div>
 
@@ -130,6 +147,25 @@ export class Feed {
   comments = signal<(CommentItem & { request_id: number })[]>([]);
   requests = signal<FactoryRequest[]>([]);
   draft = '';
+  followOpen = false;
+  followLevels = ['All', 'Gate + Needs-human', 'Muted'];
+  follow = signal(localStorage.getItem(`sf-follow-${this.key}`) ?? 'All');
+
+  /** People actually on this channel's requests (assignees + reporters). */
+  members = computed(() => {
+    const seen = new Map<string, { initials: string; color: string }>();
+    for (const r of this.requests()) {
+      if (r.assignee_initials) seen.set(r.assignee_initials, { initials: r.assignee_initials, color: r.assignee_color ?? '#6E5A8A' });
+      if (r.reporter_initials) seen.set(r.reporter_initials, { initials: r.reporter_initials, color: '#7A6E9A' });
+    }
+    return [...seen.values()].slice(0, 3);
+  });
+
+  setFollow(lvl: string) {
+    this.follow.set(lvl);
+    this.followOpen = false;
+    localStorage.setItem(`sf-follow-${this.key}`, lvl);
+  }
 
   constructor() {
     effect(() => {

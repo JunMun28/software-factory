@@ -40,7 +40,18 @@ interface EvtPrefs { inApp: boolean; email: boolean; digest: boolean }
           }
           <div class="row" style="padding:15px 0;border-bottom:1px solid var(--hairline)">
             <span style="flex:1;font-size:14px;font-weight:500">Daily digest at</span>
-            <button class="btn sm">08:00 PT <sf-icon name="chevDown" [size]="13" /></button>
+            <span style="position:relative">
+              <button class="btn sm" (click)="digestOpen = !digestOpen">{{ digest }} <sf-icon name="chevDown" [size]="13" /></button>
+              @if (digestOpen) {
+                <span style="position:fixed;inset:0;z-index:19" (click)="digestOpen = false"></span>
+                <span style="position:absolute;top:calc(100% + 5px);right:0;z-index:20;display:block;width:140px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:5px">
+                  @for (t of digestTimes; track t) {
+                    <button style="display:flex;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:none;cursor:pointer;font-family:var(--body);font-size:13px"
+                      [style.background]="digest === t ? 'var(--a50)' : ''" (click)="digest = t; digestOpen = false">{{ t }}</button>
+                  }
+                </span>
+              }
+            </span>
           </div>
 
           <div style="font-size:10.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:22px 0 10px">Per-app follow level</div>
@@ -67,6 +78,9 @@ export class Settings {
   apps = signal<AppEntry[]>([]);
   levels = ['All', 'Gate + Needs-human', 'Muted'];
   follow: Record<string, string> = {};
+  digest = '08:00 PT';
+  digestOpen = false;
+  digestTimes = ['07:00 PT', '08:00 PT', '09:00 PT', '17:00 PT'];
 
   rows: { key: string; glyph: string; color: string; label: string; sub: string; locked?: boolean }[] = [
     { key: 'gate', glyph: 'ring', color: 'var(--amber)', label: 'Gate events', sub: 'A spec is waiting on your approval.', locked: true },
