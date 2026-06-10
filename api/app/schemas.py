@@ -147,6 +147,11 @@ class CommentIn(BaseModel):
     color: str = Field(default="#6E5A8A", max_length=12)
 
 
+class FeedPage(BaseModel):
+    items: list["EventOut"]
+    cursor: int
+
+
 class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

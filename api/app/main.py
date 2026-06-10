@@ -16,7 +16,7 @@ from .events import emit
 from .interview import MAX_QUESTIONS, get_brain
 from .models import App, AuditEvent, Comment, InterviewTurn, ProgressEvent, Request, SpecLine, utcnow
 from .schemas import (
-    AppIn, AppOut, CommentIn, CommentOut, EventOut, InterviewAnswer, InterviewState,
+    AppIn, AppOut, CommentIn, CommentOut, EventOut, FeedPage, InterviewAnswer, InterviewState,
     Note, RequestCreate, RequestDetail, RequestOut,
 )
 from .seed import seed
@@ -38,6 +38,17 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
                 conn.commit()
         with SessionLocal() as db:
             seed(db)
+            # one-time backfill: comments ride the progress_event log (ADR 0012)
+            if not db.query(ProgressEvent).filter(ProgressEvent.kind == "comment").count():
+                for c in db.query(Comment).all():
+                    db.add(ProgressEvent(
+                        request_id=c.request_id, subject_id=c.request.app_id, kind="comment",
+                        stage=c.request.stage, actor=c.author, bot=False, broadcast=False,
+                        title=c.body[:300],
+                        payload={"comment_id": c.id, "initials": c.initials, "color": c.color, "body": c.body},
+                        created_at=c.created_at,
+                    ))
+                db.commit()
         task = None
         interval = auto_tick if auto_tick is not None else float(os.environ.get("SIM_INTERVAL", "0") or 0)
         if runner_mode() == "claude":
@@ -375,14 +386,34 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         c = Comment(request=r, author=body.author, initials=body.initials, color=body.color, body=body.body)
         db.add(c)
         db.add(AuditEvent(request_id=r.id, actor=body.author, action="commented"))
+        db.flush()  # assign the comment id before the event references it
+        # the comment also rides the one progress_event rail (ADR 0012) so feeds
+        # update through the same keyset cursor as every other entry
+        emit(db, r, "comment", body.body[:300], actor=body.author, bot=False,
+             payload={"comment_id": c.id, "initials": body.initials, "color": body.color, "body": body.body})
         db.commit()
         return c
 
     # ---------- the two-axis feed (keyset cursor, ADR 0008) ----------
+    def serialize_events(rows) -> list[EventOut]:
+        """rows: (ProgressEvent, ref, title) tuples from a single joined query — no N+1."""
+        out = []
+        for ev, ref, title in rows:
+            o = EventOut.model_validate(ev, from_attributes=True)
+            o.request_ref, o.request_title = ref, title
+            out.append(o)
+        return out
+
+    def joined_events(db: Session):
+        return (
+            db.query(ProgressEvent, Request.ref, Request.title)
+            .outerjoin(Request, ProgressEvent.request_id == Request.id)
+        )
+
     @app.get("/api/events", response_model=list[EventOut])
     def events(after: int = 0, subject: str | None = None, request_id: int | None = None,
                limit: int = 200, db: Session = Depends(get_db)):
-        q = db.query(ProgressEvent).filter(ProgressEvent.id > after)
+        q = joined_events(db).filter(ProgressEvent.id > after)
         if subject:
             a = db.query(App).filter(App.key == subject).first()
             if not a:
@@ -391,15 +422,24 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         if request_id:
             q = q.filter(ProgressEvent.request_id == request_id)
         rows = q.order_by(ProgressEvent.id).limit(min(limit, 500)).all()
-        out = []
-        for ev in rows:
-            o = EventOut.model_validate(ev, from_attributes=True)
-            if ev.request_id:
-                r = db.get(Request, ev.request_id)
-                if r:
-                    o.request_ref, o.request_title = r.ref, r.title
-            out.append(o)
-        return out
+        return serialize_events(rows)
+
+    @app.get("/api/subjects/{key}/feed", response_model=FeedPage)
+    def subject_feed(key: str, after: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+        """The channel feed: with no cursor, the LATEST `limit` items (ascending);
+        with ?after=, only newer items. The cursor is the max event id either way."""
+        a = db.query(App).filter(App.key == key).first()
+        if not a:
+            raise HTTPException(404, "Unknown app")
+        limit = min(limit, 300)
+        base = joined_events(db).filter(ProgressEvent.subject_id == a.id)
+        if after > 0:
+            rows = base.filter(ProgressEvent.id > after).order_by(ProgressEvent.id).limit(limit).all()
+        else:
+            rows = list(reversed(base.order_by(ProgressEvent.id.desc()).limit(limit).all()))
+        items = serialize_events(rows)
+        cursor = items[-1].id if items else after
+        return FeedPage(items=items, cursor=cursor)
 
     @app.get("/api/requests/{rid}/comments", response_model=list[CommentOut])
     def list_comments(rid: int, db: Session = Depends(get_db)):

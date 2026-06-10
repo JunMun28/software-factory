@@ -51,6 +51,10 @@ export class Api {
     if (opts.request_id) params['request_id'] = String(opts.request_id);
     return this.http.get<ProgressEvent[]>(`${BASE}/events`, { params });
   }
+  subjectFeed(key: string, after = 0, limit = 100) {
+    return this.http.get<{ items: ProgressEvent[]; cursor: number }>(
+      `${BASE}/subjects/${key}/feed`, { params: { after: String(after), limit: String(limit) } });
+  }
   inbox() { return this.http.get<FactoryRequest[]>(`${BASE}/inbox`); }
   tick() { return this.http.post<{ moved: string[] }>(`${BASE}/simulator/tick`, {}); }
 }

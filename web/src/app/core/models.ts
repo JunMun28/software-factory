@@ -101,7 +101,7 @@ export interface ProgressEvent {
   id: number;
   request_id: number | null;
   subject_id: number | null;
-  kind: 'milestone_summary' | 'gate_event' | 'escalation' | 'recovery_action';
+  kind: 'milestone_summary' | 'gate_event' | 'escalation' | 'recovery_action' | 'comment';
   stage: string;
   actor: string;
   bot: boolean;

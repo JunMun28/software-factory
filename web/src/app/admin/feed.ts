@@ -1,9 +1,9 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { AppEntry, CommentItem, FactoryRequest, ProgressEvent } from '../core/models';
+import { AppEntry, FactoryRequest, ProgressEvent } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { clock, timeAgo, utc } from '../core/util';
@@ -11,6 +11,7 @@ import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
 interface FeedMsg {
+  id: number;
   bot: boolean;
   actor: string;
   initials: string;
@@ -19,11 +20,18 @@ interface FeedMsg {
   iso: string;
   cont: boolean;
   body: string;
+  pending?: boolean;
   att?: { edge: string; glyph: string; fill: number; title: string; fields: [string, string][]; gate?: boolean; requestId?: number };
   folded?: number;
 }
 
-/** C5 — per-app progress feed: a Slack conversation where the Factory posts milestones. */
+/** C5 — per-app progress feed.
+ *
+ *  Production data path (ADR 0012): one initial tail page from
+ *  /api/subjects/{key}/feed, then ONLY the poll loop's per-tick delta is
+ *  appended (id-deduped) — no per-tick refetch, no N+1 comment calls.
+ *  Comments ride the same event log (kind=comment), so other admins'
+ *  messages arrive through the identical cursor. */
 @Component({
   selector: 'sf-feed-page',
   imports: [AdminShell, Glyph, Icon, Mark, Avatar, FormsModule],
@@ -57,11 +65,11 @@ interface FeedMsg {
           </span>
         </div>
 
-        <div class="scroll" style="flex:1;overflow-y:auto;padding-bottom:6px">
+        <div #scroller class="scroll" style="flex:1;overflow-y:auto;padding-bottom:6px;position:relative" (scroll)="onScroll()">
           @for (group of grouped(); track group.day) {
             <div class="sday"><span class="sday__lbl">{{ group.day }}</span></div>
-            @for (m of group.msgs; track m.iso + m.body) {
-              <div class="smsg">
+            @for (m of group.msgs; track m.id) {
+              <div class="smsg" [style.opacity]="m.pending ? 0.55 : 1">
                 <div class="smsg__actions">
                   <button class="smsg__act" title="React"><sf-icon name="spark" [size]="15" /></button>
                   <button class="smsg__act" title="Open"><sf-icon name="link" [size]="15" /></button>
@@ -79,7 +87,7 @@ interface FeedMsg {
                     <div class="smsg__head">
                       <span class="smsg__name">{{ m.actor }}</span>
                       @if (m.bot) { <span class="smsg__bot">App</span> }
-                      <span class="smsg__time">{{ m.time }}</span>
+                      <span class="smsg__time">{{ m.pending ? 'sending…' : m.time }}</span>
                     </div>
                   }
                   <div class="smsg__body">{{ m.body }}</div>
@@ -113,6 +121,13 @@ interface FeedMsg {
           <div style="text-align:center;font-size:11.5px;color:var(--faint);margin:14px 0 4px">You're all caught up</div>
         </div>
 
+        @if (showJump()) {
+          <div style="position:relative">
+            <button class="btn sm" style="position:absolute;left:50%;transform:translateX(-50%);top:-44px;z-index:5;box-shadow:var(--shadow-pop);border-radius:999px"
+              (click)="jumpToLatest()">New messages <sf-icon name="chevDown" [size]="13" /></button>
+          </div>
+        }
+
         <!-- composer -->
         <div class="scomposer">
           <div class="scomposer__bar">
@@ -142,14 +157,54 @@ export class Feed {
   private poll = inject(Poll);
   key = inject(ActivatedRoute).snapshot.paramMap.get('key')!;
 
+  private scroller = viewChild<ElementRef<HTMLElement>>('scroller');
+
   app = signal<AppEntry | null>(null);
-  events = signal<ProgressEvent[]>([]);
-  comments = signal<(CommentItem & { request_id: number })[]>([]);
+  items = signal<ProgressEvent[]>([]);
   requests = signal<FactoryRequest[]>([]);
+  pending = signal<FeedMsg | null>(null);
+  showJump = signal(false);
   draft = '';
   followOpen = false;
   followLevels = ['All', 'Gate + Needs-human', 'Muted'];
   follow = signal(localStorage.getItem(`sf-follow-${this.key}`) ?? 'All');
+
+  private seen = new Set<number>();
+  private atBottom = true;
+  private pendingCommentId: number | null = null;
+
+  constructor() {
+    // one-time tail load; afterwards only deltas arrive
+    this.api.subjectFeed(this.key).subscribe((page) => {
+      page.items.forEach((e) => this.seen.add(e.id));
+      this.items.set(page.items);
+      queueMicrotask(() => this.scrollToBottom());
+    });
+
+    // the poll loop's delta IS the update path — no refetching
+    effect(() => {
+      const delta = this.poll.delta();
+      const appId = this.app()?.id;
+      if (!appId || !delta.length) return;
+      const fresh = delta.filter((e) => e.subject_id === appId && !this.seen.has(e.id));
+      if (!fresh.length) return;
+      fresh.forEach((e) => this.seen.add(e.id));
+      if (this.pendingCommentId != null &&
+          fresh.some((e) => e.kind === 'comment' && (e.payload?.['comment_id'] as number) === this.pendingCommentId)) {
+        this.pending.set(null);
+        this.pendingCommentId = null;
+      }
+      this.items.update((list) => [...list, ...fresh]);
+      queueMicrotask(() => (this.atBottom ? this.scrollToBottom() : this.showJump.set(true)));
+    });
+
+    // header context (app, members, composer target) refreshes on the cheap version tick
+    effect(() => {
+      this.poll.version();
+      this.api.apps().subscribe((apps) => this.app.set(apps.find((x) => x.key === this.key) ?? null));
+      this.api.requests().subscribe((rs) => this.requests.set(rs.filter((r) => r.app_key === this.key)));
+    });
+  }
 
   /** People actually on this channel's requests (assignees + reporters). */
   members = computed(() => {
@@ -161,48 +216,15 @@ export class Feed {
     return [...seen.values()].slice(0, 3);
   });
 
-  setFollow(lvl: string) {
-    this.follow.set(lvl);
-    this.followOpen = false;
-    localStorage.setItem(`sf-follow-${this.key}`, lvl);
-  }
-
-  constructor() {
-    effect(() => {
-      this.poll.version();
-      this.api.apps().subscribe((apps) => {
-        const a = apps.find((x) => x.key === this.key) ?? null;
-        this.app.set(a);
-      });
-      this.api.events({ subject: this.key }).subscribe((evs) => this.events.set(evs));
-      this.api.requests().subscribe((rs) => {
-        const mine = rs.filter((r) => r.app_key === this.key);
-        this.requests.set(mine);
-        for (const r of mine) {
-          this.api.comments(r.id).subscribe((cs) =>
-            this.comments.update((prev) => {
-              const others = prev.filter((c) => c.request_id !== r.id);
-              return [...others, ...cs.map((c) => ({ ...c, request_id: r.id }))];
-            }),
-          );
-        }
-      });
-    });
-  }
+  target = computed(() => this.requests().find((r) => !['done', 'cancelled'].includes(r.status)) ?? this.requests()[0] ?? null);
 
   grouped = computed(() => {
-    const evs = this.events();
-    const msgs: FeedMsg[] = evs.map((e) => this.toMsg(e));
-    for (const c of this.comments()) {
-      msgs.push({
-        bot: false, actor: c.author, initials: c.initials, color: c.color,
-        time: clock(c.created_at), iso: c.created_at, cont: false, body: c.body,
-      });
-    }
+    const msgs: FeedMsg[] = this.items().map((e) => this.toMsg(e));
+    const p = this.pending();
+    if (p) msgs.push(p);
     msgs.sort((a, b) => a.iso.localeCompare(b.iso));
-    // group consecutive bot messages (Slack continuation)
     for (let i = 1; i < msgs.length; i++) {
-      if (msgs[i].bot && msgs[i - 1].bot && msgs[i].iso.slice(0, 10) === msgs[i - 1].iso.slice(0, 10)) msgs[i].cont = true;
+      msgs[i].cont = msgs[i].bot && msgs[i - 1].bot && utc(msgs[i].iso).toDateString() === utc(msgs[i - 1].iso).toDateString();
     }
     const days = new Map<string, FeedMsg[]>();
     const today = new Date().toDateString();
@@ -218,6 +240,15 @@ export class Feed {
 
   private toMsg(e: ProgressEvent): FeedMsg {
     const p = (e.payload ?? {}) as Record<string, unknown>;
+    if (e.kind === 'comment') {
+      return {
+        id: e.id, bot: false, actor: e.actor,
+        initials: (p['initials'] as string) ?? e.actor.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase(),
+        color: (p['color'] as string) ?? '#6E5A8A',
+        time: clock(e.created_at), iso: e.created_at, cont: false,
+        body: (p['body'] as string) ?? e.title,
+      };
+    }
     const rawFields = (p['fields'] ?? {}) as Record<string, string>;
     const fields: [string, string][] = Object.entries(rawFields);
     if (e.request_ref) fields.push(['Ref', e.request_ref]);
@@ -227,7 +258,7 @@ export class Feed {
       : e.stage === 'intake' ? '#9A9AA6' : 'var(--a500)';
     const glyph = e.kind === 'escalation' ? 'flag' : e.stage === 'done' ? 'check' : e.stage === 'intake' ? 'dotted' : 'ring';
     return {
-      bot: e.bot, actor: e.bot ? 'Factory' : e.actor,
+      id: e.id, bot: e.bot, actor: e.bot ? 'Factory' : e.actor,
       initials: e.actor.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase(),
       color: '#6E5A8A', time: clock(e.created_at), iso: e.created_at, cont: false,
       body: e.title,
@@ -240,20 +271,45 @@ export class Feed {
     };
   }
 
-  /** The thread the composer writes to — shown under the input so the write path is legible. */
-  target = computed(() => this.requests().find((r) => !['done', 'cancelled'].includes(r.status)) ?? this.requests()[0] ?? null);
+  // ---- scroll behavior: stick to bottom, never yank a reader ----
+  onScroll() {
+    const el = this.scroller()?.nativeElement;
+    if (!el) return;
+    this.atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 150;
+    if (this.atBottom) this.showJump.set(false);
+  }
+  private scrollToBottom() {
+    const el = this.scroller()?.nativeElement;
+    if (el) el.scrollTop = el.scrollHeight;
+    this.atBottom = true;
+    this.showJump.set(false);
+  }
+  jumpToLatest() { this.scrollToBottom(); }
 
+  // ---- optimistic send ----
   send() {
     const text = this.draft.trim();
-    if (!text) return;
     const target = this.target();
-    if (!target) return;
+    if (!text || !target || this.pending()) return;
     const u = this.session.user();
-    this.api.comment(target.id, text, u.name, u.initials).subscribe(() => {
-      this.draft = '';
-      this.poll.nudge();
+    this.pending.set({
+      id: -1, bot: false, actor: u.name, initials: u.initials, color: u.color,
+      time: '', iso: new Date().toISOString(), cont: false, body: text, pending: true,
+    });
+    this.draft = '';
+    queueMicrotask(() => this.scrollToBottom());
+    this.api.comment(target.id, text, u.name, u.initials).subscribe({
+      next: (c) => { this.pendingCommentId = c.id; this.poll.nudge(); },
+      error: () => { this.pending.set(null); this.draft = text; },  // restore, nothing lost
     });
   }
-  review(id: number) { this.router.navigateByUrl('/admin/queue'); }
+  setFollow(lvl: string) {
+    this.follow.set(lvl);
+    this.followOpen = false;
+    localStorage.setItem(`sf-follow-${this.key}`, lvl);
+  }
+  review(id: number) { this.router.navigate(['/admin/queue'], { queryParams: { sel: id } }); }
   openIssue(id: number) { this.router.navigateByUrl(`/admin/issue/${id}`); }
+
+  age = timeAgo;
 }

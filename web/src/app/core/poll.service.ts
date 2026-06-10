@@ -1,6 +1,7 @@
 import { Injectable, NgZone, OnDestroy, inject, signal } from '@angular/core';
 
 import { Api } from './api.service';
+import { ProgressEvent } from './models';
 
 /**
  * ADR 0007/0008: polling now, SSE later. One keyset cursor (`?after=<event_id>`)
@@ -16,6 +17,9 @@ export class Poll implements OnDestroy {
 
   version = signal(0);
   lastSync = signal<number>(Date.now());
+  /** The new events from the last poll tick — views consume this delta directly
+   *  instead of refetching their whole projection (diff-merge, ADR 0008). */
+  delta = signal<ProgressEvent[]>([]);
 
   start(intervalMs = 4000) {
     if (this.timer) return;
@@ -34,6 +38,7 @@ export class Poll implements OnDestroy {
       if (evs.length) {
         this.cursor = evs[evs.length - 1].id;
         this.zone.run(() => {
+          this.delta.set(evs);
           this.version.update((v) => v + 1);
           this.lastSync.set(Date.now());
         });
