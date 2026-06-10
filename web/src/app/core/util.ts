@@ -1,7 +1,12 @@
 import { FactoryRequest } from './models';
 
+/** API timestamps are UTC; SQLite round-trips them naive, so re-tag before parsing. */
+export function utc(iso: string): Date {
+  return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z');
+}
+
 export function timeAgo(iso: string): string {
-  const s = Math.max(1, (Date.now() - new Date(iso).getTime()) / 1000);
+  const s = Math.max(1, (Date.now() - utc(iso).getTime()) / 1000);
   if (s < 90) return 'now';
   const m = s / 60;
   if (m < 90) return `${Math.round(m)}m`;
@@ -13,7 +18,7 @@ export function timeAgo(iso: string): string {
 }
 
 export function clock(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return utc(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 export const STAGE_LABEL: Record<string, string> = {

@@ -1,0 +1,284 @@
+- generic [ref=e2]:
+  - generic "Apps" [ref=e4]:
+    - generic [ref=e5]:
+      - complementary [ref=e6]:
+        - generic [ref=e7]:
+          - img [ref=e9]
+          - generic [ref=e19]: Factory
+        - button "New issue C" [ref=e20] [cursor=pointer]:
+          - img [ref=e22]
+          - text: New issue
+          - generic [ref=e24]: C
+        - generic [ref=e25]: Primary
+        - button "Board Board G B" [ref=e26] [cursor=pointer]:
+          - img [ref=e29]
+          - generic [ref=e32]: Board
+          - generic:
+            - text: Board
+            - generic: G
+            - generic: B
+        - button "List List G L" [ref=e33] [cursor=pointer]:
+          - img [ref=e36]
+          - generic [ref=e38]: List
+          - generic:
+            - text: List
+            - generic: G
+            - generic: L
+        - button "Needs me 3 Inbox G I" [ref=e39] [cursor=pointer]:
+          - img [ref=e42]
+          - generic [ref=e45]: Needs me
+          - generic [ref=e46]: "3"
+          - generic:
+            - text: Inbox
+            - generic: G
+            - generic: I
+        - button "Approval queue Triage G T" [ref=e47] [cursor=pointer]:
+          - img [ref=e50]
+          - generic [ref=e53]: Approval queue
+          - generic:
+            - text: Triage
+            - generic: G
+            - generic: T
+        - generic [ref=e54]: Apps
+        - button "Northwind Expenses" [ref=e55] [cursor=pointer]:
+          - img [ref=e58]
+          - generic [ref=e60]: Northwind Expenses
+        - button "Vendor Portal" [ref=e62] [cursor=pointer]:
+          - img [ref=e65]
+          - generic [ref=e67]: Vendor Portal
+        - button "FieldOps" [ref=e69] [cursor=pointer]:
+          - img [ref=e72]
+          - generic [ref=e74]: FieldOps
+        - button "Inventory Sync" [ref=e76] [cursor=pointer]:
+          - img [ref=e79]
+          - generic [ref=e82]: Inventory Sync
+        - button "Billing Portal" [ref=e83] [cursor=pointer]:
+          - img [ref=e86]
+          - generic [ref=e88]: Billing Portal
+        - generic [ref=e90]:
+          - button "App registry Registry G R" [ref=e91] [cursor=pointer]:
+            - img [ref=e94]
+            - generic [ref=e97]: App registry
+            - generic:
+              - text: Registry
+              - generic: G
+              - generic: R
+          - button "Settings Settings G S" [ref=e98] [cursor=pointer]:
+            - img [ref=e101]
+            - generic [ref=e104]: Settings
+            - generic:
+              - text: Settings
+              - generic: G
+              - generic: S
+      - generic [ref=e105]:
+        - banner [ref=e106]:
+          - generic [ref=e108]: Apps
+          - generic [ref=e109]:
+            - generic [ref=e110]: Updated just now
+            - button "Search ⌘K" [ref=e112] [cursor=pointer]:
+              - img [ref=e114]
+              - text: Search
+              - generic [ref=e117]: ⌘K
+        - generic [ref=e119]:
+          - generic [ref=e120]:
+            - generic [ref=e121]: "# Billing Portal"
+            - generic [ref=e122]: micron/billing-portal
+            - generic [ref=e123]:
+              - generic [ref=e124]:
+                - generic [ref=e126]: KP
+                - generic [ref=e128]: JD
+                - generic [ref=e130]: RM
+              - 'button "Following: All" [ref=e131] [cursor=pointer]':
+                - text: "Following: All"
+                - img [ref=e133]
+          - generic [ref=e135]:
+            - generic [ref=e137]: Jun 8
+            - generic [ref=e138]:
+              - generic [ref=e139]:
+                - button "React" [ref=e140] [cursor=pointer]:
+                  - img [ref=e142]
+                - button "Open" [ref=e144] [cursor=pointer]:
+                  - img [ref=e146]
+                - button "More" [ref=e149] [cursor=pointer]:
+                  - img [ref=e151]
+              - generic [ref=e155]: KP
+              - generic [ref=e156]:
+                - generic [ref=e157]:
+                  - generic [ref=e158]: Kim P.
+                  - generic [ref=e159]: 9:58 AM
+                - generic [ref=e160]: Spec approved by Kim P. — repo ready, SPEC.md PR open, Stage 2 started
+                - generic [ref=e161]:
+                  - generic [ref=e162]:
+                    - img [ref=e164]
+                    - text: Migrate auth to SSO
+                  - generic [ref=e168]: Ref REQ-2029
+                  - generic [ref=e169]:
+                    - button "Review & approve" [ref=e170] [cursor=pointer]
+                    - button "Open issue" [ref=e171] [cursor=pointer]
+            - generic [ref=e172]:
+              - generic [ref=e173]:
+                - button "React" [ref=e174] [cursor=pointer]:
+                  - img [ref=e176]
+                - button "Open" [ref=e178] [cursor=pointer]:
+                  - img [ref=e180]
+                - button "More" [ref=e183] [cursor=pointer]:
+                  - img [ref=e185]
+              - img [ref=e191]
+              - generic [ref=e201]:
+                - generic [ref=e202]:
+                  - generic [ref=e203]: Factory
+                  - generic [ref=e204]: App
+                  - generic [ref=e205]: 1:58 PM
+                - generic [ref=e206]: Architecture plan drafted — PLAN.md committed
+                - generic [ref=e207]:
+                  - generic [ref=e208]:
+                    - img [ref=e210]
+                    - text: Migrate auth to SSO
+                  - generic [ref=e213]:
+                    - generic [ref=e214]: Artifacts PLAN.md
+                    - generic [ref=e215]: ADRs 2 drafted
+                    - generic [ref=e216]: Ref REQ-2029
+                  - button "Open issue" [ref=e218] [cursor=pointer]
+            - generic [ref=e219]:
+              - generic [ref=e220]:
+                - button "React" [ref=e221] [cursor=pointer]:
+                  - img [ref=e223]
+                - button "Open" [ref=e225] [cursor=pointer]:
+                  - img [ref=e227]
+                - button "More" [ref=e230] [cursor=pointer]:
+                  - img [ref=e232]
+              - generic [ref=e236]: 5:58 PM
+              - generic [ref=e237]:
+                - generic [ref=e238]: ADRs signed; plan validated against SPEC.md
+                - generic [ref=e239]:
+                  - generic [ref=e240]:
+                    - img [ref=e242]
+                    - text: Migrate auth to SSO
+                  - generic [ref=e245]:
+                    - generic [ref=e246]: Gate Sign ADRs · passed
+                    - generic [ref=e247]: Ref REQ-2029
+                  - button "Open issue" [ref=e249] [cursor=pointer]
+            - generic [ref=e251]: Yesterday
+            - generic [ref=e252]:
+              - generic [ref=e253]:
+                - button "React" [ref=e254] [cursor=pointer]:
+                  - img [ref=e256]
+                - button "Open" [ref=e258] [cursor=pointer]:
+                  - img [ref=e260]
+                - button "More" [ref=e263] [cursor=pointer]:
+                  - img [ref=e265]
+              - img [ref=e271]
+              - generic [ref=e281]:
+                - generic [ref=e282]:
+                  - generic [ref=e283]: Factory
+                  - generic [ref=e284]: App
+                  - generic [ref=e285]: 9:58 AM
+                - generic [ref=e286]: "RED: 8 failing tests authored — fail for the right reason"
+                - generic [ref=e287]:
+                  - generic [ref=e288]:
+                    - img [ref=e290]
+                    - text: Migrate auth to SSO
+                  - generic [ref=e293]:
+                    - generic [ref=e294]: Tests 8 added, 8 failing
+                    - generic [ref=e295]: Gate RED · passed
+                    - generic [ref=e296]: Ref REQ-2029
+                  - button "Open issue" [ref=e298] [cursor=pointer]
+            - generic [ref=e300]: Today
+            - generic [ref=e301]:
+              - generic [ref=e302]:
+                - button "React" [ref=e303] [cursor=pointer]:
+                  - img [ref=e305]
+                - button "Open" [ref=e307] [cursor=pointer]:
+                  - img [ref=e309]
+                - button "More" [ref=e312] [cursor=pointer]:
+                  - img [ref=e314]
+              - img [ref=e320]
+              - generic [ref=e330]:
+                - generic [ref=e331]:
+                  - generic [ref=e332]: Factory
+                  - generic [ref=e333]: App
+                  - generic [ref=e334]: 10:02 AM
+                - generic [ref=e335]: "GREEN: all tests pass; implementer touched no test files"
+                - generic [ref=e336]:
+                  - generic [ref=e337]:
+                    - img [ref=e339]
+                    - text: Migrate auth to SSO
+                  - generic [ref=e342]:
+                    - generic [ref=e343]: Tests 8/8 passing
+                    - generic [ref=e344]: Gate Test-isolation · passed
+                    - generic [ref=e345]: Ref REQ-2029
+                  - button "Open issue" [ref=e347] [cursor=pointer]
+            - generic [ref=e348]:
+              - generic [ref=e349]:
+                - button "React" [ref=e350] [cursor=pointer]:
+                  - img [ref=e352]
+                - button "Open" [ref=e354] [cursor=pointer]:
+                  - img [ref=e356]
+                - button "More" [ref=e359] [cursor=pointer]:
+                  - img [ref=e361]
+              - generic [ref=e365]: 10:02 AM
+              - generic [ref=e366]:
+                - generic [ref=e367]: Stage advanced — now in Review
+                - generic [ref=e368]:
+                  - generic [ref=e369]:
+                    - img [ref=e371]
+                    - text: Migrate auth to SSO
+                  - generic [ref=e375]: Ref REQ-2029
+                  - button "Open issue" [ref=e377] [cursor=pointer]
+            - generic [ref=e378]:
+              - generic [ref=e379]:
+                - button "React" [ref=e380] [cursor=pointer]:
+                  - img [ref=e382]
+                - button "Open" [ref=e384] [cursor=pointer]:
+                  - img [ref=e386]
+                - button "More" [ref=e389] [cursor=pointer]:
+                  - img [ref=e391]
+              - generic [ref=e395]: 10:02 AM
+              - generic [ref=e396]:
+                - generic [ref=e397]: Review report posted — no blocking findings
+                - generic [ref=e398]:
+                  - generic [ref=e399]:
+                    - img [ref=e401]
+                    - text: Migrate auth to SSO
+                  - generic [ref=e404]:
+                    - generic [ref=e405]: Findings 0 blocking · 2 nits
+                    - generic [ref=e406]: Diff +412 −38
+                    - generic [ref=e407]: Ref REQ-2029
+                  - button "Open issue" [ref=e409] [cursor=pointer]
+            - generic [ref=e410]:
+              - generic [ref=e411]:
+                - button "React" [ref=e412] [cursor=pointer]:
+                  - img [ref=e414]
+                - button "Open" [ref=e416] [cursor=pointer]:
+                  - img [ref=e418]
+                - button "More" [ref=e421] [cursor=pointer]:
+                  - img [ref=e423]
+              - generic [ref=e427]: 10:02 AM
+              - generic [ref=e428]:
+                - generic [ref=e429]: Waiting at the merge gate — review passed, approval needed
+                - generic [ref=e430]:
+                  - generic [ref=e431]:
+                    - img [ref=e433]
+                    - text: Migrate auth to SSO
+                  - generic [ref=e437]: Ref REQ-2029
+                  - generic [ref=e438]:
+                    - button "Review & approve" [ref=e439] [cursor=pointer]
+                    - button "Open issue" [ref=e440] [cursor=pointer]
+            - generic [ref=e441]: You're all caught up
+          - generic [ref=e442]:
+            - generic [ref=e443]:
+              - button "B" [ref=e444] [cursor=pointer]:
+                - generic [ref=e445]: B
+              - button "i" [ref=e446] [cursor=pointer]:
+                - generic [ref=e447]: i
+              - button "Link" [ref=e448] [cursor=pointer]:
+                - img [ref=e450]
+              - button "@" [ref=e454] [cursor=pointer]:
+                - generic [ref=e455]: "@"
+              - button "Attach" [ref=e456] [cursor=pointer]:
+                - img [ref=e458]
+            - generic [ref=e460]:
+              - 'textbox "Message #Billing Portal" [ref=e461]'
+              - button "Send" [ref=e462] [cursor=pointer]:
+                - img [ref=e464]
+  - button "Jordan D." [ref=e467] [cursor=pointer]: Jordan D.

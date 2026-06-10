@@ -1,0 +1,233 @@
+- generic [ref=e2]:
+  - generic "Issue" [ref=e4]:
+    - generic [ref=e5]:
+      - complementary [ref=e6]:
+        - generic [ref=e7]:
+          - img [ref=e9]
+          - generic [ref=e19]: Factory
+        - button "New issue C" [ref=e20] [cursor=pointer]:
+          - img [ref=e22]
+          - text: New issue
+          - generic [ref=e24]: C
+        - generic [ref=e25]: Primary
+        - button "Board Board G B" [ref=e26] [cursor=pointer]:
+          - img [ref=e29]
+          - generic [ref=e32]: Board
+          - generic:
+            - text: Board
+            - generic: G
+            - generic: B
+        - button "List List G L" [ref=e33] [cursor=pointer]:
+          - img [ref=e36]
+          - generic [ref=e38]: List
+          - generic:
+            - text: List
+            - generic: G
+            - generic: L
+        - button "Needs me 4 Inbox G I" [ref=e39] [cursor=pointer]:
+          - img [ref=e42]
+          - generic [ref=e45]: Needs me
+          - generic [ref=e46]: "4"
+          - generic:
+            - text: Inbox
+            - generic: G
+            - generic: I
+        - button "Approval queue Triage G T" [ref=e47] [cursor=pointer]:
+          - img [ref=e50]
+          - generic [ref=e53]: Approval queue
+          - generic:
+            - text: Triage
+            - generic: G
+            - generic: T
+        - generic [ref=e54]: Apps
+        - button "Northwind Expenses" [ref=e55] [cursor=pointer]:
+          - img [ref=e58]
+          - generic [ref=e60]: Northwind Expenses
+        - button "Vendor Portal" [ref=e62] [cursor=pointer]:
+          - img [ref=e65]
+          - generic [ref=e67]: Vendor Portal
+        - button "FieldOps" [ref=e69] [cursor=pointer]:
+          - img [ref=e72]
+          - generic [ref=e74]: FieldOps
+        - button "Inventory Sync" [ref=e76] [cursor=pointer]:
+          - img [ref=e79]
+          - generic [ref=e82]: Inventory Sync
+        - button "Billing Portal" [ref=e83] [cursor=pointer]:
+          - img [ref=e86]
+          - generic [ref=e88]: Billing Portal
+        - generic [ref=e90]:
+          - button "App registry Registry G R" [ref=e91] [cursor=pointer]:
+            - img [ref=e94]
+            - generic [ref=e97]: App registry
+            - generic:
+              - text: Registry
+              - generic: G
+              - generic: R
+          - button "Settings Settings G S" [ref=e98] [cursor=pointer]:
+            - img [ref=e101]
+            - generic [ref=e104]: Settings
+            - generic:
+              - text: Settings
+              - generic: G
+              - generic: S
+      - generic [ref=e105]:
+        - banner [ref=e106]:
+          - generic [ref=e107]:
+            - generic [ref=e108]: Issue
+            - generic [ref=e109]:
+              - button "Waiting on me" [ref=e110] [cursor=pointer]:
+                - img [ref=e112]
+                - text: Waiting on me
+              - generic [ref=e114]: /
+              - generic [ref=e115]: REQ-2041
+          - generic [ref=e116]:
+            - generic [ref=e117]: Updated just now
+            - button "Search ⌘K" [ref=e119] [cursor=pointer]:
+              - img [ref=e121]
+              - text: Search
+              - generic [ref=e124]: ⌘K
+        - generic [ref=e127]:
+          - generic [ref=e128]:
+            - generic [ref=e129]:
+              - img [ref=e131]
+              - generic [ref=e135]:
+                - img [ref=e137]
+                - text: Enhancement
+              - generic [ref=e139]: Northwind Expenses
+            - heading "Faster expense export" [level=1] [ref=e140]
+            - generic [ref=e141]:
+              - generic [ref=e142]: export
+              - generic [ref=e144]: performance
+              - generic [ref=e146] [cursor=pointer]:
+                - img [ref=e148]
+                - text: Label
+            - generic [ref=e150]:
+              - generic [ref=e151]:
+                - img [ref=e153]
+                - text: Building · Build
+              - button "Cancel request C" [ref=e156] [cursor=pointer]:
+                - text: Cancel request
+                - generic [ref=e157]: C
+            - generic [ref=e158]: Description
+            - paragraph [ref=e159]: Exporting a month of expenses is painfully slow — it takes about 5 minutes and sometimes times out before it finishes. I just want one button that gives me the whole month in CSV and Excel.
+            - button "Interview answers (4)" [ref=e161] [cursor=pointer]:
+              - img [ref=e163]
+              - text: Interview answers (4)
+            - generic [ref=e165]: Attachments · 2
+            - generic [ref=e166]:
+              - generic [ref=e167] [cursor=pointer]:
+                - img [ref=e170]
+                - generic [ref=e174]:
+                  - generic [ref=e175]: screenshot.png
+                  - generic [ref=e176]: 214 KB · PNG
+              - generic [ref=e177] [cursor=pointer]:
+                - img [ref=e180]
+                - generic [ref=e183]:
+                  - generic [ref=e184]: current-export.csv
+                  - generic [ref=e185]: 9 KB · CSV
+              - generic [ref=e186] [cursor=pointer]:
+                - img [ref=e188]
+                - generic [ref=e190]: Drop or attach
+            - generic [ref=e191]: Draft spec
+            - generic [ref=e192]:
+              - generic [ref=e193]: •
+              - generic [ref=e194]: "Export a full month of expenses in one click. (from: Q1)"
+            - generic [ref=e195]:
+              - generic [ref=e196]: •
+              - generic [ref=e197]: "Output formats: CSV and Excel. (from: Q3)"
+            - generic [ref=e198]:
+              - generic [ref=e199]: •
+              - generic [ref=e200]: "Handle a few hundred rows per export without timing out. (from: Q2)"
+            - generic [ref=e201]:
+              - generic [ref=e202]: •
+              - generic [ref=e203]: Exports run against the Concur connector only. (ASSUMPTION — not stated)
+            - generic [ref=e204]:
+              - generic [ref=e205]:
+                - img [ref=e207]
+                - generic [ref=e209]: Open questions · assumptions
+              - generic [ref=e210]: 1 assumption needs confirming before approval — the bank-export source was never stated by the submitter.
+            - generic [ref=e211]: Checklist · 2 of 3
+            - generic [ref=e212]:
+              - generic [ref=e213]:
+                - img [ref=e216] [cursor=pointer]
+                - generic [ref=e218]: Read the grounded draft spec
+              - generic [ref=e221]: Confirm the open assumption with the submitter
+              - generic [ref=e222]:
+                - img [ref=e225] [cursor=pointer]
+                - generic [ref=e227]: Approve spec & open SPEC.md PR
+            - generic [ref=e228]: Activity
+            - generic [ref=e229]:
+              - button "Activity" [ref=e230] [cursor=pointer]
+              - button "Comments" [ref=e231] [cursor=pointer]
+              - button "History" [ref=e232] [cursor=pointer]
+            - generic [ref=e233]:
+              - generic [ref=e235]: KP
+              - generic [ref=e236]:
+                - generic [ref=e237]:
+                  - generic [ref=e238]: Kim P.
+                  - generic [ref=e239]: 3h ago
+                - generic [ref=e241]: Looks good — checking the bank-export assumption with Jordan before I approve.
+            - generic [ref=e242]:
+              - img [ref=e245]
+              - generic [ref=e248]: Jordan D. filed this request and completed intake · 3d ago
+            - generic [ref=e249]:
+              - img [ref=e252]
+              - generic [ref=e256]: Factory generated the draft spec from 4 interview answers · 2d ago
+            - generic [ref=e257]:
+              - img [ref=e260]
+              - generic [ref=e264]: Jordan D. approved the spec — repo created, SPEC.md PR opened, Stage 2 fired · 5m ago
+            - generic [ref=e265]:
+              - generic [ref=e267]: JD
+              - generic [ref=e268]:
+                - textbox "Leave a comment… Use @ to mention, or attach an image" [ref=e269]:
+                  - /placeholder: Leave a comment…  Use @ to mention, or attach an image
+                - generic [ref=e270]:
+                  - button "Attach image" [ref=e271] [cursor=pointer]:
+                    - img [ref=e273]
+                  - button "@" [ref=e277] [cursor=pointer]:
+                    - generic [ref=e278]: "@"
+                  - button "Code" [ref=e279] [cursor=pointer]:
+                    - img [ref=e281]
+                  - button "Comment" [disabled] [ref=e283]
+          - generic [ref=e284]:
+            - generic [ref=e285]: Details
+            - generic [ref=e286]:
+              - generic [ref=e287]: Status
+              - generic [ref=e289]:
+                - img [ref=e291]
+                - text: Build
+            - generic [ref=e294]:
+              - generic [ref=e295]: Assignee
+              - generic [ref=e296]:
+                - generic [ref=e298]: KP
+                - text: Kim P.
+            - generic [ref=e299]:
+              - generic [ref=e300]: Reporter
+              - generic [ref=e301]:
+                - generic [ref=e303]: JD
+                - text: Jordan D.
+            - generic [ref=e304]:
+              - generic [ref=e305]: Priority
+              - generic [ref=e306]:
+                - img [ref=e308]
+                - text: Normal
+            - generic [ref=e310]:
+              - generic [ref=e311]: App
+              - generic [ref=e312]:
+                - generic [ref=e313]: "#"
+                - text: Northwind Expenses
+            - generic [ref=e314]:
+              - generic [ref=e315]: Repo
+              - generic [ref=e316]: micron/nw-expenses
+            - generic [ref=e317]:
+              - generic [ref=e318]: Created
+              - generic [ref=e319]: 2026-06-09 · 3h ago
+            - generic [ref=e320]:
+              - generic [ref=e321]: Updated
+              - generic [ref=e322]: 5m ago
+            - generic [ref=e323]:
+              - generic [ref=e324]: Subscribers
+              - generic [ref=e325]:
+                - generic [ref=e327]: KP
+                - generic [ref=e329]: JD
+  - button "Jordan D." [ref=e331] [cursor=pointer]: Jordan D.

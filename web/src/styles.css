@@ -302,7 +302,7 @@ textarea.input, input.input { outline:none; }
 .qprog { display:flex; align-items:center; gap:12px; }
 .qprog__lbl { font-size:13px; color:var(--muted); white-space:nowrap; }
 .qprog__track { flex:1; height:5px; border-radius:3px; background:var(--surface-3); overflow:hidden; }
-.qprog__fill { height:100%; background:var(--a500); border-radius:3px; transition:width var(--dur-s) var(--ease); }
+.qprog__fill { display:block; height:100%; background:var(--a500); border-radius:3px; transition:width var(--dur-s) var(--ease); }
 
 /* ============================================================
    ADMIN CONTROL CENTER — inverted-L, dense, light surfaces

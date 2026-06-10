@@ -1,0 +1,129 @@
+- generic [ref=e2]:
+  - generic "Approval queue" [ref=e4]:
+    - generic [ref=e5]:
+      - complementary [ref=e6]:
+        - generic [ref=e7]:
+          - img [ref=e9]
+          - generic [ref=e19]: Factory
+        - button "New issue C" [ref=e20] [cursor=pointer]:
+          - img [ref=e22]
+          - text: New issue
+          - generic [ref=e24]: C
+        - generic [ref=e25]: Primary
+        - button "Board Board G B" [ref=e26] [cursor=pointer]:
+          - img [ref=e29]
+          - generic [ref=e32]: Board
+          - generic:
+            - text: Board
+            - generic: G
+            - generic: B
+        - button "List List G L" [ref=e33] [cursor=pointer]:
+          - img [ref=e36]
+          - generic [ref=e38]: List
+          - generic:
+            - text: List
+            - generic: G
+            - generic: L
+        - button "Needs me 3 Inbox G I" [ref=e39] [cursor=pointer]:
+          - img [ref=e42]
+          - generic [ref=e45]: Needs me
+          - generic [ref=e46]: "3"
+          - generic:
+            - text: Inbox
+            - generic: G
+            - generic: I
+        - button "Approval queue Triage G T" [ref=e47] [cursor=pointer]:
+          - img [ref=e50]
+          - generic [ref=e53]: Approval queue
+          - generic:
+            - text: Triage
+            - generic: G
+            - generic: T
+        - generic [ref=e54]: Apps
+        - button "Northwind Expenses" [ref=e55] [cursor=pointer]:
+          - img [ref=e58]
+          - generic [ref=e60]: Northwind Expenses
+        - button "Vendor Portal" [ref=e62] [cursor=pointer]:
+          - img [ref=e65]
+          - generic [ref=e67]: Vendor Portal
+        - button "FieldOps" [ref=e69] [cursor=pointer]:
+          - img [ref=e72]
+          - generic [ref=e74]: FieldOps
+        - button "Inventory Sync" [ref=e76] [cursor=pointer]:
+          - img [ref=e79]
+          - generic [ref=e82]: Inventory Sync
+        - button "Billing Portal" [ref=e83] [cursor=pointer]:
+          - img [ref=e86]
+          - generic [ref=e88]: Billing Portal
+        - generic [ref=e90]:
+          - button "App registry Registry G R" [ref=e91] [cursor=pointer]:
+            - img [ref=e94]
+            - generic [ref=e97]: App registry
+            - generic:
+              - text: Registry
+              - generic: G
+              - generic: R
+          - button "Settings Settings G S" [ref=e98] [cursor=pointer]:
+            - img [ref=e101]
+            - generic [ref=e104]: Settings
+            - generic:
+              - text: Settings
+              - generic: G
+              - generic: S
+      - generic [ref=e105]:
+        - banner [ref=e106]:
+          - generic [ref=e107]:
+            - generic [ref=e108]: Approval queue
+            - generic [ref=e109]: J/K move · ↵ open
+          - generic [ref=e110]:
+            - generic [ref=e111]: Updated just now
+            - button "Search ⌘K" [ref=e113] [cursor=pointer]:
+              - img [ref=e115]
+              - text: Search
+              - generic [ref=e118]: ⌘K
+        - generic [ref=e120]:
+          - generic [ref=e121]:
+            - generic [ref=e122] [cursor=pointer]:
+              - img [ref=e124]
+              - generic [ref=e126]:
+                - generic [ref=e127]: FieldOps
+                - generic [ref=e128]: Offline sync mode
+              - generic [ref=e130]: Needs human
+            - generic [ref=e131] [cursor=pointer]:
+              - img [ref=e133]
+              - generic [ref=e136]:
+                - generic [ref=e137]: Vendor Portal
+                - generic [ref=e138]: CSV import for vendors
+              - generic [ref=e140]: Approve
+            - generic [ref=e141] [cursor=pointer]:
+              - img [ref=e143]
+              - generic [ref=e146]:
+                - generic [ref=e147]: Northwind Expenses
+                - generic [ref=e148]: Faster expense export
+              - generic [ref=e150]: Approve
+            - generic [ref=e151] [cursor=pointer]:
+              - img [ref=e153]
+              - generic [ref=e156]:
+                - generic [ref=e157]: Northwind Expenses
+                - generic [ref=e158]: Approval email typo
+              - generic [ref=e160]: Approve
+          - generic [ref=e162]:
+            - generic [ref=e163]:
+              - img [ref=e165]
+              - generic [ref=e167]: New app
+              - generic [ref=e168]: FieldOps · REQ-2043
+            - heading "Offline sync mode" [level=2] [ref=e169]
+            - generic [ref=e170]:
+              - generic [ref=e171]:
+                - img [ref=e173]
+                - generic [ref=e175]: Escalated — needs a person
+              - generic [ref=e176]: Spec generation failed 3× — the request references a payments API the Factory can't reach.
+              - generic [ref=e177]:
+                - button "Retry stage" [ref=e178] [cursor=pointer]
+                - button "Open issue" [ref=e179] [cursor=pointer]
+            - button "Original request" [ref=e181] [cursor=pointer]:
+              - img [ref=e183]
+              - text: Original request
+            - generic [ref=e185]: Draft spec
+            - generic [ref=e186]: No draft spec yet.
+  - button "Jordan D." [ref=e189] [cursor=pointer]: Jordan D.

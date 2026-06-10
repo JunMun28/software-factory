@@ -6,7 +6,7 @@ import { Api } from '../core/api.service';
 import { AppEntry, CommentItem, FactoryRequest, ProgressEvent } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
-import { clock, timeAgo } from '../core/util';
+import { clock, timeAgo, utc } from '../core/util';
 import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
@@ -169,8 +169,8 @@ export class Feed {
     const today = new Date().toDateString();
     const yest = new Date(Date.now() - 864e5).toDateString();
     for (const m of msgs) {
-      const d = new Date(m.iso).toDateString();
-      const label = d === today ? 'Today' : d === yest ? 'Yesterday' : new Date(m.iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+      const d = utc(m.iso).toDateString();
+      const label = d === today ? 'Today' : d === yest ? 'Yesterday' : utc(m.iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
       if (!days.has(label)) days.set(label, []);
       days.get(label)!.push(m);
     }

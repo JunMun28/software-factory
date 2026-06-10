@@ -1,0 +1,61 @@
+- generic [ref=e2]:
+  - generic [ref=e376]:
+    - generic [ref=e377]:
+      - generic [ref=e378]:
+        - img [ref=e380]
+        - text: Software Factory
+      - generic [ref=e390]:
+        - navigation [ref=e391]:
+          - button "New request" [ref=e392] [cursor=pointer]
+          - button "My requests" [ref=e393] [cursor=pointer]
+        - generic [ref=e394]:
+          - generic [ref=e396]: JD
+          - text: Jordan D.
+    - generic [ref=e398]:
+      - button "Describe" [disabled] [ref=e399]:
+        - img [ref=e402]
+        - generic [ref=e405]: Describe
+      - button "Clarify" [disabled] [ref=e407]:
+        - img [ref=e410]
+        - generic [ref=e413]: Clarify
+      - button "Review" [disabled] [ref=e415]:
+        - img [ref=e418]
+        - generic [ref=e421]: Review
+    - generic [ref=e423]:
+      - img [ref=e426]
+      - generic [ref=e429]:
+        - heading "Request received" [level=1] [ref=e430]
+        - paragraph [ref=e431]: We'll email you when it's been reviewed.
+      - generic [ref=e432]:
+        - generic [ref=e433]:
+          - generic [ref=e434]: Receipts attach one at a time and each upload takes ~20 seconds
+          - generic [ref=e435]:
+            - generic [ref=e437]:
+              - img [ref=e439]
+              - text: Enhancement
+            - generic [ref=e441]: Northwind Expenses
+        - generic [ref=e442]: REQ-2045
+      - generic [ref=e444]:
+        - generic [ref=e445]:
+          - img [ref=e447]
+          - generic [ref=e450]: Submitted
+        - generic [ref=e452]:
+          - img [ref=e454]
+          - generic [ref=e457]: Spec drafted
+        - generic [ref=e459]:
+          - img [ref=e461]
+          - generic [ref=e463]: Approved
+        - generic [ref=e465]:
+          - img [ref=e467]
+          - generic [ref=e469]: Building
+        - generic [ref=e471]:
+          - img [ref=e473]
+          - generic [ref=e475]: In review
+        - generic [ref=e477]:
+          - img [ref=e479]
+          - generic [ref=e481]: Deployed
+      - generic [ref=e482]:
+        - button "Track this request" [ref=e483] [cursor=pointer]
+        - button "File another" [ref=e484] [cursor=pointer]
+      - paragraph [ref=e485]: A reviewer will read it and either approve it or send it back with a question. Either way, you'll hear from us.
+  - button "Jordan D." [ref=e73] [cursor=pointer]: Jordan D.
