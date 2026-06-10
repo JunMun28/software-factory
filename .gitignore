@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+dist/
+.angular/
+__pycache__/
+*.pyc
+.venv/
+*.db
+.pytest_cache/
+.env

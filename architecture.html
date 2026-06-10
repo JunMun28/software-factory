@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Software Factory — Full Architecture</title>
+<style>
+  :root{
+    --bg:#0a0d13; --panel:#111722; --panel2:#161d2b; --panel3:#1b2334; --line:#27314c;
+    --ink:#e7ecf5; --muted:#8a96b0; --faint:#5b6685;
+    --app:#33d6c8;        /* web app / control center */
+    --agent:#6ea8fe;      /* copilot CI agent */
+    --artifact:#c08cff;   /* artifact */
+    --human:#f5a623;      /* human gate */
+    --auto:#3ddc97;       /* automated gate */
+    --bot:#ff9d5c;        /* builder bot */
+    --danger:#ff6b6b;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;
+    -webkit-font-smoothing:antialiased;padding:40px 24px 90px}
+  .wrap{max-width:1240px;margin:0 auto}
+  h1{font-size:32px;margin:0 0 4px;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:15px;margin-bottom:6px}
+  .sub b{color:var(--ink);font-weight:600}
+  .meta-line{color:var(--faint);font-size:12.5px;font-family:var(--mono);margin-bottom:30px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.14em;color:var(--faint);
+    margin:46px 0 18px;font-weight:600;border-bottom:1px solid var(--line);padding-bottom:8px}
+  h2 .n{color:var(--app)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 22px;font-size:12.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+  /* system map */
+  .map{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .layer{border:1px solid var(--line);border-radius:14px;padding:18px 20px;background:var(--panel)}
+  .layer.web{border-color:#1e4a47;box-shadow:inset 0 0 0 1px rgba(51,214,200,.06)}
+  .layer.gh{border-color:#27406a;box-shadow:inset 0 0 0 1px rgba(110,168,254,.06)}
+  .layer h3{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px}
+  .layer .where{font-family:var(--mono);font-size:11px;color:var(--faint);margin-bottom:14px}
+  .chip{font-size:12px;border-radius:8px;padding:8px 11px;margin-bottom:8px;border:1px solid var(--line);
+    background:var(--panel2)}
+  .chip b{font-weight:600}
+  .chip small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+  .flowbar{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--faint);
+    font-family:var(--mono);font-size:12px;margin:14px 0}
+  .flowbar .seg{padding:4px 10px;border:1px dashed var(--line);border-radius:20px}
+
+  /* generic */
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr 1fr}.g4{grid-template-columns:repeat(4,1fr)}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 17px}
+  .box h3{margin:0 0 9px;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .box p{margin:0;font-size:12.7px;color:var(--muted)}
+  .box ul{margin:7px 0 0;padding-left:17px;font-size:12.7px;color:var(--muted)}
+  .box li{margin-bottom:4px}
+  code{font-family:var(--mono);font-size:11.5px;background:#0c1119;padding:1px 5px;border-radius:4px;color:#d6deef}
+  .tag{font-family:var(--mono);font-size:10.5px;padding:2px 7px;border-radius:5px}
+  .t-app{color:var(--app);background:rgba(51,214,200,.12)}
+  .t-agent{color:var(--agent);background:rgba(110,168,254,.12)}
+  .t-human{color:var(--human);background:rgba(245,166,35,.12)}
+  .t-auto{color:var(--auto);background:rgba(61,220,151,.12)}
+  .t-bot{color:var(--bot);background:rgba(255,157,92,.12)}
+
+  /* pipeline */
+  .pipe{display:flex;flex-direction:column}
+  .stage{display:grid;grid-template-columns:42px 1fr}
+  .rail{display:flex;flex-direction:column;align-items:center}
+  .num{width:32px;height:32px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;font-weight:600;z-index:2}
+  .conn{flex:1;width:2px;background:var(--line);min-height:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:12px 16px;margin:0 0 10px 4px;flex:1}
+  .stage.web .num{border-color:#1e4a47;color:var(--app)}
+  .stage.web .card{border-color:#1e4a47}
+  .stage.ci .num{border-color:#27406a;color:var(--agent)}
+  .crow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .sname{font-size:15px;font-weight:600}
+  .flow{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:6px}
+  .flow .a{color:var(--artifact)} .flow .arr{color:var(--faint);margin:0 5px}
+  .gates{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
+  .gate{font-size:11px;font-weight:600;padding:3px 9px;border-radius:18px;display:inline-flex;gap:6px;align-items:center}
+  .gate.h{color:var(--human);background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.3)}
+  .gate.a{color:var(--auto);background:rgba(61,220,151,.1);border:1px solid rgba(61,220,151,.3)}
+  .runson{margin-left:auto;font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:6px}
+  .runson.web{color:var(--app);background:rgba(51,214,200,.1)}
+  .runson.ci{color:var(--agent);background:rgba(110,168,254,.1)}
+  .divider{display:flex;align-items:center;gap:10px;margin:4px 0 12px 46px;font-size:11px;
+    text-transform:uppercase;letter-spacing:.08em;color:var(--human);font-weight:600}
+  .divider::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,rgba(245,166,35,.4),transparent)}
+
+  /* kanban */
+  .kan{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+  .col{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 8px 12px}
+  .col h4{margin:0 0 8px;font-size:11px;text-align:center;color:var(--muted);font-weight:600;letter-spacing:.02em}
+  .kcard{background:var(--panel3);border:1px solid var(--line);border-radius:7px;padding:7px 8px;font-size:11px;margin-bottom:6px}
+  .kcard .badge{display:block;margin-top:5px;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;text-align:center}
+  .b-h{color:var(--human);background:rgba(245,166,35,.14)}
+  .b-d{color:var(--danger);background:rgba(255,107,107,.14)}
+  .b-a{color:var(--agent);background:rgba(110,168,254,.14)}
+
+  table{width:100%;border-collapse:collapse;font-size:12.7px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+  td b{color:var(--ink)} td{color:var(--muted)}
+
+  .adr{display:flex;gap:11px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:11px 15px;margin-bottom:9px}
+  .adr .n{font-family:var(--mono);color:var(--app);font-weight:600;font-size:12.5px;white-space:nowrap}
+  .adr div b{font-size:13px} .adr div p{margin:3px 0 0;font-size:12px;color:var(--muted)}
+  .terms{display:flex;flex-wrap:wrap;gap:7px}
+  .term{font-family:var(--mono);font-size:11.5px;background:var(--panel2);border:1px solid var(--line);
+    padding:4px 9px;border-radius:7px;color:#cdd6ea}
+  .foot{margin-top:42px;color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:16px}
+  @media(max-width:900px){.map,.g2,.g3,.g4{grid-template-columns:1fr}.kan{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Software Factory</h1>
+  <div class="sub">A request comes in a <b>web form</b>; an AI pipeline carries it through the SDLC;
+    humans gate the irreversible steps; the whole thing is watched from a <b>control center</b>.</div>
+  <div class="meta-line">runtime: GitHub Copilot (CI) + web-app LLM · enforce: GitHub CI/branch protection · plan: GitHub Team + private repos</div>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--app)"></i>Web app (FastAPI + Angular)</span>
+    <span><i class="dot" style="background:var(--agent)"></i>Copilot agent (CI)</span>
+    <span><i class="dot" style="background:var(--artifact)"></i>Artifact</span>
+    <span><i class="dot" style="background:var(--human)"></i>Human gate</span>
+    <span><i class="dot" style="background:var(--auto)"></i>Automated gate</span>
+    <span><i class="dot" style="background:var(--bot)"></i>Builder bot</span>
+  </div>
+
+  <!-- SYSTEM MAP -->
+  <h2>System map — two layers</h2>
+  <div class="map">
+    <div class="layer web">
+      <h3><span class="tag t-app">WEB APP</span> Intake + Control center</h3>
+      <div class="where">Azure App Service · Azure SQL (SQLite local) · login: Microsoft SSO</div>
+      <div class="chip"><b>Intake form</b> — submit a Request (bug / enhancement / new app)
+        <small>+ AI interview chat &amp; Draft spec — runs here as direct LLM calls</small></div>
+      <div class="chip"><b>Control center</b> — Kanban board · approve gates · progress timeline · code diffs
+        <small>Admins act here; buttons call GitHub with the admin's own identity</small></div>
+      <div class="chip"><b>Database</b> — requests, draft specs, status, app registry, users, audit
+        <small>SQLAlchemy + Alembic · SQLite→MSSQL is a connection-string swap</small></div>
+    </div>
+    <div class="layer gh">
+      <h3><span class="tag t-agent">GITHUB</span> Factory engine + gates</h3>
+      <div class="where">Copilot agents in GitHub Actions · enforcement in CI / branch protection</div>
+      <div class="chip"><b>Factory control repo</b> — owns all Request issues + factory config/workflows
+        <small>Always exists (even before a new app's repo does)</small></div>
+      <div class="chip"><b>Subject repos</b> — the app codebases the factory builds in
+        <small>Found via the App registry; a new app gets a fresh repo at Spec approval</small></div>
+      <div class="chip"><b>Gates</b> — CI checks (RED/GREEN/isolation) + protected-branch approvals
+        <small>GitHub enforces them; the web app can't bypass them</small></div>
+    </div>
+  </div>
+  <div class="flowbar">
+    <span class="seg">form submit → GitHub issue</span> →
+    <span class="seg">Copilot agents commit to PR</span> →
+    <span class="seg">webhooks → FastAPI → DB</span> →
+    <span class="seg">Angular board polls (~3–5s)</span>
+  </div>
+
+  <!-- FRONT DOOR -->
+  <h2><span class="n">Front door</span> — how a request enters</h2>
+  <div class="pipe">
+    <div class="stage web">
+      <div class="rail"><div class="num">A</div><div class="conn"></div></div>
+      <div class="card">
+        <div class="crow"><span class="sname">Submit &amp; interview</span>
+          <span class="runson web">web app · LLM</span></div>
+        <div class="flow">login (SSO) <span class="arr">→</span> form (3 types) <span class="arr">→</span>
+          AI asks ~3–4 follow-ups <span class="arr">→</span> <span class="a">enriched Request</span></div>
+        <div class="gates"><span class="gate a">⚙ saved to DB + GitHub issue created</span></div>
+      </div>
+    </div>
+    <div class="stage web">
+      <div class="rail"><div class="num">1</div><div class="conn"></div></div>
+      <div class="card">
+        <div class="crow"><span class="sname">Stage 1 · Requirements</span>
+          <span class="runson web">web app · LLM</span></div>
+        <div class="flow"><span class="a">Request</span><span class="arr">→</span><span class="a">Draft spec</span>
+          (in DB, shown in dashboard)</div>
+        <div class="gates"><span class="gate h">👤 Spec approval (admin)</span></div>
+        <p style="margin-top:8px;font-size:11.5px;color:var(--faint)">Approve → (new app: create repo) →
+          write <code>SPEC.md</code> to a fresh branch+PR (<b>Work item born</b>) → Stage 2 starts.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- FACTORY ENGINE -->
+  <h2><span class="n">Factory engine</span> — Stages 2–6 (Copilot in CI)</h2>
+  <div class="pipe">
+    <div class="stage ci">
+      <div class="rail"><div class="num">2</div><div class="conn"></div></div>
+      <div class="card">
+        <div class="crow"><span class="sname">Architecture</span><span class="tag t-agent">architect</span>
+          <span class="runson ci">Copilot · CI</span></div>
+        <div class="flow"><span class="a">SPEC.md</span><span class="arr">→</span><span class="a">PLAN.md + adr/*</span></div>
+        <div class="gates"><span class="gate h">👤 Sign ADRs</span></div>
+      </div>
+    </div>
+    <div class="divider">inner loop — built first</div>
+    <div class="stage ci">
+      <div class="rail"><div class="num">3</div><div class="conn"></div></div>
+      <div class="card">
+        <div class="crow"><span class="sname">Test authoring</span><span class="tag t-agent">test-author</span>
+          <span class="runson ci">Copilot · CI</span></div>
+        <div class="flow"><span class="a">PLAN.md</span><span class="arr">→</span><span class="a">failing tests</span>
+          · edit <code>tests/</code> only</div>
+        <div class="gates"><span class="gate a">⚙ RED gate — collects + fails-as-assertion + suite green</span></div>
+      </div>
+    </div>
+    <div class="stage ci">
+      <div class="rail"><div class="num">4</div><div class="conn"></div></div>
+      <div class="card">
+        <div class="crow"><span class="sname">Implementation</span><span class="tag t-agent">implementer</span>
+          <span class="runson ci">Copilot · CI</span></div>
+        <div class="flow"><span class="a">tests</span><span class="arr">→</span><span class="a">src code</span>
+          · edit <code>src/</code> only</div>
+        <div class="gates"><span class="gate a">⚙ GREEN gate — suite passes + diff touched no tests (isolation)</span></div>
+      </div>
+    </div>
+    <div class="stage ci">
+      <div class="rail"><div class="num">5</div><div class="conn"></div></div>
+      <div class="card">
+        <div class="crow"><span class="sname">Review</span><span class="tag t-agent">reviewer</span>
+          <span class="runson ci">Copilot · CI</span></div>
+        <div class="flow"><span class="a">diff</span><span class="arr">→</span><span class="a">review report</span></div>
+        <div class="gates"><span class="gate h">👤 Merge gate — admin approves PR → main</span></div>
+      </div>
+    </div>
+    <div class="stage ci">
+      <div class="rail"><div class="num">6</div></div>
+      <div class="card">
+        <div class="crow"><span class="sname">Deploy</span><span class="tag t-agent">release-manager</span>
+          <span class="runson ci">Copilot · CI</span></div>
+        <div class="flow"><span class="a">main</span><span class="arr">→</span> promote to
+          <code>production</code> branch <span class="arr">→</span><span class="a">release</span></div>
+        <div class="gates"><span class="gate h">👤 Deploy gate — approve the production-promotion PR</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="box" style="margin-top:6px;border-color:#3a2f1e">
+    <p><b style="color:var(--human)">Both human gates are protected-branch approvals</b> — merge into
+      <code>main</code>, and promote <code>main → production</code>. No GitHub Environments (unavailable
+      for private repos on the Team plan). Admins approve <b>as themselves</b>; GitHub still enforces every CI check.</p>
+  </div>
+
+  <!-- CONTROL CENTER -->
+  <h2><span class="n">Control center</span> — the Kanban board</h2>
+  <div class="kan">
+    <div class="col"><h4>Intake</h4>
+      <div class="kcard">Billing · bug</div>
+      <div class="kcard">CRM · enhancement<span class="badge b-h">Approve spec</span></div></div>
+    <div class="col"><h4>Spec</h4>
+      <div class="kcard">Inventory · new app<span class="badge b-h">Approve spec</span></div></div>
+    <div class="col"><h4>Architecture</h4>
+      <div class="kcard">Portal · enhancement<span class="badge b-h">Sign ADRs</span></div></div>
+    <div class="col"><h4>Build</h4>
+      <div class="kcard">Billing · bug<span class="badge b-a">tests → code</span></div>
+      <div class="kcard">Search · bug<span class="badge b-d">Needs human</span></div></div>
+    <div class="col"><h4>Review</h4>
+      <div class="kcard">Auth · enhancement<span class="badge b-h">Approve merge</span></div></div>
+    <div class="col"><h4>Deploy</h4>
+      <div class="kcard">Reports · bug<span class="badge b-h">Approve deploy</span></div></div>
+    <div class="col"><h4>Done</h4>
+      <div class="kcard">Notifs · enhancement</div></div>
+  </div>
+  <div class="grid g4" style="margin-top:14px">
+    <div class="box"><h3>Approve gates</h3><p>Buttons for the 4 human gates, performed with the
+      admin's <b>linked GitHub identity</b> — never bypassing GitHub.</p></div>
+    <div class="box"><h3>Progress timeline</h3><p>Each card shows milestone summaries the agents post
+      as PR comments (via webhook). No live streaming.</p></div>
+    <div class="box"><h3>Code-change view</h3><p>See the diffs/commits an agent produced for a Request,
+      pulled from the PR.</p></div>
+    <div class="box"><h3>Recovery actions</h3><p>On a <code>needs-human</code> card: Retry · Retry-with-note ·
+      Send back · Take over · Cancel.</p></div>
+  </div>
+
+  <!-- IDENTITY -->
+  <h2>Identity &amp; enforcement</h2>
+  <div class="grid g3">
+    <div class="box"><h3><span class="tag t-app">role</span> Submitter</h3>
+      <p>Microsoft SSO only. Files Requests, watches their own. <b>Never touches GitHub.</b></p></div>
+    <div class="box"><h3><span class="tag t-human">role</span> Admin</h3>
+      <p>SSO <b>+ links GitHub once</b>. Approves the gates <b>as themselves</b> from the control center —
+      real human in GitHub's history; can't approve own work (GitHub-enforced).</p></div>
+    <div class="box"><h3><span class="tag t-bot">identity</span> Factory Builder bot</h3>
+      <p>One GitHub App. <b>Only writes</b> — repos, PRs, commits, progress comments. <b>Never approves</b>
+      (an App can't approve its own PR). Not the Actions token.</p></div>
+  </div>
+  <div class="box" style="margin-top:14px">
+    <h3>Where rules are guaranteed</h3>
+    <p>Enforcement lives in <b>GitHub (CI checks + protected branches)</b>, not in agent permissions and not
+    in the web app. The web app is a friendly front-end on top of GitHub's gates. The coder agent
+    <b>physically cannot</b> weaken its tests because CI rejects any implementer diff that touches
+    <code>tests/</code> — the load-bearing <span class="tag t-auto">test-isolation gate</span>.</p>
+  </div>
+
+  <!-- STACK + DATA FLOW -->
+  <h2>Stack &amp; data flow</h2>
+  <div class="grid g2">
+    <div class="box">
+      <h3>Stack</h3>
+      <ul>
+        <li><b>Backend</b> — FastAPI + uv (Python)</li>
+        <li><b>Frontend</b> — Angular (SPA)</li>
+        <li><b>DB</b> — SQLite (local) → Azure SQL / MSSQL, via SQLAlchemy + Alembic</li>
+        <li><b>LLM</b> — OpenAI raw API → corporate wrapped LLM, behind one <code>LLMClient</code></li>
+        <li><b>Host</b> — Azure App Service + Azure SQL; agents in GitHub Actions</li>
+        <li><b>GitHub</b> — one Factory App (installation token = bot; per-admin user token = approve)</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>Two "swap-later" seams</h3>
+      <p>Both isolated behind an interface so the corporate/managed version drops in with one change:</p>
+      <ul>
+        <li><b>SQLite → MSSQL</b> — SQLAlchemy layer; stay DB-agnostic, no SQLite-isms.</li>
+        <li><b>OpenAI → corporate LLM</b> — <code>LLMClient</code> adapter; likely just a base-URL change.</li>
+      </ul>
+      <p style="margin-top:8px"><b>Live updates:</b> GitHub webhook → FastAPI → DB → Angular polls
+        (~3–5s now; SSE later).</p>
+    </div>
+  </div>
+
+  <!-- ADRs -->
+  <h2>Decisions on record</h2>
+  <div class="adr"><div class="n">ADR 0001</div><div><b>Copilot-first; test-isolation enforced at the CI/git layer</b>
+    <p>Copilot for reach; the guarantee bought back at CI since Copilot isn't a sandbox.</p></div></div>
+  <div class="adr"><div class="n">ADR 0002</div><div><b>PR-centric, event-driven orchestration; gates = native GitHub controls</b>
+    <p>Work item = branch + PR. Build the inner loop (3→4→5) first.</p></div></div>
+  <div class="adr"><div class="n">ADR 0003</div><div><b>Draft spec lives in the DB until approval</b>
+    <p>New apps have no repo yet; approval is the bridge that creates the repo + SPEC.md.</p></div></div>
+  <div class="adr"><div class="n">ADR 0004</div><div><b>Progress reporting via milestone summaries over GitHub events</b>
+    <p>PR-comment summaries on the same rail as gates — not a live agent-callback stream.</p></div></div>
+  <div class="adr"><div class="n">ADR 0005</div><div><b>Control center acts through GitHub; deploy via a protected <code>production</code> branch</b>
+    <p>Verified: environment reviewers/custom rules aren't available for private repos on Team. Admins approve as themselves.</p></div></div>
+  <div class="adr"><div class="n">ADR 0006</div><div><b>Every Stage is resumable</b>
+    <p>Re-enter from any stage on current PR state — Retry / Send back / Take over depend on it.</p></div></div>
+  <div class="adr"><div class="n">ADR 0007</div><div><b>Web app stack: FastAPI + Angular, SQLite→MSSQL, OpenAI→corporate, Azure, one GitHub App</b>
+    <p>Two swap-later seams; pre-approval AI runs in the web app, Stages 2–6 on Copilot in CI.</p></div></div>
+
+  <!-- GLOSSARY -->
+  <h2>Glossary — CONTEXT.md</h2>
+  <div class="terms">
+    <span class="term">Factory</span><span class="term">Stage</span><span class="term">Artifact</span>
+    <span class="term">Gate</span><span class="term">Merge gate</span><span class="term">Deploy gate</span>
+    <span class="term">Request</span><span class="term">Intake form</span><span class="term">Intake interview</span>
+    <span class="term">Submitter / Admin</span><span class="term">Factory Builder bot</span>
+    <span class="term">Draft spec</span><span class="term">Spec approval</span><span class="term">Control center</span>
+    <span class="term">Progress reporting</span><span class="term">Factory control repo</span>
+    <span class="term">App registry</span><span class="term">Subject</span><span class="term">Work item</span>
+    <span class="term">Validation</span><span class="term">Escalation</span><span class="term">Recovery action</span>
+    <span class="term">Resumability</span><span class="term">Enforcement layer</span>
+    <span class="term">RED gate</span><span class="term">GREEN gate</span><span class="term">Test-isolation gate</span>
+  </div>
+
+  <div class="foot">
+    Still open: confirm Copilot CLI's per-run turn/step cap (CI <code>timeout-minutes</code> is the primary bound).
+    · Verified GitHub facts &amp; sources live in ADR 0005. · Generated 2026-06-06.
+  </div>
+</div>
+</body>
+</html>

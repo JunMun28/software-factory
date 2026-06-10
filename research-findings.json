@@ -1,0 +1,429 @@
+{
+  "summary": "Deep research harness — fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report.",
+  "agentCount": 111,
+  "logs": [
+    "Q: Research best practices and concrete architectures for building an end-to-end \"A…",
+    "Decomposed into 6 angles: primary tooling / runtime mechanics, SDLC pipeline architecture / stage handoffs, TDD enforcement with AI agents, governance / guardrails / human-in-the-loop / eval, real-world adoption + comparison frameworks, failure modes / anti-patterns / cost-quality tradeoffs",
+    "primary tooling / runtime mechanics: 6 results",
+    "SDLC pipeline architecture / stage handoffs: 6 results",
+    "failure modes / anti-patterns / cost-quality tradeoffs: 6 results",
+    "failure modes / anti-patterns / cost-quality tradeoffs: 3 novel (3 filtered)",
+    "TDD enforcement with AI agents: 6 results",
+    "TDD enforcement with AI agents: 4 novel (2 filtered)",
+    "governance / guardrails / human-in-the-loop / eval: 6 results",
+    "governance / guardrails / human-in-the-loop / eval: 5 novel (1 filtered)",
+    "real-world adoption + comparison frameworks: 6 results",
+    "real-world adoption + comparison frameworks: 4 novel (2 filtered)",
+    "[stall] agent \"fetch:unknown\" stalled (no progress) after 187s — retrying (1/5)",
+    "Fetched 28 sources → 134 claims → verifying top 25",
+    "\"Each Copilot CLI custom agent runs as a subagent w…\": 3-0 ✓",
+    "\"OpenCode supports two agent modes — primary agents…\": 3-0 ✓",
+    "\"GitHub Copilot CLI custom agents are defined as Ma…\": 3-0 ✓",
+    "\"OpenCode ships built-in agents that map to SDLC st…\": 3-0 ✓",
+    "\"Copilot CLI custom agents can be invoked programma…\": 3-0 ✓",
+    "\"Custom OpenCode agents are defined as Markdown fil…\": 3-0 ✓",
+    "\"OpenCode enforces governance through a fine-graine…\": 3-0 ✓",
+    "\"OpenCode integrates external tools via Model Conte…\": 3-0 ✓",
+    "\"OpenCode supports defining custom specialized agen…\": 3-0 ✓",
+    "\"OpenCode is permissive by default (all operations …\": 3-0 ✓",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"GitHub Copilot CLI supports custom agents defined …\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"A Copilot CLI custom agent is configured with a pr…\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"Custom agents can be invoked two ways: explicitly …\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"The `/delegate TASK-DESCRIPTION` command in Copilo…\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"Spec Kit Agents is a multi-agent spec-driven devel…\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"Grounding and validation are implemented as hooks …\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"The handoff/artifact contract between stages is ex…\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"GitHub Copilot SDK custom agents are defined with …\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"The Copilot runtime automatically delegates a matc…\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"Per-agent tool scoping controls capability: omitti…\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"Providing AI coding agents with graph-based impact…\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"Procedural TDD instructions given to an agent WITH…\": 0-0 (3 abstain) ✗",
+    "parallel[0] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"Once configured, the agent uses the server's tools…\": 0-0 (3 abstain) ✗",
+    "\"GitHub Copilot coding agent is extended via MCP se…\": 3-0 ✓",
+    "parallel[1] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "parallel[2] failed: agent({schema}): subagent completed without calling StructuredOutput (after 2 in-conversation nudges)",
+    "\"Copilot coding agent invokes MCP tools fully auton…\": 1-0 (2 abstain) ✗",
+    "Verify done: 25 claims → 11 confirmed, 14 killed"
+  ],
+  "result": {
+    "question": "Research best practices and concrete architectures for building an end-to-end \"AI software factory\" for an engineering team/org — an autonomous-but-governed pipeline covering the full SDLC: (1) requirements gathering/elicitation, (2) software architecture & design, (3) code implementation using test-driven development (TDD), (4) automated code review and validation, and (5) deployment/release. \n\nCenter the tooling on GitHub Copilot CLI and OpenCode (the open-source terminal coding agent) as the primary agent runtimes — how to orchestrate multi-agent pipelines, custom agents/subagents, MCP servers, hooks, and stage-to-stage handoffs with these specifically. Compare/contrast where relevant with Cursor, Devin, GitHub Copilot Workspace, Claude Code/Agent SDK, and orchestration frameworks (LangGraph, CrewAI, AutoGen).\n\nCover: how leading teams/companies actually run agentic SDLC pipelines today; the handoff/artifact contract between each stage (PRD → architecture/ADR → tests → code → review → deploy); how to enforce TDD with AI agents (red-green-refactor, spec-as-tests); governance, human-in-the-loop gates, traceability, and guardrails for team use; CI/CD integration and deployment automation; evaluation/validation of agent output; common failure modes and anti-patterns; and cost/quality trade-offs.\n\nDeliver BOTH: (A) a cited best-practices landscape survey, and (B) a concrete, opinionated reference blueprint — the recommended pipeline architecture, the agent roles per stage, the artifacts passed between stages, the orchestration mechanism, and the human review gates — implementable with GitHub Copilot CLI and/or OpenCode for a software engineering team.",
+    "summary": "Both GitHub Copilot CLI and OpenCode provide the primitives needed to build a governed, multi-agent SDLC pipeline today: Markdown-defined custom agents with isolated context windows, subagent delegation for stage isolation, MCP-based external tool integration, fine-grained permission/governance controls, and non-interactive CLI invocation that lets stages be scripted into a PRD→architecture→tests→code→review→deploy handoff chain. Copilot CLI centers on `.agent.md` files (project `.github/agents/` or user `~/.copilot/agents/`) run as isolated subagents and invocable programmatically (`copilot --agent <name> --prompt \"...\"`), making it the orchestration hook for stage-to-stage handoffs, while its cloud coding agent gates MCP setup as a repo-admin governance control via JSON entered in GitHub.com settings. OpenCode ships SDLC-mapped built-in agents (Plan/Build primaries; read-only Explore/Scout subagents), supports custom agents via Markdown or `opencode.json`, and enforces human-in-the-loop gates through an allow/ask/deny permission system with wildcard last-match-wins precedence, plus org-level remote config via `.well-known/opencode` that local configs can override. The strongest, unanimously-verified evidence is descriptive/config-level (how to wire the agents, permissions, and MCP); claims about specific orchestration frameworks, empirical TDD-enforcement results, and async-handoff commands did not survive verification, so the concrete blueprint rests on documented agent/permission/MCP mechanics rather than benchmarked end-to-end pipeline results.",
+    "findings": [
+      {
+        "claim": "Copilot CLI custom agents are Markdown `.agent.md` files (project `.github/agents/` or user `~/.copilot/agents/`, home wins on collision), each running as an isolated-context subagent — providing the per-stage agent definition and context-isolation mechanism for an SDLC pipeline.",
+        "confidence": "high",
+        "vote": "3-0 (merged from claims 0 and 1)",
+        "sources": [
+          "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli"
+        ],
+        "evidence": "Primary GitHub docs verbatim: agents are `.agent.md` Markdown files stored project-level in `.github/agents/` or user-level in `~/.copilot/agents/`, with the home-directory version taking precedence on name collisions. Each runs as a temporary subagent with 'its own context window, which can be populated by information that is not relevant to the main agent,' letting work be offloaded 'without cluttering the main agent's context window' so the main agent focuses on planning and coordination. Note: isolation is contextual, not a security sandbox. Custom agents shipped Oct 28 2025."
+      },
+      {
+        "claim": "Copilot CLI custom agents can be invoked non-interactively from the command line (`copilot --agent <name> --prompt \"...\"`), which is the documented hook for scripting stage-to-stage pipeline handoffs in scripts/CI.",
+        "confidence": "high",
+        "vote": "3-0",
+        "sources": [
+          "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli"
+        ],
+        "evidence": "Two primary GitHub Docs pages show `copilot --agent security-auditor --prompt \"...\"` and `copilot --agent=refactor-agent --prompt \"Refactor this code block\"`. GitHub docs/blog confirm the `--prompt`/`-p` non-interactive mode is explicitly designed for 'scripts, CI/CD pipelines, and automation workflows,' supporting use as a stage-handoff mechanism. The 'hook for pipeline handoffs' framing is reasonable analyst inference; the syntax itself is documented verbatim."
+      },
+      {
+        "claim": "GitHub Copilot's cloud coding agent is extended via MCP servers configured as JSON entered directly into the repository's settings on GitHub.com (not a local file), making MCP setup a repo-admin governance control.",
+        "confidence": "high",
+        "vote": "3-0",
+        "sources": [
+          "https://docs.github.com/copilot/how-tos/agents/copilot-coding-agent/extending-copilot-coding-agent-with-mcp"
+        ],
+        "evidence": "Primary GitHub Docs verbatim: 'You enter the JSON configuration directly into the settings for the repository on GitHub.com.' Config lives under repo Settings > Copilot > MCP servers in the web UI because the cloud agent runs in GitHub's cloud; 'As a repository administrator, you can configure MCP servers for use within your repository.' Nuance: org/enterprise admins can also configure MCP via custom-agent YAML frontmatter, so repo-admin is not the only governance layer, but the claim does not assert exclusivity."
+      },
+      {
+        "claim": "OpenCode supports two agent modes — primary agents (direct interaction, switched via Tab/keybind) and subagents (invoked automatically by primaries or manually via @-mention) — enabling multi-agent orchestration and stage-to-stage handoffs within the terminal runtime.",
+        "confidence": "high",
+        "vote": "3-0",
+        "sources": [
+          "https://opencode.ai/docs/agents/"
+        ],
+        "evidence": "Primary docs verbatim: 'Primary Agents: Main assistants for direct interaction... cycle between them via Tab key or switch_agent keybind. Subagents: Specialized assistants invoked by primary agents for specific tasks, or manually via @ mentions.' Corroborated by independent blogs and a technical deep-dive. Open GitHub issues (#22130/#29616) report subagent-mode bugs but confirm the feature exists."
+      },
+      {
+        "claim": "OpenCode ships built-in agents that map to SDLC stages: a 'Plan' primary agent restricted to planning/analysis (edits and bash default to 'ask'), a 'Build' primary with all tools, plus read-only 'Explore' (codebase) and 'Scout' (external-docs/dependency) subagents.",
+        "confidence": "high",
+        "vote": "3-0",
+        "sources": [
+          "https://opencode.ai/docs/agents/"
+        ],
+        "evidence": "Primary docs: 'Build is the default primary agent with all tools enabled... full access to file operations and system commands'; Plan is 'A restricted agent designed for planning and analysis' with edit/bash defaulting to 'ask'; Explore is 'A fast, read-only agent for exploring codebases. Cannot modify files'; Scout is 'A read-only agent for external docs and dependency research.' Docs also include an additional full-access 'General' research subagent (omitted from the claim but not contradicting it)."
+      },
+      {
+        "claim": "Custom OpenCode agents are defined as Markdown files in `~/.config/opencode/agents/` (global) or `.opencode/agents/` (per-project), or via JSON under the `agent` key in `opencode.json`, each configurable by description, model override, custom system prompt, temperature, max steps, tools, and permissions — enabling distinct per-stage SDLC roles.",
+        "confidence": "high",
+        "vote": "3-0 (merged from claims 5 and 7)",
+        "sources": [
+          "https://opencode.ai/docs/agents/",
+          "https://opencode.ai/docs/config/"
+        ],
+        "evidence": "Primary docs: agents configured via JSON ('agent' key in opencode.json) or Markdown files in the two documented directories, with filename becoming the agent name. opencode.ai/docs/config gives a concrete 'code-reviewer' agent example with description, model (anthropic/claude-sonnet-4-5), prompt, and tools ({'write': false}). Documented per-agent options include model, prompt, temperature, steps (max agentic iterations), tools, and permission. The code-reviewer example itself demonstrates per-stage role specialization. Backwards-compatible singular 'agent/' directory also accepted."
+      },
+      {
+        "claim": "OpenCode enforces governance/human-in-the-loop gating through a fine-grained allow/ask/deny permission system across tool keys (read, edit, bash, task, webfetch, etc.) with wildcard pattern matching where the last matching rule wins; it is permissive by default but the `permission` option adds gates and the `tools` option disables tools entirely per agent.",
+        "confidence": "high",
+        "vote": "3-0 (merged from claims 6 and 9)",
+        "sources": [
+          "https://opencode.ai/docs/agents/",
+          "https://opencode.ai/docs/config/",
+          "https://opencode.ai/docs/permissions/"
+        ],
+        "evidence": "Primary docs verbatim: states are 'allow' (no approval), 'ask' (prompt), 'deny' (disabled); 'Permission keys are matched as wildcard patterns against the underlying tool name' and 'the last matching rule takes precedence.' Default: 'By default, opencode allows all operations without requiring explicit approval'; changed via `permission` option. `tools` option removes tools entirely (distinct from permission gating). Per-agent HITL gates shown via catch-all '*':'ask' plus specific overrides. Narrow safety defaults qualify the 'permissive by default' claim: doom_loop/external_directory default to 'ask', *.env reads to 'deny', and the Plan agent defaults key permissions to 'ask'."
+      },
+      {
+        "claim": "OpenCode integrates external tools via MCP servers configured through the `mcp` option, including org-level remote configs delivered via `.well-known/opencode` endpoints that local/project configs can override (precedence: remote < global < custom < project).",
+        "confidence": "high",
+        "vote": "3-0",
+        "sources": [
+          "https://opencode.ai/docs/config/"
+        ],
+        "evidence": "Primary docs verbatim: 'You can configure MCP servers you want to use through the `mcp` option.' Remote config is fetched from `.well-known/opencode`; documented load order (later overrides earlier): 1. Remote (.well-known/opencode), 2. Global, 3. Custom, 4. Project. Worked example: org disables an MCP server remotely ('enabled': false) but a user re-enables it locally ('enabled': true). Corroborated by third-party mirrors and opencode GitHub issues (#10930, #28177)."
+      }
+    ],
+    "caveats": "All eight surviving findings are descriptive, config-level claims sourced to official vendor primary documentation (GitHub Docs, opencode.ai) with unanimous 3-0 votes — high confidence on the mechanics, but this is a fast-moving field (Copilot CLI custom agents only shipped Oct 28 2025; OpenCode subagents are an actively-developed 2025 feature with open bug reports) so specific syntax and defaults may shift. Critically, the verification process REFUTED nearly all of the higher-order pipeline claims: the LangGraph/CrewAI/AutoGen orchestration framework comparison, Spec Kit Agents multi-agent state-machine details, the explicit SPEC.md→PLAN.md→TASKS.md artifact-validation contract, grounding/validation hooks, the empirical TDD results (the '70% regression reduction with graph context' and 'TDD Prompting Paradox' arXiv findings), the Copilot SDK custom-agent field schema, and the `/delegate` async-handoff-with-review-gate command all failed to reach a passing vote. Therefore the evidence base strongly supports the AGENT/PERMISSION/MCP building blocks of a factory but does NOT, at verified-confidence, support a specific benchmarked end-to-end blueprint, a quantified TDD-enforcement strategy, or claims about how named companies actually run these pipelines in production. The Copilot CLI agent isolation is contextual, not a security sandbox — do not treat subagent boundaries as a trust boundary. The refuted-but-plausible claims (e.g., configuration-time allowlisting being the main Copilot coding-agent guardrail) reflect real ambiguity in the docs rather than being disproven, so they remain open design considerations rather than settled facts.",
+    "openQuestions": [
+      "What is the verified artifact/handoff contract between SDLC stages (PRD → ADR → tests → code → review → deploy) — file formats, validation gates, and where they live — given that the specific SPEC.md/PLAN.md/TASKS.md spec-driven contract claims were refuted? This needs primary-source or production-case confirmation rather than inference.",
+      "How should TDD (red-green-refactor / spec-as-tests) actually be enforced on AI agents for measurable regression reduction, given that the empirical arXiv claims (graph-based impact context, the 'TDD Prompting Paradox') did not survive verification? The mechanism for reliable test-first agent behavior remains unconfirmed.",
+      "How do leading teams/companies concretely run governed agentic SDLC pipelines in production today (orchestration mechanism, human-gate placement, traceability), and how do Copilot CLI / OpenCode compare in practice against Cursor, Devin, Copilot Workspace, Claude Agent SDK, and LangGraph/CrewAI/AutoGen — none of which produced surviving verified claims?",
+      "For Copilot's cloud coding agent, what is the actual runtime guardrail model — configuration-time tool allowlisting vs. per-invocation human approval — since both framings were proposed but refuted/unresolved in verification, leaving the real-time MCP governance posture ambiguous?"
+    ],
+    "refuted": [
+      {
+        "claim": "Copilot coding agent invokes MCP tools fully autonomously with no per-invocation human approval gate — the only guardrail is allowlisting tools at configuration time, so GitHub recommends restricting to read-only tools.",
+        "vote": "1-0",
+        "source": "https://docs.github.com/copilot/how-tos/agents/copilot-coding-agent/extending-copilot-coding-agent-with-mcp"
+      },
+      {
+        "claim": "Once configured, the agent uses the server's tools autonomously and does not ask for approval before each use, confirming the governance model is configuration-time allowlisting rather than runtime human-in-the-loop gating.",
+        "vote": "0-0",
+        "source": "https://docs.github.com/copilot/how-tos/agents/copilot-coding-agent/extending-copilot-coding-agent-with-mcp"
+      },
+      {
+        "claim": "GitHub Copilot CLI supports custom agents defined as files in three scopes — `.github/agents` in a repository, the org-level `{org}/.github` repository, and `~/.copilot/agents` in the user home directory — letting teams version-control and share agent personas across a team/org.",
+        "vote": "0-0",
+        "source": "https://github.blog/changelog/2025-10-28-github-copilot-cli-use-custom-agents-and-delegate-to-copilot-coding-agent/"
+      },
+      {
+        "claim": "A Copilot CLI custom agent is configured with a prompt persona, a tool selection, and MCP servers — providing the per-agent tool-scoping and MCP wiring needed to build distinct stage agents in an SDLC pipeline.",
+        "vote": "0-0",
+        "source": "https://github.blog/changelog/2025-10-28-github-copilot-cli-use-custom-agents-and-delegate-to-copilot-coding-agent/"
+      },
+      {
+        "claim": "Custom agents can be invoked two ways: explicitly via the `/agent` slash command, or automatically by the model, which spins up a new agentic loop using a relevant custom agent when needed — providing a primitive for agent-to-agent (subagent) handoff within Copilot CLI.",
+        "vote": "0-0",
+        "source": "https://github.blog/changelog/2025-10-28-github-copilot-cli-use-custom-agents-and-delegate-to-copilot-coding-agent/"
+      },
+      {
+        "claim": "The `/delegate TASK-DESCRIPTION` command in Copilot CLI hands a task off to the Copilot coding agent, which commits unstaged changes to a new branch, opens a draft PR, makes changes in the background, and requests a review — establishing a CLI-to-async-agent handoff with a built-in human review gate.",
+        "vote": "0-0",
+        "source": "https://github.blog/changelog/2025-10-28-github-copilot-cli-use-custom-agents-and-delegate-to-copilot-coding-agent/"
+      },
+      {
+        "claim": "Spec Kit Agents is a multi-agent spec-driven development pipeline built on a state-machine orchestrator with a PM agent (requirements clarification/prioritization) and a developer agent (artifact production + implementation), augmenting GitHub Spec Kit's staged Specify->Plan->Tasks->Implement workflow with phase-level context-grounding hooks.",
+        "vote": "0-0",
+        "source": "https://arxiv.org/pdf/2604.05278"
+      },
+      {
+        "claim": "The handoff/artifact contract between stages is explicit Markdown artifacts (SPEC.md, PLAN.md, TASKS.md) that are validated BEFORE code generation, front-loading detection of hallucinated APIs, invalid file paths, and architectural mismatches rather than concentrating verification after implementation.",
+        "vote": "0-0",
+        "source": "https://arxiv.org/pdf/2604.05278"
+      },
+      {
+        "claim": "Grounding and validation are implemented as hooks operating outside the core agent prompts: read-only discovery hooks (glob/grep/git history) probe the repo before each phase, and validation hooks check artifacts and run project tests/linters (pytest, ruff, JS test runners) after each phase, with tiered tool-access control per agent role.",
+        "vote": "0-0",
+        "source": "https://arxiv.org/pdf/2604.05278"
+      },
+      {
+        "claim": "GitHub Copilot SDK custom agents are defined with required fields name and prompt, plus optional fields (displayName, description, tools, mcpServers, infer, skills), each agent having its own system prompt, tool restrictions, and optional MCP servers.",
+        "vote": "0-0",
+        "source": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/use-copilot-sdk/custom-agents"
+      },
+      {
+        "claim": "The Copilot runtime automatically delegates a matching request to a custom agent as a sub-agent, running it in an isolated context while streaming lifecycle events back to the parent session.",
+        "vote": "0-0",
+        "source": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/use-copilot-sdk/custom-agents"
+      },
+      {
+        "claim": "Per-agent tool scoping controls capability: omitting/null tools inherits all session tools, while explicit lists (e.g. read-only grep/glob/view vs. write view/edit/bash) restrict the agent's access.",
+        "vote": "0-0",
+        "source": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/use-copilot-sdk/custom-agents"
+      },
+      {
+        "claim": "Providing AI coding agents with graph-based impact analysis (a static map of which tests cover which code) reduced test-level code regressions by 70% (from 6.08% to 1.82%) versus a vanilla agent, in a 100-instance evaluation with Qwen3-Coder 30B.",
+        "vote": "0-0",
+        "source": "https://arxiv.org/html/2603.17973v1"
+      },
+      {
+        "claim": "Procedural TDD instructions given to an agent WITHOUT graph context made regressions worse than no TDD instructions at all, raising regressions to 9.94% (the 'TDD Prompting Paradox'), implying TDD enforcement should supply which-tests context rather than how-to-do-TDD prose.",
+        "vote": "0-0",
+        "source": "https://arxiv.org/html/2603.17973v1"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli",
+        "quality": "primary",
+        "angle": "primary tooling / runtime mechanics",
+        "claimCount": 5
+      },
+      {
+        "url": "https://opencode.ai/docs/agents/",
+        "quality": "primary",
+        "angle": "primary tooling / runtime mechanics",
+        "claimCount": 5
+      },
+      {
+        "url": "https://opencode.ai/docs/config/",
+        "quality": "primary",
+        "angle": "primary tooling / runtime mechanics",
+        "claimCount": 5
+      },
+      {
+        "url": "https://docs.github.com/copilot/how-tos/agents/copilot-coding-agent/extending-copilot-coding-agent-with-mcp",
+        "quality": "primary",
+        "angle": "primary tooling / runtime mechanics",
+        "claimCount": 5
+      },
+      {
+        "url": "https://github.blog/changelog/2025-10-28-github-copilot-cli-use-custom-agents-and-delegate-to-copilot-coding-agent/",
+        "quality": "primary",
+        "angle": "primary tooling / runtime mechanics",
+        "claimCount": 5
+      },
+      {
+        "url": "https://amirteymoori.com/opencode-multi-agent-setup-specialized-ai-coding-agents/",
+        "quality": "blog",
+        "angle": "primary tooling / runtime mechanics",
+        "claimCount": 5
+      },
+      {
+        "url": "https://github.com/danielmeppiel/agentic-sdlc-handbook",
+        "quality": "blog",
+        "angle": "SDLC pipeline architecture / stage handoffs",
+        "claimCount": 5
+      },
+      {
+        "url": "https://arxiv.org/pdf/2604.05278",
+        "quality": "primary",
+        "angle": "SDLC pipeline architecture / stage handoffs",
+        "claimCount": 5
+      },
+      {
+        "url": "https://medium.com/@brettluelling/how-we-built-a-16-agent-sdlc-that-ships-features-end-to-end-2a3621fc9e64",
+        "quality": "blog",
+        "angle": "SDLC pipeline architecture / stage handoffs",
+        "claimCount": 5
+      },
+      {
+        "url": "https://vantor.com/blog/building-an-agentic-sdlc-anthropics-emerging-harness-design-patterns/",
+        "quality": "blog",
+        "angle": "SDLC pipeline architecture / stage handoffs",
+        "claimCount": 5
+      },
+      {
+        "url": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/use-copilot-sdk/custom-agents",
+        "quality": "primary",
+        "angle": "SDLC pipeline architecture / stage handoffs",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.augmentcode.com/guides/agentic-sdlc",
+        "quality": "blog",
+        "angle": "SDLC pipeline architecture / stage handoffs",
+        "claimCount": 5
+      },
+      {
+        "url": "https://arxiv.org/html/2603.17973v1",
+        "quality": "primary",
+        "angle": "TDD enforcement with AI agents",
+        "claimCount": 5
+      },
+      {
+        "url": "https://medium.com/@JeffInUptown/test-driven-agentic-development-how-tdd-and-specification-as-code-can-enable-autonomous-coding-6b1b4b7dd816",
+        "quality": "blog",
+        "angle": "TDD enforcement with AI agents",
+        "claimCount": 5
+      },
+      {
+        "url": "https://metr.org/blog/2025-06-05-recent-reward-hacking/",
+        "quality": "primary",
+        "angle": "TDD enforcement with AI agents",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.nist.gov/caisi/cheating-ai-agent-evaluations/1-background-ai-models-can-cheat-evaluations",
+        "quality": "primary",
+        "angle": "TDD enforcement with AI agents",
+        "claimCount": 5
+      },
+      {
+        "url": "https://developers.openai.com/cookbook/examples/partners/agentic_governance_guide/agentic_governance_cookbook",
+        "quality": "primary",
+        "angle": "governance / guardrails / human-in-the-loop / eval",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.augmentcode.com/guides/ai-code-review-ci-cd-pipeline",
+        "quality": "blog",
+        "angle": "governance / guardrails / human-in-the-loop / eval",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.mckinsey.com/capabilities/mckinsey-technology/our-insights/rewiring-software-delivery-for-the-agentic-era",
+        "quality": "unreliable",
+        "angle": "governance / guardrails / human-in-the-loop / eval",
+        "claimCount": 0
+      },
+      {
+        "url": "https://elite-ai-assisted-coding.dev/p/guide-ai-agents-through-test-driven-development",
+        "quality": "blog",
+        "angle": "governance / guardrails / human-in-the-loop / eval",
+        "claimCount": 5
+      },
+      {
+        "url": "https://blog.codacy.com/why-coding-agents-need-independent-quality-gates",
+        "quality": "blog",
+        "angle": "governance / guardrails / human-in-the-loop / eval",
+        "claimCount": 5
+      },
+      {
+        "url": "https://github.com/microsoft/agentic-sdlc-starter",
+        "quality": "primary",
+        "angle": "real-world adoption + comparison frameworks",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.tensoria.fr/en/blog/multi-agent-orchestration-comparison",
+        "quality": "blog",
+        "angle": "real-world adoption + comparison frameworks",
+        "claimCount": 5
+      },
+      {
+        "url": "https://news.lavx.hu/article/tdd-guard-enforcing-discipline-in-ai-assisted-development-with-automated-test-driven-workflows",
+        "quality": "secondary",
+        "angle": "real-world adoption + comparison frameworks",
+        "claimCount": 5
+      },
+      {
+        "url": "https://www.thoughtworks.com/en-us/insights/blog/agile-engineering-practices/spec-driven-development-unpacking-2025-new-engineering-practices",
+        "quality": "primary",
+        "angle": "real-world adoption + comparison frameworks",
+        "claimCount": 5
+      },
+      {
+        "url": "https://codewithrigor.com/blog/the-10-failure-modes/",
+        "quality": "blog",
+        "angle": "failure modes / anti-patterns / cost-quality tradeoffs",
+        "claimCount": 5
+      },
+      {
+        "url": "https://codeconductor.ai/blog/why-ai-coding-agents-arent-production-ready/",
+        "quality": "blog",
+        "angle": "failure modes / anti-patterns / cost-quality tradeoffs",
+        "claimCount": 5
+      },
+      {
+        "url": "https://medium.com/@sahin.samia/engineering-challenges-and-failure-modes-in-agentic-ai-systems-a-practical-guide-f9c43aa0ae3f",
+        "quality": "blog",
+        "angle": "failure modes / anti-patterns / cost-quality tradeoffs",
+        "claimCount": 4
+      }
+    ],
+    "stats": {
+      "angles": 6,
+      "sourcesFetched": 28,
+      "claimsExtracted": 134,
+      "claimsVerified": 25,
+      "confirmed": 11,
+      "killed": 14,
+      "afterSynthesis": 8,
+      "urlDupes": 3,
+      "budgetDropped": 5,
+      "agentCalls": 111
+    }
+  }
+}
