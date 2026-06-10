@@ -9,7 +9,7 @@ export function timeAgo(iso: string): string {
   const s = Math.max(1, (Date.now() - utc(iso).getTime()) / 1000);
   if (s < 90) return 'now';
   const m = s / 60;
-  if (m < 90) return `${Math.round(m)}m`;
+  if (m < 60) return `${Math.round(m)}m`;
   const h = m / 60;
   if (h < 36) return `${Math.round(h)}h`;
   const d = h / 24;

@@ -29,7 +29,7 @@ interface Band { key: string; label: string; glyph: string; items: FactoryReques
             <span class="lband__count">{{ band.items.length }}</span>
           </div>
           @for (r of band.items; track r.id) {
-            <div class="lrow" (click)="open(r)">
+            <div class="lrow focusable" tabindex="0" role="button" (click)="open(r)" (keydown.enter)="open(r)">
               <sf-glyph [type]="g(r).glyph" [size]="15" [color]="g(r).color" [fill]="g(r).fill" />
               <span class="lrow__title" [style.text-decoration]="r.status === 'cancelled' ? 'line-through' : ''">{{ r.title }}</span>
               <span class="chip">{{ typeShort[r.type] }}</span>
@@ -48,6 +48,7 @@ interface Band { key: string; label: string; glyph: string; items: FactoryReques
       </div>
     </admin-shell>
   `,
+  styles: `.lrow__app { width:140px; flex:0 0 140px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }`,
 })
 export class ListView {
   private api = inject(Api);

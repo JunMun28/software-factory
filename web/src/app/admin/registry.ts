@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, HostListener, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { Api } from '../core/api.service';
@@ -13,15 +13,15 @@ import { AdminShell } from './admin-shell';
   imports: [AdminShell, Glyph, Icon, FormsModule],
   template: `
     <admin-shell active="registry" title="App registry">
-      <span headerExtra style="font-size:11.5px;color:var(--faint)">N new · J/K rows</span>
       <span headerRight>
-        <button class="btn primary sm" (click)="startNew()"><sf-icon name="plus" [size]="14" /> New <kbd class="kbd">N</kbd></button>
+        <button class="btn primary sm" (click)="startNew()"><sf-icon name="plus" [size]="14" /> New</button>
       </span>
       <div class="regtable scroll">
         <div class="reghead"><span>App / channel</span><span>Owner</span><span>Repo</span><span>Source</span><span></span></div>
         <div [style.opacity]="editing() != null ? 0.55 : 1">
           @for (a of apps(); track a.id) {
-            <div class="regrow" [class.focus]="editing()?.id === a.id" (click)="edit(a)">
+            <div class="regrow focusable" tabindex="0" role="button" [class.focus]="editing()?.id === a.id"
+              (click)="edit(a)" (keydown.enter)="edit(a)">
               <span class="row" style="gap:7px"><span style="color:var(--faint)">#</span><span style="font-size:13.5px;font-weight:600">{{ a.name }}</span>
                 @if (a.unread) { <span style="width:6px;height:6px;border-radius:50%;background:var(--a500)"></span> }</span>
               <span style="font-size:12.5px;color:var(--muted)">{{ a.owner }}</span>
@@ -100,4 +100,7 @@ export class Registry {
     else this.api.updateApp(this.editing()!.id, this.form).subscribe(done);
   }
   close() { this.editing.set(null); }
+
+  @HostListener('window:keydown.escape')
+  onEsc() { if (this.editing()) this.close(); }
 }

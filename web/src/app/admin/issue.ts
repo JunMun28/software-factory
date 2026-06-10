@@ -212,7 +212,7 @@ interface ActivityRow {
               @for (step of confirmSteps(r); track $index) {
                 <li class="row" style="gap:10px;font-size:13.5px">
                   <span style="width:20px;height:20px;border-radius:50%;background:var(--a50);display:flex;align-items:center;justify-content:center;flex:0 0 auto"><sf-icon name="check" [size]="12" color="var(--a600)" /></span>
-                  <span><b style="font-weight:600">{{ step[0] }}</b> <span class="mono" style="font-size:12px;color:var(--muted)">{{ step[1] }}</span></span>
+                  <span><b style="font-weight:600">{{ step[0] }}</b> <span class="mono" style="font-size:12px;color:var(--muted);margin-left:6px">{{ step[1] }}</span></span>
                 </li>
               }
             </ul>

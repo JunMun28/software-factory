@@ -1,6 +1,6 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
 import { FactoryRequest, RequestDetail } from '../core/models';
@@ -21,7 +21,8 @@ import { AdminShell } from './admin-shell';
       <div class="split">
         <div class="queue scroll">
           @for (q of queue(); track q.id; let i = $index) {
-            <div class="qitem" [class.on]="sel() === i" (click)="sel.set(i)">
+            <div class="qitem focusable" tabindex="0" role="button" [class.on]="sel() === i"
+              (click)="sel.set(i)" (keydown.enter)="sel.set(i)">
               <sf-glyph [type]="q.needs_human ? 'flag' : 'ring'" [size]="14" [color]="q.needs_human ? 'var(--red)' : 'var(--muted)'" [fill]="0.4" />
               <div style="flex:1;min-width:0"><div class="qitem__app">{{ q.app_name }}</div><div class="qitem__title">{{ q.title }}</div></div>
               @if (q.needs_human) { <sf-sig tone="red">Needs human</sf-sig> }
@@ -130,9 +131,22 @@ import { AdminShell } from './admin-shell';
             @if (r.gate === 'approve_spec') { <button class="btn" (click)="sendingBack.set(true)">Send back <kbd class="kbd">S</kbd></button> }
             <span class="actionbar__note">{{ r.gate === 'approve_merge' ? 'Approve merges to main · promotes to production' : 'Approve creates repo · writes SPEC.md PR · starts Architecture' }}</span>
             <span style="width:1px;height:22px;background:var(--border);margin:0 2px"></span>
-            <button class="btn sm" style="border-style:dashed;color:var(--muted)" (click)="cancel(r)">Cancel request <kbd class="kbd">C</kbd></button>
+            <button class="btn sm" style="border-style:dashed;color:var(--muted)" (click)="cancelling.set(true)">Cancel request <kbd class="kbd">C</kbd></button>
           </div>
         }
+      }
+
+      @if (cancelling() && detail(); as r) {
+        <div class="palette-scrim" style="align-items:center;padding-top:0" (click)="cancelling.set(false)">
+          <div class="palette" style="width:420px;padding:22px 24px;align-self:center" (click)="$event.stopPropagation()">
+            <h3 style="font-size:19px;margin-bottom:8px">Cancel this request?</h3>
+            <p style="font-size:14px;color:var(--muted);margin:0 0 16px"><b style="color:var(--fg1)">{{ r.title }}</b> will be closed as won't-do and {{ r.reporter }} will be notified.</p>
+            <div class="row" style="gap:9px;justify-content:flex-end">
+              <button class="btn" (click)="cancelling.set(false)">Keep it</button>
+              <button class="btn danger" (click)="cancel(r)">Cancel request</button>
+            </div>
+          </div>
+        </div>
       }
 
       @if (confirming() && detail(); as r) {
@@ -144,7 +158,7 @@ import { AdminShell } from './admin-shell';
               @for (step of confirmSteps(r); track $index) {
                 <li class="row" style="gap:10px;font-size:13.5px">
                   <span style="width:20px;height:20px;border-radius:50%;background:var(--a50);display:flex;align-items:center;justify-content:center;flex:0 0 auto"><sf-icon name="check" [size]="12" color="var(--a600)" /></span>
-                  <span><b style="font-weight:600">{{ step[0] }}</b> <span class="mono" style="font-size:12px;color:var(--muted)">{{ step[1] }}</span></span>
+                  <span><b style="font-weight:600">{{ step[0] }}</b> <span class="mono" style="font-size:12px;color:var(--muted);margin-left:6px">{{ step[1] }}</span></span>
                 </li>
               }
             </ul>
@@ -184,16 +198,23 @@ export class ApprovalQueue {
   detail = signal<RequestDetail | null>(null);
   confirming = signal(false);
   sendingBack = signal(false);
+  cancelling = signal(false);
   sendBackNote = '';
   dupDismissed = signal(false);
   showOrig = signal(false);
   showTurns = signal(false);
+  private wantSel = Number(inject(ActivatedRoute).snapshot.queryParamMap.get('sel')) || null;
 
   constructor() {
     effect(() => {
       this.poll.version();
       this.api.inbox().subscribe((rs) => {
         this.queue.set(rs);
+        if (this.wantSel != null) {
+          const i = rs.findIndex((r) => r.id === this.wantSel);
+          if (i >= 0) this.sel.set(i);
+          this.wantSel = null;
+        }
         if (this.sel() >= rs.length) this.sel.set(Math.max(0, rs.length - 1));
       });
     });
@@ -235,10 +256,30 @@ export class ApprovalQueue {
     });
   }
   cancel(r: RequestDetail) {
+    this.cancelling.set(false);
     this.api.cancel(r.id, this.session.user().name).subscribe(() => this.poll.nudge());
   }
   retry(r: RequestDetail) {
     this.api.retry(r.id, this.session.user().name).subscribe(() => this.poll.nudge());
   }
   openIssue(id: number) { this.router.navigateByUrl(`/admin/issue/${id}`); }
+
+  /** The single-key grammar the headers advertise: J/K move · ↵ open · A/S/C act. */
+  @HostListener('window:keydown', ['$event'])
+  onKey(e: KeyboardEvent) {
+    const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey) return;
+    if (this.confirming() || this.sendingBack() || this.cancelling()) {
+      if (e.key === 'Escape') { this.confirming.set(false); this.sendingBack.set(false); this.cancelling.set(false); }
+      return;
+    }
+    const k = e.key.toLowerCase();
+    const r = this.detail();
+    if (k === 'j' || e.key === 'ArrowDown') { e.preventDefault(); this.sel.update((s) => Math.min(this.queue().length - 1, s + 1)); }
+    else if (k === 'k' || e.key === 'ArrowUp') { e.preventDefault(); this.sel.update((s) => Math.max(0, s - 1)); }
+    else if (e.key === 'Enter' && r) { e.preventDefault(); this.openIssue(r.id); }
+    else if (k === 'a' && r && !r.needs_human) { e.preventDefault(); this.confirming.set(true); }
+    else if (k === 's' && r && r.gate === 'approve_spec') { e.preventDefault(); this.sendingBack.set(true); }
+    else if (k === 'c' && r && !['done', 'cancelled'].includes(r.status)) { e.preventDefault(); e.stopImmediatePropagation(); this.cancelling.set(true); }
+  }
 }

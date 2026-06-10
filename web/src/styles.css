@@ -18,7 +18,7 @@
 :root {
   /* neutrals */
   --bg:#FAF9FB; --surface:#FFFFFF; --surface-2:#F4F3F7; --surface-3:#ECEBF1;
-  --fg1:#1A1A1F; --fg2:#3A3A42; --muted:#6C6C78; --faint:#9A9AA6;
+  --fg1:#1A1A1F; --fg2:#3A3A42; --muted:#6C6C78; --faint:#75757F; /* faint holds 4.5:1 AA on the canvas */
   --border:#E6E6EA; --border-strong:#D7D7DE; --hairline:#EEEEF2;
 
   /* accent ramp (Micron purple) */

@@ -110,6 +110,9 @@ interface FeedMsg {
             <input class="scomposer__field" [placeholder]="'Message #' + (app()?.name ?? '')" [(ngModel)]="draft" (keydown.enter)="send()" />
             <button class="scomposer__ic" title="Send" (click)="send()"><sf-icon name="arrowRight" [size]="17" color="var(--accent)" /></button>
           </div>
+          @if (target(); as t) {
+            <div style="padding:0 13px 8px;font-size:11px;color:var(--faint)">Posts as a comment on <span class="mono" style="font-size:10.5px">{{ t.ref }}</span> {{ t.title }}</div>
+          }
         </div>
       </div>
     </admin-shell>
@@ -201,11 +204,13 @@ export class Feed {
     };
   }
 
+  /** The thread the composer writes to — shown under the input so the write path is legible. */
+  target = computed(() => this.requests().find((r) => !['done', 'cancelled'].includes(r.status)) ?? this.requests()[0] ?? null);
+
   send() {
     const text = this.draft.trim();
     if (!text) return;
-    // comment lands on the app's most recent active request (the thread root)
-    const target = this.requests().find((r) => !['done', 'cancelled'].includes(r.status)) ?? this.requests()[0];
+    const target = this.target();
     if (!target) return;
     const u = this.session.user();
     this.api.comment(target.id, text, u.name, u.initials).subscribe(() => {

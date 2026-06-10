@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, input, output, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
@@ -19,8 +19,8 @@ const STAGE_COLS: { key: string; glyph: string }[] = [
   selector: 'sf-bcard',
   imports: [Glyph, Avatar, Sig],
   template: `
-    <div class="bcard" [class.sel]="sel()" [style.border-left-color]="g().color" (click)="open()">
-      @if (sel()) { <span class="bcard__hint">A to approve</span> }
+    <div class="bcard focusable" tabindex="0" role="button" [class.sel]="sel()" [style.border-left-color]="g().color"
+      (click)="open()" (keydown.enter)="open()">
       <div class="bcard__top">
         <span class="bcard__app">{{ r().app_name }}</span>
         <span class="chip">{{ typeShort() }}</span>
@@ -29,7 +29,7 @@ const STAGE_COLS: { key: string; glyph: string }[] = [
       <div class="bcard__foot">
         <sf-glyph [type]="g().glyph" [size]="15" [color]="g().color" [fill]="g().fill" />
         @if (r().needs_human) { <sf-sig tone="red" glyph="flag">Needs human</sf-sig> }
-        @else if (gate()) { <sf-sig tone="amber" [kbd]="sel() ? 'A' : null">{{ gate() }}</sf-sig> }
+        @else if (gate()) { <sf-sig tone="amber">{{ gate() }}</sf-sig> }
         <span class="row" style="margin-left:auto;gap:6px">
           @if (r().assignee_initials) { <sf-avatar [sm]="true" [color]="r().assignee_color ?? '#7A6E9A'">{{ r().assignee_initials }}</sf-avatar> }
           @else { <span style="font-size:11px;color:var(--faint)">unassigned</span> }
@@ -81,6 +81,19 @@ export class BCard {
               <div style="font-size:13px;color:var(--red-tx);line-height:1.45">{{ r.needs_human_reason }}</div>
             </div>
           }
+          <!-- post-approval items lead with what's happening NOW; pre-approval with the spec -->
+          @if (postApproval(r) && milestones().length) {
+            <div class="section-eyebrow" style="margin-bottom:9px">Recent milestones</div>
+            <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:16px">
+              @for (m of milestones(); track m.id) {
+                <div class="block" [style.border-left-color]="m.kind === 'gate_event' ? 'var(--amber)' : m.kind === 'escalation' ? 'var(--red)' : 'var(--a400)'">
+                  <div style="flex:1;min-width:0">
+                    <div class="block__head"><span class="block__hl">{{ m.title }}</span><span class="block__time">{{ ago(m.created_at) }} ago</span></div>
+                  </div>
+                </div>
+              }
+            </div>
+          }
           <div class="section-eyebrow" style="margin-bottom:8px">Draft spec</div>
           @for (line of r.spec_lines; track $index) {
             <div class="specline">
@@ -90,13 +103,13 @@ export class BCard {
           } @empty {
             <div style="font-size:13px;color:var(--faint)">Spec not drafted yet — still in triage.</div>
           }
-          @if (r.spec_open_note) {
+          @if (r.spec_open_note && !postApproval(r)) {
             <div class="openq" style="margin:10px 0 0">
               <div class="row" style="gap:8px"><sf-glyph type="dotted" [size]="13" color="var(--amber)" /><span style="font-size:12.5px;font-weight:600;color:var(--amber-tx)">Open questions · {{ r.spec_open_note }}</span></div>
             </div>
           }
 
-          <div class="section-eyebrow" style="margin:18px 0 9px">On approve · per-step ledger (idempotent retry)</div>
+          <div class="section-eyebrow" style="margin:18px 0 9px">{{ postApproval(r) ? 'Approve ledger · completed' : 'On approve · per-step ledger (idempotent retry)' }}</div>
           <div class="block" style="border-left:3px dashed var(--border-strong)">
             <div style="font-size:12.5px;color:var(--fg2)">
               <span [style.color]="r.repo_ready ? 'var(--green)' : 'var(--muted)'">repo {{ r.repo_ready ? '✓' : '…' }}</span> →
@@ -132,7 +145,7 @@ export class BCard {
             @for (step of confirmSteps(); track $index) {
               <li class="row" style="gap:10px;font-size:13.5px">
                 <span style="width:20px;height:20px;border-radius:50%;background:var(--a50);display:flex;align-items:center;justify-content:center;flex:0 0 auto"><sf-icon name="check" [size]="12" color="var(--a600)" /></span>
-                <span><b style="font-weight:600">{{ step[0] }}</b> <span class="mono" style="font-size:12px;color:var(--muted)">{{ step[1] }}</span></span>
+                <span><b style="font-weight:600">{{ step[0] }}</b> <span class="mono" style="font-size:12px;color:var(--muted);margin-left:6px">{{ step[1] }}</span></span>
               </li>
             }
           </ul>
@@ -155,15 +168,33 @@ export class DetailPanel {
   closed = output<void>();
 
   d = signal<RequestDetail | null>(null);
+  milestones = signal<{ id: number; title: string; kind: string; created_at: string }[]>([]);
   approved = signal(false);
   confirming = signal(false);
+  ago = timeAgo;
 
   constructor() {
     effect(() => {
       const rid = this.id();
       this.poll.version();
       this.api.request(rid).subscribe((r) => this.d.set(r));
+      this.api.events({ request_id: rid }).subscribe((evs) => this.milestones.set(evs.slice(-3).reverse()));
     });
+  }
+
+  postApproval(r: RequestDetail) { return ['approved', 'done'].includes(r.status) || ['architecture', 'build', 'review', 'done'].includes(r.stage); }
+
+  @HostListener('window:keydown', ['$event'])
+  onKey(e: KeyboardEvent) {
+    const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return;
+    if (e.key === 'Escape') {
+      if (this.confirming()) this.confirming.set(false);
+      else this.closed.emit();
+    } else if (e.key.toLowerCase() === 'a' && this.d()?.gate && !this.d()?.needs_human && !this.confirming()) {
+      e.preventDefault();
+      this.confirming.set(true);
+    }
   }
 
   typeLabel(t: string) { return ({ bug: 'Bug fix', enh: 'Enhancement', new: 'New app', other: 'Other' } as Record<string, string>)[t]; }

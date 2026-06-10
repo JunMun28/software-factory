@@ -17,7 +17,20 @@ import { Avatar, Glyph, Mark } from '../kit/kit';
             <button [class.on]="active() === 'new'" (click)="go('/submit/new')">New request</button>
             <button [class.on]="active() === 'list'" (click)="go('/requests')">My requests</button>
           </nav>
-          <span class="sub-id"><sf-avatar [sm]="true" [color]="session.user().color">{{ session.user().initials }}</sf-avatar> {{ session.user().name }}</span>
+          <span style="position:relative">
+            <button class="sub-id" style="background:none;cursor:pointer;font-family:var(--body);font-size:13px" (click)="whoOpen = !whoOpen">
+              <sf-avatar [sm]="true" [color]="session.user().color">{{ session.user().initials }}</sf-avatar> {{ session.user().name }}
+            </button>
+            @if (whoOpen) {
+              <span style="position:fixed;inset:0;z-index:29" (click)="whoOpen = false"></span>
+              <span style="position:absolute;top:calc(100% + 6px);right:0;z-index:30;display:block;width:230px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:5px">
+                <button style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 9px;border-radius:6px;border:none;cursor:pointer;font-family:var(--body);font-size:13px;background:none;color:var(--fg2)"
+                  (click)="switchRole()">
+                  <sf-avatar [sm]="true" color="#6E5A8A">KP</sf-avatar> Switch to Kim P. <span style="margin-left:auto;font-size:10.5px;color:var(--faint)">Reviewer</span>
+                </button>
+              </span>
+            }
+          </span>
         </div>
       </div>
       @if (step() != null) {
@@ -45,6 +58,13 @@ import { Avatar, Glyph, Mark } from '../kit/kit';
 export class SubShell {
   session = inject(Session);
   private router = inject(Router);
+  whoOpen = false;
+
+  switchRole() {
+    this.whoOpen = false;
+    this.session.signIn('admin');
+    this.router.navigateByUrl('/admin/pipeline');
+  }
 
   active = input<'new' | 'list' | ''>('');
   step = input<number | null>(null);

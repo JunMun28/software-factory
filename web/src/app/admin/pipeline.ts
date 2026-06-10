@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
@@ -26,7 +26,10 @@ interface Group { key: string; label: string; count: number; items: FactoryReque
   imports: [AdminShell, Icon, Avatar, Sig, ViewSeg],
   template: `
     <admin-shell active="pipeline" title="Pipeline">
-      <span headerExtra style="font-size:12.5px;color:var(--muted)">{{ activeCount() }} active · grouped by attention</span>
+      <span headerExtra class="row" style="gap:10px">
+        <span style="font-size:12.5px;color:var(--muted)">{{ activeCount() }} active · grouped by attention</span>
+        <span style="font-size:11.5px;color:var(--faint)">J/K move · ↵ open</span>
+      </span>
       <sf-view-seg headerRight active="pipeline" />
       <div class="list scroll" style="padding:14px 0 40px">
         <div style="max-width:880px;margin:0 auto;padding:0 22px">
@@ -46,9 +49,11 @@ interface Group { key: string; label: string; count: number; items: FactoryReque
             </div>
             @if (g.collapsed == null || isOpen(g.key)) {
               @for (r of g.items; track r.id) {
-                <div class="pipe-row" [class.pipe-row--red]="r.needs_human" (click)="open(r)">
+                <div class="pipe-row focusable" tabindex="0" role="button" [class.pipe-row--red]="r.needs_human"
+                  [class.pipe-row--focus]="flatIdx(r) === focusIdx()"
+                  (click)="open(r)" (keydown.enter)="open(r)" (focus)="focusIdx.set(flatIdx(r))">
                   <div class="pipe-row__main">
-                    <span class="mono" style="font-size:11px;color:var(--faint)">{{ r.ref }}</span>
+                    <span class="mono" style="font-size:11px;color:var(--faint);white-space:nowrap">{{ r.ref }}</span>
                     <span class="pipe-row__title" [style.text-decoration]="r.status === 'cancelled' ? 'line-through' : ''">{{ r.title }}</span>
                     <span style="font-size:11.5px;color:var(--muted);white-space:nowrap">#{{ r.app_name }} · {{ typeShort[r.type] }}</span>
                     @if (r.assignee_initials) { <sf-avatar [sm]="true" [color]="r.assignee_color ?? '#7A6E9A'">{{ r.assignee_initials }}</sf-avatar> }
@@ -89,6 +94,7 @@ interface Group { key: string; label: string; count: number; items: FactoryReque
     .pipe-row { background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:10px 16px 9px; margin-bottom:8px; cursor:pointer; transition:border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
     .pipe-row:hover { box-shadow:var(--shadow-pop); }
     .pipe-row--red { border-color:#E7AEA7; }
+    .pipe-row--focus { box-shadow:inset 0 0 0 2px var(--a500); }
     .pipe-row__main { display:flex; align-items:center; gap:8px; min-width:0; }
     .pipe-row__title { font-size:13.5px; font-weight:600; color:var(--fg1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .pipe-strip { display:flex; align-items:center; gap:4px; margin-top:9px; }
@@ -114,6 +120,7 @@ export class Pipeline {
 
   all = signal<FactoryRequest[]>([]);
   openGroups = signal<Set<string>>(new Set());
+  focusIdx = signal(0);
   typeShort = TYPE_SHORT;
   stageShort = STAGE_SHORT;
 
@@ -188,4 +195,23 @@ export class Pipeline {
   }
   open(r: FactoryRequest) { this.router.navigateByUrl(`/admin/issue/${r.id}`); }
   toQueue(e: Event) { e.stopPropagation(); this.router.navigateByUrl('/admin/queue'); }
+
+  /** Visible (non-collapsed) rows in display order — the J/K traversal list. */
+  visible = computed(() => this.groups().flatMap((g) => (g.collapsed == null || this.isOpen(g.key) ? g.items : [])));
+  flatIdx(r: FactoryRequest) { return this.visible().findIndex((x) => x.id === r.id); }
+
+  @HostListener('window:keydown', ['$event'])
+  onKey(e: KeyboardEvent) {
+    const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey) return;
+    const k = e.key.toLowerCase();
+    const cur = this.visible()[this.focusIdx()];
+    if (k === 'j' || e.key === 'ArrowDown') { e.preventDefault(); this.focusIdx.update((s) => Math.min(this.visible().length - 1, s + 1)); }
+    else if (k === 'k' || e.key === 'ArrowUp') { e.preventDefault(); this.focusIdx.update((s) => Math.max(0, s - 1)); }
+    else if (e.key === 'Enter' && cur) { e.preventDefault(); this.open(cur); }
+    else if (k === 'a' && cur && (cur.gate || cur.needs_human)) {
+      e.preventDefault();
+      this.router.navigate(['/admin/queue'], { queryParams: { sel: cur.id } });
+    }
+  }
 }

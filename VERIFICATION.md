@@ -112,9 +112,17 @@ two sign-in buttons on `/login`.
 
 ### Flow F — Control-center chrome
 
+- **Role fork is enforced**: while signed in as Jordan D. (Submitter), any `/admin/*`
+  URL redirects to `/login`. Identities switch via the avatar row at the bottom of the
+  admin sidebar / the identity chip in the submitter top bar — no floating overlay.
 - **⌘K** palette: jump to apps, "Run factory tick", New issue. **?** opens the shortcut
-  cheat-sheet. **G then B/L/I/T/R/S** navigates. **C** opens **New issue** (Linear-style
-  modal; creating one runs intake server-side and opens the full issue).
+  cheat-sheet. **G then P/B/L/I/T/R/S** navigates. **C** opens **New issue** (except on
+  the queue, where C = Cancel the focused request).
+- **Single-key verbs are real**: in the Approval queue, `J/K` move the selection,
+  `↵` opens the full issue, `A` opens the approve confirm, `S` the send-back modal,
+  `C` the cancel confirm. In the inbox and pipeline, `J/K` + `↵` traverse and open;
+  `A` jumps to the queue pre-selected on that item. All rows are Tab-reachable with
+  a visible focus ring; `Esc` closes side panels and modals.
 - Board: **Assigned to me** pill filters to Kim P.'s cards; **Group by** App/Assignee/Type
   renders collapsible **swimlanes** under fixed stage columns.
 - List rows open the **full-screen issue** (labels, attachments, spec, checklist,

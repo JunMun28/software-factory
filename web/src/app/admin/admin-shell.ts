@@ -64,6 +64,22 @@ import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
             <span class="navrow__ic"><sf-icon name="settings" [size]="17" /></span><span class="navrow__label">Settings</span>
             <span class="navrow__tip">Settings <kbd class="kbd">G</kbd><kbd class="kbd">S</kbd></span>
           </button>
+          <div style="position:relative">
+            <button class="navrow" (click)="whoOpen.set(!whoOpen())">
+              <sf-avatar [sm]="true" [color]="session.user().color">{{ session.user().initials }}</sf-avatar>
+              <span class="navrow__label">{{ session.user().name }}</span>
+              <span style="font-size:10.5px;color:var(--faint)">Admin</span>
+            </button>
+            @if (whoOpen()) {
+              <div style="position:fixed;inset:0;z-index:29" (click)="whoOpen.set(false)"></div>
+              <div style="position:absolute;bottom:calc(100% + 6px);left:0;right:0;z-index:30;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:5px">
+                <button style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 9px;border-radius:6px;border:none;cursor:pointer;font-family:var(--body);font-size:13px;background:none;color:var(--fg2)"
+                  (click)="switchRole()">
+                  <sf-avatar [sm]="true" color="#7A6E9A">JD</sf-avatar> Switch to Jordan D. <span style="margin-left:auto;font-size:10.5px;color:var(--faint)">Submitter</span>
+                </button>
+              </div>
+            }
+          </div>
         </div>
       </aside>
 
@@ -203,7 +219,7 @@ import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
 export class AdminShell {
   private api = inject(Api);
   private router = inject(Router);
-  private session = inject(Session);
+  session = inject(Session);
   poll = inject(Poll);
 
   active = input<string>('board');
@@ -217,6 +233,7 @@ export class AdminShell {
   paletteOpen = signal(false);
   cheats = signal(false);
   newIssue = signal(false);
+  whoOpen = signal(false);
   query = signal('');
   palSel = signal(0);
 
@@ -227,8 +244,8 @@ export class AdminShell {
   niDesc = signal('');
   niTypes: [string, string, string][] = [['bug', 'Bug fix', 'bug'], ['enh', 'Enhancement', 'spark'], ['new', 'New app', 'app']];
 
-  cheatNav: [string, string][] = [['Command palette', '⌘ K'], ['Pipeline', 'G P'], ['Board', 'G B'], ['List', 'G L'], ['Needs-me inbox', 'G I'], ['Approval queue', 'G T'], ['This menu', '?']];
-  cheatItem: [string, string][] = [['Approve spec', 'A'], ['Send back', 'S'], ['Cancel request', 'C'], ['Move up / down', 'J K'], ['Open detail', '↵'], ['Close / back', 'esc']];
+  cheatNav: [string, string][] = [['Command palette', '⌘ K'], ['Pipeline', 'G P'], ['Board', 'G B'], ['List', 'G L'], ['Needs-me inbox', 'G I'], ['Approval queue', 'G T'], ['New issue', 'C'], ['This menu', '?']];
+  cheatItem: [string, string][] = [['Move up / down', 'J K'], ['Open', '↵'], ['Approve (queue)', 'A'], ['Send back (queue)', 'S'], ['Cancel request (queue)', 'C'], ['Close / back', 'esc']];
 
   private gPending = false;
   private gTimer: ReturnType<typeof setTimeout> | null = null;
@@ -298,6 +315,12 @@ export class AdminShell {
 
   go(url: string) { this.router.navigateByUrl(url); }
 
+  switchRole() {
+    this.whoOpen.set(false);
+    this.session.signIn('submitter');
+    this.router.navigateByUrl('/requests');
+  }
+
   @HostListener('window:keydown', ['$event'])
   onKey(e: KeyboardEvent) {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
@@ -314,7 +337,8 @@ export class AdminShell {
       return;
     }
     if (e.key.toLowerCase() === 'g') { this.gPending = true; this.gTimer = setTimeout(() => (this.gPending = false), 900); return; }
-    if (e.key === 'c' && !this.paletteOpen() && !this.newIssue()) { e.preventDefault(); this.newIssue.set(true); return; }
+    // C = New issue everywhere except the queue, where C cancels the focused item
+    if (e.key === 'c' && !this.paletteOpen() && !this.newIssue() && this.active() !== 'queue') { e.preventDefault(); this.newIssue.set(true); return; }
     if (e.key === '?' && !this.paletteOpen()) { this.cheats.update((c) => !c); }
   }
 }

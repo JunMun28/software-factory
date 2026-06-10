@@ -1,0 +1,307 @@
+- generic [ref=e2]:
+  - generic "Board" [ref=e4]:
+    - generic [ref=e5]:
+      - complementary [ref=e6]:
+        - generic [ref=e7]:
+          - img [ref=e9]
+          - generic [ref=e19]: Factory
+        - button "New issue C" [ref=e20] [cursor=pointer]:
+          - img [ref=e22]
+          - text: New issue
+          - generic [ref=e24]: C
+        - generic [ref=e25]: Primary
+        - button "Pipeline Pipeline G P" [ref=e26] [cursor=pointer]:
+          - img [ref=e29]
+          - generic [ref=e31]: Pipeline
+          - generic:
+            - text: Pipeline
+            - generic: G
+            - generic: P
+        - button "Board Board G B" [ref=e32] [cursor=pointer]:
+          - img [ref=e35]
+          - generic [ref=e38]: Board
+          - generic:
+            - text: Board
+            - generic: G
+            - generic: B
+        - button "List List G L" [ref=e39] [cursor=pointer]:
+          - img [ref=e42]
+          - generic [ref=e44]: List
+          - generic:
+            - text: List
+            - generic: G
+            - generic: L
+        - button "Needs me 5 Inbox G I" [ref=e45] [cursor=pointer]:
+          - img [ref=e48]
+          - generic [ref=e51]: Needs me
+          - generic [ref=e52]: "5"
+          - generic:
+            - text: Inbox
+            - generic: G
+            - generic: I
+        - button "Approval queue Triage G T" [ref=e53] [cursor=pointer]:
+          - img [ref=e56]
+          - generic [ref=e59]: Approval queue
+          - generic:
+            - text: Triage
+            - generic: G
+            - generic: T
+        - generic [ref=e60]: Apps
+        - button "Northwind Expenses" [ref=e61] [cursor=pointer]:
+          - img [ref=e64]
+          - generic [ref=e66]: Northwind Expenses
+        - button "Vendor Portal" [ref=e68] [cursor=pointer]:
+          - img [ref=e71]
+          - generic [ref=e73]: Vendor Portal
+        - button "FieldOps" [ref=e75] [cursor=pointer]:
+          - img [ref=e78]
+          - generic [ref=e80]: FieldOps
+        - button "Inventory Sync" [ref=e82] [cursor=pointer]:
+          - img [ref=e85]
+          - generic [ref=e88]: Inventory Sync
+        - button "Billing Portal" [ref=e89] [cursor=pointer]:
+          - img [ref=e92]
+          - generic [ref=e94]: Billing Portal
+        - generic [ref=e96]:
+          - button "App registry Registry G R" [ref=e97] [cursor=pointer]:
+            - img [ref=e100]
+            - generic [ref=e103]: App registry
+            - generic:
+              - text: Registry
+              - generic: G
+              - generic: R
+          - button "Settings Settings G S" [ref=e104] [cursor=pointer]:
+            - img [ref=e107]
+            - generic [ref=e110]: Settings
+            - generic:
+              - text: Settings
+              - generic: G
+              - generic: S
+      - generic [ref=e111]:
+        - banner [ref=e112]:
+          - generic [ref=e113]:
+            - generic [ref=e114]: Board
+            - generic [ref=e115]:
+              - button "Assigned to me" [ref=e116] [cursor=pointer]:
+                - img [ref=e118]
+                - generic [ref=e121]: Assigned to me
+              - 'button "Group by: None" [ref=e123] [cursor=pointer]':
+                - generic [ref=e124]: "Group by:"
+                - generic [ref=e125]: None
+                - img [ref=e127]
+          - generic [ref=e129]:
+            - generic [ref=e131]:
+              - button "List" [ref=e132] [cursor=pointer]
+              - button "Board" [ref=e133] [cursor=pointer]
+              - button "Pipeline" [ref=e134] [cursor=pointer]
+            - generic [ref=e135]: Updated just now
+            - button "Search ⌘K" [ref=e137] [cursor=pointer]:
+              - img [ref=e139]
+              - text: Search
+              - generic [ref=e142]: ⌘K
+        - generic [ref=e143]:
+          - generic [ref=e144]:
+            - generic [ref=e145]:
+              - generic [ref=e146]:
+                - img [ref=e148]
+                - generic [ref=e150]: Intake
+                - generic [ref=e151]: "3"
+              - generic [ref=e152]:
+                - generic [ref=e154] [cursor=pointer]:
+                  - generic [ref=e155]:
+                    - generic [ref=e156]: FieldOps
+                    - generic [ref=e157]: Bug
+                  - generic [ref=e158]: Login button misaligned on iPad
+                  - generic [ref=e159]:
+                    - img [ref=e161]
+                    - generic [ref=e163]:
+                      - generic [ref=e164]: unassigned
+                      - generic [ref=e165]: 3h
+                - generic [ref=e167] [cursor=pointer]:
+                  - generic [ref=e168]:
+                    - generic [ref=e169]: Headcount Dashboard
+                    - generic [ref=e170]: New
+                  - generic [ref=e171]: Quarterly headcount dashboard
+                  - generic [ref=e172]:
+                    - img [ref=e174]
+                    - generic [ref=e176]:
+                      - generic [ref=e177]: unassigned
+                      - generic [ref=e178]: 6h
+                - generic [ref=e180] [cursor=pointer]:
+                  - generic [ref=e181]:
+                    - generic [ref=e182]: Supplier Onboarding
+                    - generic [ref=e183]: New
+                  - generic [ref=e184]: Supplier onboarding flow
+                  - generic [ref=e185]:
+                    - img [ref=e187]
+                    - generic [ref=e189]:
+                      - generic [ref=e190]: unassigned
+                      - generic [ref=e191]: 25h
+            - generic [ref=e192]:
+              - generic [ref=e193]:
+                - img [ref=e195]
+                - generic [ref=e198]: Spec
+                - generic [ref=e199]: "5"
+              - generic [ref=e200]:
+                - generic [ref=e202] [cursor=pointer]:
+                  - generic [ref=e203]: A to approve
+                  - generic [ref=e204]:
+                    - generic [ref=e205]: Northwind Expenses
+                    - generic [ref=e206]: Enh
+                  - generic [ref=e207]: Receipts attach one at a time and each upload takes ~20 seconds
+                  - generic [ref=e208]:
+                    - img [ref=e210]
+                    - generic [ref=e214]:
+                      - text: Approve spec
+                      - generic [ref=e215]: A
+                    - generic [ref=e216]:
+                      - generic [ref=e217]: unassigned
+                      - generic [ref=e218]: 58m
+                - generic [ref=e220] [cursor=pointer]:
+                  - generic [ref=e221]:
+                    - generic [ref=e222]: FieldOps
+                    - generic [ref=e223]: New
+                  - generic [ref=e224]: Offline sync mode
+                  - generic [ref=e225]:
+                    - img [ref=e227]
+                    - generic [ref=e230]:
+                      - img [ref=e232]
+                      - text: Needs human
+                    - generic [ref=e234]:
+                      - generic [ref=e236]: RM
+                      - generic [ref=e237]: 3h
+                - generic [ref=e239] [cursor=pointer]:
+                  - generic [ref=e240]:
+                    - generic [ref=e241]: Vendor Portal
+                    - generic [ref=e242]: Enh
+                  - generic [ref=e243]: CSV import for vendors
+                  - generic [ref=e244]:
+                    - img [ref=e246]
+                    - generic [ref=e250]: Approve spec
+                    - generic [ref=e251]:
+                      - generic [ref=e253]: KP
+                      - generic [ref=e254]: 4h
+                - generic [ref=e256] [cursor=pointer]:
+                  - generic [ref=e257]:
+                    - generic [ref=e258]: Northwind Expenses
+                    - generic [ref=e259]: Bug
+                  - generic [ref=e260]: Approval email typo
+                  - generic [ref=e261]:
+                    - img [ref=e263]
+                    - generic [ref=e267]: Approve spec
+                    - generic [ref=e268]:
+                      - generic [ref=e270]: KP
+                      - generic [ref=e271]: 25h
+                - generic [ref=e273] [cursor=pointer]:
+                  - generic [ref=e274]:
+                    - generic [ref=e275]: Northwind Expenses
+                    - generic [ref=e276]: Enh
+                  - generic [ref=e277]: Add CSV import to vendor list
+                  - generic [ref=e278]:
+                    - img [ref=e280]
+                    - generic [ref=e283]:
+                      - generic [ref=e285]: KP
+                      - generic [ref=e286]: 3d
+            - generic [ref=e288]:
+              - img [ref=e290]
+              - generic [ref=e293]: Architecture
+              - generic [ref=e294]: "0"
+            - generic [ref=e297]:
+              - img [ref=e299]
+              - generic [ref=e302]: Build
+              - generic [ref=e303]: "0"
+            - generic [ref=e305]:
+              - generic [ref=e306]:
+                - img [ref=e308]
+                - generic [ref=e311]: Review
+                - generic [ref=e312]: "2"
+              - generic [ref=e313]:
+                - generic [ref=e315] [cursor=pointer]:
+                  - generic [ref=e316]:
+                    - generic [ref=e317]: Northwind Expenses
+                    - generic [ref=e318]: Enh
+                  - generic [ref=e319]: Faster expense export
+                  - generic [ref=e320]:
+                    - img [ref=e322]
+                    - generic [ref=e326]: Approve merge
+                    - generic [ref=e327]:
+                      - generic [ref=e329]: KP
+                      - generic [ref=e330]: 4h
+                - generic [ref=e332] [cursor=pointer]:
+                  - generic [ref=e333]:
+                    - generic [ref=e334]: Billing Portal
+                    - generic [ref=e335]: Enh
+                  - generic [ref=e336]: Migrate auth to SSO
+                  - generic [ref=e337]:
+                    - img [ref=e339]
+                    - generic [ref=e343]: Approve merge
+                    - generic [ref=e344]:
+                      - generic [ref=e346]: KP
+                      - generic [ref=e347]: 2d
+            - generic [ref=e348]:
+              - generic [ref=e349]:
+                - img [ref=e351]
+                - generic [ref=e354]: Done
+                - generic [ref=e355]: "2"
+              - generic [ref=e356]:
+                - generic [ref=e358] [cursor=pointer]:
+                  - generic [ref=e359]:
+                    - generic [ref=e360]: Northwind Expenses
+                    - generic [ref=e361]: Bug
+                  - generic [ref=e362]: Fix typo in approval email
+                  - generic [ref=e363]:
+                    - img [ref=e365]
+                    - generic [ref=e368]:
+                      - generic [ref=e370]: KP
+                      - generic [ref=e371]: 7d
+                - generic [ref=e373] [cursor=pointer]:
+                  - generic [ref=e374]:
+                    - generic [ref=e375]: Northwind Expenses
+                    - generic [ref=e376]: Enh
+                  - generic [ref=e377]: Monthly expense CSV
+                  - generic [ref=e378]:
+                    - img [ref=e380]
+                    - generic [ref=e383]:
+                      - generic [ref=e385]: KP
+                      - generic [ref=e386]: 3w
+          - generic [ref=e388]:
+            - generic [ref=e389]:
+              - generic [ref=e390]:
+                - img [ref=e392]
+                - generic [ref=e395]: Enhancement
+                - generic [ref=e397]: Approve merge
+                - generic [ref=e398]:
+                  - button "Open full issue" [ref=e399] [cursor=pointer]:
+                    - img [ref=e401]
+                    - text: Open full issue
+                  - button "Esc" [ref=e404] [cursor=pointer]:
+                    - generic [ref=e405]: Esc
+              - heading "Faster expense export" [level=2] [ref=e406]
+              - generic [ref=e407]: Northwind Expenses · REQ-2041 · owner KP
+            - generic [ref=e408]:
+              - generic [ref=e409]: Draft spec
+              - generic [ref=e410]:
+                - generic [ref=e411]: •
+                - generic [ref=e412]: "Export a full month of expenses in one click. (from: Q1)"
+              - generic [ref=e413]:
+                - generic [ref=e414]: •
+                - generic [ref=e415]: "Output formats: CSV and Excel. (from: Q3)"
+              - generic [ref=e416]:
+                - generic [ref=e417]: •
+                - generic [ref=e418]: "Handle a few hundred rows per export without timing out. (from: Q2)"
+              - generic [ref=e419]:
+                - generic [ref=e420]: •
+                - generic [ref=e421]: Exports run against the Concur connector only. (ASSUMPTION — not stated)
+              - generic [ref=e423]:
+                - img [ref=e425]
+                - generic [ref=e427]: Open questions · 1 assumption needs confirming before approval — the bank-export source was never stated by the submitter.
+              - generic [ref=e428]: On approve · per-step ledger (idempotent retry)
+              - generic [ref=e430]: repo ✓ → SPEC.md PR ✓ → Stage 2 ✓ (idempotent retry)
+            - generic [ref=e431]:
+              - button "Approve A" [ref=e432] [cursor=pointer]:
+                - text: Approve
+                - generic [ref=e433]: A
+              - button "Cancel C" [ref=e434] [cursor=pointer]:
+                - text: Cancel
+                - generic [ref=e435]: C
+  - button "Jordan D." [ref=e437] [cursor=pointer]: Jordan D.

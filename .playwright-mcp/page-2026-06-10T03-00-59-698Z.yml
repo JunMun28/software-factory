@@ -1,0 +1,142 @@
+- generic [ref=e2]:
+  - generic "App registry" [ref=e4]:
+    - generic [ref=e5]:
+      - complementary [ref=e6]:
+        - generic [ref=e7]:
+          - img [ref=e9]
+          - generic [ref=e19]: Factory
+        - button "New issue C" [ref=e20] [cursor=pointer]:
+          - img [ref=e22]
+          - text: New issue
+          - generic [ref=e24]: C
+        - generic [ref=e25]: Primary
+        - button "Pipeline Pipeline G P" [ref=e26] [cursor=pointer]:
+          - img [ref=e29]
+          - generic [ref=e31]: Pipeline
+          - generic:
+            - text: Pipeline
+            - generic: G
+            - generic: P
+        - button "Board Board G B" [ref=e32] [cursor=pointer]:
+          - img [ref=e35]
+          - generic [ref=e38]: Board
+          - generic:
+            - text: Board
+            - generic: G
+            - generic: B
+        - button "List List G L" [ref=e39] [cursor=pointer]:
+          - img [ref=e42]
+          - generic [ref=e44]: List
+          - generic:
+            - text: List
+            - generic: G
+            - generic: L
+        - button "Needs me 5 Inbox G I" [ref=e45] [cursor=pointer]:
+          - img [ref=e48]
+          - generic [ref=e51]: Needs me
+          - generic [ref=e52]: "5"
+          - generic:
+            - text: Inbox
+            - generic: G
+            - generic: I
+        - button "Approval queue Triage G T" [ref=e53] [cursor=pointer]:
+          - img [ref=e56]
+          - generic [ref=e59]: Approval queue
+          - generic:
+            - text: Triage
+            - generic: G
+            - generic: T
+        - generic [ref=e60]: Apps
+        - button "Northwind Expenses" [ref=e61] [cursor=pointer]:
+          - img [ref=e64]
+          - generic [ref=e66]: Northwind Expenses
+        - button "Vendor Portal" [ref=e68] [cursor=pointer]:
+          - img [ref=e71]
+          - generic [ref=e73]: Vendor Portal
+        - button "FieldOps" [ref=e75] [cursor=pointer]:
+          - img [ref=e78]
+          - generic [ref=e80]: FieldOps
+        - button "Inventory Sync" [ref=e82] [cursor=pointer]:
+          - img [ref=e85]
+          - generic [ref=e88]: Inventory Sync
+        - button "Billing Portal" [ref=e89] [cursor=pointer]:
+          - img [ref=e92]
+          - generic [ref=e94]: Billing Portal
+        - generic [ref=e96]:
+          - button "App registry Registry G R" [ref=e97] [cursor=pointer]:
+            - img [ref=e100]
+            - generic [ref=e103]: App registry
+            - generic:
+              - text: Registry
+              - generic: G
+              - generic: R
+          - button "Settings Settings G S" [ref=e104] [cursor=pointer]:
+            - img [ref=e107]
+            - generic [ref=e110]: Settings
+            - generic:
+              - text: Settings
+              - generic: G
+              - generic: S
+      - generic [ref=e111]:
+        - banner [ref=e112]:
+          - generic [ref=e113]:
+            - generic [ref=e114]: App registry
+            - generic [ref=e115]: N new · J/K rows
+          - generic [ref=e116]:
+            - button "New N" [ref=e118] [cursor=pointer]:
+              - img [ref=e120]
+              - text: New
+              - generic [ref=e122]: "N"
+            - generic [ref=e123]: Updated just now
+            - button "Search ⌘K" [ref=e125] [cursor=pointer]:
+              - img [ref=e127]
+              - text: Search
+              - generic [ref=e130]: ⌘K
+        - generic [ref=e132]:
+          - generic [ref=e133]:
+            - generic [ref=e134]: App / channel
+            - generic [ref=e135]: Owner
+            - generic [ref=e136]: Repo
+            - generic [ref=e137]: Source
+          - generic [ref=e138]:
+            - generic [ref=e139] [cursor=pointer]:
+              - generic [ref=e140]:
+                - generic [ref=e141]: "#"
+                - generic [ref=e142]: Northwind Expenses
+              - generic [ref=e144]: finance-eng
+              - generic [ref=e145]: micron/nw-expenses
+              - generic [ref=e146]: Auto
+              - img [ref=e149]
+            - generic [ref=e151] [cursor=pointer]:
+              - generic [ref=e152]:
+                - generic [ref=e153]: "#"
+                - generic [ref=e154]: Vendor Portal
+              - generic [ref=e156]: proc-platform
+              - generic [ref=e157]: micron/vendor-portal
+              - generic [ref=e158]: Auto
+              - img [ref=e161]
+            - generic [ref=e163] [cursor=pointer]:
+              - generic [ref=e164]:
+                - generic [ref=e165]: "#"
+                - generic [ref=e166]: FieldOps
+              - generic [ref=e168]: field-systems
+              - generic [ref=e169]: micron/fieldops-app
+              - generic [ref=e170]: Manual
+              - img [ref=e173]
+            - generic [ref=e175] [cursor=pointer]:
+              - generic [ref=e176]:
+                - generic [ref=e177]: "#"
+                - generic [ref=e178]: Inventory Sync
+              - generic [ref=e179]: supply-eng
+              - generic [ref=e180]: micron/inv-sync
+              - generic [ref=e181]: Auto
+              - img [ref=e184]
+            - generic [ref=e186] [cursor=pointer]:
+              - generic [ref=e187]:
+                - generic [ref=e188]: "#"
+                - generic [ref=e189]: Billing Portal
+              - generic [ref=e191]: rev-platform
+              - generic [ref=e192]: micron/billing-portal
+              - generic [ref=e193]: Manual
+              - img [ref=e196]
+  - button "Jordan D." [ref=e199] [cursor=pointer]: Jordan D.
