@@ -42,7 +42,7 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
     app = FastAPI(title="Software Factory API", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:4200", "http://127.0.0.1:4200"],
+        allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
         allow_methods=["*"],
         allow_headers=["*"],
     )

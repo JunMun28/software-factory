@@ -3,11 +3,13 @@
 
 .PHONY: dev api web test build smoke verify reset
 
+WEB_PORT ?= 4200   # e.g. `make dev WEB_PORT=4300` if :4200 is taken
+
 ## Run backend + frontend together (Ctrl-C stops both). Simulator ticks every 8s.
 dev:
 	@trap 'kill 0' EXIT; \
 	( cd api && SIM_INTERVAL=8 uv run uvicorn app.main:app --port 8000 --reload ) & \
-	( cd web && npx ng serve --port 4200 ) & \
+	( cd web && npx ng serve --port $(WEB_PORT) ) & \
 	wait
 
 ## Backend only (auto-seeds on first boot; SIM_INTERVAL=8 keeps builds moving)
@@ -16,7 +18,7 @@ api:
 
 ## Frontend only
 web:
-	cd web && npx ng serve --port 4200
+	cd web && npx ng serve --port $(WEB_PORT)
 
 ## Backend behavioral tests (12 — lifecycle, gates, ledger idempotency, event log, simulator)
 test:
