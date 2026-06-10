@@ -1,7 +1,7 @@
 # Software Factory — local dev & verification
 # Stack: FastAPI + uv (api/) · Angular 22 (web/) · SQLite (throwaway, gitignored)
 
-.PHONY: dev api web test test-web build smoke verify reset up
+.PHONY: dev api web test test-web build smoke verify reset up backup
 
 WEB_PORT ?= 4200   # e.g. `make dev WEB_PORT=4300` if :4200 is taken
 
@@ -44,6 +44,15 @@ verify: test test-web build smoke
 up:
 	docker compose up --build
 
+## Online backup of the SQLite system of record (safe on a LIVE database —
+## uses sqlite's backup API, never a raw cp). For the compose stack:
+##   docker compose exec api uv run --no-sync python -c "<same one-liner> '/data/factory.db'"
+backup:
+	@mkdir -p backups
+	@python3 -c "import sqlite3,datetime,pathlib; src=sqlite3.connect('api/factory.db'); \
+out=f'backups/factory-{datetime.datetime.now():%Y%m%d-%H%M%S}.db'; dst=sqlite3.connect(out); \
+src.backup(dst); dst.close(); print(f'✓ {out} ({pathlib.Path(out).stat().st_size:,} bytes)')"
+
 ## Wipe the local database (re-seeds on next boot)
 reset:
-	rm -f api/factory.db && echo "factory.db removed — fresh seed on next 'make api'"
+	rm -f api/factory.db api/factory.db-wal api/factory.db-shm && echo "factory.db removed — fresh seed on next 'make api'"

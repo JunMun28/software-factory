@@ -8,6 +8,7 @@ stops there and waits for an Admin, exactly like the real Factory.
 """
 from sqlalchemy.orm import Session
 
+from . import lifecycle
 from .events import emit
 from .models import Request, utcnow
 
@@ -45,12 +46,7 @@ def tick(db: Session) -> list[str]:
         if req.stage == "review" and step >= len(script):
             # raise the merge gate once, then wait for a human
             if req.gate != "approve_merge":
-                req.gate = "approve_merge"
-                req.stage_entered_at = utcnow()  # clock restarts at the gate
-                emit(
-                    db, req, "gate_event", "Waiting at the merge gate — review passed, approval needed",
-                    broadcast=True, payload={"gate": "approve_merge", "Ref": req.ref},
-                )
+                lifecycle.raise_merge_gate(db, req)
                 moved.append(f"{req.ref}: merge gate raised")
             continue
         if step < len(script):
@@ -72,11 +68,6 @@ def tick(db: Session) -> list[str]:
 
 def approve_merge(db: Session, req: Request, actor: str) -> None:
     """The Stage 5/6 human gate: merge + deploy promotion (one protected-branch idea, ADR 0005)."""
-    req.gate = None
-    req.stage = "done"
-    req.status = "done"
-    req.stage_entered_at = utcnow()
-    emit(db, req, "gate_event", f"Merge approved by {actor} — PR merged to main",
-         actor=actor, bot=False, broadcast=True, payload={"gate": "approve_merge", "Ref": req.ref})
-    emit(db, req, "milestone_summary", "Deployed — production promotion merged",
-         stage="done", payload={"Stage": "Done", "Ref": req.ref})
+    lifecycle.finish_done(db, req, actor,
+                          merge_note="PR merged to main",
+                          deploy_title="Deployed — production promotion merged")

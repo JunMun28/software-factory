@@ -9,11 +9,14 @@ cd "$(dirname "$0")/.."
 PORT=8911
 DB="$(mktemp -d)/smoke.db"
 API="http://localhost:$PORT/api"
+SERVER_LOG="$(mktemp -t smoke-server.XXXXXX.log)"
 
 echo "▸ booting API on :$PORT (db: $DB)"
-(cd api && FACTORY_DB_URL="sqlite:///$DB" uv run uvicorn app.main:app --port $PORT >/dev/null 2>&1) &
+(cd api && FACTORY_DB_URL="sqlite:///$DB" uv run uvicorn app.main:app --port $PORT >"$SERVER_LOG" 2>&1) &
 SERVER_PID=$!
-trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+# on failure the server's own log is the diagnostic — never throw it away
+trap 'rc=$?; kill $SERVER_PID 2>/dev/null || true;
+      if [ $rc -ne 0 ]; then echo "--- server log ---"; tail -40 "$SERVER_LOG"; fi' EXIT
 
 for i in $(seq 1 40); do
   curl -sf "$API/apps" >/dev/null 2>&1 && break

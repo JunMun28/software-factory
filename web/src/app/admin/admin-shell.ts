@@ -3,9 +3,9 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { AppEntry, FactoryRequest } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
+import { Store } from '../core/store.service';
 import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
 
 /** Reliable focus for dynamically-inserted inputs (the `autofocus` attribute only
@@ -238,14 +238,15 @@ export class Autofocus {
 export class AdminShell {
   private api = inject(Api);
   private router = inject(Router);
+  private store = inject(Store);
   session = inject(Session);
   poll = inject(Poll);
 
   active = input<string>('board');
   title = input<string>('Board');
 
-  apps = signal<AppEntry[]>([]);
-  inboxItems = signal<FactoryRequest[]>([]);
+  apps = this.store.apps;
+  inboxItems = this.store.inbox;
   runner = signal<string | null>(null);
   gateCount = computed(() => this.inboxItems().filter((r) => r.gate).length);
   redCount = computed(() => 0);
@@ -273,11 +274,6 @@ export class AdminShell {
   constructor() {
     this.poll.start();
     this.api.health().subscribe((h) => this.runner.set(h.runner));
-    effect(() => {
-      this.poll.version();
-      this.api.apps().subscribe((a) => this.apps.set(a));
-      this.api.inbox().subscribe((r) => this.inboxItems.set(r));
-    });
   }
 
   syncAgo() {

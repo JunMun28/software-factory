@@ -7,9 +7,14 @@ module's `brain` instance.
 """
 from dataclasses import dataclass, field
 
-from .models import InterviewTurn, Request, SpecLine
+from .models import Request, SpecLine
 
 MAX_QUESTIONS = 3  # US10: stop after a few — hard ceiling
+
+
+def answered_count(req: Request) -> int:
+    """The one definition of an answered turn: answered or explicitly skipped."""
+    return sum(1 for t in req.turns if t.answer is not None or t.skipped)
 
 
 @dataclass
@@ -101,7 +106,7 @@ class ScriptedBrain:
 
     def next_question(self, req: Request) -> Question | None:
         script = SCRIPTS.get(req.type, SCRIPTS["other"])
-        answered = len([t for t in req.turns if t.answer is not None or t.skipped])
+        answered = answered_count(req)
         if answered >= min(MAX_QUESTIONS, len(script)):
             return None
         return script[answered]
@@ -153,15 +158,3 @@ def get_brain() -> ScriptedBrain:
 
         return ClaudeBrain()
     return brain
-
-
-def record_answer(req: Request, answer: str | None, skipped: bool, q: Question, order: int) -> InterviewTurn:
-    return InterviewTurn(
-        request=req,
-        order=order,
-        question=q.question,
-        sub=q.sub,
-        options=q.options,
-        answer=answer,
-        skipped=skipped,
-    )

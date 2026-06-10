@@ -20,13 +20,18 @@ export class Poll implements OnDestroy {
   /** The new events from the last poll tick — views consume this delta directly
    *  instead of refetching their whole projection (diff-merge, ADR 0008). */
   delta = signal<ProgressEvent[]>([]);
+  private inFlight = false;
 
   start(intervalMs = 4000) {
     if (this.timer) return;
-    this.api.events({}).subscribe((evs) => {
-      if (evs.length) this.cursor = evs[evs.length - 1].id;
-      this.version.update((v) => v + 1);
-      this.lastSync.set(Date.now());
+    // start from the tail of the log — never replay history (ADR 0013)
+    this.api.eventsCursor().subscribe({
+      next: (c) => {
+        this.cursor = c.cursor;
+        this.version.update((v) => v + 1);
+        this.lastSync.set(Date.now());
+      },
+      error: () => this.version.update((v) => v + 1),
     });
     this.zone.runOutsideAngular(() => {
       this.timer = setInterval(() => this.tickOnce(), intervalMs);
@@ -34,17 +39,25 @@ export class Poll implements OnDestroy {
   }
 
   private tickOnce() {
-    this.api.events({ after: this.cursor }).subscribe((evs) => {
-      if (evs.length) {
-        this.cursor = evs[evs.length - 1].id;
-        this.zone.run(() => {
-          this.delta.set(evs);
-          this.version.update((v) => v + 1);
-          this.lastSync.set(Date.now());
-        });
-      } else {
-        this.zone.run(() => this.lastSync.set(Date.now()));
-      }
+    if (this.inFlight) return; // a stalled backend must not queue a refetch burst
+    this.inFlight = true;
+    this.api.events({ after: this.cursor }).subscribe({
+      next: (evs) => {
+        this.inFlight = false;
+        if (evs.length) {
+          this.cursor = evs[evs.length - 1].id;
+          this.zone.run(() => {
+            this.delta.set(evs);
+            this.version.update((v) => v + 1);
+            this.lastSync.set(Date.now());
+          });
+        } else {
+          this.zone.run(() => this.lastSync.set(Date.now()));
+        }
+      },
+      error: () => {
+        this.inFlight = false; // the next tick retries; lastSync ages visibly in the header
+      },
     });
   }
 

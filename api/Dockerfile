@@ -1,18 +1,31 @@
+# Build context is the REPO ROOT (see docker-compose.yml): the runner needs
+# sample/ baked in, and workspaces must live on the /data volume — otherwise
+# the factory's actual output is destroyed on every image rebuild.
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
 WORKDIR /srv
 ENV UV_COMPILE_BYTECODE=1 UV_NO_DEV=1
 
-COPY pyproject.toml uv.lock ./
+# git drives the per-request workspaces (ADR 0011).
+# NOTE: claude mode additionally needs the claude CLI + an API key in the
+# container — see README "Run the real factory"; sim mode works out of the box.
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY api/pyproject.toml api/uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
-COPY app ./app
+COPY api/app ./app
+COPY sample /srv/sample
 
 # data lives outside the image; compose mounts a named volume here
-ENV FACTORY_DB_URL=sqlite:////data/factory.db
+ENV FACTORY_DB_URL=sqlite:////data/factory.db \
+    FACTORY_SAMPLE=/srv/sample \
+    FACTORY_WORKSPACES=/data/workspaces
 VOLUME /data
 EXPOSE 8000
 
+# /api/health runs SELECT 1 — a locked or corrupt DB now fails this check
 HEALTHCHECK --interval=15s --timeout=3s --retries=5 \
   CMD ["uv", "run", "--no-sync", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health', timeout=2).status == 200 else 1)"]
 

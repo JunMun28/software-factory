@@ -39,3 +39,8 @@ jobs:
 
       - name: End-to-end lifecycle smoke
         run: ./scripts/smoke.sh
+
+      # the "production-shaped" deployment must not rot between deploys —
+      # build both images so Dockerfile/nginx/lockfile drift fails CI, not a deploy
+      - name: Docker images build
+        run: docker compose build

@@ -3,9 +3,10 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { AppEntry, FactoryRequest, ProgressEvent } from '../core/models';
+import { ProgressEvent } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
+import { Store } from '../core/store.service';
 import { clock, timeAgo, utc } from '../core/util';
 import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
 import { AdminShell } from './admin-shell';
@@ -155,13 +156,16 @@ export class Feed {
   private router = inject(Router);
   private session = inject(Session);
   private poll = inject(Poll);
+  private store = inject(Store);
   key = inject(ActivatedRoute).snapshot.paramMap.get('key')!;
 
   private scroller = viewChild<ElementRef<HTMLElement>>('scroller');
 
-  app = signal<AppEntry | null>(null);
+  // header context (app, members, composer target) comes from the shared store —
+  // the feed body itself stays delta-fed and never refetches (ADR 0012/0013)
+  app = computed(() => this.store.apps().find((x) => x.key === this.key) ?? null);
   items = signal<ProgressEvent[]>([]);
-  requests = signal<FactoryRequest[]>([]);
+  requests = computed(() => this.store.requests().filter((r) => r.app_key === this.key));
   pending = signal<FeedMsg | null>(null);
   showJump = signal(false);
   draft = '';
@@ -196,13 +200,6 @@ export class Feed {
       }
       this.items.update((list) => [...list, ...fresh]);
       queueMicrotask(() => (this.atBottom ? this.scrollToBottom() : this.showJump.set(true)));
-    });
-
-    // header context (app, members, composer target) refreshes on the cheap version tick
-    effect(() => {
-      this.poll.version();
-      this.api.apps().subscribe((apps) => this.app.set(apps.find((x) => x.key === this.key) ?? null));
-      this.api.requests().subscribe((rs) => this.requests.set(rs.filter((r) => r.app_key === this.key)));
     });
   }
 

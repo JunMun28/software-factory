@@ -9,3 +9,5 @@ __pycache__/
 .pytest_cache/
 .env
 workspaces/
+*.db-wal
+*.db-shm

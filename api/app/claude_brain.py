@@ -5,7 +5,7 @@ degrades gracefully to the scripted brain (the interview is enrichment, never a
 blocker — PRD hardening #4).
 """
 from .claude_exec import extract_json, run_claude
-from .interview import MAX_QUESTIONS, Question, ScriptedBrain
+from .interview import MAX_QUESTIONS, Question, ScriptedBrain, answered_count
 from .models import Request, SpecLine
 
 TYPE_LABEL = {"bug": "bug report", "enh": "enhancement", "new": "new app", "other": "request"}
@@ -30,7 +30,7 @@ class ClaudeBrain(ScriptedBrain):
     """Adaptive interview + grounded spec via Claude Code; ScriptedBrain is the fallback."""
 
     def next_question(self, req: Request) -> Question | None:
-        answered = len([t for t in req.turns if t.answer is not None or t.skipped])
+        answered = answered_count(req)
         if answered >= MAX_QUESTIONS:
             return None
         final = answered == MAX_QUESTIONS - 1

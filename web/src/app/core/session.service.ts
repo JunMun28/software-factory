@@ -18,7 +18,16 @@ export class Session {
   private load(): User {
     try {
       const raw = localStorage.getItem('sf-user');
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const u = JSON.parse(raw);
+        // a stale blob from an older User shape silently breaks avatars and the
+        // role guard — validate the shape and discard on mismatch
+        if (u && typeof u.name === 'string' && typeof u.initials === 'string' &&
+            typeof u.color === 'string' && (u.role === 'submitter' || u.role === 'admin')) {
+          return u as User;
+        }
+        localStorage.removeItem('sf-user');
+      }
     } catch { /* fresh session */ }
     return SUBMITTER;
   }

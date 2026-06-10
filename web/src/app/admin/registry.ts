@@ -1,9 +1,10 @@
-import { Component, HostListener, effect, inject, signal } from '@angular/core';
+import { Component, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { Api } from '../core/api.service';
 import { AppEntry } from '../core/models';
 import { Poll } from '../core/poll.service';
+import { Store } from '../core/store.service';
 import { Glyph, Icon } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
@@ -71,18 +72,12 @@ import { AdminShell } from './admin-shell';
 export class Registry {
   private api = inject(Api);
   private poll = inject(Poll);
+  private store = inject(Store);
 
-  apps = signal<AppEntry[]>([]);
+  apps = this.store.apps;
   editing = signal<AppEntry | null>(null);
   isNew = signal(false);
   form = { name: '', owner: '', repo: '', provisioning: 'Manual', muted: false };
-
-  constructor() {
-    effect(() => {
-      this.poll.version();
-      this.api.apps().subscribe((a) => this.apps.set(a));
-    });
-  }
 
   edit(a: AppEntry) {
     this.isNew.set(false);

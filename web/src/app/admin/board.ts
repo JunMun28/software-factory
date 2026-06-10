@@ -5,6 +5,7 @@ import { Api } from '../core/api.service';
 import { FactoryRequest, RequestDetail } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
+import { Store } from '../core/store.service';
 import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, timeAgo } from '../core/util';
 import { Avatar, Glyph, Icon, Sig } from '../kit/kit';
 import { AdminShell, ViewSeg } from './admin-shell';
@@ -239,7 +240,7 @@ export class DetailPanel {
           [style.background]="mine() ? 'var(--a50)' : 'var(--surface)'"
           [style.border-color]="mine() ? 'var(--accent-tint-bd)' : 'var(--border-strong)'"
           [style.color]="mine() ? 'var(--a700)' : 'var(--muted)'">
-          @if (mine()) { <sf-avatar [sm]="true" color="#6E5A8A">KP</sf-avatar> } @else { <sf-icon name="user" [size]="15" /> }
+          @if (mine()) { <sf-avatar [sm]="true" [color]="session.user().color">{{ session.user().initials }}</sf-avatar> } @else { <sf-icon name="user" [size]="15" /> }
           <span [style.font-weight]="mine() ? 600 : 500">Assigned to me</span>
           @if (mine()) { <sf-icon name="check" [size]="14" color="var(--a600)" /> }
         </button>
@@ -328,10 +329,10 @@ export class DetailPanel {
   `,
 })
 export class Board {
-  private api = inject(Api);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
-  private poll = inject(Poll);
+  private store = inject(Store);
+  session = inject(Session);
 
   cols = STAGE_COLS;
   stageLabel = STAGE_LABEL;
@@ -340,21 +341,18 @@ export class Board {
   groupBy = signal<'none' | 'app' | 'owner' | 'type'>('none');
   groupOpts: [string, string, string][] = [['none', 'None', 'x'], ['app', 'App', 'hash'], ['owner', 'Assignee', 'user'], ['type', 'Type', 'grid']];
   closedLanes = signal<Set<string>>(new Set());
-  all = signal<FactoryRequest[]>([]);
+  all = computed(() => this.store.requests().filter((r) => r.status !== 'cancelled'));
   openId = signal<number | null>(null);
 
   constructor() {
-    effect(() => {
-      this.poll.version();
-      this.api.requests().subscribe((rs) => this.all.set(rs.filter((r) => r.status !== 'cancelled')));
-    });
     this.route.queryParamMap.subscribe((p) => {
       const v = p.get('open');
       this.openId.set(v ? Number(v) : null);
     });
   }
 
-  pool = computed(() => (this.mine() ? this.all().filter((r) => r.assignee_initials === 'KP') : this.all()));
+  // "me" is whoever is signed in — never a hardcoded persona
+  pool = computed(() => (this.mine() ? this.all().filter((r) => r.assignee_initials === this.session.user().initials) : this.all()));
   byStage(stage: string) { return this.pool().filter((r) => r.stage === stage); }
   inert(stage: string) { return this.byStage(stage).length === 0 && ['architecture', 'build', 'review', 'done'].includes(stage); }
   firstGateId = computed(() => this.pool().find((r) => r.gate === 'approve_spec')?.id ?? -1);

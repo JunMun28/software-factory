@@ -1,10 +1,10 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
 import { FactoryRequest } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
+import { Store } from '../core/store.service';
 import { plainStage, timeAgo } from '../core/util';
 import { Icon, Pill, Sig, TypeChip } from '../kit/kit';
 import { SubShell } from './sub-shell';
@@ -56,13 +56,13 @@ import { SubShell } from './sub-shell';
   `,
 })
 export class MyRequests {
-  private api = inject(Api);
   private router = inject(Router);
   private session = inject(Session);
   private poll = inject(Poll);
+  private store = inject(Store);
 
   show = signal<'active' | 'all'>('active');
-  all = signal<FactoryRequest[]>([]);
+  all = computed(() => this.store.requests().filter((r) => r.reporter === this.session.user().name));
 
   needsInput = computed(() => this.all().filter((r) => r.status === 'sent_back'));
   rows = computed(() => {
@@ -73,10 +73,6 @@ export class MyRequests {
 
   constructor() {
     this.poll.start();
-    effect(() => {
-      this.poll.version();
-      this.api.requests({ mine: this.session.user().name }).subscribe((rs) => this.all.set(rs));
-    });
   }
 
   ps = plainStage;

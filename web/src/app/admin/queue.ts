@@ -1,11 +1,12 @@
-import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { FactoryRequest, RequestDetail } from '../core/models';
+import { RequestDetail } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
+import { Store } from '../core/store.service';
 import { TYPE_LABEL } from '../core/util';
 import { Glyph, Icon, Mark, Sig } from '../kit/kit';
 import { AdminShell, Autofocus } from './admin-shell';
@@ -212,7 +213,9 @@ export class ApprovalQueue {
   private poll = inject(Poll);
 
   typeLabel = TYPE_LABEL;
-  queue = signal<FactoryRequest[]>([]);
+  private store = inject(Store);
+
+  queue = this.store.inbox;
   sel = signal(0);
   detail = signal<RequestDetail | null>(null);
   confirming = signal(false);
@@ -226,28 +229,34 @@ export class ApprovalQueue {
   triageRow = signal<Record<number, 'ok' | 'no'>>({});
   private wantSel = Number(inject(ActivatedRoute).snapshot.queryParamMap.get('sel')) || null;
 
+  private lastSelId: number | null = null;
+
   constructor() {
     effect(() => {
-      this.poll.version();
-      this.api.inbox().subscribe((rs) => {
-        this.queue.set(rs);
-        if (this.wantSel != null) {
-          const i = rs.findIndex((r) => r.id === this.wantSel);
-          if (i >= 0) this.sel.set(i);
-          this.wantSel = null;
-        }
-        if (this.sel() >= rs.length) this.sel.set(Math.max(0, rs.length - 1));
-      });
+      const rs = this.queue();
+      if (this.wantSel != null) {
+        const i = rs.findIndex((r) => r.id === this.wantSel);
+        if (i >= 0) this.sel.set(i);
+        this.wantSel = null;
+      }
+      if (untracked(this.sel) >= rs.length) this.sel.set(Math.max(0, rs.length - 1));
     });
     effect(() => {
       const q = this.queue();
       const i = this.sel();
-      this.dupDismissed.set(false);
-      this.showOrig.set(false);
-      this.showTurns.set(false);
-      this.triageDone.set(false);
-      this.triageRow.set({});
-      if (q[i]) this.api.request(q[i].id).subscribe((d) => this.detail.set(d));
+      const id = q[i]?.id ?? null;
+      if (id !== this.lastSelId) {
+        // a DIFFERENT request — reset the per-item review state. A poll tick
+        // refreshing the same selection must never wipe the reviewer's
+        // expanded panels or triage choices mid-review.
+        this.lastSelId = id;
+        this.dupDismissed.set(false);
+        this.showOrig.set(false);
+        this.showTurns.set(false);
+        this.triageDone.set(false);
+        this.triageRow.set({});
+      }
+      if (id != null) this.api.request(id).subscribe((d) => this.detail.set(d));
       else this.detail.set(null);
     });
   }

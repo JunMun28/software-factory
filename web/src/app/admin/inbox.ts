@@ -1,9 +1,8 @@
-import { Component, HostListener, effect, inject, signal } from '@angular/core';
+import { Component, HostListener, effect, inject, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
 import { FactoryRequest } from '../core/models';
-import { Poll } from '../core/poll.service';
+import { Store } from '../core/store.service';
 import { TYPE_SHORT, timeAgo } from '../core/util';
 import { Glyph, Sig } from '../kit/kit';
 import { AdminShell } from './admin-shell';
@@ -43,21 +42,17 @@ import { AdminShell } from './admin-shell';
   `,
 })
 export class NeedsMe {
-  private api = inject(Api);
   private router = inject(Router);
-  private poll = inject(Poll);
+  private store = inject(Store);
 
-  items = signal<FactoryRequest[]>([]);
+  items = this.store.inbox;
   focusIdx = signal(0);
   typeShort = TYPE_SHORT;
 
   constructor() {
     effect(() => {
-      this.poll.version();
-      this.api.inbox().subscribe((rs) => {
-        this.items.set(rs);
-        if (this.focusIdx() >= rs.length) this.focusIdx.set(Math.max(0, rs.length - 1));
-      });
+      const n = this.items().length;
+      if (untracked(this.focusIdx) >= n) this.focusIdx.set(Math.max(0, n - 1));
     });
   }
 

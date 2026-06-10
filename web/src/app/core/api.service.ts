@@ -44,6 +44,9 @@ export class Api {
   }
   comments(id: number) { return this.http.get<CommentItem[]>(`${BASE}/requests/${id}/comments`); }
 
+  /** Where "now" is — new clients start polling from here, never replaying history. */
+  eventsCursor() { return this.http.get<{ cursor: number }>(`${BASE}/events/cursor`); }
+
   events(opts: { after?: number; subject?: string; request_id?: number } = {}): Observable<ProgressEvent[]> {
     const params: Record<string, string> = {};
     if (opts.after) params['after'] = String(opts.after);

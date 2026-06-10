@@ -1,43 +1,47 @@
 """Software Factory API — FastAPI backend (ADR 0007) over the two-axis event log (ADR 0008)."""
 import asyncio
 import contextlib
+import logging
 import os
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import func, or_, text
+from sqlalchemy import func, or_, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import simulator
+from . import settings, simulator
 from .claude_exec import brain_mode, runner_mode
 from .claude_runner import ClaudeRunner
-from .db import Base, SessionLocal, engine, get_db
+from .db import SessionLocal, engine, get_db, migrate
 from .events import emit
-from .interview import MAX_QUESTIONS, get_brain
+from .interview import MAX_QUESTIONS, answered_count, get_brain
 from .models import App, AuditEvent, Comment, InterviewTurn, ProgressEvent, Request, SpecLine, utcnow
 from .schemas import (
     AppIn, AppOut, CommentIn, CommentOut, EventOut, FeedPage, InterviewAnswer, InterviewState,
-    Note, RequestCreate, RequestDetail, RequestOut,
+    Note, RequestCreate, RequestDetail, RequestOut, RequestUpdate,
 )
 from .seed import seed
 
+log = logging.getLogger("factory")
 
-def create_app(*, auto_tick: float | None = None) -> FastAPI:
+PIPELINE_STAGES = ("architecture", "build", "review")
+
+
+def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = None) -> FastAPI:
+    logging.basicConfig(level=settings.LOG_LEVEL)  # no-op if the host app already configured logging
+
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
-        Base.metadata.create_all(engine)
-        # tiny additive migration for pre-existing local DBs (create_all won't add columns)
+        added = migrate()  # generic models-vs-schema diff — new columns never 500 existing DBs
+        if added:
+            log.info("migrated: added %s", ", ".join(added))
         with engine.connect() as conn:
-            cols = {row[1] for row in conn.execute(text("PRAGMA table_info(requests)"))}
-            if "stage_entered_at" not in cols:
-                conn.execute(text("ALTER TABLE requests ADD COLUMN stage_entered_at DATETIME"))
-                conn.execute(text("UPDATE requests SET stage_entered_at = updated_at"))
-                conn.commit()
-            if "pending_question" not in cols:
-                conn.execute(text("ALTER TABLE requests ADD COLUMN pending_question JSON"))
-                conn.commit()
+            conn.execute(text("UPDATE requests SET stage_entered_at = updated_at WHERE stage_entered_at IS NULL"))
+            conn.commit()
         with SessionLocal() as db:
-            seed(db)
+            if settings.SEED_DEMO:
+                seed(db)
             # one-time backfill: comments ride the progress_event log (ADR 0012)
             if not db.query(ProgressEvent).filter(ProgressEvent.kind == "comment").count():
                 for c in db.query(Comment).all():
@@ -49,16 +53,44 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
                         created_at=c.created_at,
                     ))
                 db.commit()
+            if runner_mode() == "claude":
+                # a restart kills the pipeline worker threads; anything left mid-stage
+                # is orphaned — escalate it so it is VISIBLE and Retry can re-drive it
+                # (stop + flag, never auto-rerun: CONTEXT.md escalation, ADR 0013)
+                orphans = db.query(Request).filter(
+                    Request.status == "approved", Request.needs_human.is_(False),
+                    Request.gate.is_(None), Request.stage.in_(PIPELINE_STAGES),
+                ).all()
+                for r in orphans:
+                    r.needs_human = True
+                    r.needs_human_reason = "Pipeline orphaned by a server restart — Retry re-runs the stage"
+                    emit(db, r, "escalation",
+                         "Escalated — needs a human (pipeline orphaned by a server restart)",
+                         broadcast=True, payload={"Ref": r.ref, "reason": "server restart mid-pipeline"})
+                    log.warning("startup: %s was orphaned mid-%s — escalated for Retry", r.ref, r.stage)
+                db.commit()
         task = None
-        interval = auto_tick if auto_tick is not None else float(os.environ.get("SIM_INTERVAL", "0") or 0)
+        interval = auto_tick if auto_tick is not None else settings.SIM_INTERVAL
         if runner_mode() == "claude":
             interval = 0  # the real runner drives itself; the simulator stands down
+        workers = os.environ.get("WEB_CONCURRENCY", "1")
+        if workers not in ("", "1"):
+            # the tick loop and the pipeline threads assume ONE process; two workers
+            # double-fire every tick and pipeline (see docker-compose.yml note)
+            log.warning("WEB_CONCURRENCY=%s — refusing to start the tick loop in a multi-worker setup", workers)
+            interval = 0
         if interval > 0:
+            def safe_tick():
+                try:
+                    with SessionLocal() as db:
+                        simulator.tick(db)
+                except Exception:  # one bad tick must never kill the factory's heartbeat
+                    log.exception("simulator tick failed — loop continues")
+
             async def loop():
                 while True:
                     await asyncio.sleep(interval)
-                    with SessionLocal() as db:
-                        simulator.tick(db)
+                    await asyncio.to_thread(safe_tick)  # off the event loop: a slow DB never blocks HTTP
             task = asyncio.create_task(loop())
         yield
         if task:
@@ -90,23 +122,37 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
 
     def next_ref(db: Session) -> str:
         last = db.query(Request).order_by(Request.id.desc()).first()
-        n = 2045 if not last else max(2045, int(last.ref.split("-")[1]) + 1)
+        try:
+            n = max(2045, int(last.ref.split("-")[1]) + 1) if last else 2045
+        except (IndexError, ValueError):  # tolerate non-standard refs left by manual cleanup
+            n = 2045 + last.id
         return f"REQ-{n}"
 
-    claude_pipeline = ClaudeRunner()
+    claude_pipeline = runner or ClaudeRunner()
 
     # ---------- ops ----------
     @app.get("/api/health")
-    def health():
-        return {"status": "ok", "brain": brain_mode(), "runner": runner_mode()}
+    def health(db: Session = Depends(get_db)):
+        try:
+            db.execute(text("SELECT 1"))  # a green health check must mean the DB answers
+        except Exception:
+            log.exception("health check: database unavailable")
+            raise HTTPException(503, "database unavailable")
+        return {"status": "ok", "db": "ok", "brain": brain_mode(), "runner": runner_mode()}
 
     # ---------- apps (registry) ----------
     @app.get("/api/apps", response_model=list[AppOut])
     def list_apps(db: Session = Depends(get_db)):
+        # one grouped COUNT instead of lazy-loading every request row per app
+        counts = dict(
+            db.query(Request.app_id, func.count())
+            .filter(Request.app_id.isnot(None), Request.status.notin_(("done", "cancelled")))
+            .group_by(Request.app_id).all()
+        )
         out = []
         for a in db.query(App).order_by(App.id).all():
             o = AppOut.model_validate(a, from_attributes=True)
-            o.open_requests = sum(1 for r in a.requests if r.status not in ("done", "cancelled"))
+            o.open_requests = counts.get(a.id, 0)
             o.unread = o.open_requests > 0 and not a.muted
             out.append(o)
         return out
@@ -132,20 +178,23 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
 
     # ---------- requests ----------
     @app.get("/api/requests", response_model=list[RequestOut])
-    def list_requests(mine: str | None = None, active: bool = False, db: Session = Depends(get_db)):
+    def list_requests(mine: str | None = None, active: bool = False, limit: int = 500,
+                      db: Session = Depends(get_db)):
         q = db.query(Request).filter(Request.status != "draft")
         if mine:
             q = q.filter(Request.reporter == mine)
-        rows = q.order_by(Request.created_at.desc()).all()
-        if active:
-            rows = [r for r in rows if r.status not in ("done", "cancelled")]
-        # latest milestone per request, in one grouped query (the Pipeline row's context line)
+        if active:  # in SQL, not Python — the DB does the filtering
+            q = q.filter(Request.status.notin_(("done", "cancelled")))
+        rows = q.order_by(Request.created_at.desc()).limit(min(limit, 1000)).all()
+        # latest milestone per request, scoped to the returned page — the events
+        # table grows forever; this query must not grow with it (ADR 0013)
+        ids = [r.id for r in rows]
         latest = dict(
             db.query(ProgressEvent.request_id, func.max(ProgressEvent.id))
-            .filter(ProgressEvent.request_id.isnot(None))
+            .filter(ProgressEvent.request_id.in_(ids))
             .group_by(ProgressEvent.request_id)
             .all()
-        )
+        ) if ids else {}
         titles = {
             ev.id: ev.title
             for ev in db.query(ProgressEvent).filter(ProgressEvent.id.in_(latest.values())).all()
@@ -157,10 +206,16 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         r = get_request(db, rid)
         d = to_out(r, RequestDetail)
         d.audit = [a for a in db.query(AuditEvent).filter(AuditEvent.request_id == rid).order_by(AuditEvent.created_at).all()]
-        # naive duplicate hint: another open-or-done request on the same app sharing a title word >4 chars
-        if r.app_id:
+        # naive duplicate hint: another recent request on the same app sharing a title
+        # word >4 chars. Only meaningful before approval — past that, skip the scan
+        # (it used to run a full per-app table load on every detail poll).
+        if r.app_id and r.status in ("draft", "submitted", "pending_approval", "sent_back"):
             words = {w.lower().strip(",.") for w in r.title.split() if len(w) > 4}
-            for other in db.query(Request).filter(Request.app_id == r.app_id, Request.id != r.id).all():
+            recent = (db.query(Request)
+                      .filter(Request.app_id == r.app_id, Request.id != r.id,
+                              Request.status != "cancelled")
+                      .order_by(Request.id.desc()).limit(200).all())
+            for other in recent:
                 ow = {w.lower().strip(",.") for w in other.title.split() if len(w) > 4}
                 if words & ow:
                     d.duplicate = {"ref": other.ref, "title": other.title, "id": other.id}
@@ -170,28 +225,33 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
     @app.post("/api/requests", response_model=RequestDetail, status_code=201)
     def create_request(body: RequestCreate, db: Session = Depends(get_db)):
         # persist-first (PRD hardening #4): the Request exists before anything else
-        r = Request(
-            ref=next_ref(db), title=body.title or "(untitled request)", description=body.description,
-            type=body.type, urgency=body.urgency, app_id=body.app_id, new_app_name=body.new_app_name,
-            bug_where=body.bug_where, status="draft", stage="intake",
-            reporter=body.reporter, reporter_initials=body.reporter_initials,
-        )
-        db.add(r)
-        db.commit()
+        for attempt in (0, 1):
+            r = Request(
+                ref=next_ref(db), title=body.title or "(untitled request)", description=body.description,
+                type=body.type, urgency=body.urgency, app_id=body.app_id, new_app_name=body.new_app_name,
+                bug_where=body.bug_where, status="draft", stage="intake",
+                reporter=body.reporter, reporter_initials=body.reporter_initials,
+            )
+            db.add(r)
+            try:
+                db.commit()
+                break
+            except IntegrityError:  # a concurrent create raced us to the same ref — once is forgivable
+                db.rollback()
+                if attempt:
+                    raise
         return to_out(r, RequestDetail)
 
     @app.patch("/api/requests/{rid}", response_model=RequestDetail)
-    def update_request(rid: int, body: RequestCreate, db: Session = Depends(get_db)):
+    def update_request(rid: int, body: RequestUpdate, db: Session = Depends(get_db)):
         r = get_request(db, rid)
         if r.status not in ("draft", "submitted"):
             raise HTTPException(409, "Request can no longer be edited")
-        r.title = body.title or r.title
-        r.description = body.description
-        r.type = body.type
-        r.app_id = body.app_id
-        r.new_app_name = body.new_app_name
-        r.bug_where = body.bug_where
-        r.urgency = body.urgency
+        data = body.model_dump(exclude_unset=True)  # PATCH: unsent fields stay untouched
+        if not data.get("title"):
+            data.pop("title", None)  # the title can change but never go blank
+        for k, v in data.items():
+            setattr(r, k, v)
         db.commit()
         return to_out(r, RequestDetail)
 
@@ -199,8 +259,7 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
     def current_question(db: Session, r: Request):
         """Generate-once semantics: the pending question is persisted so what the
         submitter sees is exactly what gets recorded with their answer."""
-        answered = len([t for t in r.turns if t.answer is not None or t.skipped])
-        if answered >= MAX_QUESTIONS:
+        if answered_count(r) >= MAX_QUESTIONS:
             return None
         if r.pending_question:
             from .interview import Question
@@ -213,8 +272,7 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
 
     def interview_state(db: Session, r: Request) -> InterviewState:
         q = current_question(db, r)
-        answered = len([t for t in r.turns if t.answer is not None or t.skipped])
-        st = InterviewState(done=q is None, asked=answered, total=MAX_QUESTIONS,
+        st = InterviewState(done=q is None, asked=answered_count(r), total=MAX_QUESTIONS,
                             turns=[t for t in r.turns])
         if q:
             st.question, st.sub, st.options, st.final = q.question, q.sub, q.options, q.final
@@ -274,11 +332,14 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         r = get_request(db, rid)
         actor = (body.actor if body else None) or "Kim P."
         if r.gate == "approve_merge":
+            if r.status in ("cancelled", "done"):  # a stale gate must never merge dead work
+                raise HTTPException(409, f"Cannot merge a {r.status} request")
             if runner_mode() == "claude":
                 claude_pipeline.approve_merge(db, r, actor)
             else:
                 simulator.approve_merge(db, r, actor)
-            db.add(AuditEvent(request_id=r.id, actor=actor, action="approved_merge"))
+            if r.status == "done":  # the merge can escalate instead (honest deploy)
+                db.add(AuditEvent(request_id=r.id, actor=actor, action="approved_merge"))
             db.commit()
             return to_out(r, RequestDetail)
         if r.status == "approved":
@@ -292,13 +353,19 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         if not r.spec_pr_open:
             r.spec_pr_open = True
             db.commit()
-        if not r.stage2_fired:
-            r.stage2_fired = True
-        r.status = "approved"
-        r.gate = None
-        r.stage = "architecture"
-        r.sim_step = 0
-        r.stage_entered_at = utcnow()
+        # atomic claim: of two concurrent approves, exactly one wins this UPDATE —
+        # the loser takes the idempotent-replay path and never double-starts a pipeline
+        claimed = db.execute(
+            update(Request)
+            .where(Request.id == r.id, Request.status == "pending_approval")
+            .values(status="approved", gate=None, stage="architecture", sim_step=0,
+                    stage2_fired=True, stage_entered_at=utcnow())
+        ).rowcount
+        if not claimed:
+            db.commit()
+            db.refresh(r)
+            return to_out(r, RequestDetail)
+        db.refresh(r)
         repo = r.app.repo if r.app else f"micron/{(r.new_app_name or r.title).lower().replace(' ', '-')[:30]}"
         emit(db, r, "gate_event", f"Spec approved by {actor} — repo ready, SPEC.md PR open, Stage 2 started",
              actor=actor, bot=False, broadcast=True,
@@ -377,6 +444,11 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
              actor=actor, bot=False, payload={"Ref": r.ref, "note": body.note if body else None})
         db.add(AuditEvent(request_id=r.id, actor=actor, action="retried", note=body.note if body else None))
         db.commit()
+        # Retry must actually re-drive the runner: in claude mode nothing else ever
+        # picks an 'approved' request back up (the simulator stands down) — without
+        # this, Retry silently dead-ends and the request is stranded forever (ADR 0013)
+        if runner_mode() == "claude" and r.stage in PIPELINE_STAGES:
+            claude_pipeline.start(r.id)
         return to_out(r, RequestDetail)
 
     # ---------- comments ----------
@@ -409,6 +481,12 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
             db.query(ProgressEvent, Request.ref, Request.title)
             .outerjoin(Request, ProgressEvent.request_id == Request.id)
         )
+
+    @app.get("/api/events/cursor")
+    def events_cursor(db: Session = Depends(get_db)):
+        """Where 'now' is. New clients start polling from here instead of
+        replaying the whole event log from id 0 (ADR 0013)."""
+        return {"cursor": db.query(func.max(ProgressEvent.id)).scalar() or 0}
 
     @app.get("/api/events", response_model=list[EventOut])
     def events(after: int = 0, subject: str | None = None, request_id: int | None = None,
@@ -451,6 +529,7 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         rows = (
             db.query(Request)
             .filter(or_(Request.gate.isnot(None), Request.needs_human.is_(True)))
+            .filter(Request.status.notin_(("cancelled", "done")))  # a stale gate never resurrects dead work
             .order_by(Request.needs_human.desc(), Request.created_at.desc())
             .all()
         )

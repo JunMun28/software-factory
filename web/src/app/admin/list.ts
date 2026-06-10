@@ -1,9 +1,8 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
 import { FactoryRequest } from '../core/models';
-import { Poll } from '../core/poll.service';
+import { Store } from '../core/store.service';
 import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, timeAgo } from '../core/util';
 import { Avatar, Glyph, Icon, Sig } from '../kit/kit';
 import { AdminShell, ViewSeg } from './admin-shell';
@@ -51,20 +50,12 @@ interface Band { key: string; label: string; glyph: string; items: FactoryReques
   styles: `.lrow__app { width:140px; flex:0 0 140px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }`,
 })
 export class ListView {
-  private api = inject(Api);
   private router = inject(Router);
-  private poll = inject(Poll);
+  private store = inject(Store);
 
-  all = signal<FactoryRequest[]>([]);
+  all = this.store.requests;
   stageLabel = STAGE_LABEL;
   typeShort = TYPE_SHORT;
-
-  constructor() {
-    effect(() => {
-      this.poll.version();
-      this.api.requests().subscribe((rs) => this.all.set(rs));
-    });
-  }
 
   bands = computed<Band[]>(() => {
     const rs = this.all();

@@ -119,6 +119,17 @@ class RequestCreate(BaseModel):
     reporter_initials: str = Field(default="JD", max_length=4)
 
 
+class RequestUpdate(BaseModel):
+    """PATCH semantics for real: only fields the caller sent are applied."""
+    type: Literal["bug", "enh", "new", "other"] | None = None
+    title: str | None = Field(default=None, max_length=200)
+    description: str | None = Field(default=None, max_length=5000)
+    app_id: int | None = None
+    new_app_name: str | None = Field(default=None, max_length=120)
+    bug_where: str | None = Field(default=None, max_length=200)
+    urgency: Literal["low", "normal", "high"] | None = None
+
+
 class InterviewAnswer(BaseModel):
     answer: str | None = Field(default=None, max_length=2000)
     skip: bool = False

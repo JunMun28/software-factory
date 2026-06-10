@@ -1,8 +1,6 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, effect, inject } from '@angular/core';
 
-import { Api } from '../core/api.service';
-import { AppEntry } from '../core/models';
-import { Poll } from '../core/poll.service';
+import { Store } from '../core/store.service';
 import { Glyph, Icon } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
@@ -72,10 +70,9 @@ interface EvtPrefs { inApp: boolean; email: boolean; digest: boolean }
   `,
 })
 export class Settings {
-  private api = inject(Api);
-  private poll = inject(Poll);
+  private store = inject(Store);
 
-  apps = signal<AppEntry[]>([]);
+  apps = this.store.apps;
   levels = ['All', 'Gate + Needs-human', 'Muted'];
   follow: Record<string, string> = {};
   digest = '08:00 PT';
@@ -95,11 +92,7 @@ export class Settings {
 
   constructor() {
     effect(() => {
-      this.poll.version();
-      this.api.apps().subscribe((a) => {
-        this.apps.set(a);
-        for (const app of a) this.follow[app.key] ??= app.muted ? 'Muted' : 'All';
-      });
+      for (const app of this.apps()) this.follow[app.key] ??= app.muted ? 'Muted' : 'All';
     });
   }
 

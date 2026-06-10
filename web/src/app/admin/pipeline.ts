@@ -1,9 +1,8 @@
-import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
+import { Component, HostListener, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
 import { FactoryRequest } from '../core/models';
-import { Poll } from '../core/poll.service';
+import { Store } from '../core/store.service';
 import { TYPE_SHORT, timeAgo, utc } from '../core/util';
 import { Avatar, Icon, Sig } from '../kit/kit';
 import { AdminShell, ViewSeg } from './admin-shell';
@@ -114,22 +113,14 @@ interface Group { key: string; label: string; count: number; items: FactoryReque
   `,
 })
 export class Pipeline {
-  private api = inject(Api);
   private router = inject(Router);
-  private poll = inject(Poll);
+  private store = inject(Store);
 
-  all = signal<FactoryRequest[]>([]);
+  all = this.store.requests;
   openGroups = signal<Set<string>>(new Set());
   focusIdx = signal(0);
   typeShort = TYPE_SHORT;
   stageShort = STAGE_SHORT;
-
-  constructor() {
-    effect(() => {
-      this.poll.version();
-      this.api.requests().subscribe((rs) => this.all.set(rs));
-    });
-  }
 
   activeCount = computed(() => this.all().filter((r) => !['done', 'cancelled'].includes(r.status)).length);
 

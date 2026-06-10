@@ -22,10 +22,33 @@ see `.github/workflows/ci.yml`):
 
 | Step | What it proves |
 |---|---|
-| `make test` — 38 pytest tests | Behavioral: lifecycle legality, per-step approve ledger + **idempotent replay** (ADR 0006), send-back→respond loop, keyset cursor + subject axis (ADR 0008), simulator stops at the merge gate, retry clears escalation, stage clock + last-event (ADR 0010), registry CRUD, comments. Claude runner (fake executor): full pipeline to merge, **test-isolation gate catches a cheating implementer**, RED gate rejects non-failing tests. Feed (ADR 0012): comments ride the event log, subject-feed tail + increment cursor. Hardening: input validation, interview hard cap, edit-locked after submission, illegal-transition 409s, cancelled items never tick, 404s, health endpoint |
+| `make test` — 50 pytest tests | Behavioral: lifecycle legality, per-step approve ledger + **idempotent replay** (ADR 0006), send-back→respond loop, keyset cursor + subject axis (ADR 0008), simulator stops at the merge gate, retry clears escalation, stage clock + last-event (ADR 0010), registry CRUD, comments. Claude runner (fake executor): full pipeline to merge, **test-isolation gate catches a cheating implementer** (including a pytest-config deselection cheat), RED gate rejects non-failing tests. Feed (ADR 0012): comments ride the event log, subject-feed tail + increment cursor. Architecture hardening (ADR 0013): **Retry re-drives the claude pipeline**, restart orphans are escalated and visible, crashed stages escalate instead of dying, a cancel always wins (no merge-gate resurrection), merge failures escalate instead of fake-deploying, approve replay never double-starts a pipeline, `/api/events/cursor` is the tail, health touches the DB, PATCH is a real patch. Hardening: input validation, interview hard cap, edit-locked after submission, illegal-transition 409s, cancelled items never tick, 404s |
 | `make test-web` — 14 vitest tests | The client's pure domain logic: UTC re-tagging of SQLite timestamps, time formatting, the Submitter plain-stage vocabulary (including "never leaks Control-center words"), status-by-shape glyph mapping, gate labels |
 | `make build` — Angular production build | All 17 screens compile; template/type errors surface here |
-| `make smoke` — `scripts/smoke.sh` | The full lifecycle against a **real server process** on a throwaway DB: create → interview×3 → submit → spec gate → inbox → approve (+replay) → 8 simulator ticks → merge gate → approve merge → Deployed milestone in the log |
+| `make smoke` — `scripts/smoke.sh` | The full lifecycle against a **real server process** on a throwaway DB: create → interview×3 → submit → spec gate → inbox → approve (+replay) → 8 simulator ticks → merge gate → approve merge → Deployed milestone in the log. On failure the server log is printed (never discarded) |
+
+CI additionally runs `docker compose build`, so Dockerfile/nginx/lockfile
+drift fails the pipeline instead of a deploy.
+
+## 1b. Agent workflows — research & validation (ADR 0013)
+
+Two named multi-agent workflows live in `.claude/workflows/` (run them from a
+Claude Code session in this repo):
+
+- **`research-architecture`** — six parallel auditors (concurrency,
+  scalability, backend structure, frontend, agent pipeline, ops), each
+  returning structured `file:line`-cited findings; every high/medium finding
+  is then adversarially re-verified by a skeptic agent before it counts.
+  This is the workflow that produced the ADR 0013 findings.
+- **`validate-architecture`** — the validation counterpart: runs `make verify`
+  (the deterministic gate), then one adversarial agent per ADR 0013 guarantee
+  tries to **refute** it against the live code (stranded requests, cancel
+  wins, honest deploy, engine pragmas, O(new) polling, isolation-gate config
+  surface, one-owner rules) and reports any gaps. Run it after touching
+  `api/app/` or `web/src/app/core/`.
+
+`make verify` stays the token-free gate; the workflows are the deeper,
+agent-driven layer on top.
 
 ## 2. Run it locally
 
