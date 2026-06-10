@@ -9,7 +9,7 @@ import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { STAGE_LABEL, timeAgo } from '../core/util';
 import { Avatar, Glyph, Icon, Sig, TypeChip } from '../kit/kit';
-import { AdminShell } from './admin-shell';
+import { AdminShell, Autofocus } from './admin-shell';
 
 interface ActivityRow {
   kind: 'comment' | 'act';
@@ -24,7 +24,7 @@ interface ActivityRow {
 /** C4b — full-screen issue view (Jira/Linear-grade): labels, attachments, spec, checklist, activity, details rail. */
 @Component({
   selector: 'sf-issue-page',
-  imports: [AdminShell, Glyph, Icon, Avatar, Sig, TypeChip, FormsModule, DatePipe],
+  imports: [AdminShell, Glyph, Icon, Avatar, Sig, TypeChip, FormsModule, DatePipe, Autofocus],
   template: `
     <admin-shell active="list" title="Issue">
       <span headerExtra class="row" style="gap:7px;font-size:12.5px;color:var(--muted)">
@@ -227,7 +227,7 @@ interface ActivityRow {
         <div class="palette-scrim" style="align-items:center;padding-top:0" (click)="sendingBack.set(false)">
           <div class="palette" style="width:460px;padding:22px 24px;align-self:center" (click)="$event.stopPropagation()">
             <h3 style="font-size:19px;margin-bottom:8px">Send back to {{ r.reporter }}?</h3>
-            <textarea class="input area" placeholder="What's the one question blocking the spec?" [(ngModel)]="sendBackNote" style="margin-bottom:14px"></textarea>
+            <textarea sfAutofocus class="input area" placeholder="What's the one question blocking the spec?" [(ngModel)]="sendBackNote" style="margin-bottom:14px"></textarea>
             <div class="row" style="gap:9px;justify-content:flex-end">
               <button class="btn" (click)="sendingBack.set(false)">Cancel</button>
               <button class="btn primary" [disabled]="!sendBackNote.trim()" (click)="sendBack(r)">Send back</button>

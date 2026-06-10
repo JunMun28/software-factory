@@ -1,4 +1,4 @@
-import { Component, HostListener, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, Directive, ElementRef, HostListener, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
@@ -8,11 +8,21 @@ import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
 
+/** Reliable focus for dynamically-inserted inputs (the `autofocus` attribute only
+ *  works at document parse time, not for @if-rendered overlays). */
+@Directive({ selector: '[sfAutofocus]' })
+export class Autofocus {
+  constructor() {
+    const el = inject(ElementRef);
+    afterNextRender(() => el.nativeElement.focus());
+  }
+}
+
 /** The Admin Control Center shell — inverted-L: sidebar + header + dense canvas.
  *  Owns the keyboard layer: ⌘K palette, `?` cheat-sheet, C new-issue, G-nav. */
 @Component({
   selector: 'admin-shell',
-  imports: [Mark, Icon, Glyph, Avatar, FormsModule],
+  imports: [Mark, Icon, Glyph, Avatar, FormsModule, Autofocus],
   template: `
     <div class="adm">
       <aside class="adm-side">
@@ -113,8 +123,8 @@ import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
               <div class="palette" (click)="$event.stopPropagation()">
                 <div class="palette__input">
                   <sf-icon name="search" [size]="17" color="var(--muted)" />
-                  <input [ngModel]="query()" (ngModelChange)="query.set($event)" placeholder="Type a command or search…"
-                    style="flex:1;border:none;outline:none;font:inherit;color:var(--fg1);background:none" autofocus
+                  <input sfAutofocus [ngModel]="query()" (ngModelChange)="query.set($event)" placeholder="Type a command or search…"
+                    style="flex:1;border:none;outline:none;font:inherit;color:var(--fg1);background:none"
                     (keydown)="paletteKey($event)" />
                 </div>
                 <div style="padding:6px">
@@ -202,8 +212,8 @@ import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
                       </button>
                     }
                   </div>
-                  <input class="input" placeholder="Issue title" [ngModel]="niTitle()" (ngModelChange)="niTitle.set($event)"
-                    style="font-size:17px;font-weight:600;border:none;padding:4px 0;min-height:0" autofocus />
+                  <input sfAutofocus class="input" placeholder="Issue title" [ngModel]="niTitle()" (ngModelChange)="niTitle.set($event)"
+                    style="font-size:17px;font-weight:600;border:none;padding:4px 0;min-height:0" />
                   <textarea class="input area" placeholder="Add a description…  Use @ to mention, or attach an image"
                     [ngModel]="niDesc()" (ngModelChange)="niDesc.set($event)" style="border:none;padding:6px 0;min-height:70px"></textarea>
                   <div class="row" style="gap:7px;flex-wrap:wrap;margin-top:6px">
@@ -318,7 +328,8 @@ export class AdminShell {
   });
   paletteKey(e: KeyboardEvent) {
     const all = [...this.filteredActions(), ...this.filteredJumps()];
-    if (e.key === 'ArrowDown') { e.preventDefault(); this.palSel.update((s) => Math.min(all.length - 1, s + 1)); }
+    if (e.key === 'Escape') { this.paletteOpen.set(false); this.query.set(''); this.palSel.set(0); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); this.palSel.update((s) => Math.min(all.length - 1, s + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); this.palSel.update((s) => Math.max(0, s - 1)); }
     else if (e.key === 'Enter') { e.preventDefault(); const a = all[this.palSel()]; if (a) this.runPalette(a); }
   }
@@ -337,8 +348,9 @@ export class AdminShell {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
     const typing = tag === 'input' || tag === 'textarea';
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); this.paletteOpen.update((o) => !o); return; }
-    if (typing) return;
+    // Esc closes overlays even while an input inside them has focus
     if (e.key === 'Escape') { this.paletteOpen.set(false); this.cheats.set(false); this.newIssue.set(false); return; }
+    if (typing) return;
     if (this.gPending) {
       const k = e.key.toLowerCase();
       const nav: Record<string, string> = { p: '/admin/pipeline', b: '/admin/board', l: '/admin/list', i: '/admin/inbox', t: '/admin/queue', r: '/admin/registry', s: '/admin/settings', a: '/admin/apps/' + (this.apps()[0]?.key ?? 'northwind'), f: '/admin/apps/' + (this.apps()[0]?.key ?? 'northwind') };

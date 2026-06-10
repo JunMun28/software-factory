@@ -8,13 +8,13 @@ import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { TYPE_LABEL } from '../core/util';
 import { Glyph, Icon, Mark, Sig } from '../kit/kit';
-import { AdminShell } from './admin-shell';
+import { AdminShell, Autofocus } from './admin-shell';
 
 /** C3 — Approval queue: the Stage-1 triage workhorse.
  *  Grounded spec + AI-triage-proposes/human-confirms + the one intentional friction point. */
 @Component({
   selector: 'sf-queue-page',
-  imports: [AdminShell, Glyph, Icon, Mark, Sig, FormsModule],
+  imports: [AdminShell, Glyph, Icon, Mark, Sig, FormsModule, Autofocus],
   template: `
     <admin-shell active="queue" title="Approval queue">
       <span headerExtra style="font-size:11.5px;color:var(--faint)">J/K move · ↵ open</span>
@@ -175,7 +175,7 @@ import { AdminShell } from './admin-shell';
           <div class="palette" style="width:460px;padding:22px 24px;align-self:center" (click)="$event.stopPropagation()">
             <h3 style="font-size:19px;margin-bottom:8px">Send back to {{ r.reporter }}?</h3>
             <p style="font-size:14px;color:var(--muted);margin:0 0 10px">Ask the one question that's blocking the spec — they'll answer without touching GitHub.</p>
-            <textarea class="input area" placeholder="e.g. Which systems should we import from?" [(ngModel)]="sendBackNote" style="margin-bottom:14px"></textarea>
+            <textarea sfAutofocus class="input area" placeholder="e.g. Which systems should we import from?" [(ngModel)]="sendBackNote" style="margin-bottom:14px"></textarea>
             <div class="row" style="gap:9px;justify-content:flex-end">
               <button class="btn" (click)="sendingBack.set(false)">Cancel</button>
               <button class="btn primary" [disabled]="!sendBackNote.trim()" (click)="sendBack(r)">Send back</button>

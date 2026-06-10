@@ -128,7 +128,11 @@ export class Interview {
 
   constructor() {
     this.api.request(this.id).subscribe((r) => this.req.set(r));
-    this.api.interview(this.id).subscribe((s) => this.st.set(s));
+    this.busy.set(true); // the first question may be generated live — show the thinking row
+    this.api.interview(this.id).subscribe({
+      next: (s) => { this.st.set(s); this.busy.set(false); },
+      error: () => this.busy.set(false),
+    });
   }
 
   composerPlaceholder() {
