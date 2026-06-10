@@ -1,0 +1,176 @@
+"""ORM models.
+
+Vocabulary follows CONTEXT.md: Request, Work item stages, Gates, progress_event
+(ADR 0008: one append-only two-axis log — request axis + subject/app axis).
+"""
+from datetime import datetime, timezone
+
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .db import Base
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class App(Base):
+    """App registry entry — maps a friendly app name to its repo (the Subject)."""
+
+    __tablename__ = "apps"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(40), unique=True)  # slug, e.g. "northwind"
+    name: Mapped[str] = mapped_column(String(120))
+    owner: Mapped[str] = mapped_column(String(120))
+    repo: Mapped[str] = mapped_column(String(200))
+    provisioning: Mapped[str] = mapped_column(String(12), default="Manual")  # Auto | Manual
+    muted: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    requests: Mapped[list["Request"]] = relationship(back_populates="app")
+
+
+# Stage columns (fixed, Jira-style): the Work item's position in the Factory.
+STAGES = ["intake", "spec", "architecture", "build", "review", "done"]
+# RequestLifecycle (PRD): Draft → Submitted → PendingApproval → Approved | SentBack | Cancelled
+STATUSES = ["draft", "submitted", "pending_approval", "approved", "sent_back", "cancelled", "done"]
+
+
+class Request(Base):
+    __tablename__ = "requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ref: Mapped[str] = mapped_column(String(12), unique=True)  # REQ-2041
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    type: Mapped[str] = mapped_column(String(8))  # bug | enh | new | other
+    urgency: Mapped[str] = mapped_column(String(8), default="normal")
+    priority: Mapped[str] = mapped_column(String(8), default="Normal")
+
+    app_id: Mapped[int | None] = mapped_column(ForeignKey("apps.id"), nullable=True)
+    new_app_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    bug_where: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    extra_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    stage: Mapped[str] = mapped_column(String(16), default="intake")
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    gate: Mapped[str | None] = mapped_column(String(20), nullable=True)  # approve_spec | approve_merge
+    needs_human: Mapped[bool] = mapped_column(Boolean, default=False)
+    needs_human_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+    reporter: Mapped[str] = mapped_column(String(80), default="Jordan D.")
+    reporter_initials: Mapped[str] = mapped_column(String(4), default="JD")
+    assignee: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    assignee_initials: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    assignee_color: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    labels: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    send_back_question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    send_back_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    send_back_rounds: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Per-step Approve ledger (PRD hardening #3, ADR 0006 resumability)
+    repo_ready: Mapped[bool] = mapped_column(Boolean, default=False)
+    spec_pr_open: Mapped[bool] = mapped_column(Boolean, default=False)
+    stage2_fired: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    spec_open_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sim_step: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    app: Mapped[App | None] = relationship(back_populates="requests")
+    turns: Mapped[list["InterviewTurn"]] = relationship(
+        back_populates="request", order_by="InterviewTurn.order", cascade="all, delete-orphan"
+    )
+    spec_lines: Mapped[list["SpecLine"]] = relationship(
+        back_populates="request", order_by="SpecLine.order", cascade="all, delete-orphan"
+    )
+    comments: Mapped[list["Comment"]] = relationship(
+        back_populates="request", order_by="Comment.created_at", cascade="all, delete-orphan"
+    )
+
+    @property
+    def app_name(self) -> str:
+        if self.app:
+            return self.app.name
+        return self.new_app_name or "No app yet"
+
+
+class InterviewTurn(Base):
+    __tablename__ = "interview_turns"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    question: Mapped[str] = mapped_column(Text)
+    sub: Mapped[str | None] = mapped_column(Text, nullable=True)
+    options: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [{t, d}]
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    skipped: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    request: Mapped[Request] = relationship(back_populates="turns")
+
+
+class SpecLine(Base):
+    """One grounded Draft-spec line with its provenance tag."""
+
+    __tablename__ = "spec_lines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    text: Mapped[str] = mapped_column(Text)
+    prov: Mapped[str | None] = mapped_column(String(20), nullable=True)  # "Q1" … ; None+assume=True
+    assume: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    request: Mapped[Request] = relationship(back_populates="spec_lines")
+
+
+class ProgressEvent(Base):
+    """ADR 0008: append-only, typed, two-axis progress log.
+
+    kind: milestone_summary | gate_event | escalation | recovery_action
+    """
+
+    __tablename__ = "progress_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)  # monotonic; doubles as keyset/poll cursor
+    request_id: Mapped[int | None] = mapped_column(ForeignKey("requests.id"), nullable=True)
+    subject_id: Mapped[int | None] = mapped_column(ForeignKey("apps.id"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    stage: Mapped[str] = mapped_column(String(16), default="intake")
+    actor: Mapped[str] = mapped_column(String(80), default="Factory")
+    bot: Mapped[bool] = mapped_column(Boolean, default=True)
+    broadcast: Mapped[bool] = mapped_column(Boolean, default=False)
+    title: Mapped[str] = mapped_column(String(300))
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
+    author: Mapped[str] = mapped_column(String(80))
+    initials: Mapped[str] = mapped_column(String(4))
+    color: Mapped[str] = mapped_column(String(12), default="#6E5A8A")
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    request: Mapped[Request] = relationship(back_populates="comments")
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
+    actor: Mapped[str] = mapped_column(String(80))
+    action: Mapped[str] = mapped_column(String(40))  # submitted | approved | sent_back | cancelled | responded | commented
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
