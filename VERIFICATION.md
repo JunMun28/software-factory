@@ -21,7 +21,7 @@ Runs, in order — all must be green:
 
 | Step | What it proves |
 |---|---|
-| `make test` — 12 pytest behavioral tests | Request lifecycle legality (draft→submitted→pending→approved/sent_back/cancelled), per-step approve ledger + **idempotent replay** (ADR 0006), send-back→respond loop appends a grounded spec line, keyset event cursor + subject-axis filter (ADR 0008), simulator stops at the merge gate, retry clears escalation, registry CRUD, comments |
+| `make test` — 13 pytest behavioral tests | Request lifecycle legality (draft→submitted→pending→approved/sent_back/cancelled), per-step approve ledger + **idempotent replay** (ADR 0006), send-back→respond loop appends a grounded spec line, keyset event cursor + subject-axis filter (ADR 0008), simulator stops at the merge gate, retry clears escalation, stage clock + last-event payload (ADR 0010), registry CRUD, comments |
 | `make build` — Angular production build | All 16 screens compile; template/type errors surface here |
 | `make smoke` — `scripts/smoke.sh` | The full lifecycle against a **real server process** on a throwaway DB: create → interview×3 → submit → spec gate → inbox → approve (+replay) → 8 simulator ticks → merge gate → approve merge → Deployed milestone in the log |
 
@@ -94,6 +94,21 @@ two sign-in buttons on `/login`.
 3. Approve the merge (queue or side panel) → confirm modal now lists merge/promote/deploy →
    card lands in **Done**, feed posts **"Deployed — production promotion merged"**, and the
    submitter's S5 timeline shows **Deployed ✓**.
+
+### Flow G — Pipeline view (the default landing, ADR 0010)
+
+1. Sign in as a reviewer (or press **G P**) → you land on **Pipeline**.
+   - *Expect:* rows grouped **Needs me → In flight → In triage → With submitter →
+     Done & closed (collapsed)**; a stage legend (Intake · Spec ◇ Arch · Build ·
+     Review ◇ Done) aligned over every row's strip.
+2. Read any "Needs me" row: amber diamond at the waiting gate + "Nm at the spec/merge
+   gate"; the escalated row is red-bordered with "stalled Nm — Retry · Take over · Cancel".
+3. With `make dev` running, approve a spec and watch its row migrate from *Needs me*
+   to *In flight*: the active segment animates (striped) and the clock resets
+   ("1m in Arch"), advancing every ~8s tick until it returns to *Needs me* at the
+   merge gate.
+4. Click a row → the full-screen issue. Click its gate badge → the Approval queue.
+   The List ⇄ Board ⇄ Pipeline toggle swaps lenses over the same data.
 
 ### Flow F — Control-center chrome
 

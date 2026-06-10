@@ -35,6 +35,6 @@ export class App {
   signInAs(role: 'submitter' | 'admin') {
     this.session.signIn(role);
     this.open = false;
-    this.router.navigateByUrl(role === 'admin' ? '/admin/board' : '/requests');
+    this.router.navigateByUrl(role === 'admin' ? '/admin/pipeline' : '/requests');
   }
 }

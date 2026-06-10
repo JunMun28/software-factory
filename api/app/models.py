@@ -77,6 +77,9 @@ class Request(Base):
 
     spec_open_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     sim_step: Mapped[int] = mapped_column(Integer, default=0)
+    # when the Work item entered its current stage (or its current gate was raised) —
+    # powers the Pipeline view's time-in-stage / "is it stuck?" readout
+    stage_entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

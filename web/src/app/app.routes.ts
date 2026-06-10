@@ -10,7 +10,8 @@ export const routes: Routes = [
   { path: 'requests', loadComponent: () => import('./submitter/my-requests').then((m) => m.MyRequests) },
   { path: 'requests/:id', loadComponent: () => import('./submitter/request-detail').then((m) => m.SubRequestDetail) },
 
-  { path: 'admin', pathMatch: 'full', redirectTo: 'admin/board' },
+  { path: 'admin', pathMatch: 'full', redirectTo: 'admin/pipeline' },
+  { path: 'admin/pipeline', loadComponent: () => import('./admin/pipeline').then((m) => m.Pipeline) },
   { path: 'admin/board', loadComponent: () => import('./admin/board').then((m) => m.Board) },
   { path: 'admin/list', loadComponent: () => import('./admin/list').then((m) => m.ListView) },
   { path: 'admin/queue', loadComponent: () => import('./admin/queue').then((m) => m.ApprovalQueue) },

@@ -23,6 +23,10 @@ import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
         </button>
 
         <div class="adm-seclabel">Primary</div>
+        <button class="navrow" [class.on]="active() === 'pipeline'" (click)="go('/admin/pipeline')">
+          <span class="navrow__ic"><sf-icon name="pipeline" [size]="17" /></span><span class="navrow__label">Pipeline</span>
+          <span class="navrow__tip">Pipeline <kbd class="kbd">G</kbd><kbd class="kbd">P</kbd></span>
+        </button>
         <button class="navrow" [class.on]="active() === 'board'" (click)="go('/admin/board')">
           <span class="navrow__ic"><sf-icon name="board" [size]="17" /></span><span class="navrow__label">Board</span>
           <span class="navrow__tip">Board <kbd class="kbd">G</kbd><kbd class="kbd">B</kbd></span>
@@ -223,7 +227,7 @@ export class AdminShell {
   niDesc = signal('');
   niTypes: [string, string, string][] = [['bug', 'Bug fix', 'bug'], ['enh', 'Enhancement', 'spark'], ['new', 'New app', 'app']];
 
-  cheatNav: [string, string][] = [['Command palette', '⌘ K'], ['Board', 'G B'], ['List', 'G L'], ['Needs-me inbox', 'G I'], ['Approval queue', 'G T'], ['This menu', '?']];
+  cheatNav: [string, string][] = [['Command palette', '⌘ K'], ['Pipeline', 'G P'], ['Board', 'G B'], ['List', 'G L'], ['Needs-me inbox', 'G I'], ['Approval queue', 'G T'], ['This menu', '?']];
   cheatItem: [string, string][] = [['Approve spec', 'A'], ['Send back', 'S'], ['Cancel request', 'C'], ['Move up / down', 'J K'], ['Open detail', '↵'], ['Close / back', 'esc']];
 
   private gPending = false;
@@ -268,6 +272,7 @@ export class AdminShell {
 
   // ---- palette ----
   paletteActions = [
+    { icon: 'pipeline', lbl: 'Go to Pipeline', hint: 'G P', act: () => this.go('/admin/pipeline') },
     { icon: 'check', lbl: 'Go to Approval queue', hint: 'G T', act: () => this.go('/admin/queue') },
     { icon: 'plus', lbl: 'New issue', hint: 'C', act: () => this.newIssue.set(true) },
     { icon: 'inbox', lbl: 'Go to Needs-me inbox', hint: 'G I', act: () => this.go('/admin/inbox') },
@@ -302,7 +307,7 @@ export class AdminShell {
     if (e.key === 'Escape') { this.paletteOpen.set(false); this.cheats.set(false); this.newIssue.set(false); return; }
     if (this.gPending) {
       const k = e.key.toLowerCase();
-      const nav: Record<string, string> = { b: '/admin/board', l: '/admin/list', i: '/admin/inbox', t: '/admin/queue', r: '/admin/registry', s: '/admin/settings', a: '/admin/apps/' + (this.apps()[0]?.key ?? 'northwind'), f: '/admin/apps/' + (this.apps()[0]?.key ?? 'northwind') };
+      const nav: Record<string, string> = { p: '/admin/pipeline', b: '/admin/board', l: '/admin/list', i: '/admin/inbox', t: '/admin/queue', r: '/admin/registry', s: '/admin/settings', a: '/admin/apps/' + (this.apps()[0]?.key ?? 'northwind'), f: '/admin/apps/' + (this.apps()[0]?.key ?? 'northwind') };
       if (nav[k]) { e.preventDefault(); this.go(nav[k]); }
       this.gPending = false;
       if (this.gTimer) clearTimeout(this.gTimer);
@@ -312,4 +317,21 @@ export class AdminShell {
     if (e.key === 'c' && !this.paletteOpen() && !this.newIssue()) { e.preventDefault(); this.newIssue.set(true); return; }
     if (e.key === '?' && !this.paletteOpen()) { this.cheats.update((c) => !c); }
   }
+}
+
+/** The List ⇄ Board ⇄ Pipeline lens toggle (one collection, three projections). */
+@Component({
+  selector: 'sf-view-seg',
+  template: `
+    <div class="seg">
+      <button [class.on]="active() === 'list'" (click)="go('/admin/list')">List</button>
+      <button [class.on]="active() === 'board'" (click)="go('/admin/board')">Board</button>
+      <button [class.on]="active() === 'pipeline'" (click)="go('/admin/pipeline')">Pipeline</button>
+    </div>
+  `,
+})
+export class ViewSeg {
+  private router = inject(Router);
+  active = input<'list' | 'board' | 'pipeline'>('pipeline');
+  go(url: string) { this.router.navigateByUrl(url); }
 }

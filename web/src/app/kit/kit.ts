@@ -96,6 +96,7 @@ const ICONS: Record<string, string> = {
   image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-4.5-4.5L7 20"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a3 3 0 0 1 5.6 1.3c0 2-3 2.4-3 4M12 17h.01"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
+  pipeline: '<path d="M2.5 12h6M15.5 12h6"/><path d="M12 9.2 14.8 12 12 14.8 9.2 12z"/>',
 };
 
 @Component({

@@ -6,19 +6,20 @@ import { FactoryRequest } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, timeAgo } from '../core/util';
 import { Avatar, Glyph, Icon, Sig } from '../kit/kit';
-import { AdminShell } from './admin-shell';
+import { AdminShell, ViewSeg } from './admin-shell';
 
 interface Band { key: string; label: string; glyph: string; items: FactoryRequest[] }
 
 /** C2b — List view: grouped by stage band; rows open the full-screen issue. */
 @Component({
   selector: 'sf-list-page',
-  imports: [AdminShell, Glyph, Icon, Avatar, Sig],
+  imports: [AdminShell, Glyph, Icon, Avatar, Sig, ViewSeg],
   template: `
     <admin-shell active="list" title="Waiting on me">
       <span headerExtra class="row" style="gap:9px">
         <span style="font-size:12.5px;color:var(--muted)">Group: stage</span>
       </span>
+      <sf-view-seg headerRight active="list" />
       <div class="list scroll">
         @for (band of bands(); track band.key) {
           <div class="lband">

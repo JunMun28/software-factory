@@ -74,6 +74,8 @@ export interface FactoryRequest {
   spec_open_note: string | null;
   created_at: string;
   updated_at: string;
+  stage_entered_at: string | null;
+  last_event: string | null;
 }
 
 export interface RequestDetail extends FactoryRequest {

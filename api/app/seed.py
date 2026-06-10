@@ -38,7 +38,8 @@ def seed(db: Session) -> None:
         r = Request(
             ref=ref, title=title, type=type_, app_id=apps[app].id if app else None,
             stage=stage, status=status, gate=gate, reporter=reporter[0], reporter_initials=reporter[1],
-            created_at=created or utcnow(), description=desc, urgency=urgency, **kw,
+            created_at=created or utcnow(), description=desc, urgency=urgency,
+            stage_entered_at=kw.pop("entered", None) or created or utcnow(), **kw,
         )
         db.add(r)
         return r
@@ -60,7 +61,7 @@ def seed(db: Session) -> None:
     # --- Spec (awaiting approval — the gate workhorse) ---
     r_export = req("REQ-2041", "Faster expense export", "enh", "northwind",
                    stage="spec", status="pending_approval", gate="approve_spec",
-                   created=ago(hours=3), urgency="normal",
+                   created=ago(hours=3), entered=ago(hours=2, minutes=48), urgency="normal",
                    desc="Exporting a month of expenses is painfully slow — it takes about 5 minutes and "
                         "sometimes times out before it finishes. I just want one button that gives me the "
                         "whole month in CSV and Excel.",
@@ -68,7 +69,7 @@ def seed(db: Session) -> None:
                    **KP)
     r_csv = req("REQ-2042", "CSV import for vendors", "enh", "vendor",
                 stage="spec", status="pending_approval", gate="approve_spec",
-                reporter=("Priya S.", "PS"), created=ago(hours=3),
+                reporter=("Priya S.", "PS"), created=ago(hours=3), entered=ago(hours=2, minutes=30),
                 desc="Let us bulk-import the vendor list from a CSV instead of keying entries one by one.",
                 **KP)
     r_sync = req("REQ-2043", "Offline sync mode", "new", "fieldops",
@@ -83,7 +84,7 @@ def seed(db: Session) -> None:
 
     # --- Sent back (the S5 hero) ---
     r_vlist = req("REQ-2038", "Add CSV import to vendor list", "enh", "northwind",
-                  stage="spec", status="sent_back", created=ago(days=3),
+                  stage="spec", status="sent_back", created=ago(days=3), entered=ago(days=2, hours=20),
                   send_back_question="Which systems should we import the CSV from? Concur, or your bank export too?",
                   send_back_rounds=1,
                   desc="Importing the vendor list by hand takes an hour a week — a CSV upload would remove it.",
@@ -91,7 +92,7 @@ def seed(db: Session) -> None:
 
     # --- In flight (Building — gives board/feed life) ---
     r_sso = req("REQ-2029", "Migrate auth to SSO", "enh", "billing",
-                stage="build", status="approved", reporter=("Dana L.", "DL"), created=ago(days=2),
+                stage="build", status="approved", reporter=("Dana L.", "DL"), created=ago(days=2), entered=ago(hours=20),
                 repo_ready=True, spec_pr_open=True, stage2_fired=True, sim_step=1, **KP)
 
     # --- Done / cancelled history ---

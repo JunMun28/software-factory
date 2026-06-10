@@ -50,7 +50,7 @@ export class Login {
     this.loading.set(role);
     setTimeout(() => {
       this.session.signIn(role);
-      this.router.navigateByUrl(role === 'admin' ? '/admin/board' : '/submit/new');
+      this.router.navigateByUrl(role === 'admin' ? '/admin/pipeline' : '/submit/new');
     }, 900);
   }
 }

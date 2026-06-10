@@ -5,14 +5,14 @@ import os
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from . import simulator
 from .db import Base, SessionLocal, engine, get_db
 from .events import emit
 from .interview import MAX_QUESTIONS, brain
-from .models import App, AuditEvent, Comment, InterviewTurn, ProgressEvent, Request, SpecLine
+from .models import App, AuditEvent, Comment, InterviewTurn, ProgressEvent, Request, SpecLine, utcnow
 from .schemas import (
     AppIn, AppOut, CommentIn, CommentOut, EventOut, InterviewAnswer, InterviewState,
     Note, RequestCreate, RequestDetail, RequestOut,
@@ -24,6 +24,13 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
         Base.metadata.create_all(engine)
+        # tiny additive migration for pre-existing local DBs (create_all won't add columns)
+        with engine.connect() as conn:
+            cols = {row[1] for row in conn.execute(text("PRAGMA table_info(requests)"))}
+            if "stage_entered_at" not in cols:
+                conn.execute(text("ALTER TABLE requests ADD COLUMN stage_entered_at DATETIME"))
+                conn.execute(text("UPDATE requests SET stage_entered_at = updated_at"))
+                conn.commit()
         with SessionLocal() as db:
             seed(db)
         task = None
@@ -107,7 +114,18 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         rows = q.order_by(Request.created_at.desc()).all()
         if active:
             rows = [r for r in rows if r.status not in ("done", "cancelled")]
-        return [to_out(r) for r in rows]
+        # latest milestone per request, in one grouped query (the Pipeline row's context line)
+        latest = dict(
+            db.query(ProgressEvent.request_id, func.max(ProgressEvent.id))
+            .filter(ProgressEvent.request_id.isnot(None))
+            .group_by(ProgressEvent.request_id)
+            .all()
+        )
+        titles = {
+            ev.id: ev.title
+            for ev in db.query(ProgressEvent).filter(ProgressEvent.id.in_(latest.values())).all()
+        } if latest else {}
+        return [to_out(r, last_event=titles.get(latest.get(r.id))) for r in rows]
 
     @app.get("/api/requests/{rid}", response_model=RequestDetail)
     def request_detail(rid: int, db: Session = Depends(get_db)):
@@ -200,6 +218,7 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         r.stage = "spec"
         r.status = "pending_approval"
         r.gate = "approve_spec"
+        r.stage_entered_at = utcnow()
         emit(db, r, "gate_event", "Draft spec generated — 1 open question before it can be approved",
              broadcast=True,
              payload={"gate": "approve_spec",
@@ -234,6 +253,7 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         r.gate = None
         r.stage = "architecture"
         r.sim_step = 0
+        r.stage_entered_at = utcnow()
         repo = r.app.repo if r.app else f"micron/{(r.new_app_name or r.title).lower().replace(' ', '-')[:30]}"
         emit(db, r, "gate_event", f"Spec approved by {actor} — repo ready, SPEC.md PR open, Stage 2 started",
              actor=actor, bot=False, broadcast=True,
@@ -252,6 +272,7 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         r.gate = None
         r.send_back_question = body.note or "Could you add a bit more detail?"
         r.send_back_rounds += 1
+        r.stage_entered_at = utcnow()
         emit(db, r, "gate_event", "Sent back to the submitter — one question is blocking the spec",
              actor=body.actor, bot=False, broadcast=True, payload={"gate": "send_back", "Ref": r.ref})
         db.add(AuditEvent(request_id=r.id, actor=body.actor, action="sent_back", note=body.note))
@@ -266,6 +287,7 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         r.send_back_response = body.note
         r.status = "pending_approval"
         r.gate = "approve_spec"
+        r.stage_entered_at = utcnow()
         if r.send_back_question:
             db.add(SpecLine(request=r, order=len(r.spec_lines), text=body.note.strip().rstrip(".") + ".",
                             prov=f"reply {r.send_back_rounds}"))
@@ -303,6 +325,7 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         if r.stage == "spec":
             r.gate = "approve_spec"
         r.sim_step = 0
+        r.stage_entered_at = utcnow()
         emit(db, r, "recovery_action", f"Retry — Stage re-run requested by {actor}",
              actor=actor, bot=False, payload={"Ref": r.ref, "note": body.note if body else None})
         db.add(AuditEvent(request_id=r.id, actor=actor, action="retried", note=body.note if body else None))

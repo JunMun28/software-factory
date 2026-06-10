@@ -7,7 +7,7 @@ import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, timeAgo } from '../core/util';
 import { Avatar, Glyph, Icon, Sig } from '../kit/kit';
-import { AdminShell } from './admin-shell';
+import { AdminShell, ViewSeg } from './admin-shell';
 
 const STAGE_COLS: { key: string; glyph: string }[] = [
   { key: 'intake', glyph: 'dotted' }, { key: 'spec', glyph: 'ring' }, { key: 'architecture', glyph: 'ring' },
@@ -198,9 +198,10 @@ export class DetailPanel {
 /** C2 — Board: fixed stage columns; Group-by adds Jira-style horizontal swimlanes. */
 @Component({
   selector: 'sf-board-page',
-  imports: [AdminShell, Glyph, Icon, Avatar, BCard, DetailPanel],
+  imports: [AdminShell, Glyph, Icon, Avatar, BCard, DetailPanel, ViewSeg],
   template: `
     <admin-shell active="board" title="Board">
+      <sf-view-seg headerRight active="board" />
       <span headerExtra class="row" style="gap:11px">
         <button class="kpill" (click)="mine.set(!mine())"
           style="padding:5px 11px 5px 8px;font-size:12.5px;gap:7px"

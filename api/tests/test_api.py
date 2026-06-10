@@ -157,6 +157,20 @@ def test_registry_crud(client):
     assert upd["owner"] == "lab-platform"
 
 
+def test_stage_clock_and_last_event(client):
+    """The Pipeline view's inputs: stage_entered_at moves on transitions; last_event rides along."""
+    reqs = client.get("/api/requests").json()
+    hero = next(r for r in reqs if r["ref"] == "REQ-2041")  # done by earlier tests
+    assert hero["stage_entered_at"] is not None
+    assert hero["last_event"] and "Deployed" in hero["last_event"]
+
+    # a fresh approve stamps a new stage clock
+    target = next(r for r in reqs if r["ref"] == "REQ-2042" and r["gate"] == "approve_spec")
+    before = target["stage_entered_at"]
+    d = client.post(f"/api/requests/{target['id']}/approve", json={"actor": "Kim P."}).json()
+    assert d["stage_entered_at"] > before
+
+
 def test_comments(client):
     reqs = client.get("/api/requests").json()
     r = reqs[0]

@@ -9,7 +9,7 @@ stops there and waits for an Admin, exactly like the real Factory.
 from sqlalchemy.orm import Session
 
 from .events import emit
-from .models import Request
+from .models import Request, utcnow
 
 # (stage, steps) — each step is (title, fields-payload). After the last step of
 # a stage the item advances to the next stage. Review ends at the merge gate.
@@ -46,6 +46,7 @@ def tick(db: Session) -> list[str]:
             # raise the merge gate once, then wait for a human
             if req.gate != "approve_merge":
                 req.gate = "approve_merge"
+                req.stage_entered_at = utcnow()  # clock restarts at the gate
                 emit(
                     db, req, "gate_event", "Waiting at the merge gate — review passed, approval needed",
                     broadcast=True, payload={"gate": "approve_merge", "Ref": req.ref},
@@ -61,6 +62,7 @@ def tick(db: Session) -> list[str]:
             nxt = {"architecture": "build", "build": "review"}[req.stage]
             req.stage = nxt
             req.sim_step = 0
+            req.stage_entered_at = utcnow()
             emit(db, req, "milestone_summary", f"Stage advanced — now in {nxt.capitalize()}",
                  payload={"Stage": nxt.capitalize(), "Ref": req.ref})
             moved.append(f"{req.ref}: advanced to {nxt}")
@@ -73,6 +75,7 @@ def approve_merge(db: Session, req: Request, actor: str) -> None:
     req.gate = None
     req.stage = "done"
     req.status = "done"
+    req.stage_entered_at = utcnow()
     emit(db, req, "gate_event", f"Merge approved by {actor} — PR merged to main",
          actor=actor, bot=False, broadcast=True, payload={"gate": "approve_merge", "Ref": req.ref})
     emit(db, req, "milestone_summary", "Deployed — production promotion merged",

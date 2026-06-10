@@ -94,6 +94,8 @@ class RequestOut(BaseModel):
     spec_open_note: str | None
     created_at: datetime
     updated_at: datetime
+    stage_entered_at: datetime | None = None
+    last_event: str | None = None
 
 
 class RequestDetail(RequestOut):
