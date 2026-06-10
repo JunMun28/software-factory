@@ -54,6 +54,11 @@ import { SubShell } from './sub-shell';
               </div>
             }
           }
+          @if (busy()) {
+            <div class="ai-q fade-in"><span class="ai-q__mark"><sf-mark [size]="17" color="#9A9AA6" /></span>
+              <div><div class="ai-q__sub" style="margin-top:2px">Thinking about a follow-up…</div></div>
+            </div>
+          }
         </div>
 
         <!-- Questions panel + the optional-details composer -->
@@ -104,6 +109,7 @@ export class Interview {
   st = signal<InterviewState | null>(null);
   req = signal<RequestDetail | null>(null);
   picked = signal<string | null>(null);
+  busy = signal(false);
   msg = signal('');
   letters = ['A', 'B', 'C', 'D', 'E'];
 
@@ -132,10 +138,16 @@ export class Interview {
   }
 
   private push(body: { answer?: string; skip?: boolean }) {
-    this.api.answer(this.id, body).subscribe((s) => {
-      this.st.set(s);
-      this.picked.set(null);
-      this.msg.set('');
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.api.answer(this.id, body).subscribe({
+      next: (s) => {
+        this.st.set(s);
+        this.picked.set(null);
+        this.msg.set('');
+        this.busy.set(false);
+      },
+      error: () => this.busy.set(false),
     });
   }
 

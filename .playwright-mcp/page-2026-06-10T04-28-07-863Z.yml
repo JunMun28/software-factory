@@ -1,0 +1,684 @@
+- generic "Apps" [ref=e4]:
+  - generic [ref=e5]:
+    - complementary [ref=e6]:
+      - generic [ref=e7]:
+        - img [ref=e9]
+        - generic [ref=e19]: Factory
+      - button "New issue C" [ref=e20] [cursor=pointer]:
+        - img [ref=e22]
+        - text: New issue
+        - generic [ref=e24]: C
+      - generic [ref=e25]: Primary
+      - button "Pipeline Pipeline G P" [ref=e26] [cursor=pointer]:
+        - img [ref=e29]
+        - generic [ref=e31]: Pipeline
+        - generic:
+          - text: Pipeline
+          - generic: G
+          - generic: P
+      - button "Board Board G B" [ref=e32] [cursor=pointer]:
+        - img [ref=e35]
+        - generic [ref=e38]: Board
+        - generic:
+          - text: Board
+          - generic: G
+          - generic: B
+      - button "List List G L" [ref=e39] [cursor=pointer]:
+        - img [ref=e42]
+        - generic [ref=e44]: List
+        - generic:
+          - text: List
+          - generic: G
+          - generic: L
+      - button "Needs me 5 Inbox G I" [ref=e45] [cursor=pointer]:
+        - img [ref=e48]
+        - generic [ref=e51]: Needs me
+        - generic [ref=e52]: "5"
+        - generic:
+          - text: Inbox
+          - generic: G
+          - generic: I
+      - button "Approval queue Triage G T" [ref=e53] [cursor=pointer]:
+        - img [ref=e56]
+        - generic [ref=e59]: Approval queue
+        - generic:
+          - text: Triage
+          - generic: G
+          - generic: T
+      - generic [ref=e60]: Apps
+      - button "Northwind Expenses" [ref=e61] [cursor=pointer]:
+        - img [ref=e64]
+        - generic [ref=e66]: Northwind Expenses
+      - button "Vendor Portal" [ref=e68] [cursor=pointer]:
+        - img [ref=e71]
+        - generic [ref=e73]: Vendor Portal
+      - button "FieldOps" [ref=e75] [cursor=pointer]:
+        - img [ref=e78]
+        - generic [ref=e80]: FieldOps
+      - button "Inventory Sync" [ref=e82] [cursor=pointer]:
+        - img [ref=e85]
+        - generic [ref=e88]: Inventory Sync
+      - button "Billing Portal" [ref=e89] [cursor=pointer]:
+        - img [ref=e92]
+        - generic [ref=e94]: Billing Portal
+      - generic [ref=e96]:
+        - button "App registry Registry G R" [ref=e97] [cursor=pointer]:
+          - img [ref=e100]
+          - generic [ref=e103]: App registry
+          - generic:
+            - text: Registry
+            - generic: G
+            - generic: R
+        - button "Settings Settings G S" [ref=e104] [cursor=pointer]:
+          - img [ref=e107]
+          - generic [ref=e110]: Settings
+          - generic:
+            - text: Settings
+            - generic: G
+            - generic: S
+        - button "KP Kim P. Admin" [ref=e112] [cursor=pointer]:
+          - generic [ref=e114]: KP
+          - generic [ref=e115]: Kim P.
+          - generic [ref=e116]: Admin
+    - generic [ref=e117]:
+      - banner [ref=e118]:
+        - generic [ref=e120]: Apps
+        - generic [ref=e121]:
+          - generic "Which agents drive Stages 2–6 (FACTORY_RUNNER)" [ref=e122]: "Agents: Claude Code"
+          - generic [ref=e123]: Updated just now
+          - button "Search ⌘K" [ref=e125] [cursor=pointer]:
+            - img [ref=e127]
+            - text: Search
+            - generic [ref=e130]: ⌘K
+      - generic [ref=e132]:
+        - generic [ref=e133]:
+          - generic [ref=e134]: "# Northwind Expenses"
+          - generic [ref=e135]: micron/nw-expenses
+          - generic [ref=e136]:
+            - generic [ref=e137]:
+              - generic [ref=e139]: KP
+              - generic [ref=e141]: JD
+              - generic [ref=e143]: RM
+            - 'button "Following: All" [ref=e144] [cursor=pointer]':
+              - text: "Following: All"
+              - img [ref=e146]
+        - generic [ref=e148]:
+          - generic [ref=e150]: Jun 7
+          - generic [ref=e151]:
+            - generic [ref=e152]:
+              - button "React" [ref=e153] [cursor=pointer]:
+                - img [ref=e155]
+              - button "Open" [ref=e157] [cursor=pointer]:
+                - img [ref=e159]
+              - button "More" [ref=e162] [cursor=pointer]:
+                - img [ref=e164]
+            - img [ref=e170]
+            - generic [ref=e180]:
+              - generic [ref=e181]:
+                - generic [ref=e182]: Factory
+                - generic [ref=e183]: App
+                - generic [ref=e184]: 9:58 AM
+              - generic [ref=e185]: "Filed: Add CSV import to vendor list — now in Triage"
+              - generic [ref=e186]:
+                - generic [ref=e187]:
+                  - img [ref=e189]
+                  - text: Add CSV import to vendor list
+                - generic [ref=e193]: Ref REQ-2038
+                - button "Open issue" [ref=e195] [cursor=pointer]
+          - generic [ref=e196]:
+            - generic [ref=e197]:
+              - button "React" [ref=e198] [cursor=pointer]:
+                - img [ref=e200]
+              - button "Open" [ref=e202] [cursor=pointer]:
+                - img [ref=e204]
+              - button "More" [ref=e207] [cursor=pointer]:
+                - img [ref=e209]
+            - generic [ref=e213]: 9:58 AM
+            - generic [ref=e214]:
+              - generic [ref=e215]: Retried spec generation 3× — last attempt timed out
+              - generic [ref=e216]:
+                - generic [ref=e217]:
+                  - img [ref=e219]
+                  - text: Add CSV import to vendor list
+                - generic [ref=e222]: Ref REQ-2038
+                - button "Open issue" [ref=e224] [cursor=pointer]
+              - button "Retried 3× — folded, click to expand" [ref=e225] [cursor=pointer]:
+                - img [ref=e227]
+                - text: Retried 3×
+                - generic [ref=e229]: — folded, click to expand
+          - generic [ref=e230]:
+            - generic [ref=e231]:
+              - button "React" [ref=e232] [cursor=pointer]:
+                - img [ref=e234]
+              - button "Open" [ref=e236] [cursor=pointer]:
+                - img [ref=e238]
+              - button "More" [ref=e241] [cursor=pointer]:
+                - img [ref=e243]
+            - generic [ref=e247]: KP
+            - generic [ref=e248]:
+              - generic [ref=e249]:
+                - generic [ref=e250]: Kim P.
+                - generic [ref=e251]: 1:58 PM
+              - generic [ref=e252]: Sent back to the submitter — one question is blocking the spec
+              - generic [ref=e253]:
+                - generic [ref=e254]:
+                  - img [ref=e256]
+                  - text: Add CSV import to vendor list
+                - generic [ref=e260]: Ref REQ-2038
+                - button "Open issue" [ref=e262] [cursor=pointer]
+          - generic [ref=e264]: Today
+          - generic [ref=e265]:
+            - generic [ref=e266]:
+              - button "React" [ref=e267] [cursor=pointer]:
+                - img [ref=e269]
+              - button "Open" [ref=e271] [cursor=pointer]:
+                - img [ref=e273]
+              - button "More" [ref=e276] [cursor=pointer]:
+                - img [ref=e278]
+            - img [ref=e284]
+            - generic [ref=e294]:
+              - generic [ref=e295]:
+                - generic [ref=e296]: Factory
+                - generic [ref=e297]: App
+                - generic [ref=e298]: 6:58 AM
+              - generic [ref=e299]: "New request filed in #Northwind Expenses"
+              - generic [ref=e300]:
+                - generic [ref=e301]:
+                  - img [ref=e303]
+                  - text: Faster expense export
+                - generic [ref=e306]:
+                  - generic [ref=e307]: Type Enhancement
+                  - generic [ref=e308]: From Jordan D.
+                  - generic [ref=e309]: Stage Triage
+                  - generic [ref=e310]: Ref REQ-2041
+                - button "Open issue" [ref=e312] [cursor=pointer]
+          - generic [ref=e313]:
+            - generic [ref=e314]:
+              - button "React" [ref=e315] [cursor=pointer]:
+                - img [ref=e317]
+              - button "Open" [ref=e319] [cursor=pointer]:
+                - img [ref=e321]
+              - button "More" [ref=e324] [cursor=pointer]:
+                - img [ref=e326]
+            - generic [ref=e330]: 7:10 AM
+            - generic [ref=e331]:
+              - generic [ref=e332]: Draft spec generated — 1 open question before it can be approved
+              - generic [ref=e333]:
+                - generic [ref=e334]:
+                  - img [ref=e336]
+                  - text: Faster expense export
+                - generic [ref=e339]:
+                  - generic [ref=e340]: Status Awaiting approval
+                  - generic [ref=e341]: Assumptions 1
+                  - generic [ref=e342]: Ref REQ-2041
+                  - generic [ref=e343]: Ref REQ-2041
+                - generic [ref=e344]:
+                  - button "Review & approve" [ref=e345] [cursor=pointer]
+                  - button "Open issue" [ref=e346] [cursor=pointer]
+          - generic [ref=e347]:
+            - generic [ref=e348]:
+              - button "React" [ref=e349] [cursor=pointer]:
+                - img [ref=e351]
+              - button "Open" [ref=e353] [cursor=pointer]:
+                - img [ref=e355]
+              - button "More" [ref=e358] [cursor=pointer]:
+                - img [ref=e360]
+            - generic [ref=e364]: KP
+            - generic [ref=e365]:
+              - generic [ref=e366]:
+                - generic [ref=e367]: Kim P.
+                - generic [ref=e368]: 7:17 AM
+              - generic [ref=e369]: Looks good — checking the bank-export assumption with Jordan before I approve.
+          - generic [ref=e370]:
+            - generic [ref=e371]:
+              - button "React" [ref=e372] [cursor=pointer]:
+                - img [ref=e374]
+              - button "Open" [ref=e376] [cursor=pointer]:
+                - img [ref=e378]
+              - button "More" [ref=e381] [cursor=pointer]:
+                - img [ref=e383]
+            - generic [ref=e387]: JD
+            - generic [ref=e388]:
+              - generic [ref=e389]:
+                - generic [ref=e390]: Jordan D.
+                - generic [ref=e391]: 10:02 AM
+              - generic [ref=e392]: Spec approved by Jordan D. — repo ready, SPEC.md PR open, Stage 2 started
+              - generic [ref=e393]:
+                - generic [ref=e394]:
+                  - img [ref=e396]
+                  - text: Faster expense export
+                - generic [ref=e400]: Ref REQ-2041
+                - generic [ref=e401]:
+                  - button "Review & approve" [ref=e402] [cursor=pointer]
+                  - button "Open issue" [ref=e403] [cursor=pointer]
+          - generic [ref=e404]:
+            - generic [ref=e405]:
+              - button "React" [ref=e406] [cursor=pointer]:
+                - img [ref=e408]
+              - button "Open" [ref=e410] [cursor=pointer]:
+                - img [ref=e412]
+              - button "More" [ref=e415] [cursor=pointer]:
+                - img [ref=e417]
+            - img [ref=e423]
+            - generic [ref=e433]:
+              - generic [ref=e434]:
+                - generic [ref=e435]: Factory
+                - generic [ref=e436]: App
+                - generic [ref=e437]: 10:02 AM
+              - generic [ref=e438]: Architecture plan drafted — PLAN.md committed
+              - generic [ref=e439]:
+                - generic [ref=e440]:
+                  - img [ref=e442]
+                  - text: Faster expense export
+                - generic [ref=e445]:
+                  - generic [ref=e446]: Artifacts PLAN.md
+                  - generic [ref=e447]: ADRs 2 drafted
+                  - generic [ref=e448]: Ref REQ-2041
+                - button "Open issue" [ref=e450] [cursor=pointer]
+          - generic [ref=e451]:
+            - generic [ref=e452]:
+              - button "React" [ref=e453] [cursor=pointer]:
+                - img [ref=e455]
+              - button "Open" [ref=e457] [cursor=pointer]:
+                - img [ref=e459]
+              - button "More" [ref=e462] [cursor=pointer]:
+                - img [ref=e464]
+            - generic [ref=e468]: 10:02 AM
+            - generic [ref=e469]:
+              - generic [ref=e470]: ADRs signed; plan validated against SPEC.md
+              - generic [ref=e471]:
+                - generic [ref=e472]:
+                  - img [ref=e474]
+                  - text: Faster expense export
+                - generic [ref=e477]:
+                  - generic [ref=e478]: Gate Sign ADRs · passed
+                  - generic [ref=e479]: Next Test authoring
+                  - generic [ref=e480]: Ref REQ-2041
+                - button "Open issue" [ref=e482] [cursor=pointer]
+          - generic [ref=e483]:
+            - generic [ref=e484]:
+              - button "React" [ref=e485] [cursor=pointer]:
+                - img [ref=e487]
+              - button "Open" [ref=e489] [cursor=pointer]:
+                - img [ref=e491]
+              - button "More" [ref=e494] [cursor=pointer]:
+                - img [ref=e496]
+            - generic [ref=e500]: 10:02 AM
+            - generic [ref=e501]:
+              - generic [ref=e502]: Stage advanced — now in Build
+              - generic [ref=e503]:
+                - generic [ref=e504]:
+                  - img [ref=e506]
+                  - text: Faster expense export
+                - generic [ref=e510]: Ref REQ-2041
+                - button "Open issue" [ref=e512] [cursor=pointer]
+          - generic [ref=e513]:
+            - generic [ref=e514]:
+              - button "React" [ref=e515] [cursor=pointer]:
+                - img [ref=e517]
+              - button "Open" [ref=e519] [cursor=pointer]:
+                - img [ref=e521]
+              - button "More" [ref=e524] [cursor=pointer]:
+                - img [ref=e526]
+            - generic [ref=e530]: 10:02 AM
+            - generic [ref=e531]:
+              - generic [ref=e532]: "RED: 8 failing tests authored — fail for the right reason"
+              - generic [ref=e533]:
+                - generic [ref=e534]:
+                  - img [ref=e536]
+                  - text: Faster expense export
+                - generic [ref=e539]:
+                  - generic [ref=e540]: Tests 8 added, 8 failing
+                  - generic [ref=e541]: Gate RED · passed
+                  - generic [ref=e542]: Ref REQ-2041
+                - button "Open issue" [ref=e544] [cursor=pointer]
+          - generic [ref=e545]:
+            - generic [ref=e546]:
+              - button "React" [ref=e547] [cursor=pointer]:
+                - img [ref=e549]
+              - button "Open" [ref=e551] [cursor=pointer]:
+                - img [ref=e553]
+              - button "More" [ref=e556] [cursor=pointer]:
+                - img [ref=e558]
+            - generic [ref=e562]: 10:06 AM
+            - generic [ref=e563]:
+              - generic [ref=e564]: "New request filed in #Northwind Expenses"
+              - generic [ref=e565]:
+                - generic [ref=e566]:
+                  - img [ref=e568]
+                  - text: Receipts attach one at a time and each upload takes ~20 seconds
+                - generic [ref=e570]:
+                  - generic [ref=e571]: Type enh
+                  - generic [ref=e572]: From Jordan D.
+                  - generic [ref=e573]: Stage Triage
+                  - generic [ref=e574]: Ref REQ-2045
+                - button "Open issue" [ref=e576] [cursor=pointer]
+          - generic [ref=e577]:
+            - generic [ref=e578]:
+              - button "React" [ref=e579] [cursor=pointer]:
+                - img [ref=e581]
+              - button "Open" [ref=e583] [cursor=pointer]:
+                - img [ref=e585]
+              - button "More" [ref=e588] [cursor=pointer]:
+                - img [ref=e590]
+            - generic [ref=e594]: 10:06 AM
+            - generic [ref=e595]:
+              - generic [ref=e596]: Draft spec generated — 1 open question before it can be approved
+              - generic [ref=e597]:
+                - generic [ref=e598]:
+                  - img [ref=e600]
+                  - text: Receipts attach one at a time and each upload takes ~20 seconds
+                - generic [ref=e603]:
+                  - generic [ref=e604]: Status Awaiting approval
+                  - generic [ref=e605]: Assumptions 1
+                  - generic [ref=e606]: Ref REQ-2045
+                  - generic [ref=e607]: Ref REQ-2045
+                - generic [ref=e608]:
+                  - button "Review & approve" [ref=e609] [cursor=pointer]
+                  - button "Open issue" [ref=e610] [cursor=pointer]
+          - generic [ref=e611]:
+            - generic [ref=e612]:
+              - button "React" [ref=e613] [cursor=pointer]:
+                - img [ref=e615]
+              - button "Open" [ref=e617] [cursor=pointer]:
+                - img [ref=e619]
+              - button "More" [ref=e622] [cursor=pointer]:
+                - img [ref=e624]
+            - generic [ref=e628]: 10:14 AM
+            - generic [ref=e629]:
+              - generic [ref=e630]: "GREEN: all tests pass; implementer touched no test files"
+              - generic [ref=e631]:
+                - generic [ref=e632]:
+                  - img [ref=e634]
+                  - text: Faster expense export
+                - generic [ref=e637]:
+                  - generic [ref=e638]: Tests 8/8 passing
+                  - generic [ref=e639]: Gate Test-isolation · passed
+                  - generic [ref=e640]: Ref REQ-2041
+                - button "Open issue" [ref=e642] [cursor=pointer]
+          - generic [ref=e643]:
+            - generic [ref=e644]:
+              - button "React" [ref=e645] [cursor=pointer]:
+                - img [ref=e647]
+              - button "Open" [ref=e649] [cursor=pointer]:
+                - img [ref=e651]
+              - button "More" [ref=e654] [cursor=pointer]:
+                - img [ref=e656]
+            - generic [ref=e660]: 10:14 AM
+            - generic [ref=e661]:
+              - generic [ref=e662]: Stage advanced — now in Review
+              - generic [ref=e663]:
+                - generic [ref=e664]:
+                  - img [ref=e666]
+                  - text: Faster expense export
+                - generic [ref=e670]: Ref REQ-2041
+                - button "Open issue" [ref=e672] [cursor=pointer]
+          - generic [ref=e673]:
+            - generic [ref=e674]:
+              - button "React" [ref=e675] [cursor=pointer]:
+                - img [ref=e677]
+              - button "Open" [ref=e679] [cursor=pointer]:
+                - img [ref=e681]
+              - button "More" [ref=e684] [cursor=pointer]:
+                - img [ref=e686]
+            - generic [ref=e690]: 10:14 AM
+            - generic [ref=e691]:
+              - generic [ref=e692]: Review report posted — no blocking findings
+              - generic [ref=e693]:
+                - generic [ref=e694]:
+                  - img [ref=e696]
+                  - text: Faster expense export
+                - generic [ref=e699]:
+                  - generic [ref=e700]: Findings 0 blocking · 2 nits
+                  - generic [ref=e701]: Diff +412 −38
+                  - generic [ref=e702]: Ref REQ-2041
+                - button "Open issue" [ref=e704] [cursor=pointer]
+          - generic [ref=e705]:
+            - generic [ref=e706]:
+              - button "React" [ref=e707] [cursor=pointer]:
+                - img [ref=e709]
+              - button "Open" [ref=e711] [cursor=pointer]:
+                - img [ref=e713]
+              - button "More" [ref=e716] [cursor=pointer]:
+                - img [ref=e718]
+            - generic [ref=e722]: 10:14 AM
+            - generic [ref=e723]:
+              - generic [ref=e724]: Waiting at the merge gate — review passed, approval needed
+              - generic [ref=e725]:
+                - generic [ref=e726]:
+                  - img [ref=e728]
+                  - text: Faster expense export
+                - generic [ref=e732]: Ref REQ-2041
+                - generic [ref=e733]:
+                  - button "Review & approve" [ref=e734] [cursor=pointer]
+                  - button "Open issue" [ref=e735] [cursor=pointer]
+          - generic [ref=e736]:
+            - generic [ref=e737]:
+              - button "React" [ref=e738] [cursor=pointer]:
+                - img [ref=e740]
+              - button "Open" [ref=e742] [cursor=pointer]:
+                - img [ref=e744]
+              - button "More" [ref=e747] [cursor=pointer]:
+                - img [ref=e749]
+            - generic [ref=e753]: 12:23 PM
+            - generic [ref=e754]:
+              - generic [ref=e755]: "New request filed in #Northwind Expenses"
+              - generic [ref=e756]:
+                - generic [ref=e757]:
+                  - img [ref=e759]
+                  - text: The category report crashes when an expense has no category set
+                - generic [ref=e761]:
+                  - generic [ref=e762]: Type bug
+                  - generic [ref=e763]: From Jordan D.
+                  - generic [ref=e764]: Stage Triage
+                  - generic [ref=e765]: Ref REQ-2046
+                - button "Open issue" [ref=e767] [cursor=pointer]
+          - generic [ref=e768]:
+            - generic [ref=e769]:
+              - button "React" [ref=e770] [cursor=pointer]:
+                - img [ref=e772]
+              - button "Open" [ref=e774] [cursor=pointer]:
+                - img [ref=e776]
+              - button "More" [ref=e779] [cursor=pointer]:
+                - img [ref=e781]
+            - generic [ref=e785]: 12:23 PM
+            - generic [ref=e786]:
+              - generic [ref=e787]: Draft spec generated — 1 open question before it can be approved
+              - generic [ref=e788]:
+                - generic [ref=e789]:
+                  - img [ref=e791]
+                  - text: The category report crashes when an expense has no category set
+                - generic [ref=e794]:
+                  - generic [ref=e795]: Status Awaiting approval
+                  - generic [ref=e796]: Assumptions 1
+                  - generic [ref=e797]: Ref REQ-2046
+                  - generic [ref=e798]: Ref REQ-2046
+                - generic [ref=e799]:
+                  - button "Review & approve" [ref=e800] [cursor=pointer]
+                  - button "Open issue" [ref=e801] [cursor=pointer]
+          - generic [ref=e802]:
+            - generic [ref=e803]:
+              - button "React" [ref=e804] [cursor=pointer]:
+                - img [ref=e806]
+              - button "Open" [ref=e808] [cursor=pointer]:
+                - img [ref=e810]
+              - button "More" [ref=e813] [cursor=pointer]:
+                - img [ref=e815]
+            - generic [ref=e819]: KP
+            - generic [ref=e820]:
+              - generic [ref=e821]:
+                - generic [ref=e822]: Kim P.
+                - generic [ref=e823]: 12:24 PM
+              - generic [ref=e824]: Spec approved by Kim P. — repo ready, SPEC.md PR open, Stage 2 started
+              - generic [ref=e825]:
+                - generic [ref=e826]:
+                  - img [ref=e828]
+                  - text: The category report crashes when an expense has no category set
+                - generic [ref=e832]: Ref REQ-2046
+                - generic [ref=e833]:
+                  - button "Review & approve" [ref=e834] [cursor=pointer]
+                  - button "Open issue" [ref=e835] [cursor=pointer]
+          - generic [ref=e836]:
+            - generic [ref=e837]:
+              - button "React" [ref=e838] [cursor=pointer]:
+                - img [ref=e840]
+              - button "Open" [ref=e842] [cursor=pointer]:
+                - img [ref=e844]
+              - button "More" [ref=e847] [cursor=pointer]:
+                - img [ref=e849]
+            - img [ref=e855]
+            - generic [ref=e865]:
+              - generic [ref=e866]:
+                - generic [ref=e867]: Factory
+                - generic [ref=e868]: App
+                - generic [ref=e869]: 12:25 PM
+              - generic [ref=e870]: Architecture plan committed — PLAN.md validated against SPEC.md
+              - generic [ref=e871]:
+                - generic [ref=e872]:
+                  - img [ref=e874]
+                  - text: The category report crashes when an expense has no category set
+                - generic [ref=e877]:
+                  - generic [ref=e878]: Artifacts PLAN.md
+                  - generic [ref=e879]: Agent Claude Code
+                  - generic [ref=e880]: Ref REQ-2046
+                - button "Open issue" [ref=e882] [cursor=pointer]
+          - generic [ref=e883]:
+            - generic [ref=e884]:
+              - button "React" [ref=e885] [cursor=pointer]:
+                - img [ref=e887]
+              - button "Open" [ref=e889] [cursor=pointer]:
+                - img [ref=e891]
+              - button "More" [ref=e894] [cursor=pointer]:
+                - img [ref=e896]
+            - generic [ref=e900]: 12:25 PM
+            - generic [ref=e901]:
+              - generic [ref=e902]: "RED: failing tests authored — fail for the right reason (2 failed, 2 passed in 0.01s)"
+              - generic [ref=e903]:
+                - generic [ref=e904]:
+                  - img [ref=e906]
+                  - text: The category report crashes when an expense has no category set
+                - generic [ref=e909]:
+                  - generic [ref=e910]: Gate RED · passed
+                  - generic [ref=e911]: Agent Claude Code
+                  - generic [ref=e912]: Ref REQ-2046
+                - button "Open issue" [ref=e914] [cursor=pointer]
+          - generic [ref=e915]:
+            - generic [ref=e916]:
+              - button "React" [ref=e917] [cursor=pointer]:
+                - img [ref=e919]
+              - button "Open" [ref=e921] [cursor=pointer]:
+                - img [ref=e923]
+              - button "More" [ref=e926] [cursor=pointer]:
+                - img [ref=e928]
+            - generic [ref=e932]: 12:26 PM
+            - generic [ref=e933]:
+              - generic [ref=e934]: "GREEN: 4 passed in 0.00s; implementer touched no test files"
+              - generic [ref=e935]:
+                - generic [ref=e936]:
+                  - img [ref=e938]
+                  - text: The category report crashes when an expense has no category set
+                - generic [ref=e941]:
+                  - generic [ref=e942]: Gate GREEN + Test-isolation · passed
+                  - generic [ref=e943]: Agent Claude Code
+                  - generic [ref=e944]: Ref REQ-2046
+                - button "Open issue" [ref=e946] [cursor=pointer]
+          - generic [ref=e947]:
+            - generic [ref=e948]:
+              - button "React" [ref=e949] [cursor=pointer]:
+                - img [ref=e951]
+              - button "Open" [ref=e953] [cursor=pointer]:
+                - img [ref=e955]
+              - button "More" [ref=e958] [cursor=pointer]:
+                - img [ref=e960]
+            - generic [ref=e964]: 12:26 PM
+            - generic [ref=e965]:
+              - generic [ref=e966]: "Review report committed — # REVIEW — Category Report KeyError Fix"
+              - generic [ref=e967]:
+                - generic [ref=e968]:
+                  - img [ref=e970]
+                  - text: The category report crashes when an expense has no category set
+                - generic [ref=e973]:
+                  - generic [ref=e974]: Artifacts REVIEW.md
+                  - generic [ref=e975]: Agent Claude Code
+                  - generic [ref=e976]: Ref REQ-2046
+                - button "Open issue" [ref=e978] [cursor=pointer]
+          - generic [ref=e979]:
+            - generic [ref=e980]:
+              - button "React" [ref=e981] [cursor=pointer]:
+                - img [ref=e983]
+              - button "Open" [ref=e985] [cursor=pointer]:
+                - img [ref=e987]
+              - button "More" [ref=e990] [cursor=pointer]:
+                - img [ref=e992]
+            - generic [ref=e996]: 12:26 PM
+            - generic [ref=e997]:
+              - generic [ref=e998]: Waiting at the merge gate — review passed, approval needed
+              - generic [ref=e999]:
+                - generic [ref=e1000]:
+                  - img [ref=e1002]
+                  - text: The category report crashes when an expense has no category set
+                - generic [ref=e1006]: Ref REQ-2046
+                - generic [ref=e1007]:
+                  - button "Review & approve" [ref=e1008] [cursor=pointer]
+                  - button "Open issue" [ref=e1009] [cursor=pointer]
+          - generic [ref=e1010]:
+            - generic [ref=e1011]:
+              - button "React" [ref=e1012] [cursor=pointer]:
+                - img [ref=e1014]
+              - button "Open" [ref=e1016] [cursor=pointer]:
+                - img [ref=e1018]
+              - button "More" [ref=e1021] [cursor=pointer]:
+                - img [ref=e1023]
+            - generic [ref=e1027]: KP
+            - generic [ref=e1028]:
+              - generic [ref=e1029]:
+                - generic [ref=e1030]: Kim P.
+                - generic [ref=e1031]: 12:27 PM
+              - generic [ref=e1032]: Merge approved by Kim P. — work branch merged to main
+              - generic [ref=e1033]:
+                - generic [ref=e1034]:
+                  - img [ref=e1036]
+                  - text: The category report crashes when an expense has no category set
+                - generic [ref=e1040]: Ref REQ-2046
+                - generic [ref=e1041]:
+                  - button "Review & approve" [ref=e1042] [cursor=pointer]
+                  - button "Open issue" [ref=e1043] [cursor=pointer]
+          - generic [ref=e1044]:
+            - generic [ref=e1045]:
+              - button "React" [ref=e1046] [cursor=pointer]:
+                - img [ref=e1048]
+              - button "Open" [ref=e1050] [cursor=pointer]:
+                - img [ref=e1052]
+              - button "More" [ref=e1055] [cursor=pointer]:
+                - img [ref=e1057]
+            - img [ref=e1063]
+            - generic [ref=e1073]:
+              - generic [ref=e1074]:
+                - generic [ref=e1075]: Factory
+                - generic [ref=e1076]: App
+                - generic [ref=e1077]: 12:27 PM
+              - generic [ref=e1078]: Deployed — main updated in the Subject workspace
+              - generic [ref=e1079]:
+                - generic [ref=e1080]:
+                  - img [ref=e1082]
+                  - text: The category report crashes when an expense has no category set
+                - generic [ref=e1086]: Ref REQ-2046
+                - button "Open issue" [ref=e1088] [cursor=pointer]
+          - generic [ref=e1089]: You're all caught up
+        - generic [ref=e1090]:
+          - generic [ref=e1091]:
+            - button "B" [ref=e1092] [cursor=pointer]:
+              - generic [ref=e1093]: B
+            - button "i" [ref=e1094] [cursor=pointer]:
+              - generic [ref=e1095]: i
+            - button "Link" [ref=e1096] [cursor=pointer]:
+              - img [ref=e1098]
+            - button "@" [ref=e1102] [cursor=pointer]:
+              - generic [ref=e1103]: "@"
+            - button "Attach" [ref=e1104] [cursor=pointer]:
+              - img [ref=e1106]
+          - generic [ref=e1108]:
+            - 'textbox "Message #Northwind Expenses" [ref=e1109]'
+            - button "Send" [ref=e1110] [cursor=pointer]:
+              - img [ref=e1112]
+          - generic [ref=e1114]: Posts as a comment on REQ-2045 Receipts attach one at a time and each upload takes ~20 seconds

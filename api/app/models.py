@@ -77,6 +77,9 @@ class Request(Base):
 
     spec_open_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     sim_step: Mapped[int] = mapped_column(Integer, default=0)
+    # the generated-but-unanswered interview question — persisted so the question the
+    # submitter sees is exactly the one recorded with their answer (and the brain runs once)
+    pending_question: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # when the Work item entered its current stage (or its current gate was raised) —
     # powers the Pipeline view's time-in-stage / "is it stuck?" readout
     stage_entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

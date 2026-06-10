@@ -11,6 +11,7 @@ const BASE = '/api';
 export class Api {
   private http = inject(HttpClient);
 
+  health() { return this.http.get<{ status: string; brain: string; runner: string }>(`${BASE}/health`); }
   apps(): Observable<AppEntry[]> { return this.http.get<AppEntry[]>(`${BASE}/apps`); }
   createApp(body: Partial<AppEntry>) { return this.http.post<AppEntry>(`${BASE}/apps`, body); }
   updateApp(id: number, body: Partial<AppEntry>) { return this.http.patch<AppEntry>(`${BASE}/apps/${id}`, body); }

@@ -144,6 +144,17 @@ class ScriptedBrain:
 brain = ScriptedBrain()
 
 
+def get_brain() -> ScriptedBrain:
+    """ADR 0007 seam: FACTORY_BRAIN=claude swaps in the real model, scripted is the offline default."""
+    from .claude_exec import brain_mode  # local import — claude_brain subclasses ScriptedBrain
+
+    if brain_mode() == "claude":
+        from .claude_brain import ClaudeBrain
+
+        return ClaudeBrain()
+    return brain
+
+
 def record_answer(req: Request, answer: str | None, skipped: bool, q: Question, order: int) -> InterviewTurn:
     return InterviewTurn(
         request=req,

@@ -91,6 +91,15 @@ import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
           </div>
           <div class="row" style="gap:11px">
             <ng-content select="[headerRight]" />
+            @if (runner(); as mode) {
+              <span class="chip" [class.solid]="mode !== 'claude'"
+                [style.color]="mode === 'claude' ? 'var(--a700)' : 'var(--muted)'"
+                [style.border-color]="mode === 'claude' ? 'var(--accent-tint-bd)' : ''"
+                [style.background]="mode === 'claude' ? 'var(--a50)' : ''"
+                title="Which agents drive Stages 2–6 (FACTORY_RUNNER)">
+                Agents: {{ mode === 'claude' ? 'Claude Code' : 'simulated' }}
+              </span>
+            }
             <span class="poll"><span class="dot"></span> Updated {{ syncAgo() }}</span>
             <button class="kpill" (click)="paletteOpen.set(true)"><sf-icon name="search" [size]="15" /> Search <kbd class="kbd">⌘K</kbd></button>
           </div>
@@ -227,6 +236,7 @@ export class AdminShell {
 
   apps = signal<AppEntry[]>([]);
   inboxItems = signal<FactoryRequest[]>([]);
+  runner = signal<string | null>(null);
   gateCount = computed(() => this.inboxItems().filter((r) => r.gate).length);
   redCount = computed(() => 0);
 
@@ -252,6 +262,7 @@ export class AdminShell {
 
   constructor() {
     this.poll.start();
+    this.api.health().subscribe((h) => this.runner.set(h.runner));
     effect(() => {
       this.poll.version();
       this.api.apps().subscribe((a) => this.apps.set(a));

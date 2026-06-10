@@ -1,0 +1,67 @@
+- generic [ref=e145]:
+  - generic [ref=e146]:
+    - generic [ref=e147]:
+      - img [ref=e149]
+      - text: Software Factory
+    - generic [ref=e159]:
+      - navigation [ref=e160]:
+        - button "New request" [ref=e161] [cursor=pointer]
+        - button "My requests" [ref=e162] [cursor=pointer]
+      - button "JD Jordan D." [ref=e164] [cursor=pointer]:
+        - generic [ref=e166]: JD
+        - text: Jordan D.
+  - generic [ref=e168]:
+    - button "Describe" [ref=e169] [cursor=pointer]:
+      - img [ref=e172]
+      - generic [ref=e175]: Describe
+    - button "2 Clarify" [disabled] [ref=e177]:
+      - generic [ref=e178]: "2"
+      - generic [ref=e179]: Clarify
+    - button "3 Review" [disabled] [ref=e181]:
+      - generic [ref=e182]: "3"
+      - generic [ref=e183]: Review
+  - generic [ref=e185]:
+    - generic [ref=e186]:
+      - generic [ref=e187]:
+        - generic [ref=e189]:
+          - img [ref=e191]
+          - text: Bug fix
+        - generic [ref=e194]: The category report crashes when an expense has no category set
+      - generic [ref=e196]: A few quick questions
+    - generic [ref=e199]:
+      - generic [ref=e281]:
+        - img [ref=e284]
+        - generic [ref=e295]: When the crash happens, what do you see on the screen?
+      - generic [ref=e298]: Error message
+      - generic [ref=e201]:
+        - img [ref=e204]
+        - generic [ref=e215]: When does the crash happen - right when you open the report, or when you try to do something like filtering or sorting?
+    - generic [ref=e200]:
+      - generic [ref=e217]:
+        - generic [ref=e218]: Questions
+        - generic [ref=e219]: When does the crash happen - right when you open the report, or when you try to do something like filtering or sorting?
+        - generic [ref=e220]:
+          - button "A Right away The error shows immediately when I load the page" [active] [ref=e266] [cursor=pointer]:
+            - generic [ref=e267]: A
+            - generic [ref=e268]:
+              - generic [ref=e269]: Right away
+              - generic [ref=e270]: The error shows immediately when I load the page
+          - button "B During an action The report loads, but crashes when I filter, sort, or export" [ref=e271] [cursor=pointer]:
+            - generic [ref=e272]: B
+            - generic [ref=e273]:
+              - generic [ref=e274]: During an action
+              - generic [ref=e275]: The report loads, but crashes when I filter, sort, or export
+          - button "C Intermittent It happens sometimes, not every time" [ref=e276] [cursor=pointer]:
+            - generic [ref=e277]: C
+            - generic [ref=e278]:
+              - generic [ref=e279]: Intermittent
+              - generic [ref=e280]: It happens sometimes, not every time
+        - generic [ref=e241]:
+          - button "Skip" [ref=e242] [cursor=pointer]
+          - button "Continue ↵" [ref=e243] [cursor=pointer]:
+            - text: Continue
+            - generic [ref=e244]: ↵
+      - generic [ref=e245]:
+        - button "Add detail" [ref=e246] [cursor=pointer]:
+          - img [ref=e248]
+        - textbox "Pick an option above, or type your own…" [ref=e250]

@@ -26,7 +26,9 @@ def _submitted(client, **over):
 
 
 def test_health(client):
-    assert client.get("/api/health").json() == {"status": "ok"}
+    body = client.get("/api/health").json()
+    assert body["status"] == "ok"
+    assert body["brain"] in ("scripted", "claude") and body["runner"] in ("sim", "claude")
 
 
 def test_bad_type_rejected(client):

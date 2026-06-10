@@ -9,9 +9,11 @@ from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from . import simulator
+from .claude_exec import brain_mode, runner_mode
+from .claude_runner import ClaudeRunner
 from .db import Base, SessionLocal, engine, get_db
 from .events import emit
-from .interview import MAX_QUESTIONS, brain
+from .interview import MAX_QUESTIONS, get_brain
 from .models import App, AuditEvent, Comment, InterviewTurn, ProgressEvent, Request, SpecLine, utcnow
 from .schemas import (
     AppIn, AppOut, CommentIn, CommentOut, EventOut, InterviewAnswer, InterviewState,
@@ -31,10 +33,15 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
                 conn.execute(text("ALTER TABLE requests ADD COLUMN stage_entered_at DATETIME"))
                 conn.execute(text("UPDATE requests SET stage_entered_at = updated_at"))
                 conn.commit()
+            if "pending_question" not in cols:
+                conn.execute(text("ALTER TABLE requests ADD COLUMN pending_question JSON"))
+                conn.commit()
         with SessionLocal() as db:
             seed(db)
         task = None
         interval = auto_tick if auto_tick is not None else float(os.environ.get("SIM_INTERVAL", "0") or 0)
+        if runner_mode() == "claude":
+            interval = 0  # the real runner drives itself; the simulator stands down
         if interval > 0:
             async def loop():
                 while True:
@@ -75,10 +82,12 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         n = 2045 if not last else max(2045, int(last.ref.split("-")[1]) + 1)
         return f"REQ-{n}"
 
+    claude_pipeline = ClaudeRunner()
+
     # ---------- ops ----------
     @app.get("/api/health")
     def health():
-        return {"status": "ok"}
+        return {"status": "ok", "brain": brain_mode(), "runner": runner_mode()}
 
     # ---------- apps (registry) ----------
     @app.get("/api/apps", response_model=list[AppOut])
@@ -176,8 +185,23 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         return to_out(r, RequestDetail)
 
     # ---------- intake interview ----------
-    def interview_state(r: Request) -> InterviewState:
-        q = brain.next_question(r)
+    def current_question(db: Session, r: Request):
+        """Generate-once semantics: the pending question is persisted so what the
+        submitter sees is exactly what gets recorded with their answer."""
+        answered = len([t for t in r.turns if t.answer is not None or t.skipped])
+        if answered >= MAX_QUESTIONS:
+            return None
+        if r.pending_question:
+            from .interview import Question
+            return Question(**r.pending_question)
+        q = get_brain().next_question(r)
+        if q:
+            r.pending_question = {"question": q.question, "sub": q.sub, "options": q.options, "final": q.final}
+            db.commit()
+        return q
+
+    def interview_state(db: Session, r: Request) -> InterviewState:
+        q = current_question(db, r)
         answered = len([t for t in r.turns if t.answer is not None or t.skipped])
         st = InterviewState(done=q is None, asked=answered, total=MAX_QUESTIONS,
                             turns=[t for t in r.turns])
@@ -187,20 +211,22 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
 
     @app.get("/api/requests/{rid}/interview", response_model=InterviewState)
     def get_interview(rid: int, db: Session = Depends(get_db)):
-        return interview_state(get_request(db, rid))
+        r = get_request(db, rid)
+        return interview_state(db, r)
 
     @app.post("/api/requests/{rid}/interview", response_model=InterviewState)
     def answer_interview(rid: int, body: InterviewAnswer, db: Session = Depends(get_db)):
         r = get_request(db, rid)
-        q = brain.next_question(r)
+        q = current_question(db, r)
         if q is None:
-            return interview_state(r)
+            return interview_state(db, r)
         order = len(r.turns)
         db.add(InterviewTurn(request=r, order=order, question=q.question, sub=q.sub, options=q.options,
                              answer=None if body.skip else (body.answer or None), skipped=body.skip))
+        r.pending_question = None
         db.commit()
         db.refresh(r)
-        return interview_state(r)
+        return interview_state(db, r)
 
     # ---------- submit (after Review step) ----------
     @app.post("/api/requests/{rid}/submit", response_model=RequestDetail)
@@ -217,7 +243,7 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         db.add(AuditEvent(request_id=r.id, actor=r.reporter, action="submitted",
                           note="filed this request and completed intake"))
         # Stage 1 brain writes the grounded Draft spec, then the spec gate is raised
-        lines, note = brain.draft_spec(r)
+        lines, note = get_brain().draft_spec(r)
         db.add_all(lines)
         r.spec_open_note = note
         r.stage = "spec"
@@ -237,7 +263,10 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         r = get_request(db, rid)
         actor = (body.actor if body else None) or "Kim P."
         if r.gate == "approve_merge":
-            simulator.approve_merge(db, r, actor)
+            if runner_mode() == "claude":
+                claude_pipeline.approve_merge(db, r, actor)
+            else:
+                simulator.approve_merge(db, r, actor)
             db.add(AuditEvent(request_id=r.id, actor=actor, action="approved_merge"))
             db.commit()
             return to_out(r, RequestDetail)
@@ -266,6 +295,8 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         db.add(AuditEvent(request_id=r.id, actor=actor, action="approved",
                           note="approved the spec — repo created, SPEC.md PR opened, Stage 2 fired"))
         db.commit()
+        if runner_mode() == "claude":
+            claude_pipeline.start(r.id)  # Stage 2 fires for real: Claude Code in the Subject workspace
         return to_out(r, RequestDetail)
 
     @app.post("/api/requests/{rid}/send-back", response_model=RequestDetail)
@@ -388,6 +419,8 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
     # ---------- simulator ----------
     @app.post("/api/simulator/tick")
     def sim_tick(db: Session = Depends(get_db)):
+        if runner_mode() == "claude":
+            return {"moved": [], "note": "runner=claude — the real agents drive the stages"}
         return {"moved": simulator.tick(db)}
 
     return app

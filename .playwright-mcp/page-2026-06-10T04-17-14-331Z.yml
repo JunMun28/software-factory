@@ -1,0 +1,64 @@
+- generic [ref=e36]:
+  - generic [ref=e37]:
+    - generic [ref=e38]:
+      - img [ref=e40]
+      - text: Software Factory
+    - generic [ref=e50]:
+      - navigation [ref=e51]:
+        - button "New request" [ref=e52] [cursor=pointer]
+        - button "My requests" [ref=e53] [cursor=pointer]
+      - button "JD Jordan D." [ref=e55] [cursor=pointer]:
+        - generic [ref=e57]: JD
+        - text: Jordan D.
+  - generic [ref=e59]:
+    - button "1 Describe" [disabled] [ref=e60]:
+      - generic [ref=e61]: "1"
+      - generic [ref=e62]: Describe
+    - button "2 Clarify" [disabled] [ref=e64]:
+      - generic [ref=e65]: "2"
+      - generic [ref=e66]: Clarify
+    - button "3 Review" [disabled] [ref=e68]:
+      - generic [ref=e69]: "3"
+      - generic [ref=e70]: Review
+  - generic [ref=e72]:
+    - heading "What do you need?" [level=1] [ref=e73]
+    - paragraph [ref=e74]: Pick a type to get started — the right questions appear next.
+    - generic [ref=e75]:
+      - button "Bug fix Something's broken" [ref=e76] [cursor=pointer]:
+        - img [ref=e78]
+        - generic [ref=e81]: Bug fix
+        - generic [ref=e82]: Something's broken
+      - button "Enhancement Improve an app you use" [ref=e83] [cursor=pointer]:
+        - img [ref=e85]
+        - generic [ref=e87]: Enhancement
+        - generic [ref=e88]: Improve an app you use
+      - button "New app Start something fresh" [ref=e89] [cursor=pointer]:
+        - img [ref=e91]
+        - generic [ref=e94]: New app
+        - generic [ref=e95]: Start something fresh
+      - button "Other Not sure — help me figure it out" [ref=e96] [cursor=pointer]:
+        - img [ref=e98]
+        - generic [ref=e101]: Other
+        - generic [ref=e102]: Not sure — help me figure it out
+    - generic [ref=e103]:
+      - generic [ref=e104]:
+        - generic [ref=e105]: Which app?
+        - button "Northwind Expenses" [ref=e141] [cursor=pointer]:
+          - generic [ref=e142]: Northwind Expenses
+          - img [ref=e110]
+      - generic [ref=e112]:
+        - generic [ref=e113]: What's going wrong?
+        - generic [ref=e114]: A sentence or two is plenty — we'll ask follow-ups next.
+        - textbox "Describe it in your own words…" [ref=e115]
+      - generic [ref=e116]:
+        - generic [ref=e117]:
+          - generic [ref=e118]: Where did you see it?
+          - textbox "Page or screen" [ref=e119]
+        - generic [ref=e120]:
+          - generic [ref=e121]: How often?
+          - generic [ref=e122]:
+            - generic [ref=e123]: Every time
+            - img [ref=e125]
+      - button "Continue to questions" [disabled] [ref=e128]:
+        - text: Continue to questions
+        - img [ref=e130]

@@ -42,3 +42,12 @@
 [  986769ms] [ERROR] ERROR HttpErrorResponse @ http://localhost:4300/@fs/Users/wongjunmun/development/ai-development/software-factory/web/.angular/cache/22.0.0/web/vite/deps/chunk-AJ7QU3YV.js?v=67b7a837:3194
 [  990765ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:4300/api/events?after=25:0
 [  990765ms] [ERROR] ERROR HttpErrorResponse @ http://localhost:4300/@fs/Users/wongjunmun/development/ai-development/software-factory/web/.angular/cache/22.0.0/web/vite/deps/chunk-AJ7QU3YV.js?v=67b7a837:3194
+[ 2467830ms] [LOG] Angular is running in development mode. @ http://localhost:4300/@fs/Users/wongjunmun/development/ai-development/software-factory/web/.angular/cache/22.0.0/web/vite/deps/chunk-AJ7QU3YV.js?v=67b7a837:14866
+[ 2474267ms] [LOG] Angular is running in development mode. @ http://localhost:4300/@fs/Users/wongjunmun/development/ai-development/software-factory/web/.angular/cache/22.0.0/web/vite/deps/chunk-AJ7QU3YV.js?v=67b7a837:14866
+[ 2476677ms] [LOG] Angular is running in development mode. @ http://localhost:4300/@fs/Users/wongjunmun/development/ai-development/software-factory/web/.angular/cache/22.0.0/web/vite/deps/chunk-AJ7QU3YV.js?v=67b7a837:14866
+[ 2491547ms] [LOG] Angular is running in development mode. @ http://localhost:4300/@fs/Users/wongjunmun/development/ai-development/software-factory/web/.angular/cache/22.0.0/web/vite/deps/chunk-AJ7QU3YV.js?v=67b7a837:14866
+[ 2494439ms] [LOG] Angular is running in development mode. @ http://localhost:4300/@fs/Users/wongjunmun/development/ai-development/software-factory/web/.angular/cache/22.0.0/web/vite/deps/chunk-AJ7QU3YV.js?v=67b7a837:14866
+[ 2522451ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:4300/api/events?after=25:0
+[ 2522451ms] [ERROR] ERROR HttpErrorResponse @ http://localhost:4300/@fs/Users/wongjunmun/development/ai-development/software-factory/web/.angular/cache/22.0.0/web/vite/deps/chunk-AJ7QU3YV.js?v=67b7a837:3194
+[ 2526452ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:4300/api/events?after=25:0
+[ 2526452ms] [ERROR] ERROR HttpErrorResponse @ http://localhost:4300/@fs/Users/wongjunmun/development/ai-development/software-factory/web/.angular/cache/22.0.0/web/vite/deps/chunk-AJ7QU3YV.js?v=67b7a837:3194
