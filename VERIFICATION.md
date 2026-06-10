@@ -17,18 +17,28 @@ feature does what it claims. Three layers: **automated** (one command),
 make verify
 ```
 
-Runs, in order — all must be green:
+Runs, in order — all must be green (the same chain runs in CI on every push,
+see `.github/workflows/ci.yml`):
 
 | Step | What it proves |
 |---|---|
-| `make test` — 13 pytest behavioral tests | Request lifecycle legality (draft→submitted→pending→approved/sent_back/cancelled), per-step approve ledger + **idempotent replay** (ADR 0006), send-back→respond loop appends a grounded spec line, keyset event cursor + subject-axis filter (ADR 0008), simulator stops at the merge gate, retry clears escalation, stage clock + last-event payload (ADR 0010), registry CRUD, comments |
-| `make build` — Angular production build | All 16 screens compile; template/type errors surface here |
+| `make test` — 31 pytest tests | Behavioral: lifecycle legality, per-step approve ledger + **idempotent replay** (ADR 0006), send-back→respond loop, keyset cursor + subject axis (ADR 0008), simulator stops at the merge gate, retry clears escalation, stage clock + last-event (ADR 0010), registry CRUD, comments. Hardening: input validation (types/urgency as enums, length caps on title/description/answers/notes), interview hard cap, edit-locked after submission, illegal-transition 409s, cancelled items never tick, 404s, health endpoint |
+| `make test-web` — 14 vitest tests | The client's pure domain logic: UTC re-tagging of SQLite timestamps, time formatting, the Submitter plain-stage vocabulary (including "never leaks Control-center words"), status-by-shape glyph mapping, gate labels |
+| `make build` — Angular production build | All 17 screens compile; template/type errors surface here |
 | `make smoke` — `scripts/smoke.sh` | The full lifecycle against a **real server process** on a throwaway DB: create → interview×3 → submit → spec gate → inbox → approve (+replay) → 8 simulator ticks → merge gate → approve merge → Deployed milestone in the log |
 
 ## 2. Run it locally
 
 ```bash
 make dev          # API :8000 (simulator ticks every 8s) + web :4200, Ctrl-C stops both
+```
+
+The dev server proxies `/api` to the backend (`web/proxy.conf.json`), matching the
+production topology. For the production-shaped stack (nginx serving the built SPA,
+proxying `/api`, SQLite on a named volume):
+
+```bash
+make up           # docker compose up --build → http://localhost:8080
 ```
 
 Open **http://localhost:4200**. The DB seeds itself on first boot with the

@@ -75,6 +75,11 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         n = 2045 if not last else max(2045, int(last.ref.split("-")[1]) + 1)
         return f"REQ-{n}"
 
+    # ---------- ops ----------
+    @app.get("/api/health")
+    def health():
+        return {"status": "ok"}
+
     # ---------- apps (registry) ----------
     @app.get("/api/apps", response_model=list[AppOut])
     def list_apps(db: Session = Depends(get_db)):

@@ -1,7 +1,8 @@
 """Pydantic response/request shapes for the web app."""
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AppOut(BaseModel):
@@ -107,19 +108,19 @@ class RequestDetail(RequestOut):
 
 
 class RequestCreate(BaseModel):
-    type: str
-    title: str = ""
-    description: str = ""
+    type: Literal["bug", "enh", "new", "other"]
+    title: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=5000)
     app_id: int | None = None
-    new_app_name: str | None = None
-    bug_where: str | None = None
-    urgency: str = "normal"
-    reporter: str = "Jordan D."
-    reporter_initials: str = "JD"
+    new_app_name: str | None = Field(default=None, max_length=120)
+    bug_where: str | None = Field(default=None, max_length=200)
+    urgency: Literal["low", "normal", "high"] = "normal"
+    reporter: str = Field(default="Jordan D.", max_length=80)
+    reporter_initials: str = Field(default="JD", max_length=4)
 
 
 class InterviewAnswer(BaseModel):
-    answer: str | None = None
+    answer: str | None = Field(default=None, max_length=2000)
     skip: bool = False
 
 
@@ -135,15 +136,15 @@ class InterviewState(BaseModel):
 
 
 class Note(BaseModel):
-    note: str = ""
-    actor: str = "Kim P."
+    note: str = Field(default="", max_length=4000)
+    actor: str = Field(default="Kim P.", max_length=80)
 
 
 class CommentIn(BaseModel):
-    body: str
-    author: str = "Kim P."
-    initials: str = "KP"
-    color: str = "#6E5A8A"
+    body: str = Field(min_length=1, max_length=4000)
+    author: str = Field(default="Kim P.", max_length=80)
+    initials: str = Field(default="KP", max_length=4)
+    color: str = Field(default="#6E5A8A", max_length=12)
 
 
 class EventOut(BaseModel):

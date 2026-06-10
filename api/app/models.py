@@ -141,8 +141,8 @@ class ProgressEvent(Base):
     __tablename__ = "progress_events"
 
     id: Mapped[int] = mapped_column(primary_key=True)  # monotonic; doubles as keyset/poll cursor
-    request_id: Mapped[int | None] = mapped_column(ForeignKey("requests.id"), nullable=True)
-    subject_id: Mapped[int | None] = mapped_column(ForeignKey("apps.id"), nullable=True)
+    request_id: Mapped[int | None] = mapped_column(ForeignKey("requests.id"), nullable=True, index=True)
+    subject_id: Mapped[int | None] = mapped_column(ForeignKey("apps.id"), nullable=True, index=True)
     kind: Mapped[str] = mapped_column(String(20))
     stage: Mapped[str] = mapped_column(String(16), default="intake")
     actor: Mapped[str] = mapped_column(String(80), default="Factory")

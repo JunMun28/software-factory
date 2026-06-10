@@ -1,7 +1,7 @@
 # Software Factory — local dev & verification
 # Stack: FastAPI + uv (api/) · Angular 22 (web/) · SQLite (throwaway, gitignored)
 
-.PHONY: dev api web test build smoke verify reset
+.PHONY: dev api web test test-web build smoke verify reset up
 
 WEB_PORT ?= 4200   # e.g. `make dev WEB_PORT=4300` if :4200 is taken
 
@@ -20,9 +20,13 @@ api:
 web:
 	cd web && npx ng serve --port $(WEB_PORT)
 
-## Backend behavioral tests (12 — lifecycle, gates, ledger idempotency, event log, simulator)
+## Backend behavioral + hardening tests (31 — lifecycle, gates, ledger idempotency, event log, simulator, validation)
 test:
 	cd api && uv run pytest -q
+
+## Frontend unit tests (vitest — domain vocabulary, glyph logic, time handling)
+test-web:
+	cd web && npx ng test
 
 ## Frontend production build (catches template/type errors)
 build:
@@ -32,9 +36,13 @@ build:
 smoke:
 	./scripts/smoke.sh
 
-## Everything: tests + build + smoke. Green = safe.
-verify: test build smoke
+## Everything: backend tests + web tests + build + smoke. Green = safe.
+verify: test test-web build smoke
 	@echo "" && echo "✓ VERIFY PASSED — tests, build, and smoke all green"
+
+## Production-shaped deployment: nginx + API + persistent volume on :8080
+up:
+	docker compose up --build
 
 ## Wipe the local database (re-seeds on next boot)
 reset:

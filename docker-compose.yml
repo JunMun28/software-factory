@@ -1,0 +1,20 @@
+# Production-shaped local deployment: nginx serves the SPA and proxies /api
+# to the FastAPI service; SQLite persists in a named volume.
+#   docker compose up --build   →   http://localhost:8080
+services:
+  api:
+    build: ./api
+    environment:
+      SIM_INTERVAL: "8"          # keep the factory alive; set 0 to freeze
+      FACTORY_DB_URL: sqlite:////data/factory.db
+    volumes:
+      - factory-data:/data
+  web:
+    build: ./web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  factory-data:

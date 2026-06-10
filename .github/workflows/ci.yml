@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Backend tests
+        working-directory: api
+        run: uv run pytest -q
+
+      - name: Frontend install
+        working-directory: web
+        run: npm ci
+
+      - name: Frontend unit tests
+        working-directory: web
+        run: npx ng test
+
+      - name: Frontend production build
+        working-directory: web
+        run: npx ng build
+
+      - name: End-to-end lifecycle smoke
+        run: ./scripts/smoke.sh

@@ -4,7 +4,8 @@ import { Observable } from 'rxjs';
 
 import { AppEntry, CommentItem, FactoryRequest, InterviewState, ProgressEvent, RequestDetail } from './models';
 
-const BASE = 'http://localhost:8000/api';
+// same-origin in production (nginx proxies /api); the dev server proxies via proxy.conf.json
+const BASE = '/api';
 
 @Injectable({ providedIn: 'root' })
 export class Api {

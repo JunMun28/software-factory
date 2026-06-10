@@ -25,10 +25,17 @@ make dev        # API on :8000 + web on :4200 (simulator ticks every 8s)
 Open **http://localhost:4200** — sign in as a Submitter, or "as a reviewer" for the
 Control center. The database seeds itself with a demo world; `make reset` re-seeds.
 
+For the production-shaped stack (nginx + API + persistent volume):
+
+```bash
+make up         # docker compose up --build → http://localhost:8080
+```
+
 ## Verify
 
 ```bash
-make verify     # pytest (12) + Angular build + end-to-end lifecycle smoke
+make verify     # pytest (31) + vitest (14) + Angular build + lifecycle smoke
 ```
 
+The same chain runs in CI on every push ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 Full manual flows and expected outcomes: [VERIFICATION.md](VERIFICATION.md).
