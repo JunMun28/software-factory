@@ -137,6 +137,21 @@ def create_app(*, auto_tick: float | None = None) -> FastAPI:
         db.commit()
         return to_out(r, RequestDetail)
 
+    @app.patch("/api/requests/{rid}", response_model=RequestDetail)
+    def update_request(rid: int, body: RequestCreate, db: Session = Depends(get_db)):
+        r = get_request(db, rid)
+        if r.status not in ("draft", "submitted"):
+            raise HTTPException(409, "Request can no longer be edited")
+        r.title = body.title or r.title
+        r.description = body.description
+        r.type = body.type
+        r.app_id = body.app_id
+        r.new_app_name = body.new_app_name
+        r.bug_where = body.bug_where
+        r.urgency = body.urgency
+        db.commit()
+        return to_out(r, RequestDetail)
+
     # ---------- intake interview ----------
     def interview_state(r: Request) -> InterviewState:
         q = brain.next_question(r)
