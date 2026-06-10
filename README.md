@@ -1,0 +1,34 @@
+# Software Factory
+
+An autonomous-but-governed AI pipeline that carries a unit of work through the full
+SDLC — requirements → architecture → TDD implementation → review → deploy — with
+humans gating the irreversible boundaries. See [CONTEXT.md](CONTEXT.md) for the
+domain language and [docs/adr/](docs/adr/) for the decisions.
+
+This repo contains the **web app** (the Intake form + Control center) implemented
+from the hi-fi design, runnable fully offline:
+
+- `api/` — FastAPI + SQLite engine: Request lifecycle, gates, the two-axis
+  `progress_event` log (ADR 0008), scripted intake brain, and a factory simulator
+  standing in for the Stage 2–6 CI agents (ADR 0009).
+- `web/` — Angular 22 SPA: the Submitter face (S0–S5) and the Admin Control Center
+  (board, list, approval queue, full-screen issue, per-app feed, needs-me inbox,
+  registry, settings) in the Micron Atlas design system.
+- `docs/` — ADRs, PRDs, and the UI/UX design spec the implementation follows.
+
+## Quickstart
+
+```bash
+make dev        # API on :8000 + web on :4200 (simulator ticks every 8s)
+```
+
+Open **http://localhost:4200** — sign in as a Submitter, or "as a reviewer" for the
+Control center. The database seeds itself with a demo world; `make reset` re-seeds.
+
+## Verify
+
+```bash
+make verify     # pytest (12) + Angular build + end-to-end lifecycle smoke
+```
+
+Full manual flows and expected outcomes: [VERIFICATION.md](VERIFICATION.md).
