@@ -45,18 +45,18 @@ def seed(db: Session) -> None:
         return r
 
     # --- Intake (Triage) ---
-    r_ipad = req("REQ-2035", "Login button misaligned on iPad", "bug", "fieldops",
-                 stage="intake", status="submitted", created=ago(hours=2),
-                 desc="On iPad the login button sits half off-screen; you have to rotate to tap it.",
-                 bug_where="Login screen")
-    r_dash = req("REQ-2031", "Quarterly headcount dashboard", "new", None,
-                 stage="intake", status="submitted", created=ago(hours=5),
-                 new_app_name="Headcount Dashboard",
-                 desc="A simple dashboard showing quarterly headcount by org, fed from the HR extract.")
-    r_onb = req("REQ-2037", "Supplier onboarding flow", "new", None,
-                stage="intake", status="submitted", reporter=("Priya S.", "PS"), created=ago(days=1),
-                new_app_name="Supplier Onboarding",
-                desc="Guided flow for new suppliers to register, upload docs, and get approved.")
+    req("REQ-2035", "Login button misaligned on iPad", "bug", "fieldops",
+        stage="intake", status="submitted", created=ago(hours=2),
+        desc="On iPad the login button sits half off-screen; you have to rotate to tap it.",
+        bug_where="Login screen")
+    req("REQ-2031", "Quarterly headcount dashboard", "new", None,
+        stage="intake", status="submitted", created=ago(hours=5),
+        new_app_name="Headcount Dashboard",
+        desc="A simple dashboard showing quarterly headcount by org, fed from the HR extract.")
+    req("REQ-2037", "Supplier onboarding flow", "new", None,
+        stage="intake", status="submitted", reporter=("Priya S.", "PS"), created=ago(days=1),
+        new_app_name="Supplier Onboarding",
+        desc="Guided flow for new suppliers to register, upload docs, and get approved.")
 
     # --- Spec (awaiting approval — the gate workhorse) ---
     r_export = req("REQ-2041", "Faster expense export", "enh", "northwind",
@@ -96,10 +96,10 @@ def seed(db: Session) -> None:
                 repo_ready=True, spec_pr_open=True, stage2_fired=True, sim_step=1, **KP)
 
     # --- Done / cancelled history ---
-    r_typo = req("REQ-2044", "Fix typo in approval email", "bug", "northwind",
-                 stage="done", status="done", created=ago(weeks=1), repo_ready=True, spec_pr_open=True, stage2_fired=True, **KP)
-    r_dup = req("REQ-2017", "Monthly expense CSV", "enh", "northwind",
-                stage="done", status="done", created=ago(weeks=3), repo_ready=True, spec_pr_open=True, stage2_fired=True, **KP)
+    req("REQ-2044", "Fix typo in approval email", "bug", "northwind",
+        stage="done", status="done", created=ago(weeks=1), repo_ready=True, spec_pr_open=True, stage2_fired=True, **KP)
+    req("REQ-2017", "Monthly expense CSV", "enh", "northwind",
+        stage="done", status="done", created=ago(weeks=3), repo_ready=True, spec_pr_open=True, stage2_fired=True, **KP)
     req("REQ-2030", "Old vendor sync (no longer needed)", "enh", None,
         stage="intake", status="cancelled", created=ago(weeks=3), new_app_name="Legacy")
     db.flush()
@@ -168,7 +168,7 @@ def seed(db: Session) -> None:
             broadcast=True, payload={"Ref": r_sync.ref, "reason": r_sync.needs_human_reason})
     ev6.created_at = ago(hours=2)
 
-    for i, (kind, title, payload, dt) in enumerate([
+    for _i, (kind, title, payload, dt) in enumerate([
         ("gate_event", "Spec approved by Kim P. — repo ready, SPEC.md PR open, Stage 2 started",
          {"gate": "approve_spec", "Ref": r_sso.ref}, ago(days=2)),
         ("milestone_summary", "Architecture plan drafted — PLAN.md committed",

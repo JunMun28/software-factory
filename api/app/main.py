@@ -18,8 +18,19 @@ from .events import emit
 from .interview import MAX_QUESTIONS, answered_count, get_brain
 from .models import App, AuditEvent, Comment, InterviewTurn, ProgressEvent, Request, SpecLine, utcnow
 from .schemas import (
-    AppIn, AppOut, CommentIn, CommentOut, EventOut, FeedPage, InterviewAnswer, InterviewState,
-    Note, RequestCreate, RequestDetail, RequestOut, RequestUpdate,
+    AppIn,
+    AppOut,
+    CommentIn,
+    CommentOut,
+    EventOut,
+    FeedPage,
+    InterviewAnswer,
+    InterviewState,
+    Note,
+    RequestCreate,
+    RequestDetail,
+    RequestOut,
+    RequestUpdate,
 )
 from .seed import seed
 

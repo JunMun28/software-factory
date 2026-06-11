@@ -13,6 +13,19 @@ dependencies = [
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.0.3",
+    "ruff>=0.15.16",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = [
+    "E501",   # the repo's comment-heavy lines run long by intent
+    "B008",   # TODO(lint-debt): FastAPI Depends() in defaults is idiomatic — refactor requires dependency injection rewrite
+    "B904",   # TODO(lint-debt): raise-from chain — would change exception context in all error paths
 ]
 
 [tool.pytest.ini_options]
