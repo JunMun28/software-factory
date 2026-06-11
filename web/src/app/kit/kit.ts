@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   computed,
   inject,
   input,
@@ -331,13 +332,24 @@ export class Sig {
       </span>
     }
   `,
-  host: { '(document:keydown.escape)': 'open() && closed.emit()' },
+  host: {
+    '(document:keydown.escape)': 'open() && closed.emit()',
+    '(document:click)': 'onDocClick($event)',
+  },
 })
 export class PopMenu {
   open = input.required<boolean>();
   width = input<number | 'fill'>(200);
   align = input<'left' | 'right'>('right');
   closed = output<void>();
+
+  private el = inject(ElementRef);
+
+  onDocClick(e: Event) {
+    if (this.open() && !this.el.nativeElement.contains(e.target)) {
+      this.closed.emit();
+    }
+  }
 }
 
 export const KIT = [Glyph, Icon, Mark, Avatar, Pill, Chip, TypeChip, Sig, PopMenu] as const;
