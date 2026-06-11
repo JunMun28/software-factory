@@ -77,8 +77,7 @@ import { SubShell } from './sub-shell';
                       </button>
                     } @empty {
                       <div class="dd__empty">
-                        No apps registered yet. Choose New app instead, or ask an admin to add
-                        one.
+                        No apps registered yet. Choose New app instead, or ask an admin to add one.
                       </div>
                     }
                   </sf-pop-menu>

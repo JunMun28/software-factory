@@ -79,7 +79,13 @@ interface EvtPrefs {
               </button>
               <sf-pop-menu [open]="digestOpen" [width]="140" (closed)="digestOpen = false">
                 @for (t of digestTimes; track t) {
-                  <button class="pop__opt" [class.on]="digest === t" (click)="digest = t; digestOpen = false">{{ t }}</button>
+                  <button
+                    class="pop__opt"
+                    [class.on]="digest === t"
+                    (click)="digest = t; digestOpen = false"
+                  >
+                    {{ t }}
+                  </button>
                 }
               </sf-pop-menu>
             </span>
