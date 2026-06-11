@@ -19,7 +19,7 @@ import { Mark } from '../kit/kit';
               <div style="font:700 26px/1.05 var(--display);letter-spacing:-0.02em">Software Factory</div>
               <div style="font-size:15px;color:var(--muted);margin-top:6px">Tell us what you need built.</div>
             </div>
-            <button class="btn primary lg block focusable" (click)="signIn('submitter')" [style.opacity]="loading() === 'submitter' ? 0.92 : 1" autofocus>
+            <button class="btn primary lg block focusable" (click)="signIn('submitter')" [style.opacity]="loading() === 'submitter' ? 0.92 : 1">
               @if (loading() === 'submitter') {
                 <span style="width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;display:inline-block" class="spin"></span> Opening Microsoft…
               } @else {
