@@ -10,7 +10,7 @@ done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | Fix stale route params (admin issue + channel feed) | P1 | S | — | TODO |
+| 001 | Fix stale route params (admin issue + channel feed) | P1 | S | — | DONE |
 | 002 | Unit-test the core web services (poll, session, intake-draft) | P1 | M | — | TODO |
 | 003 | Lint & format gate (eslint + ruff + prettier, Makefile + CI) | P2 | M | — | TODO |
 | 004 | Consolidate dropdowns into one `sf-pop-menu` kit component | P2 | M | 003 (soft) | TODO |

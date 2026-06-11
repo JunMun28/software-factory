@@ -176,7 +176,7 @@ export class Feed {
   draft = '';
   followOpen = false;
   followLevels = ['All', 'Gate + Needs-human', 'Muted'];
-  follow = signal(localStorage.getItem(`sf-follow-${this.route.snapshot.paramMap.get('key')!}`) ?? 'All');
+  follow = signal('All');
 
   private seen = new Set<number>();
   private atBottom = true;
@@ -196,6 +196,8 @@ export class Feed {
         this.seen.clear();
         this.atBottom = true;
         this.pendingCommentId = null;
+        this.draft = '';
+        this.followOpen = false;
         this.follow.set(localStorage.getItem(`sf-follow-${key}`) ?? 'All');
         // one-time tail load for the new channel; afterwards only deltas arrive
         this.api.subjectFeed(key).subscribe((page) => {
