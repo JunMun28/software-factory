@@ -11,15 +11,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import api_helpers, settings, simulator
-from .claude_exec import brain_mode, runner_mode
+from .claude_exec import runner_mode
 from .claude_runner import ClaudeRunner
 from .db import SessionLocal, engine, get_db, migrate
 from .events import emit
 from .interview import MAX_QUESTIONS, answered_count, get_brain
 from .models import App, AuditEvent, Comment, InterviewTurn, ProgressEvent, Request, SpecLine, utcnow
+from .routers import registry, system
 from .schemas import (
-    AppIn,
-    AppOut,
     CommentIn,
     CommentOut,
     EventOut,
@@ -114,6 +113,8 @@ def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = 
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.include_router(system.router)
+    app.include_router(registry.router)
 
     # ---------- helpers ----------
     def to_out(r: Request, model=RequestOut, **extra):
@@ -141,52 +142,6 @@ def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = 
 
     claude_pipeline = runner or ClaudeRunner()
     api_helpers.set_pipeline(claude_pipeline)
-
-    # ---------- ops ----------
-    @app.get("/api/health")
-    def health(db: Session = Depends(get_db)):
-        try:
-            db.execute(text("SELECT 1"))  # a green health check must mean the DB answers
-        except Exception:
-            log.exception("health check: database unavailable")
-            raise HTTPException(503, "database unavailable")
-        return {"status": "ok", "db": "ok", "brain": brain_mode(), "runner": runner_mode()}
-
-    # ---------- apps (registry) ----------
-    @app.get("/api/apps", response_model=list[AppOut])
-    def list_apps(db: Session = Depends(get_db)):
-        # one grouped COUNT instead of lazy-loading every request row per app
-        counts = dict(
-            db.query(Request.app_id, func.count())
-            .filter(Request.app_id.isnot(None), Request.status.notin_(("done", "cancelled")))
-            .group_by(Request.app_id).all()
-        )
-        out = []
-        for a in db.query(App).order_by(App.id).all():
-            o = AppOut.model_validate(a, from_attributes=True)
-            o.open_requests = counts.get(a.id, 0)
-            o.unread = o.open_requests > 0 and not a.muted
-            out.append(o)
-        return out
-
-    @app.post("/api/apps", response_model=AppOut)
-    def create_app_entry(body: AppIn, db: Session = Depends(get_db)):
-        key = body.name.lower().replace(" ", "-")[:40]
-        if db.query(App).filter(App.key == key).first():
-            raise HTTPException(409, "App already registered")
-        a = App(key=key, name=body.name, owner=body.owner, repo=body.repo, provisioning=body.provisioning, muted=body.muted)
-        db.add(a)
-        db.commit()
-        return AppOut.model_validate(a, from_attributes=True)
-
-    @app.patch("/api/apps/{app_id}", response_model=AppOut)
-    def update_app(app_id: int, body: AppIn, db: Session = Depends(get_db)):
-        a = db.get(App, app_id)
-        if not a:
-            raise HTTPException(404, "App not found")
-        a.name, a.owner, a.repo, a.provisioning, a.muted = body.name, body.owner, body.repo, body.provisioning, body.muted
-        db.commit()
-        return AppOut.model_validate(a, from_attributes=True)
 
     # ---------- requests ----------
     @app.get("/api/requests", response_model=list[RequestOut])
@@ -547,13 +502,6 @@ def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = 
             .all()
         )
         return [to_out(r) for r in rows]
-
-    # ---------- simulator ----------
-    @app.post("/api/simulator/tick")
-    def sim_tick(db: Session = Depends(get_db)):
-        if runner_mode() == "claude":
-            return {"moved": [], "note": "runner=claude — the real agents drive the stages"}
-        return {"moved": simulator.tick(db)}
 
     return app
 
