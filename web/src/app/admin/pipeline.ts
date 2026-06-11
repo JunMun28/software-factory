@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 
 import { FactoryRequest } from '../core/models';
 import { Store } from '../core/store.service';
-import { TYPE_SHORT, timeAgo, utc } from '../core/util';
+import { TYPE_SHORT, timeAgo } from '../core/util';
 import { Avatar, Icon, Sig } from '../kit/kit';
 import { AdminShell, ViewSeg } from './admin-shell';
 
@@ -42,11 +42,11 @@ interface Group { key: string; label: string; count: number; items: FactoryReque
           </div>
 
           @for (g of groups(); track g.key) {
-            <div class="pipe-grouphead" (click)="g.collapsed && toggle(g.key)" [style.cursor]="g.collapsed != null ? 'pointer' : 'default'">
-              @if (g.collapsed != null) { <sf-icon [name]="isOpen(g.key) ? 'chevDown' : 'chevRight'" [size]="13" color="var(--faint)" /> }
+            <div class="pipe-grouphead" (click)="g.collapsed && toggle(g.key)" [style.cursor]="g.collapsed !== null ? 'pointer' : 'default'">
+              @if (g.collapsed !== null) { <sf-icon [name]="isOpen(g.key) ? 'chevDown' : 'chevRight'" [size]="13" color="var(--faint)" /> }
               {{ g.label }} · {{ g.count }}
             </div>
-            @if (g.collapsed == null || isOpen(g.key)) {
+            @if (g.collapsed === null || isOpen(g.key)) {
               @for (r of g.items; track r.id) {
                 <div class="pipe-row focusable" tabindex="0" role="button" [class.pipe-row--red]="r.needs_human"
                   [class.pipe-row--focus]="flatIdx(r) === focusIdx()"

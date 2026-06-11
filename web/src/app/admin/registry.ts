@@ -19,7 +19,7 @@ import { AdminShell } from './admin-shell';
       </span>
       <div class="regtable scroll">
         <div class="reghead"><span>App / channel</span><span>Owner</span><span>Repo</span><span>Source</span><span></span></div>
-        <div [style.opacity]="editing() != null ? 0.55 : 1">
+        <div [style.opacity]="editing() !== null ? 0.55 : 1">
           @for (a of apps(); track a.id) {
             <div class="regrow focusable" tabindex="0" role="button" [class.focus]="editing()?.id === a.id"
               (click)="edit(a)" (keydown.enter)="edit(a)">

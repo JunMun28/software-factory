@@ -33,7 +33,7 @@ import { Avatar, Glyph, Mark } from '../kit/kit';
           </span>
         </div>
       </div>
-      @if (step() != null) {
+      @if (step() !== null) {
         <div class="stepbar">
           <div class="stepper">
             @for (s of steps; track s.label; let i = $index) {

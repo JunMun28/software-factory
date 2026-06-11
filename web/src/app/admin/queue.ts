@@ -1,4 +1,4 @@
-import { Component, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, HostListener, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
@@ -272,7 +272,7 @@ export class ApprovalQueue {
   setTriage(i: number, v: 'ok' | 'no') {
     this.triageRow.update((m) => ({ ...m, [i]: m[i] === v ? undefined as never : v }));
   }
-  acceptAllTriage(r: RequestDetail) {
+  acceptAllTriage(_r: RequestDetail) {
     this.triageRow.set({ 0: 'ok', 1: 'ok', 2: 'ok' });
     this.triageDone.set(true);
   }

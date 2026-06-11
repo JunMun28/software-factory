@@ -73,7 +73,7 @@ describe('Poll', () => {
   it('empty poll bumps lastSync but not version', () => {
     poll.start(1000);
     const versionAfterSeed = poll.version(); // 1
-    const syncBefore = poll.lastSync();
+    const _syncBefore = poll.lastSync();
     // ensure at least 1 ms passes so lastSync will differ
     vi.advanceTimersByTime(1); // not a full tick
     const syncMid = poll.lastSync();
