@@ -786,6 +786,11 @@ input.input {
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
 }
+@media (max-width: 640px) {
+  .typecards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
 .typecard {
   display: flex;
   flex-direction: column;
