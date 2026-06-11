@@ -34,6 +34,8 @@ module.exports = defineConfig([
       '@angular-eslint/template/interactive-supports-focus': 'off',
       // TODO(lint-debt): enable after a11y pass — label elements need associated form controls
       '@angular-eslint/template/label-has-associated-control': 'off',
+      // TODO(lint-debt): login.ts uses autofocus deliberately (focus-on-load UX, consistent with Autofocus directive); restore after a11y pass
+      '@angular-eslint/template/no-autofocus': 'off',
     },
   },
 ]);

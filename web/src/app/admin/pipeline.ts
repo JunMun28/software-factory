@@ -57,9 +57,9 @@ interface Group {
             <div
               class="pipe-grouphead"
               (click)="g.collapsed && toggle(g.key)"
-              [style.cursor]="g.collapsed !== null ? 'pointer' : 'default'"
+              [style.cursor]="g.collapsed !== undefined ? 'pointer' : 'default'"
             >
-              @if (g.collapsed !== null) {
+              @if (g.collapsed !== undefined) {
                 <sf-icon
                   [name]="isOpen(g.key) ? 'chevDown' : 'chevRight'"
                   [size]="13"
@@ -68,7 +68,7 @@ interface Group {
               }
               {{ g.label }} · {{ g.count }}
             </div>
-            @if (g.collapsed === null || isOpen(g.key)) {
+            @if (g.collapsed === undefined || isOpen(g.key)) {
               @for (r of g.items; track r.id) {
                 <div
                   class="pipe-row focusable"

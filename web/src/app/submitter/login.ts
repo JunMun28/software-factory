@@ -34,6 +34,7 @@ import { Mark } from '../kit/kit';
               class="btn primary lg block focusable"
               (click)="signIn('submitter')"
               [style.opacity]="loading() === 'submitter' ? 0.92 : 1"
+              autofocus
             >
               @if (loading() === 'submitter') {
                 <span
