@@ -64,7 +64,8 @@ def run_claude(prompt: str, *, cwd: str | None = None, allow_edits: bool = False
         log.error("claude stage timed out after %ss — process group %s killed", timeout, proc.pid)
         return ClaudeResult(ok=False, text="", error=f"stage exceeded its {timeout}s bound")
     if proc.returncode != 0:
-        log.error("claude exited rc=%s\nstderr: %s\nstdout: %s", proc.returncode, err, out)
+        log.error("claude exited rc=%s\nstderr: %s\nstdout: %s",
+                  proc.returncode, (err or "")[-800:], (out or "")[-800:])
         return ClaudeResult(ok=False, text=out, error=(err or out)[-500:])
     try:
         payload = json.loads(out)

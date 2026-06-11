@@ -20,6 +20,7 @@ The executor is injectable for tests.
 """
 import hashlib
 import logging
+import re
 import shutil
 import subprocess
 import threading
@@ -85,6 +86,8 @@ def _revert_test_surface(ws: Path) -> None:
 
 
 def workspace_for(req: Request) -> Path:
+    if not re.fullmatch(r"REQ-\d+", req.ref or ""):
+        raise ValueError(f"refusing workspace path for malformed ref {req.ref!r}")
     return WORKSPACES / req.ref.lower()
 
 

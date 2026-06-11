@@ -149,7 +149,8 @@ class ScriptedBrain:
                 add(f"Impact: affects {worded}.", prov="request")
             has_estimate = bool(req.impact_metric and req.impact_value)
             if has_estimate:
-                add(f"Impact estimate: {IMPACT_WORDING[req.impact_metric](req.impact_value)}", prov="request")
+                wording = IMPACT_WORDING.get(req.impact_metric, IMPACT_WORDING["other"])
+                add(f"Impact estimate: {wording(req.impact_value)}", prov="request")
             if not req.reach:
                 if has_estimate:
                     add("Who's affected wasn't stated — assumed only the requester.", assume=True)
