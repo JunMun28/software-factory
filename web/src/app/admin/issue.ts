@@ -511,6 +511,14 @@ export class IssueDetail {
       if (id !== lastId) {
         lastId = id;
         this.d.set(null); // do not show the previous issue while loading
+        // reset per-issue UI so nothing bleeds from the previous issue
+        this.confirming.set(false);
+        this.sendingBack.set(false);
+        this.sendBackNote = '';
+        this.commentText = '';
+        this.checks.set(null);
+        this.tab.set('all');
+        this.showTurns.set(false);
       }
       this.api.request(id).subscribe((r) => this.d.set(r));
     });

@@ -460,6 +460,7 @@ export class Feed {
     const target = this.target();
     if (!text || !target || this.pending()) return;
     const u = this.session.user();
+    const sentKey = this.key(); // capture channel at send time
     this.pending.set({
       id: -1,
       bot: false,
@@ -481,7 +482,10 @@ export class Feed {
       },
       error: () => {
         this.pending.set(null);
-        this.draft = text;
+        // only restore draft if the user is still on the same channel
+        if (this.key() === sentKey) {
+          this.draft = text;
+        }
       }, // restore, nothing lost
     });
   }
