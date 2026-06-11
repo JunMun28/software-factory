@@ -1373,6 +1373,66 @@ input.input {
 .kpill:hover {
   border-color: var(--faint);
 }
+
+/* sf-pop-menu — the one floating options panel (plan 004) */
+.pop__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+}
+.pop {
+  position: absolute;
+  top: calc(100% + 5px);
+  z-index: 20;
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: var(--shadow-pop);
+  padding: 5px;
+}
+.pop--fill {
+  left: 0;
+  right: 0;
+}
+.pop__opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  font-family: var(--body);
+  font-size: 13.5px;
+  color: var(--fg2);
+  transition: background var(--dur) var(--ease);
+}
+@media (hover: hover) {
+  .pop__opt:hover {
+    background: var(--surface-2);
+  }
+}
+.pop__opt:active {
+  background: var(--surface-3);
+}
+.pop__opt.on {
+  background: var(--a50);
+  color: var(--a700);
+  font-weight: 600;
+}
+.pop__group {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+  padding: 5px 9px 4px;
+}
+
 .poll {
   display: inline-flex;
   align-items: center;

@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  output,
+} from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 /* ---- status-type glyph: shape carries the type, colour second ----
@@ -306,4 +313,31 @@ export class Sig {
   kbd = input<string | null>(null);
 }
 
-export const KIT = [Glyph, Icon, Mark, Avatar, Pill, Chip, TypeChip, Sig] as const;
+/* ---- sf-pop-menu — the one floating options panel (plan 004) ---- */
+@Component({
+  selector: 'sf-pop-menu',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    @if (open()) {
+      <span class="pop__scrim" (click)="closed.emit()"></span>
+      <span
+        class="pop"
+        [style.width]="width() === 'fill' ? null : width() + 'px'"
+        [class.pop--fill]="width() === 'fill'"
+        [style.left]="align() === 'left' || width() === 'fill' ? '0' : null"
+        [style.right]="align() === 'right' || width() === 'fill' ? '0' : null"
+      >
+        <ng-content />
+      </span>
+    }
+  `,
+  host: { '(document:keydown.escape)': 'open() && closed.emit()' },
+})
+export class PopMenu {
+  open = input.required<boolean>();
+  width = input<number | 'fill'>(200);
+  align = input<'left' | 'right'>('right');
+  closed = output<void>();
+}
+
+export const KIT = [Glyph, Icon, Mark, Avatar, Pill, Chip, TypeChip, Sig, PopMenu] as const;
