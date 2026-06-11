@@ -10,13 +10,21 @@ done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | Fix stale route params (admin issue + channel feed) | P1 | S | — | DONE |
-| 002 | Unit-test the core web services (poll, session, intake-draft) | P1 | M | — | TODO |
-| 003 | Lint & format gate (eslint + ruff + prettier, Makefile + CI) | P2 | M | — | TODO |
-| 004 | Consolidate dropdowns into one `sf-pop-menu` kit component | P2 | M | 003 (soft) | TODO |
-| 005 | Runner/brain hardening (log truncation, prompt delimiters, ref check, metric fallback) | P2 | S | — | TODO |
-| 006 | Split main.py into domain routers (behavior-preserving) | P3 | L | 005, 003 | TODO |
-| 007 | AGENTS.md + CLAUDE.md + fix stale doc counts | P3 | S | best last | TODO |
+| 001 | Fix stale route params (admin issue + channel feed) | P1 | S | — | DONE (advisor-approved after 1 revision; live-verified: issue 13→14 nav shows the new issue) |
+| 002 | Unit-test the core web services (poll, session, intake-draft) | P1 | M | — | DONE (advisor-approved 2026-06-11, branch advisor/fix-all) |
+| 003 | Lint & format gate (eslint + ruff + prettier, Makefile + CI) | P2 | M | — | DONE (advisor-approved; 6 TODO(lint-debt) rules documented in eslint.config.js / pyproject.toml) |
+| 004 | Consolidate dropdowns into one `sf-pop-menu` kit component | P2 | M | 003 (soft) | DONE (advisor-approved; visual spot-check pending merge) |
+| 005 | Runner/brain hardening (log truncation, prompt delimiters, ref check, metric fallback) | P2 | S | — | DONE (advisor-approved; one formatting-only out-of-scope commit af24975, verified harmless) |
+| 006 | Split main.py into domain routers (behavior-preserving) | P3 | L | 005, 003 | DONE (advisor-approved; route snapshot identical, main.py 115 lines, steps 5+6 committed together to keep every commit green) |
+| 007 | AGENTS.md + CLAUDE.md + fix stale doc counts | P3 | S | best last | DONE (advisor-approved) |
+
+All execution on branch `advisor/fix-all` (worktree `../software-factory-fixes`):
+29 commits, 62 files, final gate green (make verify incl. lint; 62 backend +
+34 web tests; route snapshot identical; operator's checkout untouched).
+One extra commit outside the plans: `28976c5` pins the dev proxy to
+127.0.0.1 — an unrelated Docker container publishing [::]:8000 was
+intercepting `/api` calls via IPv6 localhost resolution.
+Merging to main is the operator's decision.
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
