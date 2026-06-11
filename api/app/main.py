@@ -10,7 +10,7 @@ from sqlalchemy import func, or_, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import settings, simulator
+from . import api_helpers, settings, simulator
 from .claude_exec import brain_mode, runner_mode
 from .claude_runner import ClaudeRunner
 from .db import SessionLocal, engine, get_db, migrate
@@ -140,6 +140,7 @@ def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = 
         return f"REQ-{n}"
 
     claude_pipeline = runner or ClaudeRunner()
+    api_helpers.set_pipeline(claude_pipeline)
 
     # ---------- ops ----------
     @app.get("/api/health")
