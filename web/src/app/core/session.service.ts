@@ -8,8 +8,20 @@ export interface User {
   role: 'submitter' | 'admin';
 }
 
-export const SUBMITTER: User = { name: 'Jordan D.', initials: 'JD', color: '#7A6E9A', email: 'jordan.diaz@micron.com', role: 'submitter' };
-export const ADMIN: User = { name: 'Kim P.', initials: 'KP', color: '#6E5A8A', email: 'kim.park@micron.com', role: 'admin' };
+export const SUBMITTER: User = {
+  name: 'Jordan D.',
+  initials: 'JD',
+  color: '#7A6E9A',
+  email: 'jordan.diaz@micron.com',
+  role: 'submitter',
+};
+export const ADMIN: User = {
+  name: 'Kim P.',
+  initials: 'KP',
+  color: '#6E5A8A',
+  email: 'kim.park@micron.com',
+  role: 'admin',
+};
 
 @Injectable({ providedIn: 'root' })
 export class Session {
@@ -22,13 +34,20 @@ export class Session {
         const u = JSON.parse(raw);
         // a stale blob from an older User shape silently breaks avatars and the
         // role guard — validate the shape and discard on mismatch
-        if (u && typeof u.name === 'string' && typeof u.initials === 'string' &&
-            typeof u.color === 'string' && (u.role === 'submitter' || u.role === 'admin')) {
+        if (
+          u &&
+          typeof u.name === 'string' &&
+          typeof u.initials === 'string' &&
+          typeof u.color === 'string' &&
+          (u.role === 'submitter' || u.role === 'admin')
+        ) {
           return u as User;
         }
         localStorage.removeItem('sf-user');
       }
-    } catch { /* fresh session */ }
+    } catch {
+      /* fresh session */
+    }
     return SUBMITTER;
   }
 

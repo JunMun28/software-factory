@@ -22,22 +22,44 @@ export function clock(iso: string): string {
 }
 
 export const STAGE_LABEL: Record<string, string> = {
-  intake: 'Intake', spec: 'Spec', architecture: 'Architecture',
-  build: 'Build', review: 'Review', done: 'Done',
+  intake: 'Intake',
+  spec: 'Spec',
+  architecture: 'Architecture',
+  build: 'Build',
+  review: 'Review',
+  done: 'Done',
 };
 
-export const TYPE_LABEL: Record<string, string> = { bug: 'Bug fix', enh: 'Enhancement', new: 'New app', other: 'Other' };
-export const TYPE_SHORT: Record<string, string> = { bug: 'Bug', enh: 'Enh', new: 'New', other: 'Other' };
+export const TYPE_LABEL: Record<string, string> = {
+  bug: 'Bug fix',
+  enh: 'Enhancement',
+  new: 'New app',
+  other: 'Other',
+};
+export const TYPE_SHORT: Record<string, string> = {
+  bug: 'Bug',
+  enh: 'Enh',
+  new: 'New',
+  other: 'Other',
+};
 
 /** Submitter plain-stage vocabulary (CONTEXT.md: Submitters never see Control-center words). */
-export function plainStage(r: FactoryRequest): { label: string; glyph: string; tone: string; fill?: number } {
+export function plainStage(r: FactoryRequest): {
+  label: string;
+  glyph: string;
+  tone: string;
+  fill?: number;
+} {
   if (r.status === 'cancelled') return { label: 'Cancelled', glyph: 'strike', tone: 'neutral' };
   if (r.status === 'sent_back') return { label: 'Needs your input', glyph: 'flag', tone: 'amber' };
   if (r.status === 'done') return { label: 'Deployed', glyph: 'check', tone: 'green' };
-  if (r.status === 'submitted' && r.stage === 'intake') return { label: 'Submitted', glyph: 'dotted', tone: 'neutral' };
-  if (r.status === 'pending_approval') return { label: 'Spec drafted', glyph: 'dotted', tone: 'neutral' };
+  if (r.status === 'submitted' && r.stage === 'intake')
+    return { label: 'Submitted', glyph: 'dotted', tone: 'neutral' };
+  if (r.status === 'pending_approval')
+    return { label: 'Spec drafted', glyph: 'dotted', tone: 'neutral' };
   if (r.stage === 'review') return { label: 'In review', glyph: 'ring', tone: 'purple', fill: 0.6 };
-  if (r.status === 'approved') return { label: 'Building', glyph: 'ring', tone: 'purple', fill: 0.3 };
+  if (r.status === 'approved')
+    return { label: 'Building', glyph: 'ring', tone: 'purple', fill: 0.3 };
   return { label: 'Submitted', glyph: 'dotted', tone: 'neutral' };
 }
 

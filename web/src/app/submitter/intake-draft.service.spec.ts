@@ -7,7 +7,15 @@ import { Session } from '../core/session.service';
 import { IntakeDraft } from './intake-draft.service';
 
 function mockSession() {
-  return { user: () => ({ name: 'Jordan D.', initials: 'JD', color: '#7A', email: 'j@example.com', role: 'submitter' }) };
+  return {
+    user: () => ({
+      name: 'Jordan D.',
+      initials: 'JD',
+      color: '#7A',
+      email: 'j@example.com',
+      role: 'submitter',
+    }),
+  };
 }
 
 function mockApi() {

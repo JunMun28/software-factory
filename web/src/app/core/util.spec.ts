@@ -5,15 +5,43 @@ import { boardGlyph, clock, gateLabel, plainStage, timeAgo, utc } from './util';
 
 function req(over: Partial<FactoryRequest> = {}): FactoryRequest {
   return {
-    id: 1, ref: 'REQ-1', title: 't', description: '', type: 'enh', urgency: 'normal', reach: null,
-    impact_metric: null, impact_value: null, priority: 'Normal',
-    app_id: 1, app_name: 'App', app_key: 'app', repo: null, new_app_name: null,
-    stage: 'intake', status: 'submitted', gate: null, needs_human: false, needs_human_reason: null,
-    reporter: 'J', reporter_initials: 'JD', assignee: null, assignee_initials: null, assignee_color: null,
-    labels: null, send_back_question: null, send_back_response: null, send_back_rounds: 0,
-    repo_ready: false, spec_pr_open: false, stage2_fired: false, spec_open_note: null,
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    stage_entered_at: null, last_event: null,
+    id: 1,
+    ref: 'REQ-1',
+    title: 't',
+    description: '',
+    type: 'enh',
+    urgency: 'normal',
+    reach: null,
+    impact_metric: null,
+    impact_value: null,
+    priority: 'Normal',
+    app_id: 1,
+    app_name: 'App',
+    app_key: 'app',
+    repo: null,
+    new_app_name: null,
+    stage: 'intake',
+    status: 'submitted',
+    gate: null,
+    needs_human: false,
+    needs_human_reason: null,
+    reporter: 'J',
+    reporter_initials: 'JD',
+    assignee: null,
+    assignee_initials: null,
+    assignee_color: null,
+    labels: null,
+    send_back_question: null,
+    send_back_response: null,
+    send_back_rounds: 0,
+    repo_ready: false,
+    spec_pr_open: false,
+    stage2_fired: false,
+    spec_open_note: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    stage_entered_at: null,
+    last_event: null,
     ...over,
   };
 }
@@ -43,7 +71,9 @@ describe('timeAgo', () => {
 describe('plainStage — the Submitter vocabulary (CONTEXT.md)', () => {
   it('maps the lifecycle to plain labels', () => {
     expect(plainStage(req()).label).toBe('Submitted');
-    expect(plainStage(req({ status: 'pending_approval', stage: 'spec' })).label).toBe('Spec drafted');
+    expect(plainStage(req({ status: 'pending_approval', stage: 'spec' })).label).toBe(
+      'Spec drafted',
+    );
     expect(plainStage(req({ status: 'sent_back', stage: 'spec' })).label).toBe('Needs your input');
     expect(plainStage(req({ status: 'approved', stage: 'build' })).label).toBe('Building');
     expect(plainStage(req({ status: 'approved', stage: 'review' })).label).toBe('In review');
@@ -51,7 +81,14 @@ describe('plainStage — the Submitter vocabulary (CONTEXT.md)', () => {
     expect(plainStage(req({ status: 'cancelled' })).label).toBe('Cancelled');
   });
   it('never leaks Control-center words', () => {
-    const statuses: FactoryRequest['status'][] = ['submitted', 'pending_approval', 'approved', 'sent_back', 'cancelled', 'done'];
+    const statuses: FactoryRequest['status'][] = [
+      'submitted',
+      'pending_approval',
+      'approved',
+      'sent_back',
+      'cancelled',
+      'done',
+    ];
     for (const status of statuses) {
       const label = plainStage(req({ status })).label.toLowerCase();
       for (const word of ['spec gate', 'work item', 'triage', 'merge', 'escalat']) {

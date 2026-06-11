@@ -58,7 +58,14 @@ export interface FactoryRequest {
   repo: string | null;
   new_app_name: string | null;
   stage: 'intake' | 'spec' | 'architecture' | 'build' | 'review' | 'done';
-  status: 'draft' | 'submitted' | 'pending_approval' | 'approved' | 'sent_back' | 'cancelled' | 'done';
+  status:
+    | 'draft'
+    | 'submitted'
+    | 'pending_approval'
+    | 'approved'
+    | 'sent_back'
+    | 'cancelled'
+    | 'done';
   gate: 'approve_spec' | 'approve_merge' | null;
   needs_human: boolean;
   needs_human_reason: string | null;

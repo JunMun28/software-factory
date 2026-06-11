@@ -7,7 +7,12 @@ import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, timeAgo } from '../core
 import { Avatar, Glyph, Icon, Sig } from '../kit/kit';
 import { AdminShell, ViewSeg } from './admin-shell';
 
-interface Band { key: string; label: string; glyph: string; items: FactoryRequest[] }
+interface Band {
+  key: string;
+  label: string;
+  glyph: string;
+  items: FactoryRequest[];
+}
 
 /** C2b — List view: grouped by stage band; rows open the full-screen issue. */
 @Component({
@@ -28,17 +33,37 @@ interface Band { key: string; label: string; glyph: string; items: FactoryReques
             <span class="lband__count">{{ band.items.length }}</span>
           </div>
           @for (r of band.items; track r.id) {
-            <div class="lrow focusable" tabindex="0" role="button" (click)="open(r)" (keydown.enter)="open(r)">
+            <div
+              class="lrow focusable"
+              tabindex="0"
+              role="button"
+              (click)="open(r)"
+              (keydown.enter)="open(r)"
+            >
               <sf-glyph [type]="g(r).glyph" [size]="15" [color]="g(r).color" [fill]="g(r).fill" />
-              <span class="lrow__title" [style.text-decoration]="r.status === 'cancelled' ? 'line-through' : ''">{{ r.title }}</span>
+              <span
+                class="lrow__title"
+                [style.text-decoration]="r.status === 'cancelled' ? 'line-through' : ''"
+                >{{ r.title }}</span
+              >
               <span class="chip">{{ typeShort[r.type] }}</span>
               <span class="lrow__app">{{ r.app_name }}</span>
               <span class="lrow__badge">
-                @if (r.needs_human) { <sf-sig tone="red" glyph="flag">Needs human</sf-sig> }
-                @else if (gateLbl(r)) { <sf-sig tone="amber">{{ gateLbl(r) === 'Approve spec' ? 'Approve' : gateLbl(r) }}</sf-sig> }
+                @if (r.needs_human) {
+                  <sf-sig tone="red" glyph="flag">Needs human</sf-sig>
+                } @else if (gateLbl(r)) {
+                  <sf-sig tone="amber">{{
+                    gateLbl(r) === 'Approve spec' ? 'Approve' : gateLbl(r)
+                  }}</sf-sig>
+                }
               </span>
-              @if (r.assignee_initials) { <sf-avatar [sm]="true" [color]="r.assignee_color ?? '#7A6E9A'">{{ r.assignee_initials }}</sf-avatar> }
-              @else { <span style="width:20px"></span> }
+              @if (r.assignee_initials) {
+                <sf-avatar [sm]="true" [color]="r.assignee_color ?? '#7A6E9A'">{{
+                  r.assignee_initials
+                }}</sf-avatar>
+              } @else {
+                <span style="width:20px"></span>
+              }
               <span class="lrow__stage">{{ stageLabel[r.stage] }}</span>
               <span class="lrow__age">{{ age(r) }}</span>
             </div>
@@ -47,7 +72,15 @@ interface Band { key: string; label: string; glyph: string; items: FactoryReques
       </div>
     </admin-shell>
   `,
-  styles: `.lrow__app { width:140px; flex:0 0 140px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }`,
+  styles: `
+    .lrow__app {
+      width: 140px;
+      flex: 0 0 140px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  `,
 })
 export class ListView {
   private router = inject(Router);
@@ -60,12 +93,46 @@ export class ListView {
   bands = computed<Band[]>(() => {
     const rs = this.all();
     const defs: Band[] = [
-      { key: 'gates', label: 'Waiting on me · Gates', glyph: 'ring', items: rs.filter((r) => r.gate || r.needs_human) },
-      { key: 'intake', label: 'Intake · Triage', glyph: 'dotted', items: rs.filter((r) => !r.gate && !r.needs_human && r.stage === 'intake' && r.status !== 'cancelled') },
-      { key: 'flight', label: 'In flight · Building', glyph: 'ring', items: rs.filter((r) => !r.gate && !r.needs_human && ['architecture', 'build', 'review'].includes(r.stage)) },
-      { key: 'back', label: 'Sent back · With the submitter', glyph: 'flag', items: rs.filter((r) => r.status === 'sent_back') },
-      { key: 'done', label: 'Done · Deployed', glyph: 'check', items: rs.filter((r) => r.stage === 'done' && r.status === 'done') },
-      { key: 'cancelled', label: 'Cancelled', glyph: 'strike', items: rs.filter((r) => r.status === 'cancelled') },
+      {
+        key: 'gates',
+        label: 'Waiting on me · Gates',
+        glyph: 'ring',
+        items: rs.filter((r) => r.gate || r.needs_human),
+      },
+      {
+        key: 'intake',
+        label: 'Intake · Triage',
+        glyph: 'dotted',
+        items: rs.filter(
+          (r) => !r.gate && !r.needs_human && r.stage === 'intake' && r.status !== 'cancelled',
+        ),
+      },
+      {
+        key: 'flight',
+        label: 'In flight · Building',
+        glyph: 'ring',
+        items: rs.filter(
+          (r) => !r.gate && !r.needs_human && ['architecture', 'build', 'review'].includes(r.stage),
+        ),
+      },
+      {
+        key: 'back',
+        label: 'Sent back · With the submitter',
+        glyph: 'flag',
+        items: rs.filter((r) => r.status === 'sent_back'),
+      },
+      {
+        key: 'done',
+        label: 'Done · Deployed',
+        glyph: 'check',
+        items: rs.filter((r) => r.stage === 'done' && r.status === 'done'),
+      },
+      {
+        key: 'cancelled',
+        label: 'Cancelled',
+        glyph: 'strike',
+        items: rs.filter((r) => r.status === 'cancelled'),
+      },
     ];
     // sent-back items also match no other band; gates band excludes sent_back already (gate is null there)
     return defs.filter((b) => b.items.length > 0);
@@ -73,6 +140,10 @@ export class ListView {
 
   g = boardGlyph;
   gateLbl = gateLabel;
-  age(r: FactoryRequest) { return timeAgo(r.created_at); }
-  open(r: FactoryRequest) { this.router.navigateByUrl(`/admin/issue/${r.id}`); }
+  age(r: FactoryRequest) {
+    return timeAgo(r.created_at);
+  }
+  open(r: FactoryRequest) {
+    this.router.navigateByUrl(`/admin/issue/${r.id}`);
+  }
 }

@@ -9,9 +9,15 @@ function makeLocalStorageMock() {
   const store: Record<string, string> = {};
   return {
     getItem: (key: string) => (key in store ? store[key] : null),
-    setItem: (key: string, value: string) => { store[key] = String(value); },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { Object.keys(store).forEach(k => delete store[k]); },
+    setItem: (key: string, value: string) => {
+      store[key] = String(value);
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      Object.keys(store).forEach((k) => delete store[k]);
+    },
   };
 }
 

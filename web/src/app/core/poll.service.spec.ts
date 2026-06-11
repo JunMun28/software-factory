@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Api } from './api.service';
 import { Poll } from './poll.service';
 
-function ev(id: number) { return { id } as any; }
+function ev(id: number) {
+  return { id } as any;
+}
 
 describe('Poll', () => {
   let api: { eventsCursor: ReturnType<typeof vi.fn>; events: ReturnType<typeof vi.fn> };
@@ -50,7 +52,8 @@ describe('Poll', () => {
     poll.start(1000);
     vi.advanceTimersByTime(3000); // 3 ticks while the first hangs
     expect(api.events).toHaveBeenCalledOnce(); // no refetch burst
-    slow.next([ev(101)]); slow.complete();
+    slow.next([ev(101)]);
+    slow.complete();
     vi.advanceTimersByTime(1000);
     expect(api.events).toHaveBeenCalledTimes(2);
   });

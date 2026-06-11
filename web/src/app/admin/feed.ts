@@ -24,7 +24,15 @@ interface FeedMsg {
   cont: boolean;
   body: string;
   pending?: boolean;
-  att?: { edge: string; glyph: string; fill: number; title: string; fields: [string, string][]; gate?: boolean; requestId?: number };
+  att?: {
+    edge: string;
+    glyph: string;
+    fill: number;
+    title: string;
+    fields: [string, string][];
+    gate?: boolean;
+    requestId?: number;
+  };
   folded?: number;
 }
 
@@ -42,24 +50,44 @@ interface FeedMsg {
     <admin-shell [active]="'feed:' + key()" title="Apps">
       <div style="position:absolute;inset:0;display:flex;flex-direction:column">
         <!-- channel header -->
-        <div class="row" style="gap:11px;padding:11px 22px;border-bottom:1px solid var(--border);background:var(--surface)">
+        <div
+          class="row"
+          style="gap:11px;padding:11px 22px;border-bottom:1px solid var(--border);background:var(--surface)"
+        >
           <span style="font:700 16px/1 var(--display)"># {{ app()?.name }}</span>
-          @if (app()?.repo) { <span class="reflink">{{ app()?.repo }}</span> }
+          @if (app()?.repo) {
+            <span class="reflink">{{ app()?.repo }}</span>
+          }
           <span class="row" style="margin-left:auto;gap:8px">
-            <span class="row" style="margin-right:4px" [title]="'People on this channel’s requests'">
-              @for (m of members(); track m.initials) { <sf-avatar [sm]="true" [color]="m.color">{{ m.initials }}</sf-avatar> }
+            <span
+              class="row"
+              style="margin-right:4px"
+              [title]="'People on this channel’s requests'"
+            >
+              @for (m of members(); track m.initials) {
+                <sf-avatar [sm]="true" [color]="m.color">{{ m.initials }}</sf-avatar>
+              }
             </span>
             <span style="position:relative">
-              <button class="btn ghost sm" (click)="followOpen = !followOpen">Following: {{ follow() }} <sf-icon name="chevDown" [size]="13" /></button>
+              <button class="btn ghost sm" (click)="followOpen = !followOpen">
+                Following: {{ follow() }} <sf-icon name="chevDown" [size]="13" />
+              </button>
               @if (followOpen) {
                 <span style="position:fixed;inset:0;z-index:19" (click)="followOpen = false"></span>
-                <span style="position:absolute;top:calc(100% + 5px);right:0;z-index:20;display:block;width:200px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:5px">
+                <span
+                  style="position:absolute;top:calc(100% + 5px);right:0;z-index:20;display:block;width:200px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:5px"
+                >
                   @for (lvl of followLevels; track lvl) {
-                    <button style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:none;cursor:pointer;font-family:var(--body);font-size:13px"
-                      [style.background]="follow() === lvl ? 'var(--a50)' : ''" [style.color]="follow() === lvl ? 'var(--a700)' : 'var(--fg2)'"
-                      (click)="setFollow(lvl)">
+                    <button
+                      style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:none;cursor:pointer;font-family:var(--body);font-size:13px"
+                      [style.background]="follow() === lvl ? 'var(--a50)' : ''"
+                      [style.color]="follow() === lvl ? 'var(--a700)' : 'var(--fg2)'"
+                      (click)="setFollow(lvl)"
+                    >
                       <span style="flex:1">{{ lvl }}</span>
-                      @if (follow() === lvl) { <sf-icon name="check" [size]="14" color="var(--a600)" /> }
+                      @if (follow() === lvl) {
+                        <sf-icon name="check" [size]="14" color="var(--a600)" />
+                      }
                     </button>
                   }
                 </span>
@@ -68,15 +96,28 @@ interface FeedMsg {
           </span>
         </div>
 
-        <div #scroller class="scroll" style="flex:1;overflow-y:auto;padding-bottom:6px;position:relative" (scroll)="onScroll()">
+        <div
+          #scroller
+          class="scroll"
+          style="flex:1;overflow-y:auto;padding-bottom:6px;position:relative"
+          (scroll)="onScroll()"
+        >
           @for (group of grouped(); track group.day) {
-            <div class="sday"><span class="sday__lbl">{{ group.day }}</span></div>
+            <div class="sday">
+              <span class="sday__lbl">{{ group.day }}</span>
+            </div>
             @for (m of group.msgs; track m.id) {
               <div class="smsg" [style.opacity]="m.pending ? 0.55 : 1">
                 <div class="smsg__actions">
-                  <button class="smsg__act" title="React"><sf-icon name="spark" [size]="15" /></button>
-                  <button class="smsg__act" title="Open"><sf-icon name="link" [size]="15" /></button>
-                  <button class="smsg__act" title="More"><sf-icon name="more" [size]="15" /></button>
+                  <button class="smsg__act" title="React">
+                    <sf-icon name="spark" [size]="15" />
+                  </button>
+                  <button class="smsg__act" title="Open">
+                    <sf-icon name="link" [size]="15" />
+                  </button>
+                  <button class="smsg__act" title="More">
+                    <sf-icon name="more" [size]="15" />
+                  </button>
                 </div>
                 @if (m.cont) {
                   <div class="smsg__gutter">{{ m.time }}</div>
@@ -89,64 +130,114 @@ interface FeedMsg {
                   @if (!m.cont) {
                     <div class="smsg__head">
                       <span class="smsg__name">{{ m.actor }}</span>
-                      @if (m.bot) { <span class="smsg__bot">App</span> }
+                      @if (m.bot) {
+                        <span class="smsg__bot">App</span>
+                      }
                       <span class="smsg__time">{{ m.pending ? 'sending…' : m.time }}</span>
                     </div>
                   }
                   <div class="smsg__body">{{ m.body }}</div>
                   @if (m.att; as att) {
                     <div class="satt" [style.border-left-color]="att.edge">
-                      <div class="satt__title"><sf-glyph [type]="att.glyph" [size]="14" [color]="att.edge" [fill]="att.fill" />{{ att.title }}</div>
+                      <div class="satt__title">
+                        <sf-glyph
+                          [type]="att.glyph"
+                          [size]="14"
+                          [color]="att.edge"
+                          [fill]="att.fill"
+                        />{{ att.title }}
+                      </div>
                       @if (att.fields.length) {
                         <div class="satt__fields">
-                          @for (f of att.fields; track f[0]) { <span class="satt__f"><span class="k">{{ f[0] }} </span>{{ f[1] }}</span> }
+                          @for (f of att.fields; track f[0]) {
+                            <span class="satt__f"
+                              ><span class="k">{{ f[0] }} </span>{{ f[1] }}</span
+                            >
+                          }
                         </div>
                       }
                       @if (att.gate && att.requestId) {
                         <div class="satt__foot">
-                          <button class="btn primary sm" (click)="review(att.requestId)">Review &amp; approve</button>
-                          <button class="btn sm" (click)="openIssue(att.requestId)">Open issue</button>
+                          <button class="btn primary sm" (click)="review(att.requestId)">
+                            Review &amp; approve
+                          </button>
+                          <button class="btn sm" (click)="openIssue(att.requestId)">
+                            Open issue
+                          </button>
                         </div>
                       } @else if (att.requestId) {
-                        <div class="satt__foot"><button class="btn ghost sm" (click)="openIssue(att.requestId)">Open issue</button></div>
+                        <div class="satt__foot">
+                          <button class="btn ghost sm" (click)="openIssue(att.requestId)">
+                            Open issue
+                          </button>
+                        </div>
                       }
                     </div>
                   }
                   @if (m.folded) {
-                    <button class="row" style="gap:8px;margin-top:8px;padding:8px 12px;border:1px dashed var(--border-strong);border-radius:7px;background:none;cursor:pointer;font-family:inherit;font-size:12.5px;color:var(--muted);max-width:520px;width:100%">
-                      <sf-icon name="chevRight" [size]="13" /> Retried {{ m.folded }}× <span style="color:var(--faint)">— folded, click to expand</span>
+                    <button
+                      class="row"
+                      style="gap:8px;margin-top:8px;padding:8px 12px;border:1px dashed var(--border-strong);border-radius:7px;background:none;cursor:pointer;font-family:inherit;font-size:12.5px;color:var(--muted);max-width:520px;width:100%"
+                    >
+                      <sf-icon name="chevRight" [size]="13" /> Retried {{ m.folded }}×
+                      <span style="color:var(--faint)">— folded, click to expand</span>
                     </button>
                   }
                 </div>
               </div>
             }
           }
-          <div style="text-align:center;font-size:11.5px;color:var(--faint);margin:14px 0 4px">You're all caught up</div>
+          <div style="text-align:center;font-size:11.5px;color:var(--faint);margin:14px 0 4px">
+            You're all caught up
+          </div>
         </div>
 
         @if (showJump()) {
           <div style="position:relative">
-            <button class="btn sm" style="position:absolute;left:50%;transform:translateX(-50%);top:-44px;z-index:5;box-shadow:var(--shadow-pop);border-radius:999px"
-              (click)="jumpToLatest()">New messages <sf-icon name="chevDown" [size]="13" /></button>
+            <button
+              class="btn sm"
+              style="position:absolute;left:50%;transform:translateX(-50%);top:-44px;z-index:5;box-shadow:var(--shadow-pop);border-radius:999px"
+              (click)="jumpToLatest()"
+            >
+              New messages <sf-icon name="chevDown" [size]="13" />
+            </button>
           </div>
         }
 
         <!-- composer -->
         <div class="scomposer">
           <div class="scomposer__bar">
-            <button class="scomposer__ic" title="Bold"><span style="font-weight:700;font-size:13px">B</span></button>
-            <button class="scomposer__ic" title="Italic"><span style="font-style:italic;font-size:13px">i</span></button>
+            <button class="scomposer__ic" title="Bold">
+              <span style="font-weight:700;font-size:13px">B</span>
+            </button>
+            <button class="scomposer__ic" title="Italic">
+              <span style="font-style:italic;font-size:13px">i</span>
+            </button>
             <button class="scomposer__ic" title="Link"><sf-icon name="link" [size]="15" /></button>
             <span style="width:1px;height:18px;background:var(--border);margin:0 4px"></span>
-            <button class="scomposer__ic" title="Mention"><span style="font-size:14px;font-weight:600">&#64;</span></button>
-            <button class="scomposer__ic" title="Attach"><sf-icon name="plus" [size]="16" /></button>
+            <button class="scomposer__ic" title="Mention">
+              <span style="font-size:14px;font-weight:600">&#64;</span>
+            </button>
+            <button class="scomposer__ic" title="Attach">
+              <sf-icon name="plus" [size]="16" />
+            </button>
           </div>
           <div class="scomposer__row">
-            <input class="scomposer__field" [placeholder]="'Message #' + (app()?.name ?? '')" [(ngModel)]="draft" (keydown.enter)="send()" />
-            <button class="scomposer__ic" title="Send" (click)="send()"><sf-icon name="arrowRight" [size]="17" color="var(--accent)" /></button>
+            <input
+              class="scomposer__field"
+              [placeholder]="'Message #' + (app()?.name ?? '')"
+              [(ngModel)]="draft"
+              (keydown.enter)="send()"
+            />
+            <button class="scomposer__ic" title="Send" (click)="send()">
+              <sf-icon name="arrowRight" [size]="17" color="var(--accent)" />
+            </button>
           </div>
           @if (target(); as t) {
-            <div style="padding:0 13px 8px;font-size:11px;color:var(--faint)">Posts as a comment on <span class="mono" style="font-size:10.5px">{{ t.ref }}</span> {{ t.title }}</div>
+            <div style="padding:0 13px 8px;font-size:11px;color:var(--faint)">
+              Posts as a comment on <span class="mono" style="font-size:10.5px">{{ t.ref }}</span>
+              {{ t.title }}
+            </div>
           }
         </div>
       </div>
@@ -216,8 +307,13 @@ export class Feed {
       const fresh = delta.filter((e) => e.subject_id === appId && !this.seen.has(e.id));
       if (!fresh.length) return;
       fresh.forEach((e) => this.seen.add(e.id));
-      if (this.pendingCommentId != null &&
-          fresh.some((e) => e.kind === 'comment' && (e.payload?.['comment_id'] as number) === this.pendingCommentId)) {
+      if (
+        this.pendingCommentId != null &&
+        fresh.some(
+          (e) =>
+            e.kind === 'comment' && (e.payload?.['comment_id'] as number) === this.pendingCommentId,
+        )
+      ) {
         this.pending.set(null);
         this.pendingCommentId = null;
       }
@@ -230,13 +326,23 @@ export class Feed {
   members = computed(() => {
     const seen = new Map<string, { initials: string; color: string }>();
     for (const r of this.requests()) {
-      if (r.assignee_initials) seen.set(r.assignee_initials, { initials: r.assignee_initials, color: r.assignee_color ?? '#6E5A8A' });
-      if (r.reporter_initials) seen.set(r.reporter_initials, { initials: r.reporter_initials, color: '#7A6E9A' });
+      if (r.assignee_initials)
+        seen.set(r.assignee_initials, {
+          initials: r.assignee_initials,
+          color: r.assignee_color ?? '#6E5A8A',
+        });
+      if (r.reporter_initials)
+        seen.set(r.reporter_initials, { initials: r.reporter_initials, color: '#7A6E9A' });
     }
     return [...seen.values()].slice(0, 3);
   });
 
-  target = computed(() => this.requests().find((r) => !['done', 'cancelled'].includes(r.status)) ?? this.requests()[0] ?? null);
+  target = computed(
+    () =>
+      this.requests().find((r) => !['done', 'cancelled'].includes(r.status)) ??
+      this.requests()[0] ??
+      null,
+  );
 
   grouped = computed(() => {
     const msgs: FeedMsg[] = this.items().map((e) => this.toMsg(e));
@@ -244,14 +350,22 @@ export class Feed {
     if (p) msgs.push(p);
     msgs.sort((a, b) => a.iso.localeCompare(b.iso));
     for (let i = 1; i < msgs.length; i++) {
-      msgs[i].cont = msgs[i].bot && msgs[i - 1].bot && utc(msgs[i].iso).toDateString() === utc(msgs[i - 1].iso).toDateString();
+      msgs[i].cont =
+        msgs[i].bot &&
+        msgs[i - 1].bot &&
+        utc(msgs[i].iso).toDateString() === utc(msgs[i - 1].iso).toDateString();
     }
     const days = new Map<string, FeedMsg[]>();
     const today = new Date().toDateString();
     const yest = new Date(Date.now() - 864e5).toDateString();
     for (const m of msgs) {
       const d = utc(m.iso).toDateString();
-      const label = d === today ? 'Today' : d === yest ? 'Yesterday' : utc(m.iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+      const label =
+        d === today
+          ? 'Today'
+          : d === yest
+            ? 'Yesterday'
+            : utc(m.iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
       if (!days.has(label)) days.set(label, []);
       days.get(label)!.push(m);
     }
@@ -262,31 +376,73 @@ export class Feed {
     const p = (e.payload ?? {}) as Record<string, unknown>;
     if (e.kind === 'comment') {
       return {
-        id: e.id, bot: false, actor: e.actor,
-        initials: (p['initials'] as string) ?? e.actor.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase(),
+        id: e.id,
+        bot: false,
+        actor: e.actor,
+        initials:
+          (p['initials'] as string) ??
+          e.actor
+            .split(' ')
+            .map((w) => w[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase(),
         color: (p['color'] as string) ?? '#6E5A8A',
-        time: clock(e.created_at), iso: e.created_at, cont: false,
+        time: clock(e.created_at),
+        iso: e.created_at,
+        cont: false,
         body: (p['body'] as string) ?? e.title,
       };
     }
     const rawFields = (p['fields'] ?? {}) as Record<string, string>;
     const fields: [string, string][] = Object.entries(rawFields);
     if (e.request_ref) fields.push(['Ref', e.request_ref]);
-    const edge = e.kind === 'escalation' ? 'var(--red)'
-      : e.kind === 'gate_event' ? 'var(--amber)'
-      : e.stage === 'done' ? 'var(--green)'
-      : e.stage === 'intake' ? '#9A9AA6' : 'var(--a500)';
-    const glyph = e.kind === 'escalation' ? 'flag' : e.stage === 'done' ? 'check' : e.stage === 'intake' ? 'dotted' : 'ring';
+    const edge =
+      e.kind === 'escalation'
+        ? 'var(--red)'
+        : e.kind === 'gate_event'
+          ? 'var(--amber)'
+          : e.stage === 'done'
+            ? 'var(--green)'
+            : e.stage === 'intake'
+              ? '#9A9AA6'
+              : 'var(--a500)';
+    const glyph =
+      e.kind === 'escalation'
+        ? 'flag'
+        : e.stage === 'done'
+          ? 'check'
+          : e.stage === 'intake'
+            ? 'dotted'
+            : 'ring';
     return {
-      id: e.id, bot: e.bot, actor: e.bot ? 'Factory' : e.actor,
-      initials: e.actor.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase(),
-      color: '#6E5A8A', time: clock(e.created_at), iso: e.created_at, cont: false,
+      id: e.id,
+      bot: e.bot,
+      actor: e.bot ? 'Factory' : e.actor,
+      initials: e.actor
+        .split(' ')
+        .map((w) => w[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase(),
+      color: '#6E5A8A',
+      time: clock(e.created_at),
+      iso: e.created_at,
+      cont: false,
       body: e.title,
-      att: e.request_title ? {
-        edge, glyph, fill: 0.4, title: e.request_title, fields,
-        gate: e.kind === 'gate_event' && (p['gate'] === 'approve_spec' || p['gate'] === 'approve_merge'),
-        requestId: e.request_id ?? undefined,
-      } : undefined,
+      att: e.request_title
+        ? {
+            edge,
+            glyph,
+            fill: 0.4,
+            title: e.request_title,
+            fields,
+            gate:
+              e.kind === 'gate_event' &&
+              (p['gate'] === 'approve_spec' || p['gate'] === 'approve_merge'),
+            requestId: e.request_id ?? undefined,
+          }
+        : undefined,
       folded: typeof p['folded'] === 'number' ? (p['folded'] as number) : undefined,
     };
   }
@@ -304,7 +460,9 @@ export class Feed {
     this.atBottom = true;
     this.showJump.set(false);
   }
-  jumpToLatest() { this.scrollToBottom(); }
+  jumpToLatest() {
+    this.scrollToBottom();
+  }
 
   // ---- optimistic send ----
   send() {
@@ -313,14 +471,28 @@ export class Feed {
     if (!text || !target || this.pending()) return;
     const u = this.session.user();
     this.pending.set({
-      id: -1, bot: false, actor: u.name, initials: u.initials, color: u.color,
-      time: '', iso: new Date().toISOString(), cont: false, body: text, pending: true,
+      id: -1,
+      bot: false,
+      actor: u.name,
+      initials: u.initials,
+      color: u.color,
+      time: '',
+      iso: new Date().toISOString(),
+      cont: false,
+      body: text,
+      pending: true,
     });
     this.draft = '';
     queueMicrotask(() => this.scrollToBottom());
     this.api.comment(target.id, text, u.name, u.initials).subscribe({
-      next: (c) => { this.pendingCommentId = c.id; this.poll.nudge(); },
-      error: () => { this.pending.set(null); this.draft = text; },  // restore, nothing lost
+      next: (c) => {
+        this.pendingCommentId = c.id;
+        this.poll.nudge();
+      },
+      error: () => {
+        this.pending.set(null);
+        this.draft = text;
+      }, // restore, nothing lost
     });
   }
   setFollow(lvl: string) {
@@ -328,8 +500,12 @@ export class Feed {
     this.followOpen = false;
     localStorage.setItem(`sf-follow-${this.key()}`, lvl);
   }
-  review(id: number) { this.router.navigate(['/admin/queue'], { queryParams: { sel: id } }); }
-  openIssue(id: number) { this.router.navigateByUrl(`/admin/issue/${id}`); }
+  review(id: number) {
+    this.router.navigate(['/admin/queue'], { queryParams: { sel: id } });
+  }
+  openIssue(id: number) {
+    this.router.navigateByUrl(`/admin/issue/${id}`);
+  }
 
   age = timeAgo;
 }

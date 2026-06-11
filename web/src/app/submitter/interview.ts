@@ -17,46 +17,75 @@ import { SubShell } from './sub-shell';
         <!-- context + progress -->
         <div style="padding:14px 26px 12px;border-bottom:1px solid var(--border)">
           <div class="row" style="gap:9px;margin-bottom:12px">
-            @if (req(); as r) { <sf-type-chip [t]="r.type" /><span style="font-size:14px;font-weight:600">{{ r.title }}</span> }
+            @if (req(); as r) {
+              <sf-type-chip [t]="r.type" /><span style="font-size:14px;font-weight:600">{{
+                r.title
+              }}</span>
+            }
           </div>
           <div class="qprog">
             <span class="qprog__lbl">{{ progressLabel() }}</span>
-            <span class="qprog__track"><span class="qprog__fill" [style.width.%]="progress()"></span></span>
+            <span class="qprog__track"
+              ><span class="qprog__fill" [style.width.%]="progress()"></span
+            ></span>
           </div>
         </div>
 
         <!-- thread — chat history -->
-        <div class="scroll" style="flex:1;overflow-y:auto;padding:22px 26px;display:flex;flex-direction:column;gap:22px">
+        <div
+          class="scroll"
+          style="flex:1;overflow-y:auto;padding:22px 26px;display:flex;flex-direction:column;gap:22px"
+        >
           @for (t of st()?.turns ?? []; track t.order) {
-            <div class="ai-q"><span class="ai-q__mark"><sf-mark [size]="17" color="#9A9AA6" /></span>
-              <div><div class="ai-q__text">{{ t.question }}</div>
-                @if (t.sub) { <div class="ai-q__sub">{{ t.sub }}</div> }
+            <div class="ai-q">
+              <span class="ai-q__mark"><sf-mark [size]="17" color="#9A9AA6" /></span>
+              <div>
+                <div class="ai-q__text">{{ t.question }}</div>
+                @if (t.sub) {
+                  <div class="ai-q__sub">{{ t.sub }}</div>
+                }
               </div>
             </div>
             <div class="user-reply">
               <div class="user-reply__b">
-                @if (t.skipped) { <span class="chip">Skipped</span> } @else if (t.options) { <span class="chip">{{ t.answer }}</span> } @else { {{ t.answer }} }
+                @if (t.skipped) {
+                  <span class="chip">Skipped</span>
+                } @else if (t.options) {
+                  <span class="chip">{{ t.answer }}</span>
+                } @else {
+                  {{ t.answer }}
+                }
               </div>
             </div>
           }
           @if (st(); as s) {
             @if (!s.done && s.question) {
-              <div class="ai-q fade-in"><span class="ai-q__mark"><sf-mark [size]="17" color="#9A9AA6" /></span>
-                <div><div class="ai-q__text" [class.lg]="s.final">{{ s.question }}</div>
-                  @if (s.sub) { <div class="ai-q__sub">{{ s.sub }}</div> }
+              <div class="ai-q fade-in">
+                <span class="ai-q__mark"><sf-mark [size]="17" color="#9A9AA6" /></span>
+                <div>
+                  <div class="ai-q__text" [class.lg]="s.final">{{ s.question }}</div>
+                  @if (s.sub) {
+                    <div class="ai-q__sub">{{ s.sub }}</div>
+                  }
                 </div>
               </div>
             }
             @if (s.done) {
-              <div class="ai-q fade-in"><span class="ai-q__mark"><sf-mark [size]="17" color="#9A9AA6" /></span>
-                <div><div class="ai-q__text">Thanks — that's everything I need.</div>
-                  <div class="ai-q__sub">Next, check the summary before it goes to a reviewer.</div></div>
+              <div class="ai-q fade-in">
+                <span class="ai-q__mark"><sf-mark [size]="17" color="#9A9AA6" /></span>
+                <div>
+                  <div class="ai-q__text">Thanks — that's everything I need.</div>
+                  <div class="ai-q__sub">Next, check the summary before it goes to a reviewer.</div>
+                </div>
               </div>
             }
           }
           @if (busy()) {
-            <div class="ai-q fade-in"><span class="ai-q__mark"><sf-mark [size]="17" color="#9A9AA6" /></span>
-              <div><div class="ai-q__sub" style="margin-top:2px">Thinking about a follow-up…</div></div>
+            <div class="ai-q fade-in">
+              <span class="ai-q__mark"><sf-mark [size]="17" color="#9A9AA6" /></span>
+              <div>
+                <div class="ai-q__sub" style="margin-top:2px">Thinking about a follow-up…</div>
+              </div>
             </div>
           }
         </div>
@@ -70,27 +99,59 @@ import { SubShell } from './sub-shell';
                 <div class="qpanel__q">{{ s.question }}</div>
                 <div class="qpanel__opts">
                   @for (o of s.options; track o.t; let i = $index) {
-                    <button class="opt focusable" [class.on]="picked() === o.t" style="width:100%;text-align:left;cursor:pointer;font-family:inherit"
-                      (click)="picked.set(o.t)">
+                    <button
+                      class="opt focusable"
+                      [class.on]="picked() === o.t"
+                      style="width:100%;text-align:left;cursor:pointer;font-family:inherit"
+                      (click)="picked.set(o.t)"
+                    >
                       <span class="opt__key">{{ letters[i] }}</span>
-                      <div style="flex:1;min-width:0"><div class="opt__t">{{ o.t }}</div>@if (o.d) { <div class="opt__d">{{ o.d }}</div> }</div>
+                      <div style="flex:1;min-width:0">
+                        <div class="opt__t">{{ o.t }}</div>
+                        @if (o.d) {
+                          <div class="opt__d">{{ o.d }}</div>
+                        }
+                      </div>
                     </button>
                   }
                 </div>
                 <div class="qpanel__foot">
                   <button class="qpanel__skip" (click)="skip()">Skip</button>
-                  <button class="btn primary sm" [disabled]="!picked() && !msg().trim()" (click)="sendPicked()">Continue <kbd class="kbd">↵</kbd></button>
+                  <button
+                    class="btn primary sm"
+                    [disabled]="!picked() && !msg().trim()"
+                    (click)="sendPicked()"
+                  >
+                    Continue <kbd class="kbd">↵</kbd>
+                  </button>
                 </div>
               </div>
             }
             <div class="dcomposer fade-in">
-              <button class="dcomposer__add" aria-label="Type a custom answer" title="Type a custom answer" (click)="field.focus()"><sf-icon name="plus" [size]="16" /></button>
-              <input #field class="dcomposer__field" [ngModel]="msg()" (ngModelChange)="msg.set($event)"
-                [placeholder]="composerPlaceholder()" (keydown.enter)="enter()" />
+              <button
+                class="dcomposer__add"
+                aria-label="Type a custom answer"
+                title="Type a custom answer"
+                (click)="field.focus()"
+              >
+                <sf-icon name="plus" [size]="16" />
+              </button>
+              <input
+                #field
+                class="dcomposer__field"
+                [ngModel]="msg()"
+                (ngModelChange)="msg.set($event)"
+                [placeholder]="composerPlaceholder()"
+                (keydown.enter)="enter()"
+              />
               @if (msg().trim()) {
-                <button class="btn primary sm" (click)="enter()">Send <sf-icon name="arrowRight" [size]="16" /></button>
+                <button class="btn primary sm" (click)="enter()">
+                  Send <sf-icon name="arrowRight" [size]="16" />
+                </button>
               } @else if (s.done) {
-                <button class="btn primary sm" (click)="toReview()">That's everything <sf-icon name="arrowRight" [size]="16" /></button>
+                <button class="btn primary sm" (click)="toReview()">
+                  That's everything <sf-icon name="arrowRight" [size]="16" />
+                </button>
               } @else if (!s.options) {
                 <button class="qpanel__skip" style="flex:0 0 auto" (click)="skip()">Skip</button>
               }
@@ -130,7 +191,10 @@ export class Interview {
     this.api.request(this.id).subscribe((r) => this.req.set(r));
     this.busy.set(true); // the first question may be generated live — show the thinking row
     this.api.interview(this.id).subscribe({
-      next: (s) => { this.st.set(s); this.busy.set(false); },
+      next: (s) => {
+        this.st.set(s);
+        this.busy.set(false);
+      },
       error: () => this.busy.set(false),
     });
   }
@@ -159,13 +223,17 @@ export class Interview {
     const ans = this.msg().trim() || this.picked();
     if (ans) this.push({ answer: ans });
   }
-  skip() { this.push({ skip: true }); }
+  skip() {
+    this.push({ skip: true });
+  }
   enter() {
     const s = this.st();
     if (!s) return;
     const text = this.msg().trim();
     if (s.done) {
-      if (text) { /* extra detail rides along to review */ }
+      if (text) {
+        /* extra detail rides along to review */
+      }
       this.toReview();
       return;
     }

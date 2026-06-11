@@ -39,16 +39,27 @@ export class IntakeDraft {
   async save(): Promise<number> {
     const u = this.session.user();
     const where = [this.bugWhere, this.bugFreq && `happens ${this.bugFreq.toLowerCase()}`]
-      .filter(Boolean).join(' · ');
+      .filter(Boolean)
+      .join(' · ');
     const body = {
-      type: this.type, title: this.title || this.autoTitle(), description: this.desc,
+      type: this.type,
+      title: this.title || this.autoTitle(),
+      description: this.desc,
       app_id: this.type === 'bug' || this.type === 'enh' ? this.appId : null,
       new_app_name: this.type === 'new' ? this.newName || null : null,
-      bug_where: where || null, urgency: this.urgency,
+      bug_where: where || null,
+      urgency: this.urgency,
       reach: this.type === 'bug' ? null : this.reachText.trim() || this.reach,
-      impact_metric: this.type !== 'bug' && this.impactMetric && this.impactValue.trim() ? this.impactMetric : null,
-      impact_value: this.type !== 'bug' && this.impactMetric && this.impactValue.trim() ? this.impactValue.trim() : null,
-      reporter: u.name, reporter_initials: u.initials,
+      impact_metric:
+        this.type !== 'bug' && this.impactMetric && this.impactValue.trim()
+          ? this.impactMetric
+          : null,
+      impact_value:
+        this.type !== 'bug' && this.impactMetric && this.impactValue.trim()
+          ? this.impactValue.trim()
+          : null,
+      reporter: u.name,
+      reporter_initials: u.initials,
     };
     if (this.requestId == null) {
       const r = await firstValueFrom(this.api.createRequest(body));
