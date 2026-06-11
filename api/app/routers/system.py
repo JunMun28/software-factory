@@ -1,7 +1,7 @@
 """System / ops endpoints (ADR 0007).
 
 Routes:
-  GET  /api/health          — liveness + DB + brain/runner mode
+  GET  /api/health          — liveness + DB + brain/runner mode + agent CLI
   POST /api/simulator/tick  — manual simulator advance (non-claude mode only)
 """
 
@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .. import simulator
-from ..claude_exec import brain_mode, runner_mode
+from ..claude_exec import agent_cli, brain_mode, runner_mode
 from ..db import get_db
 
 log = logging.getLogger("factory")
@@ -28,7 +28,8 @@ def health(db: Session = Depends(get_db)):
         log.exception("health check: database unavailable")
         from fastapi import HTTPException
         raise HTTPException(503, "database unavailable")
-    return {"status": "ok", "db": "ok", "brain": brain_mode(), "runner": runner_mode()}
+    return {"status": "ok", "db": "ok", "brain": brain_mode(), "runner": runner_mode(),
+            "cli": agent_cli()}
 
 
 @router.post("/api/simulator/tick")

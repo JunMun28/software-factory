@@ -72,6 +72,21 @@ FACTORY_RUNNER=claude uv run uvicorn app.main:app --port 8000
 Both seams are read per-call from the env via `api/app/claude_exec.py` —
 tests flip them with `monkeypatch.setenv` mid-process without restart.
 
+### Which CLI runs the real modes
+
+The env value `claude` means "the real LLM brain/runner" (naming predates the
+CLI switch). The CLI binary is chosen separately:
+
+| Env var | Values | Default |
+|---|---|---|
+| `FACTORY_CLI` | `codex` \| `claude` | `codex` (for now) |
+| `CODEX_BIN` / `FACTORY_CODEX_MODEL` | binary path / model override | `codex` / the CLI's default |
+| `CLAUDE_BIN` / `FACTORY_CLAUDE_MODEL` | binary path / model | `claude` / `claude-haiku-4-5` |
+
+In codex mode the no-edits contract is enforced by codex's OS sandbox
+(`read-only` vs `workspace-write`); in claude mode by a tool disallow list.
+`GET /api/health` reports the active `cli` alongside `brain` and `runner`.
+
 ---
 
 ## 4. Bounded autonomy and gates
