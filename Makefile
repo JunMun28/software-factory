@@ -20,7 +20,7 @@ api:
 web:
 	cd web && npx ng serve --port $(WEB_PORT)
 
-## Backend behavioral + hardening tests (31 — lifecycle, gates, ledger idempotency, event log, simulator, validation)
+## Backend behavioral + hardening tests (lifecycle, gates, ledger idempotency, event log, simulator, validation)
 test:
 	cd api && uv run pytest -q
 

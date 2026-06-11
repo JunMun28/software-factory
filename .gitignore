@@ -11,3 +11,4 @@ __pycache__/
 workspaces/
 *.db-wal
 *.db-shm
+.playwright-mcp/
