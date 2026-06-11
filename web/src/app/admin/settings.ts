@@ -1,7 +1,7 @@
 import { Component, effect, inject } from '@angular/core';
 
 import { Store } from '../core/store.service';
-import { Glyph, Icon } from '../kit/kit';
+import { Glyph, Icon, PopMenu } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
 interface EvtPrefs {
@@ -13,7 +13,7 @@ interface EvtPrefs {
 /** C8 — Settings: three event classes × three channels; Tier-1 in-app is locked on. */
 @Component({
   selector: 'sf-settings-page',
-  imports: [AdminShell, Glyph, Icon],
+  imports: [AdminShell, Glyph, Icon, PopMenu],
   template: `
     <admin-shell active="settings" title="Settings">
       <span headerRight class="row" style="gap:6px;font-size:12.5px;color:var(--green)">
@@ -77,22 +77,11 @@ interface EvtPrefs {
               <button class="btn sm" (click)="digestOpen = !digestOpen">
                 {{ digest }} <sf-icon name="chevDown" [size]="13" />
               </button>
-              @if (digestOpen) {
-                <span style="position:fixed;inset:0;z-index:19" (click)="digestOpen = false"></span>
-                <span
-                  style="position:absolute;top:calc(100% + 5px);right:0;z-index:20;display:block;width:140px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:5px"
-                >
-                  @for (t of digestTimes; track t) {
-                    <button
-                      style="display:flex;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:none;cursor:pointer;font-family:var(--body);font-size:13px"
-                      [style.background]="digest === t ? 'var(--a50)' : ''"
-                      (click)="digest = t; digestOpen = false"
-                    >
-                      {{ t }}
-                    </button>
-                  }
-                </span>
-              }
+              <sf-pop-menu [open]="digestOpen" [width]="140" (closed)="digestOpen = false">
+                @for (t of digestTimes; track t) {
+                  <button class="pop__opt" [class.on]="digest === t" (click)="digest = t; digestOpen = false">{{ t }}</button>
+                }
+              </sf-pop-menu>
             </span>
           </div>
 
