@@ -1,7 +1,9 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { map } from 'rxjs';
 
 import { Api } from '../core/api.service';
 import { RequestDetail } from '../core/models';
@@ -244,7 +246,10 @@ export class IssueDetail {
   private router = inject(Router);
   session = inject(Session);
   private poll = inject(Poll);
-  id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
+  private route = inject(ActivatedRoute);
+  id = toSignal(this.route.paramMap.pipe(map((p) => Number(p.get('id')))), {
+    initialValue: Number(this.route.snapshot.paramMap.get('id')),
+  });
 
   d = signal<RequestDetail | null>(null);
   stageLabel = STAGE_LABEL;
@@ -259,9 +264,15 @@ export class IssueDetail {
   checks = signal<boolean[] | null>(null);
 
   constructor() {
+    let lastId: number | null = null;
     effect(() => {
+      const id = this.id();
       this.poll.version();
-      this.api.request(this.id).subscribe((r) => this.d.set(r));
+      if (id !== lastId) {
+        lastId = id;
+        this.d.set(null);          // do not show the previous issue while loading
+      }
+      this.api.request(id).subscribe((r) => this.d.set(r));
     });
   }
 
@@ -337,7 +348,7 @@ export class IssueDetail {
     const u = this.session.user();
     this.api.comment(r.id, this.commentText.trim(), u.name, u.initials).subscribe(() => {
       this.commentText = '';
-      this.api.request(this.id).subscribe((d) => this.d.set(d));
+      this.api.request(this.id()).subscribe((d) => this.d.set(d));
     });
   }
   back() { this.router.navigateByUrl('/admin/list'); }

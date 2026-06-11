@@ -1,6 +1,8 @@
 import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { map } from 'rxjs';
 
 import { Api } from '../core/api.service';
 import { ProgressEvent } from '../core/models';
@@ -37,7 +39,7 @@ interface FeedMsg {
   selector: 'sf-feed-page',
   imports: [AdminShell, Glyph, Icon, Mark, Avatar, FormsModule],
   template: `
-    <admin-shell [active]="'feed:' + key" title="Apps">
+    <admin-shell [active]="'feed:' + key()" title="Apps">
       <div style="position:absolute;inset:0;display:flex;flex-direction:column">
         <!-- channel header -->
         <div class="row" style="gap:11px;padding:11px 22px;border-bottom:1px solid var(--border);background:var(--surface)">
@@ -157,32 +159,51 @@ export class Feed {
   private session = inject(Session);
   private poll = inject(Poll);
   private store = inject(Store);
-  key = inject(ActivatedRoute).snapshot.paramMap.get('key')!;
+  private route = inject(ActivatedRoute);
+  key = toSignal(this.route.paramMap.pipe(map((p) => p.get('key')!)), {
+    initialValue: this.route.snapshot.paramMap.get('key')!,
+  });
 
   private scroller = viewChild<ElementRef<HTMLElement>>('scroller');
 
   // header context (app, members, composer target) comes from the shared store —
   // the feed body itself stays delta-fed and never refetches (ADR 0012/0013)
-  app = computed(() => this.store.apps().find((x) => x.key === this.key) ?? null);
+  app = computed(() => this.store.apps().find((x) => x.key === this.key()) ?? null);
   items = signal<ProgressEvent[]>([]);
-  requests = computed(() => this.store.requests().filter((r) => r.app_key === this.key));
+  requests = computed(() => this.store.requests().filter((r) => r.app_key === this.key()));
   pending = signal<FeedMsg | null>(null);
   showJump = signal(false);
   draft = '';
   followOpen = false;
   followLevels = ['All', 'Gate + Needs-human', 'Muted'];
-  follow = signal(localStorage.getItem(`sf-follow-${this.key}`) ?? 'All');
+  follow = signal(localStorage.getItem(`sf-follow-${this.route.snapshot.paramMap.get('key')!}`) ?? 'All');
 
   private seen = new Set<number>();
   private atBottom = true;
   private pendingCommentId: number | null = null;
 
   constructor() {
-    // one-time tail load; afterwards only deltas arrive
-    this.api.subjectFeed(this.key).subscribe((page) => {
-      page.items.forEach((e) => this.seen.add(e.id));
-      this.items.set(page.items);
-      queueMicrotask(() => this.scrollToBottom());
+    let lastKey: string | null = null;
+
+    // reload feed whenever the channel key changes; reset all per-channel state
+    effect(() => {
+      const key = this.key();
+      if (key !== lastKey) {
+        lastKey = key;
+        this.items.set([]);
+        this.pending.set(null);
+        this.showJump.set(false);
+        this.seen.clear();
+        this.atBottom = true;
+        this.pendingCommentId = null;
+        this.follow.set(localStorage.getItem(`sf-follow-${key}`) ?? 'All');
+        // one-time tail load for the new channel; afterwards only deltas arrive
+        this.api.subjectFeed(key).subscribe((page) => {
+          page.items.forEach((e) => this.seen.add(e.id));
+          this.items.set(page.items);
+          queueMicrotask(() => this.scrollToBottom());
+        });
+      }
     });
 
     // the poll loop's delta IS the update path — no refetching
@@ -303,7 +324,7 @@ export class Feed {
   setFollow(lvl: string) {
     this.follow.set(lvl);
     this.followOpen = false;
-    localStorage.setItem(`sf-follow-${this.key}`, lvl);
+    localStorage.setItem(`sf-follow-${this.key()}`, lvl);
   }
   review(id: number) { this.router.navigate(['/admin/queue'], { queryParams: { sel: id } }); }
   openIssue(id: number) { this.router.navigateByUrl(`/admin/issue/${id}`); }
