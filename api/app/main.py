@@ -6,7 +6,7 @@ import os
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import func, or_, text, update
+from sqlalchemy import func, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -16,13 +16,10 @@ from .claude_runner import ClaudeRunner
 from .db import SessionLocal, engine, get_db, migrate
 from .events import emit
 from .interview import MAX_QUESTIONS, answered_count, get_brain
-from .models import App, AuditEvent, Comment, InterviewTurn, ProgressEvent, Request, SpecLine, utcnow
+from .models import AuditEvent, Comment, InterviewTurn, ProgressEvent, Request, SpecLine, utcnow
+from .routers import events as events_router
 from .routers import registry, system
 from .schemas import (
-    CommentIn,
-    CommentOut,
-    EventOut,
-    FeedPage,
     InterviewAnswer,
     InterviewState,
     Note,
@@ -115,6 +112,7 @@ def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = 
     )
     app.include_router(system.router)
     app.include_router(registry.router)
+    app.include_router(events_router.router)
 
     # ---------- helpers ----------
     def to_out(r: Request, model=RequestOut, **extra):
@@ -418,90 +416,6 @@ def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = 
         if runner_mode() == "claude" and r.stage in PIPELINE_STAGES:
             claude_pipeline.start(r.id)
         return to_out(r, RequestDetail)
-
-    # ---------- comments ----------
-    @app.post("/api/requests/{rid}/comments", response_model=CommentOut, status_code=201)
-    def add_comment(rid: int, body: CommentIn, db: Session = Depends(get_db)):
-        r = get_request(db, rid)
-        c = Comment(request=r, author=body.author, initials=body.initials, color=body.color, body=body.body)
-        db.add(c)
-        db.add(AuditEvent(request_id=r.id, actor=body.author, action="commented"))
-        db.flush()  # assign the comment id before the event references it
-        # the comment also rides the one progress_event rail (ADR 0012) so feeds
-        # update through the same keyset cursor as every other entry
-        emit(db, r, "comment", body.body[:300], actor=body.author, bot=False,
-             payload={"comment_id": c.id, "initials": body.initials, "color": body.color, "body": body.body})
-        db.commit()
-        return c
-
-    # ---------- the two-axis feed (keyset cursor, ADR 0008) ----------
-    def serialize_events(rows) -> list[EventOut]:
-        """rows: (ProgressEvent, ref, title) tuples from a single joined query — no N+1."""
-        out = []
-        for ev, ref, title in rows:
-            o = EventOut.model_validate(ev, from_attributes=True)
-            o.request_ref, o.request_title = ref, title
-            out.append(o)
-        return out
-
-    def joined_events(db: Session):
-        return (
-            db.query(ProgressEvent, Request.ref, Request.title)
-            .outerjoin(Request, ProgressEvent.request_id == Request.id)
-        )
-
-    @app.get("/api/events/cursor")
-    def events_cursor(db: Session = Depends(get_db)):
-        """Where 'now' is. New clients start polling from here instead of
-        replaying the whole event log from id 0 (ADR 0013)."""
-        return {"cursor": db.query(func.max(ProgressEvent.id)).scalar() or 0}
-
-    @app.get("/api/events", response_model=list[EventOut])
-    def events(after: int = 0, subject: str | None = None, request_id: int | None = None,
-               limit: int = 200, db: Session = Depends(get_db)):
-        q = joined_events(db).filter(ProgressEvent.id > after)
-        if subject:
-            a = db.query(App).filter(App.key == subject).first()
-            if not a:
-                raise HTTPException(404, "Unknown app")
-            q = q.filter(ProgressEvent.subject_id == a.id)
-        if request_id:
-            q = q.filter(ProgressEvent.request_id == request_id)
-        rows = q.order_by(ProgressEvent.id).limit(min(limit, 500)).all()
-        return serialize_events(rows)
-
-    @app.get("/api/subjects/{key}/feed", response_model=FeedPage)
-    def subject_feed(key: str, after: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-        """The channel feed: with no cursor, the LATEST `limit` items (ascending);
-        with ?after=, only newer items. The cursor is the max event id either way."""
-        a = db.query(App).filter(App.key == key).first()
-        if not a:
-            raise HTTPException(404, "Unknown app")
-        limit = min(limit, 300)
-        base = joined_events(db).filter(ProgressEvent.subject_id == a.id)
-        if after > 0:
-            rows = base.filter(ProgressEvent.id > after).order_by(ProgressEvent.id).limit(limit).all()
-        else:
-            rows = list(reversed(base.order_by(ProgressEvent.id.desc()).limit(limit).all()))
-        items = serialize_events(rows)
-        cursor = items[-1].id if items else after
-        return FeedPage(items=items, cursor=cursor)
-
-    @app.get("/api/requests/{rid}/comments", response_model=list[CommentOut])
-    def list_comments(rid: int, db: Session = Depends(get_db)):
-        return get_request(db, rid).comments
-
-    # ---------- needs-me inbox ----------
-    @app.get("/api/inbox", response_model=list[RequestOut])
-    def inbox(db: Session = Depends(get_db)):
-        rows = (
-            db.query(Request)
-            .filter(or_(Request.gate.isnot(None), Request.needs_human.is_(True)))
-            .filter(Request.status.notin_(("cancelled", "done")))  # a stale gate never resurrects dead work
-            .order_by(Request.needs_human.desc(), Request.created_at.desc())
-            .all()
-        )
-        return [to_out(r) for r in rows]
 
     return app
 
