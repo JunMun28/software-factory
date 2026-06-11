@@ -2,12 +2,12 @@ import { Component, inject, input } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { Session } from '../core/session.service';
-import { Avatar, Glyph, Mark } from '../kit/kit';
+import { Avatar, Glyph, Mark, PopMenu } from '../kit/kit';
 
 /** Shared submitter shell: top bar + optional intake stepper (Describe → Clarify → Review). */
 @Component({
   selector: 'sub-shell',
-  imports: [Mark, Avatar, Glyph],
+  imports: [Mark, Avatar, Glyph, PopMenu],
   template: `
     <div class="sub">
       <div class="sub-top">
@@ -28,20 +28,12 @@ import { Avatar, Glyph, Mark } from '../kit/kit';
               }}</sf-avatar>
               {{ session.user().name }}
             </button>
-            @if (whoOpen) {
-              <span style="position:fixed;inset:0;z-index:29" (click)="whoOpen = false"></span>
-              <span
-                style="position:absolute;top:calc(100% + 6px);right:0;z-index:30;display:block;width:230px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:5px"
-              >
-                <button
-                  style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 9px;border-radius:6px;border:none;cursor:pointer;font-family:var(--body);font-size:13px;background:none;color:var(--fg2)"
-                  (click)="switchRole()"
-                >
-                  <sf-avatar [sm]="true" color="#6E5A8A">KP</sf-avatar> Switch to Kim P.
-                  <span style="margin-left:auto;font-size:10.5px;color:var(--faint)">Reviewer</span>
-                </button>
-              </span>
-            }
+            <sf-pop-menu [open]="whoOpen" [width]="230" (closed)="whoOpen = false">
+              <button class="pop__opt" (click)="switchRole()">
+                <sf-avatar [sm]="true" color="#6E5A8A">KP</sf-avatar> Switch to Kim P.
+                <span style="margin-left:auto;font-size:10.5px;color:var(--faint)">Reviewer</span>
+              </button>
+            </sf-pop-menu>
           </span>
         </div>
       </div>
