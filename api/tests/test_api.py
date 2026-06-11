@@ -178,3 +178,143 @@ def test_comments(client):
     assert c["author"] == "Kim P."
     cs = client.get(f"/api/requests/{r['id']}/comments").json()
     assert any(x["body"] == "Looks fine to me." for x in cs)
+
+
+def test_reach_chip_drives_impact_line(client):
+    apps = client.get("/api/apps").json()
+    nw = next(a for a in apps if a["key"] == "northwind")
+
+    # reach is captured on the Describe step and survives the round-trip
+    r = client.post("/api/requests", json={
+        "type": "enh", "title": "Bulk-export timesheets",
+        "description": "Exporting one person at a time is slow.",
+        "app_id": nw["id"], "reach": "dept",
+    }).json()
+    assert r["reach"] == "dept"
+
+    # changing your mind on the Describe step PATCHes through
+    r = client.patch(f"/api/requests/{r['id']}", json={"reach": "team"}).json()
+    assert r["reach"] == "team"
+
+    # the drafted spec carries exactly one grounded Impact line
+    for _ in range(3):
+        client.post(f"/api/requests/{r['id']}/interview", json={"skip": True})
+    client.post(f"/api/requests/{r['id']}/submit")
+    detail = client.get(f"/api/requests/{r['id']}").json()
+    impact = [l for l in detail["spec_lines"] if l["text"].startswith("Impact:")]
+    assert len(impact) == 1 and impact[0]["prov"] == "request" and not impact[0]["assume"]
+    assert "team" in impact[0]["text"]
+
+
+def test_reach_missing_becomes_assumption(client):
+    r = client.post("/api/requests", json={
+        "type": "other", "title": "Help with reporting",
+        "description": "Not sure what we need yet.",
+    }).json()
+    for _ in range(3):
+        client.post(f"/api/requests/{r['id']}/interview", json={"skip": True})
+    client.post(f"/api/requests/{r['id']}/submit")
+    detail = client.get(f"/api/requests/{r['id']}").json()
+    impact = [l for l in detail["spec_lines"] if "Impact" in l["text"]]
+    assert len(impact) == 1 and impact[0]["assume"]
+    # scope + impact are both assumed now — the note must count honestly
+    assert detail["spec_open_note"].startswith("2 assumptions need")
+
+
+def test_bug_fix_has_no_impact_line(client):
+    apps = client.get("/api/apps").json()
+    nw = next(a for a in apps if a["key"] == "northwind")
+    r = client.post("/api/requests", json={
+        "type": "bug", "title": "Login fails", "description": "500 on login.",
+        "app_id": nw["id"],
+    }).json()
+    for _ in range(3):
+        client.post(f"/api/requests/{r['id']}/interview", json={"skip": True})
+    client.post(f"/api/requests/{r['id']}/submit")
+    detail = client.get(f"/api/requests/{r['id']}").json()
+    assert not any("Impact" in l["text"] for l in detail["spec_lines"])
+
+
+def test_new_app_interview_no_longer_asks_headcount(client):
+    # reach now arrives via the Describe chip — the interview must not re-ask it
+    r = client.post("/api/requests", json={
+        "type": "new", "title": "Headcount dashboard",
+        "description": "A dashboard for quarterly headcount.",
+        "new_app_name": "Headcount dashboard", "reach": "wider",
+    }).json()
+    questions = []
+    st = client.get(f"/api/requests/{r['id']}/interview").json()
+    while not st["done"]:
+        questions.append(st["question"])
+        st = client.post(f"/api/requests/{r['id']}/interview", json={"answer": "ok"}).json()
+    assert not any("how many people" in q.lower() for q in questions)
+
+
+def test_reach_accepts_free_text(client):
+    apps = client.get("/api/apps").json()
+    nw = next(a for a in apps if a["key"] == "northwind")
+    r = client.post("/api/requests", json={
+        "type": "enh", "title": "Faster shift handover notes",
+        "description": "Handover notes are retyped every shift.",
+        "app_id": nw["id"], "reach": "all shift supervisors in Penang",
+    }).json()
+    assert r["reach"] == "all shift supervisors in Penang"
+    for _ in range(3):
+        client.post(f"/api/requests/{r['id']}/interview", json={"skip": True})
+    client.post(f"/api/requests/{r['id']}/submit")
+    detail = client.get(f"/api/requests/{r['id']}").json()
+    impact = [l for l in detail["spec_lines"] if l["text"].startswith("Impact:")]
+    assert len(impact) == 1 and impact[0]["prov"] == "request"
+    assert "all shift supervisors in Penang" in impact[0]["text"]
+
+
+def test_impact_estimate_becomes_grounded_line(client):
+    apps = client.get("/api/apps").json()
+    nw = next(a for a in apps if a["key"] == "northwind")
+    r = client.post("/api/requests", json={
+        "type": "enh", "title": "Auto-reconcile invoices",
+        "description": "Manual reconciliation is slow.",
+        "app_id": nw["id"], "reach": "dept",
+        "impact_metric": "hours", "impact_value": "1200",
+    }).json()
+    assert r["impact_metric"] == "hours" and r["impact_value"] == "1200"
+    for _ in range(3):
+        client.post(f"/api/requests/{r['id']}/interview", json={"skip": True})
+    client.post(f"/api/requests/{r['id']}/submit")
+    detail = client.get(f"/api/requests/{r['id']}").json()
+    est = [l for l in detail["spec_lines"] if l["text"].startswith("Impact estimate:")]
+    assert len(est) == 1 and est[0]["prov"] == "request" and not est[0]["assume"]
+    assert "1200 man-hours saved per year" in est[0]["text"]
+
+
+def test_impact_cost_metric_wording(client):
+    r = client.post("/api/requests", json={
+        "type": "other", "title": "Retire the fax workflow",
+        "description": "We still pay for fax lines.",
+        "impact_metric": "cost", "impact_value": "250",
+    }).json()
+    for _ in range(3):
+        client.post(f"/api/requests/{r['id']}/interview", json={"skip": True})
+    client.post(f"/api/requests/{r['id']}/submit")
+    detail = client.get(f"/api/requests/{r['id']}").json()
+    est = [l for l in detail["spec_lines"] if l["text"].startswith("Impact estimate:")]
+    assert len(est) == 1 and "250k saved per year" in est[0]["text"]
+    # impact was stated, so the assumption is only about WHO is affected
+    who = [l for l in detail["spec_lines"] if l["assume"] and "affected" in l["text"].lower()]
+    assert len(who) == 1
+    assert not any("Impact not stated" in l["text"] for l in detail["spec_lines"])
+
+
+def test_reach_site_and_network_wording(client):
+    for reach, phrase in (("site", "whole site"), ("network", "across the network")):
+        r = client.post("/api/requests", json={
+            "type": "other", "title": f"Reach {reach}",
+            "description": "Scope test.", "reach": reach,
+        }).json()
+        for _ in range(3):
+            client.post(f"/api/requests/{r['id']}/interview", json={"skip": True})
+        client.post(f"/api/requests/{r['id']}/submit")
+        detail = client.get(f"/api/requests/{r['id']}").json()
+        impact = [l for l in detail["spec_lines"] if l["text"].startswith("Impact:")]
+        assert len(impact) == 1 and impact[0]["prov"] == "request"
+        assert phrase in impact[0]["text"], (reach, impact[0]["text"])

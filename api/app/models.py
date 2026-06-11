@@ -46,6 +46,9 @@ class Request(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     type: Mapped[str] = mapped_column(String(8))  # bug | enh | new | other
     urgency: Mapped[str] = mapped_column(String(8), default="normal")
+    reach: Mapped[str | None] = mapped_column(String(120), nullable=True)  # me | team | dept | wider | free text — null for bugs/unstated
+    impact_metric: Mapped[str | None] = mapped_column(String(12), nullable=True)  # hours | cost | other
+    impact_value: Mapped[str | None] = mapped_column(String(120), nullable=True)
     priority: Mapped[str] = mapped_column(String(8), default="Normal")
 
     app_id: Mapped[int | None] = mapped_column(ForeignKey("apps.id"), nullable=True)

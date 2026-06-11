@@ -48,6 +48,9 @@ export interface FactoryRequest {
   description: string;
   type: 'bug' | 'enh' | 'new' | 'other';
   urgency: string;
+  reach: string | null; // me | team | dept | wider | free text
+  impact_metric: 'hours' | 'cost' | 'other' | null;
+  impact_value: string | null;
   priority: string;
   app_id: number | null;
   app_name: string;

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
@@ -36,44 +36,23 @@ import { SubShell } from './sub-shell';
             @if (draft.type === 'bug' || draft.type === 'enh') {
               <div>
                 <label class="field-label">Which app?</label>
-                <div style="position:relative">
-                  <button class="input" style="cursor:pointer;text-align:left" (click)="appsOpen.set(!appsOpen())">
+                <div class="dd-wrap">
+                  <button class="input" style="cursor:pointer;text-align:left" (click)="toggleApps()">
                     @if (selectedApp(); as a) { <span>{{ a.name }}</span> } @else { <span class="ph">Pick an app</span> }
                     <sf-icon name="chevDown" [size]="16" style="margin-left:auto" color="var(--faint)" />
                   </button>
                   @if (appsOpen()) {
-                    <div style="position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:9;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-pop);overflow:hidden;padding:5px">
+                    <div class="dd">
                       @for (a of apps(); track a.id) {
-                        <button style="display:flex;width:100%;text-align:left;padding:8px 11px;border:none;border-radius:6px;background:none;cursor:pointer;font-family:var(--body);font-size:14px;gap:8px;align-items:center"
-                          (click)="draft.appId = a.id; appsOpen.set(false)"
-                          [style.background]="draft.appId === a.id ? 'var(--a50)' : ''">
-                          <span style="color:var(--faint)">#</span>{{ a.name }}
+                        <button class="dd__opt" [class.on]="draft.appId === a.id" (click)="draft.appId = a.id; appsOpen.set(false)">
+                          <span class="dd__hash">#</span>{{ a.name }}
                         </button>
                       } @empty {
-                        <div style="padding:12px;font-size:13px;color:var(--muted)">No apps registered yet. Choose New app instead, or ask an admin to add one.</div>
+                        <div class="dd__empty">No apps registered yet. Choose New app instead, or ask an admin to add one.</div>
                       }
                     </div>
                   }
                 </div>
-              </div>
-            }
-            @if (draft.type === 'other') {
-              <div>
-                <label class="field-label">Related app <span style="font-weight:400;color:var(--faint)">(optional)</span></label>
-                <button class="input" style="cursor:pointer;text-align:left" (click)="appsOpen.set(!appsOpen())">
-                  @if (selectedApp(); as a) { <span>{{ a.name }}</span> } @else { <span class="ph">Pick an app, or leave blank</span> }
-                  <sf-icon name="chevDown" [size]="16" style="margin-left:auto" color="var(--faint)" />
-                </button>
-                @if (appsOpen()) {
-                  <div style="position:relative">
-                    <div style="position:absolute;top:4px;left:0;right:0;z-index:9;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-pop);padding:5px">
-                      @for (a of apps(); track a.id) {
-                        <button style="display:flex;width:100%;text-align:left;padding:8px 11px;border:none;border-radius:6px;background:none;cursor:pointer;font-family:var(--body);font-size:14px;gap:8px"
-                          (click)="draft.appId = a.id; appsOpen.set(false)"><span style="color:var(--faint)">#</span>{{ a.name }}</button>
-                      }
-                    </div>
-                  </div>
-                }
               </div>
             }
             @if (draft.type === 'new') {
@@ -92,22 +71,45 @@ import { SubShell } from './sub-shell';
                 <div><label class="field-label">Where did you see it?</label><input class="input" placeholder="Page or screen" [(ngModel)]="draft.bugWhere" /></div>
                 <div>
                   <label class="field-label">How often?</label>
-                  <div style="position:relative">
-                    <button class="input" style="cursor:pointer;text-align:left" (click)="freqOpen.set(!freqOpen())">
+                  <div class="dd-wrap">
+                    <button class="input" style="cursor:pointer;text-align:left" (click)="toggleFreq()">
                       <span [class.ph]="!draft.bugFreq">{{ draft.bugFreq || 'Every time' }}</span>
                       <sf-icon name="chevDown" [size]="16" style="margin-left:auto" color="var(--faint)" />
                     </button>
                     @if (freqOpen()) {
-                      <div style="position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:9;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-pop);padding:5px">
+                      <div class="dd">
                         @for (f of freqs; track f) {
-                          <button style="display:flex;width:100%;text-align:left;padding:8px 11px;border:none;border-radius:6px;background:none;cursor:pointer;font-family:var(--body);font-size:14px"
-                            [style.background]="draft.bugFreq === f ? 'var(--a50)' : ''"
-                            (click)="draft.bugFreq = f; freqOpen.set(false)">{{ f }}</button>
+                          <button class="dd__opt" [class.on]="draft.bugFreq === f" (click)="draft.bugFreq = f; freqOpen.set(false)">{{ f }}</button>
                         }
                       </div>
                     }
                   </div>
                 </div>
+              </div>
+            }
+            @if (draft.type !== 'bug') {
+              <div>
+                <label class="field-label">Who's affected? <span style="font-weight:400;color:var(--faint)">(optional)</span></label>
+                <span class="field-help">Helps the reviewer see how much this is worth.</span>
+                <div class="seg" style="margin-bottom:8px">
+                  @for (r of reaches; track r[0]) {
+                    <button [class.on]="!draft.reachText && draft.reach === r[0]" (click)="pickReach($any(r[0]))">{{ r[1] }}</button>
+                  }
+                </div>
+                <input class="input" placeholder="…or describe them, e.g. all shift supervisors in Penang"
+                  [ngModel]="draft.reachText" (ngModelChange)="typeReach($event)" />
+              </div>
+              <div>
+                <label class="field-label">What's the impact? <span style="font-weight:400;color:var(--faint)">(optional)</span></label>
+                <span class="field-help">A rough number is enough — it strengthens the case for approval.</span>
+                <div class="seg" [style.margin-bottom]="draft.impactMetric ? '8px' : ''">
+                  @for (m of metrics; track m[0]) {
+                    <button [class.on]="draft.impactMetric === m[0]" (click)="pickMetric($any(m[0]))">{{ m[1] }}</button>
+                  }
+                </div>
+                @if (draft.impactMetric) {
+                  <input class="input fade-in" [placeholder]="metricPlaceholder()" [(ngModel)]="draft.impactValue" />
+                }
               </div>
             }
             <div>
@@ -128,6 +130,22 @@ import { SubShell } from './sub-shell';
       </div>
     </sub-shell>
   `,
+  styles: `
+    .seg { flex-wrap:wrap; }
+    .seg button { white-space:nowrap; }
+    .dd-wrap { position:relative; }
+    .dd { position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:9; background:var(--surface);
+      border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow-pop); padding:5px; }
+    .dd__opt { display:flex; width:100%; text-align:left; padding:8px 11px; border:none; border-radius:6px;
+      background:none; cursor:pointer; font-family:var(--body); font-size:14px; color:var(--fg1);
+      gap:8px; align-items:center; transition:background var(--dur) var(--ease); }
+    @media (hover:hover) { .dd__opt:hover { background:var(--surface-2); } }
+    .dd__opt:active { background:var(--surface-3); }
+    .dd__opt.on { background:var(--a50); color:var(--a700); }
+    .dd__opt.on .dd__hash { color:var(--a400); }
+    .dd__hash { color:var(--faint); }
+    .dd__empty { padding:12px; font-size:13px; color:var(--muted); }
+  `,
 })
 export class NewRequest {
   draft = inject(IntakeDraft);
@@ -140,6 +158,11 @@ export class NewRequest {
   saving = signal(false);
   freqs = ['Every time', 'Most of the time', 'Sometimes', 'Only once so far'];
   urgencies: [string, string][] = [['low', 'Low'], ['normal', 'Normal'], ['high', 'High']];
+  reaches: [string, string][] = [
+    ['me', 'Just me'], ['team', 'My team'], ['dept', 'My department'],
+    ['wider', 'Multiple departments'], ['site', 'Site'], ['network', 'Network'],
+  ];
+  metrics: [string, string][] = [['hours', 'Man-hours saved / year'], ['cost', 'Cost saved / year (k)'], ['other', 'Other benefit']];
 
   types = [
     { t: 'bug', icon: 'bug', title: 'Bug fix', help: "Something's broken" },
@@ -152,7 +175,31 @@ export class NewRequest {
     this.api.apps().subscribe((a) => this.apps.set(a.filter((x) => !x.muted)));
   }
 
+  toggleApps() { this.appsOpen.set(!this.appsOpen()); this.freqOpen.set(false); }
+  toggleFreq() { this.freqOpen.set(!this.freqOpen()); this.appsOpen.set(false); }
+
+  @HostListener('document:click', ['$event'])
+  onDocClick(e: Event) {
+    if (!(e.target as HTMLElement).closest('.dd-wrap')) this.closeMenus();
+  }
+  @HostListener('document:keydown.escape')
+  closeMenus() { this.appsOpen.set(false); this.freqOpen.set(false); }
+
   selectedApp() { return this.apps().find((a) => a.id === this.draft.appId) ?? null; }
+  pickReach(r: 'me' | 'team' | 'dept' | 'wider' | 'site' | 'network') {
+    this.draft.reach = this.draft.reach === r && !this.draft.reachText ? null : r;
+    this.draft.reachText = '';
+  }
+  typeReach(text: string) {
+    this.draft.reachText = text;
+    if (text.trim()) this.draft.reach = null;
+  }
+  pickMetric(m: 'hours' | 'cost' | 'other') {
+    this.draft.impactMetric = this.draft.impactMetric === m ? null : m;
+  }
+  metricPlaceholder() {
+    return { hours: 'e.g. 1200', cost: 'e.g. 250', other: 'e.g. fewer audit findings each quarter' }[this.draft.impactMetric!];
+  }
   descLabel() {
     return { bug: "What's going wrong?", new: 'What should it do?', other: 'What do you need?', enh: 'What should change?' }[this.draft.type!];
   }

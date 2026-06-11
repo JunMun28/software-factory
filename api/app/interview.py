@@ -11,6 +11,24 @@ from .models import Request, SpecLine
 
 MAX_QUESTIONS = 3  # US10: stop after a few — hard ceiling
 
+# Describe-step reach chip → spec Impact line (submitters state facts; we word the impact).
+# Free-text reach falls through and is quoted as written.
+REACH_IMPACT = {
+    "me": "just the requester (1 person)",
+    "team": "the requester's team (under 10 people)",
+    "dept": "their whole department (tens of people)",
+    "wider": "multiple departments (100+ people)",
+    "site": "the whole site (hundreds of people)",
+    "network": "multiple sites across the network (1000+ people)",
+}
+
+# Describe-step impact estimate → spec wording, keyed by metric
+IMPACT_WORDING = {
+    "hours": lambda v: f"{v} man-hours saved per year.",
+    "cost": lambda v: f"{v}k saved per year.",
+    "other": lambda v: f"{v.rstrip('.')}.",
+}
+
 
 def answered_count(req: Request) -> int:
     """The one definition of an answered turn: answered or explicitly skipped."""
@@ -65,16 +83,8 @@ SCRIPTS: dict[str, list[Question]] = {
         ),
     ],
     "new": [
+        # headcount is no longer asked here — the Describe step's reach chip captures it
         _q("Who will use this day-to-day, and for what?"),
-        _q(
-            "Roughly how many people would use it?",
-            options=[
-                {"t": "Just my team", "d": "Under 10 people."},
-                {"t": "My department", "d": "Tens of people."},
-                {"t": "Several departments", "d": "Low hundreds."},
-                {"t": "The whole site", "d": "Hundreds or more."},
-            ],
-        ),
         _q(
             "Last thing — what single outcome would make this a clear win?",
             sub="One sentence is plenty.",
@@ -132,6 +142,19 @@ class ScriptedBrain:
                 skipped.append(i)
         if req.type == "bug" and req.bug_where:
             add(f"Affected area: {req.bug_where}.", prov="request")
+        # value justification: reach + impact estimate ground Impact lines; gaps become ASSUMPTIONs
+        if req.type != "bug":
+            if req.reach:
+                worded = REACH_IMPACT.get(req.reach, req.reach)
+                add(f"Impact: affects {worded}.", prov="request")
+            has_estimate = bool(req.impact_metric and req.impact_value)
+            if has_estimate:
+                add(f"Impact estimate: {IMPACT_WORDING[req.impact_metric](req.impact_value)}", prov="request")
+            if not req.reach:
+                if has_estimate:
+                    add("Who's affected wasn't stated — assumed only the requester.", assume=True)
+                else:
+                    add("Impact not stated — assumed to affect only the requester.", assume=True)
         # one explicit assumption — the anti-rubber-stamp ledger always has something to check
         if req.app_id:
             add("Work is scoped to the existing app's current integrations only.", assume=True)
@@ -139,9 +162,10 @@ class ScriptedBrain:
             add("A new repository will be provisioned for this app on approval.", assume=True)
 
         n_skip = len(skipped)
+        n_assume = sum(1 for line in lines if line.assume)
         note = (
-            "1 assumption needs confirming before approval"
-            + (f" — and {n_skip} interview question{'s' if n_skip > 1 else ''} were skipped." if n_skip else ".")
+            f"{n_assume} assumption{'s need' if n_assume > 1 else ' needs'} confirming before approval"
+            + (f" — and {n_skip} interview question{'s were' if n_skip > 1 else ' was'} skipped." if n_skip else ".")
         )
         return lines, note
 

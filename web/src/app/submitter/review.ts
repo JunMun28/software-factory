@@ -33,6 +33,26 @@ import { SubShell } from './sub-shell';
               <div class="summ-v">{{ r.description }}</div>
               <button class="btn ghost sm" style="color:var(--accent-link)" (click)="go('/submit/new')">Edit</button>
             </div>
+            @if (r.type !== 'bug') {
+              <div class="summ-row">
+                <span class="summ-k">Who's affected</span>
+                <div class="summ-v">
+                  @if (reachLabel(r.reach); as label) {
+                    {{ label }}
+                  } @else {
+                    <span style="color:var(--muted)">Not specified — the reviewer will assume it's just you.</span>
+                  }
+                </div>
+                <button class="btn ghost sm" style="color:var(--accent-link)" (click)="go('/submit/new')">Edit</button>
+              </div>
+              @if (impactLabel(r); as impact) {
+                <div class="summ-row">
+                  <span class="summ-k">Estimated impact</span>
+                  <div class="summ-v">{{ impact }}</div>
+                  <button class="btn ghost sm" style="color:var(--accent-link)" (click)="go('/submit/new')">Edit</button>
+                </div>
+              }
+            }
             @for (t of answered(r); track t.order) {
               <div class="summ-row">
                 <span class="summ-k">{{ t.question }}</span>
@@ -81,6 +101,26 @@ export class Review {
 
   descLabel(r: RequestDetail) {
     return { bug: "What's going wrong", new: 'What it should do', other: 'What you need', enh: 'What should change' }[r.type];
+  }
+  reachLabel(reach: RequestDetail['reach']) {
+    if (!reach) return null;
+    const canned: Record<string, string> = {
+      me: 'Just me (1 person)',
+      team: 'My team (under 10 people)',
+      dept: 'My department (tens of people)',
+      wider: 'Multiple departments (100+ people)',
+      site: 'Whole site (hundreds of people)',
+      network: 'Multiple sites across the network (1000+ people)',
+    };
+    return canned[reach] ?? reach;
+  }
+  impactLabel(r: RequestDetail) {
+    if (!r.impact_metric || !r.impact_value) return null;
+    return {
+      hours: `${r.impact_value} man-hours saved / year`,
+      cost: `${r.impact_value}k saved / year`,
+      other: r.impact_value,
+    }[r.impact_metric];
   }
   answered(r: RequestDetail) { return r.turns.filter((t) => t.answer); }
   go(url: string) { this.router.navigateByUrl(url); }

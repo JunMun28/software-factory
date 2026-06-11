@@ -69,6 +69,9 @@ class RequestOut(BaseModel):
     description: str
     type: str
     urgency: str
+    reach: str | None
+    impact_metric: str | None
+    impact_value: str | None
     priority: str
     app_id: int | None
     app_name: str
@@ -115,6 +118,9 @@ class RequestCreate(BaseModel):
     new_app_name: str | None = Field(default=None, max_length=120)
     bug_where: str | None = Field(default=None, max_length=200)
     urgency: Literal["low", "normal", "high"] = "normal"
+    reach: str | None = Field(default=None, max_length=120)  # me|team|dept|wider or free text
+    impact_metric: Literal["hours", "cost", "other"] | None = None
+    impact_value: str | None = Field(default=None, max_length=120)
     reporter: str = Field(default="Jordan D.", max_length=80)
     reporter_initials: str = Field(default="JD", max_length=4)
 
@@ -128,6 +134,9 @@ class RequestUpdate(BaseModel):
     new_app_name: str | None = Field(default=None, max_length=120)
     bug_where: str | None = Field(default=None, max_length=200)
     urgency: Literal["low", "normal", "high"] | None = None
+    reach: str | None = Field(default=None, max_length=120)
+    impact_metric: Literal["hours", "cost", "other"] | None = None
+    impact_value: str | None = Field(default=None, max_length=120)
 
 
 class InterviewAnswer(BaseModel):

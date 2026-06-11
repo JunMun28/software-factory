@@ -5,7 +5,8 @@ import { boardGlyph, clock, gateLabel, plainStage, timeAgo, utc } from './util';
 
 function req(over: Partial<FactoryRequest> = {}): FactoryRequest {
   return {
-    id: 1, ref: 'REQ-1', title: 't', description: '', type: 'enh', urgency: 'normal', priority: 'Normal',
+    id: 1, ref: 'REQ-1', title: 't', description: '', type: 'enh', urgency: 'normal', reach: null,
+    impact_metric: null, impact_value: null, priority: 'Normal',
     app_id: 1, app_name: 'App', app_key: 'app', repo: null, new_app_name: null,
     stage: 'intake', status: 'submitted', gate: null, needs_human: false, needs_human_reason: null,
     reporter: 'J', reporter_initials: 'JD', assignee: null, assignee_initials: null, assignee_color: null,

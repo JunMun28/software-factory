@@ -228,8 +228,9 @@ def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = 
         for attempt in (0, 1):
             r = Request(
                 ref=next_ref(db), title=body.title or "(untitled request)", description=body.description,
-                type=body.type, urgency=body.urgency, app_id=body.app_id, new_app_name=body.new_app_name,
-                bug_where=body.bug_where, status="draft", stage="intake",
+                type=body.type, urgency=body.urgency, reach=body.reach,
+                impact_metric=body.impact_metric, impact_value=body.impact_value, app_id=body.app_id,
+                new_app_name=body.new_app_name, bug_where=body.bug_where, status="draft", stage="intake",
                 reporter=body.reporter, reporter_initials=body.reporter_initials,
             )
             db.add(r)

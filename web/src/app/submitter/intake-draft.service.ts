@@ -18,6 +18,10 @@ export class IntakeDraft {
   bugWhere = '';
   bugFreq = '';
   urgency: 'low' | 'normal' | 'high' = 'normal';
+  reach: 'me' | 'team' | 'dept' | 'wider' | 'site' | 'network' | null = null;
+  reachText = '';
+  impactMetric: 'hours' | 'cost' | 'other' | null = null;
+  impactValue = '';
   appId: number | null = null;
   extra = '';
 
@@ -25,7 +29,9 @@ export class IntakeDraft {
     this.requestId = null;
     this.type = null;
     this.title = this.desc = this.newName = this.bugWhere = this.bugFreq = this.extra = '';
+    this.reachText = this.impactValue = '';
     this.urgency = 'normal';
+    this.reach = this.impactMetric = null;
     this.appId = null;
   }
 
@@ -36,8 +42,12 @@ export class IntakeDraft {
       .filter(Boolean).join(' · ');
     const body = {
       type: this.type, title: this.title || this.autoTitle(), description: this.desc,
-      app_id: this.type === 'new' ? null : this.appId, new_app_name: this.type === 'new' ? this.newName || null : null,
+      app_id: this.type === 'bug' || this.type === 'enh' ? this.appId : null,
+      new_app_name: this.type === 'new' ? this.newName || null : null,
       bug_where: where || null, urgency: this.urgency,
+      reach: this.type === 'bug' ? null : this.reachText.trim() || this.reach,
+      impact_metric: this.type !== 'bug' && this.impactMetric && this.impactValue.trim() ? this.impactMetric : null,
+      impact_value: this.type !== 'bug' && this.impactMetric && this.impactValue.trim() ? this.impactValue.trim() : null,
       reporter: u.name, reporter_initials: u.initials,
     };
     if (this.requestId == null) {
