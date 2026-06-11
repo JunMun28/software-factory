@@ -46,7 +46,7 @@ make up         # docker compose up --build → http://localhost:8080
 ## Verify
 
 ```bash
-make verify     # pytest (31) + vitest (14) + Angular build + lifecycle smoke
+make verify     # backend tests + web tests + Angular build + lifecycle smoke
 ```
 
 The same chain runs in CI on every push ([.github/workflows/ci.yml](.github/workflows/ci.yml)).

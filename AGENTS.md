@@ -1,0 +1,183 @@
+# AGENTS.md — agent-facing guide to the Software Factory repo
+
+This is the single entry point for any AI agent (or human) starting cold.
+It consolidates the operational knowledge that was spread across ADR 0011,
+CONTEXT.md, VERIFICATION.md, and four source files.
+See [CONTEXT.md](CONTEXT.md) for domain vocabulary and [README.md](README.md)
+for the quickstart.
+
+---
+
+## 1. What this repo is
+
+**Software Factory** is an autonomous-but-governed AI pipeline that carries
+a unit of work through the full SDLC — requirements → architecture → TDD
+implementation → review → deploy — with humans gating the irreversible
+boundaries.  The two deterministic seams (brain, runner) let every feature
+run offline; the same env vars swap in real Claude Code when you want it.
+Domain language: [CONTEXT.md](CONTEXT.md). Decisions: [docs/adr/](docs/adr/).
+
+---
+
+## 2. Verify any change
+
+Run this before merging anything.  Green = safe.
+
+| Command | What it runs | Expected |
+|---|---|---|
+| `make verify` | lint + pytest + vitest + Angular build + smoke | `✓ VERIFY PASSED` |
+| `cd api && uv run pytest -q` | backend tests only | `N passed` |
+| `cd web && npx ng test --watch=false` | frontend unit tests only | `N passed` |
+| `make lint` | ruff + eslint + prettier-check | no errors |
+| `make build` | Angular production build | success |
+| `make smoke` | full lifecycle against a live server | `✓ SMOKE PASSED` |
+
+The same `make verify` chain runs in CI on every push
+(`.github/workflows/ci.yml`).
+
+---
+
+## 3. The two seams
+
+**Deterministic seams are disposable; the domain model is not.**
+
+### Brain seam — intake interview + draft spec
+
+| Property | Value |
+|---|---|
+| Interface location | `api/app/interview.py` — `get_brain()` |
+| Default (offline) | `ScriptedBrain` — deterministic, no LLM calls |
+| Real impl | `ClaudeBrain` in `api/app/claude_brain.py` |
+| Env var | `FACTORY_BRAIN=claude` |
+| Graceful degradation | every Claude call falls back to scripted if the model call fails |
+
+```bash
+FACTORY_BRAIN=claude uv run uvicorn app.main:app --port 8000
+```
+
+### Runner seam — Stages 2–5 (architecture → build RED/GREEN → review → deploy)
+
+| Property | Value |
+|---|---|
+| Interface location | `api/app/claude_exec.py` — `runner_mode()` |
+| Default (offline) | `api/app/simulator.py` — tick-driven simulation |
+| Real impl | `ClaudeRunner` in `api/app/claude_runner.py` |
+| Env var | `FACTORY_RUNNER=claude` |
+| Per-request workspace | `workspaces/<ref>/` copied from `sample/` |
+
+```bash
+FACTORY_RUNNER=claude uv run uvicorn app.main:app --port 8000
+```
+
+Both seams are read per-call from the env via `api/app/claude_exec.py` —
+tests flip them with `monkeypatch.setenv` mid-process without restart.
+
+---
+
+## 4. Bounded autonomy and gates
+
+### The subprocess boundary
+
+All Claude Code invocations go through a single function:
+
+```
+api/app/claude_exec.py  →  run_claude(prompt, *, cwd, allow_edits, timeout, max_turns)
+```
+
+Bounds enforced there:
+- `--max-turns` (default 25) caps the turn count.
+- `timeout` (default 300 s) kills the entire process group on expiry.
+- `--permission-mode default` (read-only) unless `allow_edits=True`.
+- A new session per call so the timeout kills all child processes, not just
+  the top-level process (the CLI spawns workers that would otherwise hold
+  pipes open after the parent dies).
+
+### The four machine-checked gates
+
+| Gate | What is checked | Witness test |
+|---|---|---|
+| **RED** | `pytest` must FAIL with collected tests (no import errors, must fail as assertions) | `api/tests/test_claude_runner.py::test_red_gate_rejects_non_failing_tests` |
+| **GREEN + test-isolation** | Suite passes AND the frozen `tests/` hash is untouched — a cheating implementer that weakens tests is caught, including pytest-config deselection | `api/tests/test_claude_runner.py::test_isolation_gate_catches_cheating_implementer` |
+| **Review** | A review summary file must exist in the per-request workspace — created by the agent at runtime | pipeline structural check in `api/app/claude_runner.py` |
+| **Human merge gate** | A human must call `POST /api/requests/{id}/approve` to merge the work branch to main | only humans can clear `approve_merge`; the simulator stops here |
+
+Any gate failure, timeout, or crashed stage escalates to `needs_human` —
+no silent stranding (ADR 0013).
+
+---
+
+## 5. Conventions that bite
+
+### Backend
+
+- **Single uvicorn worker only.** The tick loop and pipeline worker threads
+  assume a single process; SQLite has one writer.  The `docker-compose.yml`
+  comment explains why — never scale to multiple replicas without reworking
+  both.
+- **SQLite WAL mode.** `api/app/db.py` enables `PRAGMA journal_mode=WAL` so
+  many poll readers can proceed while a pipeline thread commits.  Do not
+  swap for Postgres without an ADR.
+- **progress_event is append-only.** `api/app/events.py` only INSERTs —
+  never UPDATE or DELETE a `progress_event` row.  The two-axis log (ADR
+  0008) is the source of truth for the feed; mutations break replay and
+  cursors.
+- **SQLAlchemy 2 + `uv` managed.** Use `uv add` / `uv run` — never `pip`
+  or `pipenv`.  The ORM uses the SQLAlchemy 2 style (no `Query` object,
+  explicit `select()`).
+
+### Frontend
+
+- **Angular 22 standalone + signals.** Components are standalone; state
+  is signal-based.  No NgModules, no RxJS Subject-as-state.
+- **Inline templates.** All component templates are inline (`template:`),
+  not in separate `.html` files.
+- **Kit components.** Shared UI primitives live in
+  `web/src/app/kit/kit.ts`.  Reach for them before writing new component
+  boilerplate.
+- **Design tokens first.** Global design tokens are in
+  `web/src/styles.css`.  Do not introduce new global CSS without checking
+  whether a token already covers it.
+
+---
+
+## 6. Where things live
+
+| Path | Purpose |
+|---|---|
+| `api/app/interview.py` | Intake brain seam — `get_brain()`, `FACTORY_BRAIN` |
+| `api/app/claude_exec.py` | Single subprocess boundary — `run_claude()`, `runner_mode()` |
+| `api/app/claude_runner.py` | Real Stage 2–5 runner — `ClaudeRunner`, gate logic |
+| `api/app/claude_brain.py` | Real intake brain — `ClaudeBrain` |
+| `api/app/simulator.py` | Offline stand-in for Stages 2–5 |
+| `api/app/events.py` | Append-only helpers for `progress_event` log |
+| `api/app/db.py` | SQLite WAL setup, session factory |
+| `api/app/models.py` | Domain model — Request, stages, gates, `progress_event` |
+| `web/src/app/kit/kit.ts` | Shared Angular UI kit components |
+| `web/src/styles.css` | Global design tokens |
+| `sample/` | Template workspace copied for each real pipeline run |
+| `scripts/smoke.sh` | End-to-end lifecycle smoke test |
+| `docs/adr/` | Architecture Decision Records 0001–0013 |
+| `CONTEXT.md` | Domain vocabulary (canonical) |
+| `VERIFICATION.md` | Manual verification flows and expected outcomes |
+
+---
+
+## 7. Adding a new runtime
+
+To swap in a different LLM or execution engine (ADR 0011 names this as a
+future possibility):
+
+1. **Implement the executor.** Write a class that accepts a prompt and a
+   working directory and returns a result object (modelled on `ClaudeRunner`
+   / `run_claude`).
+2. **Wire the env var.** Add a branch in `api/app/claude_exec.py` (or
+   `api/app/interview.py` for the brain seam) guarded by the env var value.
+3. **Write fake-executor tests.** Follow the pattern in
+   `api/tests/test_claude_runner.py` — inject a `FakeExecutor` that returns
+   canned results and verify the four gate behaviours:
+   - RED gate rejects tests that pass.
+   - GREEN + test-isolation gate catches a weakened test surface.
+   - Gate failures escalate (never silently strand a request).
+   - Cancel always wins over a running pipeline.
+4. **Run `make verify`.**  All four gates must pass before the runtime is
+   considered wired correctly.
