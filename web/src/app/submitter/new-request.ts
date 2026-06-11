@@ -1,17 +1,17 @@
-import { Component, HostListener, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
 import { AppEntry } from '../core/models';
-import { Icon } from '../kit/kit';
+import { Icon, PopMenu } from '../kit/kit';
 import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';
 
 /** S1 — New Request: type-first progressive disclosure. */
 @Component({
   selector: 'sf-new-request',
-  imports: [SubShell, Icon, FormsModule],
+  imports: [SubShell, Icon, FormsModule, PopMenu],
   template: `
     <sub-shell active="new" [step]="0" [reqId]="draft.requestId">
       <div class="sub-col fade-in">
@@ -66,24 +66,22 @@ import { SubShell } from './sub-shell';
                       color="var(--faint)"
                     />
                   </button>
-                  @if (appsOpen()) {
-                    <div class="dd">
-                      @for (a of apps(); track a.id) {
-                        <button
-                          class="dd__opt"
-                          [class.on]="draft.appId === a.id"
-                          (click)="draft.appId = a.id; appsOpen.set(false)"
-                        >
-                          <span class="dd__hash">#</span>{{ a.name }}
-                        </button>
-                      } @empty {
-                        <div class="dd__empty">
-                          No apps registered yet. Choose New app instead, or ask an admin to add
-                          one.
-                        </div>
-                      }
-                    </div>
-                  }
+                  <sf-pop-menu [open]="appsOpen()" width="fill" (closed)="appsOpen.set(false)">
+                    @for (a of apps(); track a.id) {
+                      <button
+                        class="pop__opt"
+                        [class.on]="draft.appId === a.id"
+                        (click)="draft.appId = a.id; appsOpen.set(false)"
+                      >
+                        <span class="dd__hash">#</span>{{ a.name }}
+                      </button>
+                    } @empty {
+                      <div class="dd__empty">
+                        No apps registered yet. Choose New app instead, or ask an admin to add
+                        one.
+                      </div>
+                    }
+                  </sf-pop-menu>
                 </div>
               </div>
             }
@@ -130,19 +128,17 @@ import { SubShell } from './sub-shell';
                         color="var(--faint)"
                       />
                     </button>
-                    @if (freqOpen()) {
-                      <div class="dd">
-                        @for (f of freqs; track f) {
-                          <button
-                            class="dd__opt"
-                            [class.on]="draft.bugFreq === f"
-                            (click)="draft.bugFreq = f; freqOpen.set(false)"
-                          >
-                            {{ f }}
-                          </button>
-                        }
-                      </div>
-                    }
+                    <sf-pop-menu [open]="freqOpen()" width="fill" (closed)="freqOpen.set(false)">
+                      @for (f of freqs; track f) {
+                        <button
+                          class="pop__opt"
+                          [class.on]="draft.bugFreq === f"
+                          (click)="draft.bugFreq = f; freqOpen.set(false)"
+                        >
+                          {{ f }}
+                        </button>
+                      }
+                    </sf-pop-menu>
                   </div>
                 </div>
               </div>
@@ -233,51 +229,11 @@ import { SubShell } from './sub-shell';
     .dd-wrap {
       position: relative;
     }
-    .dd {
-      position: absolute;
-      top: calc(100% + 4px);
-      left: 0;
-      right: 0;
-      z-index: 9;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      box-shadow: var(--shadow-pop);
-      padding: 5px;
-    }
-    .dd__opt {
-      display: flex;
-      width: 100%;
-      text-align: left;
-      padding: 8px 11px;
-      border: none;
-      border-radius: 6px;
-      background: none;
-      cursor: pointer;
-      font-family: var(--body);
-      font-size: 14px;
-      color: var(--fg1);
-      gap: 8px;
-      align-items: center;
-      transition: background var(--dur) var(--ease);
-    }
-    @media (hover: hover) {
-      .dd__opt:hover {
-        background: var(--surface-2);
-      }
-    }
-    .dd__opt:active {
-      background: var(--surface-3);
-    }
-    .dd__opt.on {
-      background: var(--a50);
-      color: var(--a700);
-    }
-    .dd__opt.on .dd__hash {
-      color: var(--a400);
-    }
     .dd__hash {
       color: var(--faint);
+    }
+    .pop__opt.on .dd__hash {
+      color: var(--a400);
     }
     .dd__empty {
       padding: 12px;
@@ -333,16 +289,6 @@ export class NewRequest {
   toggleFreq() {
     this.freqOpen.set(!this.freqOpen());
     this.appsOpen.set(false);
-  }
-
-  @HostListener('document:click', ['$event'])
-  onDocClick(e: Event) {
-    if (!(e.target as HTMLElement).closest('.dd-wrap')) this.closeMenus();
-  }
-  @HostListener('document:keydown.escape')
-  closeMenus() {
-    this.appsOpen.set(false);
-    this.freqOpen.set(false);
   }
 
   selectedApp() {
