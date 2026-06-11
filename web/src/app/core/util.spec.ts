@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import { FactoryRequest } from './models';
-import { boardGlyph, clock, gateLabel, plainStage, timeAgo, utc } from './util';
+import {
+  boardGlyph,
+  clock,
+  confirmSteps,
+  gateLabel,
+  inFlight,
+  plainStage,
+  postApproval,
+  timeAgo,
+  utc,
+} from './util';
 
 function req(over: Partial<FactoryRequest> = {}): FactoryRequest {
   return {
@@ -19,6 +29,7 @@ function req(over: Partial<FactoryRequest> = {}): FactoryRequest {
     app_name: 'App',
     app_key: 'app',
     repo: null,
+    prospective_repo: null,
     new_app_name: null,
     stage: 'intake',
     status: 'submitted',
@@ -129,5 +140,49 @@ describe('gateLabel', () => {
 describe('clock', () => {
   it('renders a wall-clock time without throwing on naive input', () => {
     expect(clock('2026-06-10T01:02:03')).toBeTruthy();
+  });
+});
+
+describe('confirmSteps — the irreversible steps behind Approve', () => {
+  it('spec gate: uses the real repo when the request has one', () => {
+    const steps = confirmSteps(req({ gate: 'approve_spec', repo: 'micron/northwind' }));
+    expect(steps[0]).toEqual(['Create the GitHub repo', 'micron/northwind']);
+    expect(steps).toHaveLength(3);
+  });
+  it('spec gate: falls back to the server-derived prospective repo for app-less requests', () => {
+    const steps = confirmSteps(
+      req({ gate: 'approve_spec', repo: null, prospective_repo: 'micron/new-thing' }),
+    );
+    expect(steps[0][1]).toBe('micron/new-thing');
+  });
+  it('never derives a repo name client-side', () => {
+    const steps = confirmSteps(
+      req({ gate: 'approve_spec', repo: null, prospective_repo: null, title: 'Some New App' }),
+    );
+    expect(steps[0][1]).toBe('');
+  });
+  it('merge gate: lists merge → promote → deploy against the real repo', () => {
+    const steps = confirmSteps(req({ gate: 'approve_merge', repo: 'micron/northwind' }));
+    expect(steps[0]).toEqual(['Merge the PR to main', 'micron/northwind']);
+    expect(steps[2][1]).toBe('Stage 6');
+  });
+});
+
+describe('postApproval / inFlight — shared stage-subset helpers', () => {
+  it('postApproval is true once approved or in a post-gate stage', () => {
+    expect(postApproval(req({ status: 'approved', stage: 'spec' }))).toBe(true);
+    expect(postApproval(req({ status: 'submitted', stage: 'build' }))).toBe(true);
+    expect(postApproval(req({ status: 'done', stage: 'done' }))).toBe(true);
+    expect(postApproval(req())).toBe(false);
+    expect(postApproval(req({ status: 'pending_approval', stage: 'spec' }))).toBe(false);
+  });
+  it('inFlight means agents working: post-approval stage, no gate, no escalation', () => {
+    expect(inFlight(req({ stage: 'build', status: 'approved' }))).toBe(true);
+    expect(inFlight(req({ stage: 'build', status: 'approved', needs_human: true }))).toBe(false);
+    expect(inFlight(req({ stage: 'review', status: 'approved', gate: 'approve_merge' }))).toBe(
+      false,
+    );
+    expect(inFlight(req({ stage: 'done', status: 'done' }))).toBe(false);
+    expect(inFlight(req())).toBe(false);
   });
 });

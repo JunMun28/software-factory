@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 
 import { FactoryRequest } from '../core/models';
 import { Store } from '../core/store.service';
-import { TYPE_SHORT, timeAgo } from '../core/util';
+import { TYPE_SHORT, inFlight as inFlightHelper, timeAgo } from '../core/util';
 import { Avatar, Icon, Sig } from '../kit/kit';
 import { AdminShell, ViewSeg } from './admin-shell';
 
@@ -314,13 +314,7 @@ export class Pipeline {
     const needsMe = rs
       .filter((r) => r.gate || r.needs_human)
       .sort((a, b) => Number(b.needs_human) - Number(a.needs_human));
-    const inFlight = rs.filter(
-      (r) =>
-        !r.gate &&
-        !r.needs_human &&
-        r.status === 'approved' &&
-        ['architecture', 'build', 'review'].includes(r.stage),
-    );
+    const inFlight = rs.filter((r) => r.status === 'approved' && inFlightHelper(r));
     const triage = rs.filter(
       (r) => !r.needs_human && r.status === 'submitted' && r.stage === 'intake',
     );

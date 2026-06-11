@@ -15,8 +15,27 @@ import { FactoryRequest, RequestDetail } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
-import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, timeAgo } from '../core/util';
-import { Avatar, Glyph, Icon, PopMenu, Sig } from '../kit/kit';
+import {
+  POST_APPROVAL_STAGES,
+  STAGE_LABEL,
+  TYPE_LABEL,
+  TYPE_SHORT,
+  boardGlyph,
+  gateLabel,
+  postApproval,
+  timeAgo,
+} from '../core/util';
+import {
+  ApproveModal,
+  Avatar,
+  CancelConfirm,
+  EscalationBox,
+  Glyph,
+  Icon,
+  PopMenu,
+  Sig,
+  SpecLines,
+} from '../kit/kit';
 import { AdminShell, ViewSeg } from './admin-shell';
 
 const STAGE_COLS: { key: string; glyph: string }[] = [
@@ -84,7 +103,7 @@ export class BCard {
 /** C4 — Detail side-panel over the board (full-contrast board + dark overlay). */
 @Component({
   selector: 'sf-detail-panel',
-  imports: [Glyph, Icon, Sig],
+  imports: [Glyph, Icon, Sig, EscalationBox, SpecLines, ApproveModal, CancelConfirm],
   template: `
     <div class="scrim" style="background:rgba(18,14,28,.42)" (click)="closed.emit()"></div>
     <div class="sidepanel fade-in" style="width:468px">
@@ -97,7 +116,7 @@ export class BCard {
               [color]="r.needs_human ? 'var(--red)' : 'var(--a500)'"
               [fill]="0.4"
             />
-            <span class="chip">{{ typeLabel(r.type) }}</span>
+            <span class="chip">{{ typeLabel[r.type] }}</span>
             @if (r.needs_human) {
               <sf-sig tone="red" glyph="flag">Needs human</sf-sig>
             } @else if (r.gate === 'approve_spec' && !approved()) {
@@ -133,20 +152,7 @@ export class BCard {
         </div>
         <div class="sp-body scroll">
           @if (r.needs_human) {
-            <div
-              class="openq"
-              style="margin-bottom:14px;border-color:#E7AEA7;background:var(--red-bg)"
-            >
-              <div class="row" style="gap:8px;margin-bottom:5px">
-                <sf-glyph type="flag" [size]="14" color="var(--red)" /><span
-                  style="font-size:13px;font-weight:600;color:var(--red-tx)"
-                  >Escalated — why</span
-                >
-              </div>
-              <div style="font-size:13px;color:var(--red-tx);line-height:1.45">
-                {{ r.needs_human_reason }}
-              </div>
-            </div>
+            <sf-escalation-box [reason]="r.needs_human_reason" style="margin-bottom:14px" />
           }
           <!-- post-approval items lead with what's happening NOW; pre-approval with the spec -->
           @if (postApproval(r) && milestones().length) {
@@ -174,31 +180,12 @@ export class BCard {
             </div>
           }
           <div class="section-eyebrow" style="margin-bottom:8px">Draft spec</div>
-          @for (line of r.spec_lines; track $index) {
-            <div class="specline">
-              <span style="color:var(--faint);font-size:12px;margin-top:4px">•</span>
-              <span class="specline__b"
-                >{{ line.text }}
-                <span class="prov" [class.assume]="line.assume">{{
-                  line.assume ? '(ASSUMPTION — not stated)' : '(from: ' + line.prov + ')'
-                }}</span></span
-              >
-            </div>
-          } @empty {
-            <div style="font-size:13px;color:var(--faint)">
-              Spec not drafted yet — still in triage.
-            </div>
-          }
-          @if (r.spec_open_note && !postApproval(r)) {
-            <div class="openq" style="margin:10px 0 0">
-              <div class="row" style="gap:8px">
-                <sf-glyph type="dotted" [size]="13" color="var(--amber)" /><span
-                  style="font-size:12.5px;font-weight:600;color:var(--amber-tx)"
-                  >Open questions · {{ r.spec_open_note }}</span
-                >
-              </div>
-            </div>
-          }
+          <sf-spec-lines
+            [lines]="r.spec_lines"
+            emptyText="Spec not drafted yet — still in triage."
+            [openNote]="postApproval(r) ? null : r.spec_open_note"
+            [compactNote]="true"
+          />
 
           <div class="section-eyebrow" style="margin:18px 0 9px">
             {{
@@ -236,7 +223,7 @@ export class BCard {
             <button
               class="btn sm"
               style="margin-left:auto;border-style:dashed;color:var(--muted)"
-              (click)="cancel(r)"
+              (click)="cancelling.set(true)"
             >
               Cancel
             </button>
@@ -252,7 +239,7 @@ export class BCard {
             <button
               class="btn sm"
               style="margin-left:auto;border-style:dashed;color:var(--muted)"
-              (click)="cancel(r)"
+              (click)="cancelling.set(true)"
             >
               Cancel <kbd class="kbd">C</kbd>
             </button>
@@ -262,49 +249,11 @@ export class BCard {
         </div>
       }
     </div>
-    @if (confirming()) {
-      <div
-        class="palette-scrim"
-        style="align-items:center;padding-top:0;z-index:50"
-        (click)="confirming.set(false)"
-      >
-        <div
-          class="palette"
-          style="width:460px;padding:22px 24px;align-self:center"
-          (click)="$event.stopPropagation()"
-        >
-          <h3 style="font-size:19px;margin-bottom:8px">
-            {{ d()?.gate === 'approve_merge' ? 'Approve this merge?' : 'Approve this spec?' }}
-          </h3>
-          <p style="font-size:14px;color:var(--muted);margin:0 0 4px">
-            Approving <b style="color:var(--fg1)">{{ d()?.title }}</b> is irreversible. It will:
-          </p>
-          <ul
-            style="margin:12px 0 16px;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px"
-          >
-            @for (step of confirmSteps(); track $index) {
-              <li class="row" style="gap:10px;font-size:13.5px">
-                <span
-                  style="width:20px;height:20px;border-radius:50%;background:var(--a50);display:flex;align-items:center;justify-content:center;flex:0 0 auto"
-                  ><sf-icon name="check" [size]="12" color="var(--a600)"
-                /></span>
-                <span
-                  ><b style="font-weight:600">{{ step[0] }}</b>
-                  <span class="mono" style="font-size:12px;color:var(--muted);margin-left:6px">{{
-                    step[1]
-                  }}</span></span
-                >
-              </li>
-            }
-          </ul>
-          <div class="row" style="gap:9px;justify-content:flex-end">
-            <button class="btn" (click)="confirming.set(false)">Cancel</button>
-            <button class="btn primary" (click)="approve()">
-              {{ d()?.gate === 'approve_merge' ? 'Approve & deploy' : 'Approve & start build' }}
-            </button>
-          </div>
-        </div>
-      </div>
+    @if (confirming() && d(); as r) {
+      <sf-approve-modal [r]="r" (cancelled)="confirming.set(false)" (approved)="approve()" />
+    }
+    @if (cancelling() && d(); as r) {
+      <sf-cancel-confirm [r]="r" (kept)="cancelling.set(false)" (confirmed)="cancel(r)" />
     }
   `,
 })
@@ -321,7 +270,10 @@ export class DetailPanel {
   milestones = signal<{ id: number; title: string; kind: string; created_at: string }[]>([]);
   approved = signal(false);
   confirming = signal(false);
+  cancelling = signal(false);
   ago = timeAgo;
+  typeLabel = TYPE_LABEL;
+  postApproval = postApproval;
 
   constructor() {
     effect(() => {
@@ -334,19 +286,13 @@ export class DetailPanel {
     });
   }
 
-  postApproval(r: RequestDetail) {
-    return (
-      ['approved', 'done'].includes(r.status) ||
-      ['architecture', 'build', 'review', 'done'].includes(r.stage)
-    );
-  }
-
   @HostListener('window:keydown', ['$event'])
   onKey(e: KeyboardEvent) {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
     if (tag === 'input' || tag === 'textarea') return;
     if (e.key === 'Escape') {
       if (this.confirming()) this.confirming.set(false);
+      else if (this.cancelling()) this.cancelling.set(false);
       else this.closed.emit();
     } else if (
       e.key.toLowerCase() === 'a' &&
@@ -357,33 +303,6 @@ export class DetailPanel {
       e.preventDefault();
       this.confirming.set(true);
     }
-  }
-
-  typeLabel(t: string) {
-    return (
-      { bug: 'Bug fix', enh: 'Enhancement', new: 'New app', other: 'Other' } as Record<
-        string,
-        string
-      >
-    )[t];
-  }
-  confirmSteps(): [string, string][] {
-    const r = this.d();
-    if (r?.gate === 'approve_merge') {
-      return [
-        ['Merge the PR to main', r.repo ?? ''],
-        ['Promote main → production', 'protected-branch approval'],
-        ['Trigger the deploy', 'Stage 6'],
-      ];
-    }
-    const repo =
-      r?.repo ??
-      `micron/${(r?.new_app_name || r?.title || '').toLowerCase().replaceAll(' ', '-').slice(0, 28)}`;
-    return [
-      ['Create the GitHub repo', repo],
-      ['Open the SPEC.md pull request', 'from the grounded draft'],
-      ['Start the Architecture stage', 'hands off to Stage 2'],
-    ];
   }
 
   approve() {
@@ -406,6 +325,7 @@ export class DetailPanel {
     });
   }
   cancel(r: RequestDetail) {
+    this.cancelling.set(false);
     this.api.cancel(r.id, this.session.user().name).subscribe(() => {
       this.poll.nudge();
       this.closed.emit();
@@ -589,10 +509,7 @@ export class Board {
     return this.pool().filter((r) => r.stage === stage);
   }
   inert(stage: string) {
-    return (
-      this.byStage(stage).length === 0 &&
-      ['architecture', 'build', 'review', 'done'].includes(stage)
-    );
+    return this.byStage(stage).length === 0 && POST_APPROVAL_STAGES.includes(stage);
   }
   firstGateId = computed(() => this.pool().find((r) => r.gate === 'approve_spec')?.id ?? -1);
   groupLabel() {
@@ -607,15 +524,7 @@ export class Board {
     if (g === 'none') return [];
     const keyOf = (r: FactoryRequest) =>
       g === 'app' ? r.app_name : g === 'type' ? r.type : (r.assignee ?? 'Unassigned');
-    const labelOf = (k: string) =>
-      g === 'type'
-        ? ((
-            { bug: 'Bug fix', enh: 'Enhancement', new: 'New app', other: 'Other' } as Record<
-              string,
-              string
-            >
-          )[k] ?? k)
-        : k;
+    const labelOf = (k: string) => (g === 'type' ? (TYPE_LABEL[k] ?? k) : k);
     const map = new Map<string, FactoryRequest[]>();
     for (const r of pool) {
       const k = keyOf(r);

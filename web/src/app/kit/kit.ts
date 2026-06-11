@@ -1,13 +1,30 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  Directive,
   ElementRef,
+  afterNextRender,
   computed,
   inject,
   input,
+  model,
   output,
 } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+
+import { FactoryRequest, SpecLine, Turn } from '../core/models';
+import { TYPE_LABEL, confirmSteps } from '../core/util';
+
+/** Reliable focus for dynamically-inserted inputs (the `autofocus` attribute only
+ *  works at document parse time, not for @if-rendered overlays). */
+@Directive({ selector: '[sfAutofocus]' })
+export class Autofocus {
+  constructor() {
+    const el = inject(ElementRef);
+    afterNextRender(() => el.nativeElement.focus());
+  }
+}
 
 /* ---- status-type glyph: shape carries the type, colour second ----
    dotted = Intake/early · ring = in-progress (fill = position) ·
@@ -121,7 +138,6 @@ const ICONS: Record<string, string> = {
   list: '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
   inbox:
     '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5Z"/>',
-  feed: '<path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1.5"/>',
   hash: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
   settings:
     '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
@@ -132,7 +148,6 @@ const ICONS: Record<string, string> = {
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   chevDown: '<path d="m6 9 6 6 6-6"/>',
   chevRight: '<path d="m9 18 6-6-6-6"/>',
-  chevLeft: '<path d="m15 18-6-6 6-6"/>',
   chevUp: '<path d="m6 15 6-6 6 6"/>',
   arrowRight: '<path d="M5 12h14M13 6l6 6-6 6"/>',
   bug: '<rect x="8" y="7" width="8" height="12" rx="4"/><path d="M12 3v4M5 9h3M16 9h3M4.5 14H8M16 14h3.5M6 19l2-2M18 19l-2-2"/>',
@@ -252,15 +267,6 @@ export class Pill {
 }
 
 @Component({
-  selector: 'sf-chip',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<span class="chip" [class.solid]="solid()"><ng-content /></span>`,
-})
-export class Chip {
-  solid = input<boolean>(false);
-}
-
-@Component({
   selector: 'sf-type-chip',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
@@ -277,15 +283,7 @@ export class TypeChip {
         this.t()
       ] ?? 'help',
   );
-  label = computed(
-    () =>
-      (
-        ({ bug: 'Bug fix', enh: 'Enhancement', new: 'New app', other: 'Other' }) as Record<
-          string,
-          string
-        >
-      )[this.t()] ?? this.t(),
-  );
+  label = computed(() => TYPE_LABEL[this.t()] ?? this.t());
 }
 
 /* signal badge — the loud gate / needs-human marker */
@@ -352,4 +350,258 @@ export class PopMenu {
   }
 }
 
-export const KIT = [Glyph, Icon, Mark, Avatar, Pill, Chip, TypeChip, Sig, PopMenu] as const;
+/* ---- shared gate UI — one copy of the escalation box, spec rendering,
+   and the three irreversible-action modals (board, issue, queue consume these) ---- */
+
+/** The red "Escalated — why" box. Project extra action rows as content. */
+@Component({
+  selector: 'sf-escalation-box',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Glyph],
+  template: `
+    <div class="openq" style="border-color:#e7aea7;background:var(--red-bg)">
+      <div class="row" style="gap:8px;margin-bottom:5px">
+        <sf-glyph type="flag" [size]="14" color="var(--red)" /><span
+          style="font-size:13px;font-weight:600;color:var(--red-tx)"
+          >{{ title() }}</span
+        >
+      </div>
+      <div style="font-size:13.5px;color:var(--red-tx);line-height:1.45">
+        {{ reason() }}
+      </div>
+      <ng-content />
+    </div>
+  `,
+  host: { '[style.display]': '"block"' },
+})
+export class EscalationBox {
+  title = input<string>('Escalated — why');
+  reason = input<string | null>(null);
+}
+
+/** Draft-spec lines with provenance, plus the open-questions note. */
+@Component({
+  selector: 'sf-spec-lines',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Glyph],
+  template: `
+    @for (line of lines(); track $index) {
+      <div class="specline">
+        <span style="color:var(--faint);font-size:12px;margin-top:4px">•</span>
+        <span class="specline__b"
+          >{{ line.text }}
+          <span class="prov" [class.assume]="line.assume">{{
+            line.assume ? '(ASSUMPTION — not stated)' : '(from: ' + line.prov + ')'
+          }}</span></span
+        >
+      </div>
+    } @empty {
+      @if (emptyText()) {
+        <div style="font-size:13px;color:var(--faint)">{{ emptyText() }}</div>
+      }
+    }
+    @if (openNote(); as note) {
+      @if (compactNote()) {
+        <div class="openq" style="margin:10px 0 0">
+          <div class="row" style="gap:8px">
+            <sf-glyph type="dotted" [size]="13" color="var(--amber)" /><span
+              style="font-size:12.5px;font-weight:600;color:var(--amber-tx)"
+              >Open questions · {{ note }}</span
+            >
+          </div>
+        </div>
+      } @else {
+        <div class="openq" style="margin-top:12px">
+          <div class="row" style="gap:8px;margin-bottom:6px">
+            <sf-glyph type="dotted" [size]="14" color="var(--amber)" /><span
+              style="font-size:13px;font-weight:600;color:var(--amber-tx)"
+              >Open questions · assumptions</span
+            >
+          </div>
+          <div style="font-size:13.5px;color:#3a2d10;line-height:1.45">{{ note }}</div>
+        </div>
+      }
+    }
+  `,
+  host: { '[style.display]': '"block"' },
+})
+export class SpecLines {
+  lines = input.required<SpecLine[]>();
+  emptyText = input<string | null>(null);
+  openNote = input<string | null>(null);
+  compactNote = input<boolean>(false);
+}
+
+/** The "Interview answers (N)" collapsible. `open` is a model so surfaces can reset it per item. */
+@Component({
+  selector: 'sf-interview-answers',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Icon],
+  template: `
+    <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
+      <button
+        class="row"
+        (click)="open.set(!open())"
+        style="width:100%;gap:8px;padding:9px 12px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:12.5px;color:var(--muted)"
+      >
+        <sf-icon [name]="open() ? 'chevDown' : 'chevRight'" [size]="14" />Interview answers ({{
+          turns().length
+        }})
+      </button>
+      @if (open()) {
+        <div style="padding:0 14px 12px;display:flex;flex-direction:column;gap:8px">
+          @for (t of turns(); track t.order) {
+            <div>
+              <div style="font-size:12.5px;color:var(--muted)">{{ t.question }}</div>
+              <div style="font-size:13.5px">
+                {{ t.skipped ? 'Skipped.' : t.answer }}
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  `,
+  host: { '[style.display]': '"block"' },
+})
+export class InterviewAnswers {
+  turns = input.required<Turn[]>();
+  open = model<boolean>(false);
+}
+
+/** The "Approve this merge/spec?" confirmation — the one intentional friction point. */
+@Component({
+  selector: 'sf-approve-modal',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Icon],
+  template: `
+    <div
+      class="palette-scrim"
+      style="align-items:center;padding-top:0;z-index:50"
+      (click)="cancelled.emit()"
+    >
+      <div
+        class="palette"
+        style="width:460px;padding:22px 24px;align-self:center"
+        (click)="$event.stopPropagation()"
+      >
+        <h3 style="font-size:19px;margin-bottom:8px">
+          {{ r().gate === 'approve_merge' ? 'Approve this merge?' : 'Approve this spec?' }}
+        </h3>
+        <p style="font-size:14px;color:var(--muted);margin:0 0 4px">
+          Approving <b style="color:var(--fg1)">{{ r().title }}</b> is irreversible. It will:
+        </p>
+        <ul
+          style="margin:12px 0 16px;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px"
+        >
+          @for (step of steps(); track $index) {
+            <li class="row" style="gap:10px;font-size:13.5px">
+              <span
+                style="width:20px;height:20px;border-radius:50%;background:var(--a50);display:flex;align-items:center;justify-content:center;flex:0 0 auto"
+                ><sf-icon name="check" [size]="12" color="var(--a600)"
+              /></span>
+              <span
+                ><b style="font-weight:600">{{ step[0] }}</b>
+                <span class="mono" style="font-size:12px;color:var(--muted);margin-left:6px">{{
+                  step[1]
+                }}</span></span
+              >
+            </li>
+          }
+        </ul>
+        <div class="row" style="gap:9px;justify-content:flex-end">
+          <button class="btn" (click)="cancelled.emit()">Cancel</button>
+          <button class="btn primary" (click)="approved.emit()">
+            {{ r().gate === 'approve_merge' ? 'Approve & deploy' : 'Approve & start build' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  `,
+})
+export class ApproveModal {
+  r = input.required<FactoryRequest>();
+  cancelled = output<void>();
+  approved = output<void>();
+  steps = computed(() => confirmSteps(this.r()));
+}
+
+/** The "Send back to {reporter}?" modal — emits the blocking question. */
+@Component({
+  selector: 'sf-send-back-modal',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [FormsModule, Autofocus],
+  template: `
+    <div
+      class="palette-scrim"
+      style="align-items:center;padding-top:0;z-index:50"
+      (click)="cancelled.emit()"
+    >
+      <div
+        class="palette"
+        style="width:460px;padding:22px 24px;align-self:center"
+        (click)="$event.stopPropagation()"
+      >
+        <h3 style="font-size:19px;margin-bottom:8px">Send back to {{ reporter() }}?</h3>
+        @if (hint()) {
+          <p style="font-size:14px;color:var(--muted);margin:0 0 10px">{{ hint() }}</p>
+        }
+        <textarea
+          sfAutofocus
+          class="input area"
+          [placeholder]="placeholder()"
+          [(ngModel)]="note"
+          style="margin-bottom:14px"
+        ></textarea>
+        <div class="row" style="gap:9px;justify-content:flex-end">
+          <button class="btn" (click)="cancelled.emit()">Cancel</button>
+          <button class="btn primary" [disabled]="!note.trim()" (click)="sent.emit(note.trim())">
+            Send back
+          </button>
+        </div>
+      </div>
+    </div>
+  `,
+})
+export class SendBackModal {
+  reporter = input.required<string>();
+  hint = input<string | null>(null);
+  placeholder = input<string>("What's the one question blocking the spec?");
+  cancelled = output<void>();
+  sent = output<string>();
+  note = '';
+}
+
+/** Cancel is irreversible too — every surface confirms through this one modal. */
+@Component({
+  selector: 'sf-cancel-confirm',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div
+      class="palette-scrim"
+      style="align-items:center;padding-top:0;z-index:50"
+      (click)="kept.emit()"
+    >
+      <div
+        class="palette"
+        style="width:420px;padding:22px 24px;align-self:center"
+        (click)="$event.stopPropagation()"
+      >
+        <h3 style="font-size:19px;margin-bottom:8px">Cancel this request?</h3>
+        <p style="font-size:14px;color:var(--muted);margin:0 0 16px">
+          <b style="color:var(--fg1)">{{ r().title }}</b> will be closed as won't-do and
+          {{ r().reporter }} will be notified.
+        </p>
+        <div class="row" style="gap:9px;justify-content:flex-end">
+          <button class="btn" (click)="kept.emit()">Keep it</button>
+          <button class="btn danger" (click)="confirmed.emit()">Cancel request</button>
+        </div>
+      </div>
+    </div>
+  `,
+})
+export class CancelConfirm {
+  r = input.required<FactoryRequest>();
+  kept = output<void>();
+  confirmed = output<void>();
+}

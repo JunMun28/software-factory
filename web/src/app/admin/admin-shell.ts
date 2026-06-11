@@ -1,14 +1,4 @@
-import {
-  Component,
-  Directive,
-  ElementRef,
-  HostListener,
-  afterNextRender,
-  computed,
-  inject,
-  input,
-  signal,
-} from '@angular/core';
+import { Component, HostListener, computed, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
@@ -16,17 +6,7 @@ import { Api } from '../core/api.service';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
-import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
-
-/** Reliable focus for dynamically-inserted inputs (the `autofocus` attribute only
- *  works at document parse time, not for @if-rendered overlays). */
-@Directive({ selector: '[sfAutofocus]' })
-export class Autofocus {
-  constructor() {
-    const el = inject(ElementRef);
-    afterNextRender(() => el.nativeElement.focus());
-  }
-}
+import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
 
 /** The Admin Control Center shell — inverted-L: sidebar + header + dense canvas.
  *  Owns the keyboard layer: ⌘K palette, `?` cheat-sheet, C new-issue, G-nav. */
@@ -416,7 +396,7 @@ export class AdminShell {
   inboxItems = this.store.inbox;
   runner = signal<string | null>(null);
   gateCount = computed(() => this.inboxItems().filter((r) => r.gate).length);
-  redCount = computed(() => 0);
+  redCount = computed(() => this.inboxItems().filter((r) => r.needs_human).length);
 
   paletteOpen = signal(false);
   cheats = signal(false);

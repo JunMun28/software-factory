@@ -88,7 +88,7 @@ export class SubShell {
   reqId = input<number | null>(null);
 
   steps = [
-    { label: 'Describe', path: (id: number | null) => (id ? `/submit/new` : '/submit/new') },
+    { label: 'Describe', path: () => '/submit/new' },
     { label: 'Clarify', path: (id: number | null) => `/submit/${id}/interview` },
     { label: 'Review', path: (id: number | null) => `/submit/${id}/review` },
   ];

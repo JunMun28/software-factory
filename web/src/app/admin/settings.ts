@@ -1,6 +1,5 @@
-import { Component, effect, inject } from '@angular/core';
+import { Component } from '@angular/core';
 
-import { Store } from '../core/store.service';
 import { Glyph, Icon, PopMenu } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
@@ -10,14 +9,19 @@ interface EvtPrefs {
   digest: boolean;
 }
 
-/** C8 — Settings: three event classes × three channels; Tier-1 in-app is locked on. */
+/** C8 — Settings: three event classes × three channels; Tier-1 in-app is locked on.
+ *  Demo-only preview: the notification prefs persist nothing — the live per-channel
+ *  follow level lives on each app feed (feed.ts). */
 @Component({
   selector: 'sf-settings-page',
   imports: [AdminShell, Glyph, Icon, PopMenu],
   template: `
     <admin-shell active="settings" title="Settings">
-      <span headerRight class="row" style="gap:6px;font-size:12.5px;color:var(--green)">
-        <sf-glyph type="check" [size]="14" color="var(--green)" /> Saved
+      <span headerRight class="row" style="gap:8px">
+        <span class="chip">Preview</span>
+        <span class="row" style="gap:6px;font-size:12.5px;color:var(--green)">
+          <sf-glyph type="check" [size]="14" color="var(--green)" /> Saved
+        </span>
       </span>
       <div class="settings-col scroll">
         <div class="settings-inner">
@@ -90,44 +94,12 @@ interface EvtPrefs {
               </sf-pop-menu>
             </span>
           </div>
-
-          <div
-            style="font-size:10.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:22px 0 10px"
-          >
-            Per-app follow level
-          </div>
-          @for (a of apps(); track a.id) {
-            <div class="row" style="gap:9px;padding:10px 0;border-bottom:1px solid var(--hairline)">
-              @if (follow[a.key] === 'Muted') {
-                <sf-icon name="mute" [size]="14" color="var(--faint)" />
-              } @else {
-                <span style="color:var(--faint)">#</span>
-              }
-              <span
-                style="flex:1;font-size:14px"
-                [style.color]="follow[a.key] === 'Muted' ? 'var(--muted)' : 'var(--fg1)'"
-                >{{ a.name }}</span
-              >
-              <div class="seg">
-                @for (o of levels; track o) {
-                  <button [class.on]="follow[a.key] === o" (click)="follow[a.key] = o">
-                    {{ o }}
-                  </button>
-                }
-              </div>
-            </div>
-          }
         </div>
       </div>
     </admin-shell>
   `,
 })
 export class Settings {
-  private store = inject(Store);
-
-  apps = this.store.apps;
-  levels = ['All', 'Gate + Needs-human', 'Muted'];
-  follow: Record<string, string> = {};
   digest = '08:00 PT';
   digestOpen = false;
   digestTimes = ['07:00 PT', '08:00 PT', '09:00 PT', '17:00 PT'];
@@ -169,12 +141,6 @@ export class Settings {
     human: { inApp: true, email: false, digest: false },
     progress: { inApp: false, email: false, digest: true },
   };
-
-  constructor() {
-    effect(() => {
-      for (const app of this.apps()) this.follow[app.key] ??= app.muted ? 'Muted' : 'All';
-    });
-  }
 
   flip(key: string, ch: keyof EvtPrefs) {
     this.prefs[key][ch] = !this.prefs[key][ch];

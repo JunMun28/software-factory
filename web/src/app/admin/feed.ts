@@ -259,6 +259,23 @@ export class Feed {
   followLevels = ['All', 'Gate + Needs-human', 'Muted'];
   follow = signal('All');
 
+  /** The follow level is a view filter over the delta-fed log — seen/cursor
+   *  bookkeeping stays on items() so switching levels never refetches.
+   *  All = everything · Gate + Needs-human = gate/escalation/recovery events
+   *  plus human comments · Muted = bot events hidden, human comments kept. */
+  private visible = computed(() => {
+    const lvl = this.follow();
+    const items = this.items();
+    if (lvl === 'Gate + Needs-human') {
+      return items.filter(
+        (e) =>
+          ['gate_event', 'escalation', 'recovery_action'].includes(e.kind) || e.kind === 'comment',
+      );
+    }
+    if (lvl === 'Muted') return items.filter((e) => !e.bot);
+    return items;
+  });
+
   private seen = new Set<number>();
   private atBottom = true;
   private pendingCommentId: number | null = null;
@@ -335,7 +352,7 @@ export class Feed {
   );
 
   grouped = computed(() => {
-    const msgs: FeedMsg[] = this.items().map((e) => this.toMsg(e));
+    const msgs: FeedMsg[] = this.visible().map((e) => this.toMsg(e));
     const p = this.pending();
     if (p) msgs.push(p);
     msgs.sort((a, b) => a.iso.localeCompare(b.iso));

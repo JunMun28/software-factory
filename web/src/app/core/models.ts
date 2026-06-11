@@ -56,6 +56,8 @@ export interface FactoryRequest {
   app_name: string;
   app_key: string | null;
   repo: string | null;
+  /** Server-derived repo an Approve will create for app-less requests; null when the request has a real app. */
+  prospective_repo: string | null;
   new_app_name: string | null;
   stage: 'intake' | 'spec' | 'architecture' | 'build' | 'review' | 'done';
   status:

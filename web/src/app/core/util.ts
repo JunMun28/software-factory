@@ -78,3 +78,36 @@ export function gateLabel(r: FactoryRequest): string | null {
   if (r.gate === 'approve_merge') return 'Approve merge';
   return null;
 }
+
+/** Stages that only exist after the spec gate cleared (factory owns the work). */
+export const POST_APPROVAL_STAGES: readonly string[] = ['architecture', 'build', 'review', 'done'];
+
+/** Stages where agents are actively working — post-approval, not yet done. */
+export const IN_FLIGHT_STAGES: readonly string[] = ['architecture', 'build', 'review'];
+
+/** True once the request is past the spec gate (approved or already in a later stage). */
+export function postApproval(r: FactoryRequest): boolean {
+  return ['approved', 'done'].includes(r.status) || POST_APPROVAL_STAGES.includes(r.stage);
+}
+
+/** Agents working with no gate or escalation in the way. */
+export function inFlight(r: FactoryRequest): boolean {
+  return !r.gate && !r.needs_human && IN_FLIGHT_STAGES.includes(r.stage);
+}
+
+/** The irreversible steps an Approve fires — [label, detail] pairs for the confirm modal.
+ *  The repo name is server-owned: `prospective_repo` carries the to-be-created repo. */
+export function confirmSteps(r: FactoryRequest): [string, string][] {
+  if (r.gate === 'approve_merge') {
+    return [
+      ['Merge the PR to main', r.repo ?? ''],
+      ['Promote main → production', 'protected-branch approval'],
+      ['Trigger the deploy', 'Stage 6'],
+    ];
+  }
+  return [
+    ['Create the GitHub repo', r.repo ?? r.prospective_repo ?? ''],
+    ['Open the SPEC.md pull request', 'from the grounded draft'],
+    ['Start the Architecture stage', 'hands off to Stage 2'],
+  ];
+}

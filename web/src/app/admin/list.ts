@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 
 import { FactoryRequest } from '../core/models';
 import { Store } from '../core/store.service';
-import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, timeAgo } from '../core/util';
+import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, inFlight, timeAgo } from '../core/util';
 import { Avatar, Glyph, Icon, Sig } from '../kit/kit';
 import { AdminShell, ViewSeg } from './admin-shell';
 
@@ -111,9 +111,7 @@ export class ListView {
         key: 'flight',
         label: 'In flight · Building',
         glyph: 'ring',
-        items: rs.filter(
-          (r) => !r.gate && !r.needs_human && ['architecture', 'build', 'review'].includes(r.stage),
-        ),
+        items: rs.filter(inFlight),
       },
       {
         key: 'back',

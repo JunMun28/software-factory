@@ -10,8 +10,20 @@ import { RequestDetail } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { STAGE_LABEL, timeAgo } from '../core/util';
-import { Avatar, Glyph, Icon, Sig, TypeChip } from '../kit/kit';
-import { AdminShell, Autofocus } from './admin-shell';
+import {
+  ApproveModal,
+  Avatar,
+  CancelConfirm,
+  EscalationBox,
+  Glyph,
+  Icon,
+  InterviewAnswers,
+  SendBackModal,
+  Sig,
+  SpecLines,
+  TypeChip,
+} from '../kit/kit';
+import { AdminShell } from './admin-shell';
 
 interface ActivityRow {
   kind: 'comment' | 'act';
@@ -26,7 +38,22 @@ interface ActivityRow {
 /** C4b — full-screen issue view (Jira/Linear-grade): labels, attachments, spec, checklist, activity, details rail. */
 @Component({
   selector: 'sf-issue-page',
-  imports: [AdminShell, Glyph, Icon, Avatar, Sig, TypeChip, FormsModule, DatePipe, Autofocus],
+  imports: [
+    AdminShell,
+    Glyph,
+    Icon,
+    Avatar,
+    Sig,
+    TypeChip,
+    FormsModule,
+    DatePipe,
+    EscalationBox,
+    SpecLines,
+    InterviewAnswers,
+    ApproveModal,
+    SendBackModal,
+    CancelConfirm,
+  ],
   template: `
     <admin-shell active="list" title="Issue">
       <span headerExtra class="row" style="gap:7px;font-size:12.5px;color:var(--muted)">
@@ -99,7 +126,7 @@ interface ActivityRow {
                   <button
                     class="btn sm"
                     style="margin-left:auto;border-style:dashed;color:var(--muted)"
-                    (click)="cancel(r)"
+                    (click)="cancelling.set(true)"
                   >
                     Cancel request <kbd class="kbd">C</kbd>
                   </button>
@@ -107,20 +134,7 @@ interface ActivityRow {
               </div>
 
               @if (r.needs_human) {
-                <div
-                  class="openq"
-                  style="margin-bottom:18px;border-color:#E7AEA7;background:var(--red-bg)"
-                >
-                  <div class="row" style="gap:8px;margin-bottom:5px">
-                    <sf-glyph type="flag" [size]="14" color="var(--red)" /><span
-                      style="font-size:13px;font-weight:600;color:var(--red-tx)"
-                      >Escalated — why</span
-                    >
-                  </div>
-                  <div style="font-size:13.5px;color:var(--red-tx);line-height:1.45">
-                    {{ r.needs_human_reason }}
-                  </div>
-                </div>
+                <sf-escalation-box [reason]="r.needs_human_reason" style="margin-bottom:18px" />
               }
               @if (r.status === 'sent_back') {
                 <div class="attn" style="margin-bottom:18px">
@@ -139,28 +153,7 @@ interface ActivityRow {
               </p>
 
               @if (r.turns.length) {
-                <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
-                  <button
-                    class="row"
-                    (click)="showTurns.set(!showTurns())"
-                    style="width:100%;gap:8px;padding:9px 12px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:12.5px;color:var(--muted)"
-                  >
-                    <sf-icon [name]="showTurns() ? 'chevDown' : 'chevRight'" [size]="14" />Interview
-                    answers ({{ r.turns.length }})
-                  </button>
-                  @if (showTurns()) {
-                    <div style="padding:0 14px 12px;display:flex;flex-direction:column;gap:8px">
-                      @for (t of r.turns; track t.order) {
-                        <div>
-                          <div style="font-size:12.5px;color:var(--muted)">{{ t.question }}</div>
-                          <div style="font-size:13.5px">
-                            {{ t.skipped ? 'Skipped.' : t.answer }}
-                          </div>
-                        </div>
-                      }
-                    </div>
-                  }
-                </div>
+                <sf-interview-answers [turns]="r.turns" [(open)]="showTurns" />
               }
 
               <div class="section-eyebrow" style="margin:20px 0 10px">Attachments</div>
@@ -174,30 +167,7 @@ interface ActivityRow {
 
               @if (r.spec_lines.length) {
                 <div class="section-eyebrow" style="margin:22px 0 10px">Draft spec</div>
-                @for (line of r.spec_lines; track $index) {
-                  <div class="specline">
-                    <span style="color:var(--faint);font-size:12px;margin-top:4px">•</span>
-                    <span class="specline__b"
-                      >{{ line.text }}
-                      <span class="prov" [class.assume]="line.assume">{{
-                        line.assume ? '(ASSUMPTION — not stated)' : '(from: ' + line.prov + ')'
-                      }}</span></span
-                    >
-                  </div>
-                }
-                @if (r.spec_open_note) {
-                  <div class="openq" style="margin-top:12px">
-                    <div class="row" style="gap:8px;margin-bottom:6px">
-                      <sf-glyph type="dotted" [size]="14" color="var(--amber)" /><span
-                        style="font-size:13px;font-weight:600;color:var(--amber-tx)"
-                        >Open questions · assumptions</span
-                      >
-                    </div>
-                    <div style="font-size:13.5px;color:#3a2d10;line-height:1.45">
-                      {{ r.spec_open_note }}
-                    </div>
-                  </div>
-                }
+                <sf-spec-lines [lines]="r.spec_lines" [openNote]="r.spec_open_note" />
               }
 
               <div class="section-eyebrow" style="margin:22px 0 6px">
@@ -385,76 +355,17 @@ interface ActivityRow {
       </div>
 
       @if (confirming() && d(); as r) {
-        <div
-          class="palette-scrim"
-          style="align-items:center;padding-top:0"
-          (click)="confirming.set(false)"
-        >
-          <div
-            class="palette"
-            style="width:460px;padding:22px 24px;align-self:center"
-            (click)="$event.stopPropagation()"
-          >
-            <h3 style="font-size:19px;margin-bottom:8px">
-              {{ r.gate === 'approve_merge' ? 'Approve this merge?' : 'Approve this spec?' }}
-            </h3>
-            <p style="font-size:14px;color:var(--muted);margin:0 0 4px">
-              Approving <b style="color:var(--fg1)">{{ r.title }}</b> is irreversible. It will:
-            </p>
-            <ul
-              style="margin:12px 0 16px;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px"
-            >
-              @for (step of confirmSteps(r); track $index) {
-                <li class="row" style="gap:10px;font-size:13.5px">
-                  <span
-                    style="width:20px;height:20px;border-radius:50%;background:var(--a50);display:flex;align-items:center;justify-content:center;flex:0 0 auto"
-                    ><sf-icon name="check" [size]="12" color="var(--a600)"
-                  /></span>
-                  <span
-                    ><b style="font-weight:600">{{ step[0] }}</b>
-                    <span class="mono" style="font-size:12px;color:var(--muted);margin-left:6px">{{
-                      step[1]
-                    }}</span></span
-                  >
-                </li>
-              }
-            </ul>
-            <div class="row" style="gap:9px;justify-content:flex-end">
-              <button class="btn" (click)="confirming.set(false)">Cancel</button>
-              <button class="btn primary" (click)="approve(r)">
-                {{ r.gate === 'approve_merge' ? 'Approve & deploy' : 'Approve & start build' }}
-              </button>
-            </div>
-          </div>
-        </div>
+        <sf-approve-modal [r]="r" (cancelled)="confirming.set(false)" (approved)="approve(r)" />
       }
       @if (sendingBack() && d(); as r) {
-        <div
-          class="palette-scrim"
-          style="align-items:center;padding-top:0"
-          (click)="sendingBack.set(false)"
-        >
-          <div
-            class="palette"
-            style="width:460px;padding:22px 24px;align-self:center"
-            (click)="$event.stopPropagation()"
-          >
-            <h3 style="font-size:19px;margin-bottom:8px">Send back to {{ r.reporter }}?</h3>
-            <textarea
-              sfAutofocus
-              class="input area"
-              placeholder="What's the one question blocking the spec?"
-              [(ngModel)]="sendBackNote"
-              style="margin-bottom:14px"
-            ></textarea>
-            <div class="row" style="gap:9px;justify-content:flex-end">
-              <button class="btn" (click)="sendingBack.set(false)">Cancel</button>
-              <button class="btn primary" [disabled]="!sendBackNote.trim()" (click)="sendBack(r)">
-                Send back
-              </button>
-            </div>
-          </div>
-        </div>
+        <sf-send-back-modal
+          [reporter]="r.reporter"
+          (cancelled)="sendingBack.set(false)"
+          (sent)="sendBack(r, $event)"
+        />
+      }
+      @if (cancelling() && d(); as r) {
+        <sf-cancel-confirm [r]="r" (kept)="cancelling.set(false)" (confirmed)="cancel(r)" />
       }
     </admin-shell>
   `,
@@ -497,7 +408,7 @@ export class IssueDetail {
   tab = signal('all');
   confirming = signal(false);
   sendingBack = signal(false);
-  sendBackNote = '';
+  cancelling = signal(false);
   commentText = '';
   composerFocus = signal(false);
   showTurns = signal(false);
@@ -514,7 +425,7 @@ export class IssueDetail {
         // reset per-issue UI so nothing bleeds from the previous issue
         this.confirming.set(false);
         this.sendingBack.set(false);
-        this.sendBackNote = '';
+        this.cancelling.set(false);
         this.commentText = '';
         this.checks.set(null);
         this.tab.set('all');
@@ -579,24 +490,6 @@ export class IssueDetail {
     return all;
   });
 
-  confirmSteps(r: RequestDetail): [string, string][] {
-    if (r.gate === 'approve_merge') {
-      return [
-        ['Merge the PR to main', r.repo ?? ''],
-        ['Promote main → production', 'protected-branch approval'],
-        ['Trigger the deploy', 'Stage 6'],
-      ];
-    }
-    const repo =
-      r.repo ??
-      `micron/${(r.new_app_name || r.title).toLowerCase().replaceAll(' ', '-').slice(0, 28)}`;
-    return [
-      ['Create the GitHub repo', repo],
-      ['Open the SPEC.md pull request', 'from the grounded draft'],
-      ['Start the Architecture stage', 'hands off to Stage 2'],
-    ];
-  }
-
   approve(r: RequestDetail) {
     this.confirming.set(false);
     this.api.approve(r.id, this.session.user().name).subscribe((d) => {
@@ -604,15 +497,15 @@ export class IssueDetail {
       this.poll.nudge();
     });
   }
-  sendBack(r: RequestDetail) {
+  sendBack(r: RequestDetail, note: string) {
     this.sendingBack.set(false);
-    this.api.sendBack(r.id, this.sendBackNote.trim(), this.session.user().name).subscribe((d) => {
-      this.sendBackNote = '';
+    this.api.sendBack(r.id, note, this.session.user().name).subscribe((d) => {
       this.d.set(d as RequestDetail);
       this.poll.nudge();
     });
   }
   cancel(r: RequestDetail) {
+    this.cancelling.set(false);
     this.api.cancel(r.id, this.session.user().name).subscribe((d) => {
       this.d.set(d as RequestDetail);
       this.poll.nudge();
