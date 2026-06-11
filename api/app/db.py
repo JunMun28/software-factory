@@ -35,11 +35,30 @@ def get_db():
         db.close()
 
 
+def _default_literal(col) -> str | None:
+    """SQL literal for a column's python-side scalar default, if it has one."""
+    d = col.default
+    if d is None or not getattr(d, "is_scalar", False):
+        return None
+    v = d.arg
+    if isinstance(v, bool):
+        return "1" if v else "0"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, str):
+        return "'" + v.replace("'", "''") + "'"
+    return None
+
+
 def migrate() -> list[str]:
     """create_all never adds columns to existing tables, so diff every model
     against PRAGMA table_info and ALTER TABLE ADD COLUMN whatever is missing.
     Generic on purpose: the next model change must not need a hand-written
-    branch here to avoid 500ing existing DBs at runtime (ADR 0013)."""
+    branch here to avoid 500ing existing DBs at runtime (ADR 0013).
+
+    Columns with a scalar default carry it into the DDL, so pre-existing rows
+    take the model's default instead of NULL — a new NOT NULL column must
+    never make the response models choke on old rows."""
     Base.metadata.create_all(engine)
     added: list[str] = []
     if not DB_URL.startswith("sqlite"):
@@ -50,6 +69,9 @@ def migrate() -> list[str]:
             for col in table.columns:
                 if col.name not in have:
                     ddl = f"ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(engine.dialect)}"
+                    lit = _default_literal(col)
+                    if lit is not None:
+                        ddl += f" DEFAULT {lit}" if col.nullable else f" NOT NULL DEFAULT {lit}"
                     conn.execute(text(ddl))
                     added.append(f"{table.name}.{col.name}")
         if added:

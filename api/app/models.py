@@ -33,8 +33,9 @@ class App(Base):
 
 # Stage columns (fixed, Jira-style): the Work item's position in the Factory.
 STAGES = ["intake", "spec", "architecture", "build", "review", "done"]
-# RequestLifecycle (PRD): Draft → Submitted → PendingApproval → Approved | SentBack | Cancelled
-STATUSES = ["draft", "submitted", "pending_approval", "approved", "sent_back", "cancelled", "done"]
+# The post-approval stages the runner/simulator drive autonomously — the one
+# definition every module shares (orphan rescan, Retry re-drive, sim tick).
+PIPELINE_STAGES = ("architecture", "build", "review")
 
 
 class Request(Base):

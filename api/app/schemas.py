@@ -77,6 +77,9 @@ class RequestOut(BaseModel):
     app_name: str
     app_key: str | None = None
     repo: str | None = None
+    # the repo Approve WILL create (app-less requests only) — server-derived
+    # so the confirm dialog and the gate event can never disagree
+    prospective_repo: str | None = None
     new_app_name: str | None
     stage: str
     status: str

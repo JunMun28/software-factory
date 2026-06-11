@@ -13,14 +13,12 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from .. import simulator
-from ..api_helpers import get_request, pipeline, to_out
+from ..api_helpers import get_request, pipeline, prospective_repo, to_out
 from ..claude_exec import runner_mode
 from ..db import get_db
 from ..events import emit
-from ..models import AuditEvent, Request, SpecLine, utcnow
+from ..models import PIPELINE_STAGES, AuditEvent, Request, SpecLine, utcnow
 from ..schemas import Note, RequestDetail
-
-PIPELINE_STAGES = ("architecture", "build", "review")
 
 router = APIRouter()
 
@@ -64,7 +62,7 @@ def approve(rid: int, body: Note | None = None, db: Session = Depends(get_db)):
         db.refresh(r)
         return to_out(r, RequestDetail)
     db.refresh(r)
-    repo = r.app.repo if r.app else f"micron/{(r.new_app_name or r.title).lower().replace(' ', '-')[:30]}"
+    repo = r.app.repo if r.app else prospective_repo(r)
     emit(db, r, "gate_event", f"Spec approved by {actor} — repo ready, SPEC.md PR open, Stage 2 started",
          actor=actor, bot=False, broadcast=True,
          payload={"gate": "approve_spec", "repo": repo, "Ref": r.ref})

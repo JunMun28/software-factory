@@ -23,6 +23,7 @@ import logging
 import re
 import shutil
 import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import Callable
@@ -53,13 +54,22 @@ def _git(ws: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 def _pytest(ws: Path) -> subprocess.CompletedProcess:
-    cmd = ["python", "-m", "pytest", "-q", "--no-header"]
+    # sys.executable, not "python": the gate must run in the API's own venv —
+    # the only interpreter guaranteed to carry pytest (a bare PATH lookup may
+    # resolve to a pytest-less python, e.g. in the container)
+    cmd = [sys.executable, "-m", "pytest", "-q", "--no-header"]
     try:
-        return subprocess.run(cmd, cwd=ws, capture_output=True, text=True, timeout=120)
+        proc = subprocess.run(cmd, cwd=ws, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired:
         # a hanging generated test is a gate failure, not a crashed pipeline
         return subprocess.CompletedProcess(
             cmd, returncode=124, stdout="pytest timed out after 120s — a test is hanging", stderr="")
+    if "No module named pytest" in (proc.stderr or ""):
+        # rc=1 without pytest is NOT an honest test failure — it must never
+        # pass the RED gate; surface it as "the gate itself cannot run"
+        return subprocess.CompletedProcess(
+            cmd, returncode=127, stdout="", stderr="pytest is not installed in the runner environment")
+    return proc
 
 
 def _tests_hash(ws: Path) -> str:
@@ -110,6 +120,12 @@ class ClaudeRunner:
             _git(ws, "config", "user.name", "Factory Builder bot")
             _git(ws, "add", "-A")
             _git(ws, "commit", "-q", "-m", "baseline: sample subject")
+        else:
+            # a Retry re-enters here: the stage must re-run from a known state,
+            # so drop uncommitted leftovers from the failed attempt (committed
+            # stage artifacts survive in history; .factory/ is git-excluded)
+            _git(ws, "reset", "-q", "--hard")
+            _git(ws, "clean", "-fdq")
         (ws / "SPEC.md").write_text(spec_md)
         _git(ws, "checkout", "-q", "-B", f"work/{req.ref.lower()}")
         _git(ws, "add", "SPEC.md")
@@ -146,12 +162,19 @@ class ClaudeRunner:
                 return
             log.info("pipeline start %s (stage=%s)", req.ref, req.stage)
             try:
+                resumable = (workspace_for(req) / ".git").exists()
                 ws = self.ensure_workspace(req, self.spec_md(req))
             except Exception as e:  # workspace failures escalate, never crash the API
                 log.exception("workspace setup failed for %s", req.ref)
                 self._escalate(db, req, f"Workspace setup failed: {e}")
                 return
-            for stage_fn in (self._architecture, self._red, self._green, self._review):
+            # Retry resumes at the stuck Stage (CONTEXT.md: "re-run the same
+            # Stage fresh"), not from the top — but only when the workspace
+            # survived; a rebuilt one has no PLAN.md/tests yet, so it replays
+            # everything from architecture.
+            stages = (self._architecture, self._red, self._green, self._review)
+            first = {"build": 1, "review": 3}.get(req.stage, 0) if resumable else 0
+            for stage_fn in stages[first:]:
                 db.refresh(req)
                 if req.status != "approved" or req.needs_human:  # cancelled / escalated meanwhile
                     log.info("pipeline stop %s — status=%s needs_human=%s",
@@ -224,6 +247,9 @@ class ClaudeRunner:
             self._escalate(db, req, res.error or "Test-author stage failed")
             return False
         proc = _pytest(ws)
+        if proc.returncode == 127:
+            self._escalate(db, req, f"RED gate cannot run: {proc.stderr}")
+            return False
         if proc.returncode == 0:
             self._escalate(db, req, "RED gate: new tests did not fail — nothing pins the new behavior")
             return False
@@ -255,6 +281,9 @@ class ClaudeRunner:
             self._escalate(db, req, "Test-isolation gate: the implementer modified the frozen test surface — change rejected")
             return False
         proc = _pytest(ws)
+        if proc.returncode == 127:
+            self._escalate(db, req, f"GREEN gate cannot run: {proc.stderr}")
+            return False
         if proc.returncode != 0:
             self._escalate(db, req, f"GREEN gate: suite still failing\n{proc.stdout[-200:]}")
             return False

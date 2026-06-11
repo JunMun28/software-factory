@@ -1,8 +1,10 @@
 """ClaudeRunner tests — a fake executor stands in for the claude CLI, so these
 prove the FACTORY's guarantees (gates, isolation, escalation), not the model."""
+import subprocess
 from pathlib import Path
 
 import pytest
+from helpers import approved_request
 
 from app import claude_runner
 from app.claude_exec import ClaudeResult, extract_json
@@ -18,16 +20,10 @@ def ws_root(tmp_path, monkeypatch):
 
 
 def _approved_request(client, title):
-    apps = client.get("/api/apps").json()
-    r = client.post("/api/requests", json={
-        "type": "enh", "title": title,
-        "description": "Add a monthly_export function that returns the export format name.",
-        "app_id": apps[0]["id"],
-    }).json()
-    client.post(f"/api/requests/{r['id']}/submit", json={})
-    d = client.post(f"/api/requests/{r['id']}/approve", json={"actor": "Kim P."}).json()
-    assert d["status"] == "approved"
-    return d
+    return approved_request(
+        client, title=title,
+        description="Add a monthly_export function that returns the export format name.",
+    )
 
 
 # collects cleanly, fails as an assertion (the RED gate rejects import-time errors)
@@ -125,3 +121,64 @@ def test_extract_json_handles_fences_and_prose():
     assert extract_json('{"a": 1}') == {"a": 1}
     assert extract_json('Sure! Here you go:\n```json\n{"q": "x?"}\n```\nanything else?') == {"q": "x?"}
     assert extract_json("no json here") is None
+
+
+# ---------- the gates must be able to RUN (a pytest-less venv must not pass RED) ----------
+
+def test_pytest_missing_is_not_an_honest_failure(tmp_path, monkeypatch):
+    # what a pytest-less interpreter does: rc=1 with "No module named pytest"
+    real_run = subprocess.run
+
+    def fake_run(cmd, **kw):
+        if "pytest" in cmd:
+            return subprocess.CompletedProcess(
+                cmd, 1, stdout="", stderr="/venv/bin/python: No module named pytest")
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr(claude_runner.subprocess, "run", fake_run)
+    proc = claude_runner._pytest(tmp_path)
+    assert proc.returncode == 127  # surfaced as "the gate cannot run", never as a RED pass
+
+
+def test_red_gate_escalates_when_pytest_cannot_run(client, ws_root, monkeypatch):
+    monkeypatch.setattr(claude_runner, "_pytest", lambda ws: subprocess.CompletedProcess(
+        [], 127, stdout="", stderr="pytest is not installed in the runner environment"))
+    d = _approved_request(client, "Gate cannot run")
+    ClaudeRunner(executor=honest_executor).run_pipeline(d["id"])
+    out = client.get(f"/api/requests/{d['id']}").json()
+    assert out["needs_human"] is True
+    assert "RED gate cannot run" in out["needs_human_reason"]
+
+
+# ---------- Retry resumes at the stuck stage with a clean workspace ----------
+
+def wrong_implementer(prompt: str, *, cwd: str | None = None, **kw) -> ClaudeResult:
+    ws = Path(cwd)
+    if "architect" in prompt:
+        (ws / "PLAN.md").write_text("# PLAN\n")
+    elif "test-author" in prompt:
+        (ws / "tests" / "test_feature.py").write_text(GOOD_TEST)
+    elif "implementer" in prompt:
+        with (ws / "src" / "expenses.py").open("a") as f:
+            f.write("\n\ndef monthly_export() -> str:\n    return 'xml'\n")  # wrong: suite stays red
+    return ClaudeResult(ok=True, text="done")
+
+
+def test_retry_resumes_at_build_with_clean_workspace(client, ws_root):
+    d = _approved_request(client, "Retry resume")
+    ClaudeRunner(executor=wrong_implementer).run_pipeline(d["id"])
+    out = client.get(f"/api/requests/{d['id']}").json()
+    assert out["needs_human"] is True and "GREEN gate" in out["needs_human_reason"]
+    assert out["stage"] == "build"
+
+    # Retry clears the flag; the re-run resumes at build, not architecture
+    client.post(f"/api/requests/{d['id']}/retry", json={"note": "fixed the agent"})
+    ClaudeRunner(executor=honest_executor).run_pipeline(d["id"])
+
+    out = client.get(f"/api/requests/{d['id']}").json()
+    assert out["gate"] == "approve_merge" and out["needs_human"] is False
+    titles = [e["title"] for e in client.get("/api/events", params={"request_id": d["id"]}).json()]
+    assert sum(t.startswith("Architecture plan committed") for t in titles) == 1  # not re-run
+    # the failed attempt's stray uncommitted edit was discarded before the re-run
+    ws = workspace_for(Request(ref=out["ref"]))
+    assert "return 'xml'" not in (ws / "src" / "expenses.py").read_text()

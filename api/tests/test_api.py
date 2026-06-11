@@ -2,7 +2,13 @@
 
 The LLM seam is the ScriptedBrain — deterministic, offline. The GitHub seam does not
 exist in the prototype (the simulator stands in for CI), so no network is mocked.
+Every test builds its own request (helpers.py) — none depends on another test
+having mutated the seed, so any subset runs green under pytest -k.
 """
+from helpers import approved_request, new_request, submitted_request
+
+from app.db import SessionLocal
+from app.models import Request
 
 
 def test_seeded_world(client):
@@ -54,8 +60,7 @@ def test_submitter_flow_end_to_end(client):
 
 
 def test_approve_ledger_and_idempotent_replay(client):
-    reqs = client.get("/api/requests").json()
-    hero = next(r for r in reqs if r["ref"] == "REQ-2041")
+    hero = submitted_request(client, title="Ledger replay probe")
     before = client.get("/api/events", params={"request_id": hero["id"]}).json()
 
     d = client.post(f"/api/requests/{hero['id']}/approve", json={"actor": "Kim P."}).json()
@@ -72,15 +77,13 @@ def test_approve_ledger_and_idempotent_replay(client):
 
 
 def test_illegal_approve_rejected(client):
-    reqs = client.get("/api/requests").json()
-    intake = next(r for r in reqs if r["status"] == "submitted" and not r["needs_human"])
+    intake = new_request(client, title="Too early to approve")  # still a draft — no gate raised
     resp = client.post(f"/api/requests/{intake['id']}/approve", json={})
     assert resp.status_code == 409
 
 
 def test_send_back_respond_loop(client):
-    reqs = client.get("/api/requests").json()
-    target = next(r for r in reqs if r["ref"] == "REQ-2042")
+    target = submitted_request(client, title="Send-back loop")
     d = client.post(f"/api/requests/{target['id']}/send-back",
                     json={"note": "Which CSV columns are required?", "actor": "Kim P."}).json()
     assert d["status"] == "sent_back" and d["send_back_rounds"] == 1 and d["gate"] is None
@@ -108,8 +111,7 @@ def test_subject_axis_filter(client):
 
 
 def test_simulator_drives_stages_to_merge_gate(client):
-    reqs = client.get("/api/requests").json()
-    hero = next(r for r in reqs if r["ref"] == "REQ-2041")  # approved in earlier test → architecture
+    hero = approved_request(client, title="Simulator drive")
     assert hero["stage"] == "architecture"
 
     for _ in range(10):
@@ -129,8 +131,11 @@ def test_simulator_drives_stages_to_merge_gate(client):
 
 
 def test_retry_clears_escalation(client):
-    reqs = client.get("/api/requests").json()
-    stuck = next(r for r in reqs if r["needs_human"])
+    stuck = approved_request(client, title="Stuck build")
+    with SessionLocal() as db:  # flag it the way a gate failure does
+        req = db.get(Request, stuck["id"])
+        req.stage, req.needs_human, req.needs_human_reason = "build", True, "GREEN gate: boom"
+        db.commit()
     d = client.post(f"/api/requests/{stuck['id']}/retry", json={"note": "flaky — run it again"}).json()
     assert d["needs_human"] is False
     evs = client.get("/api/events", params={"request_id": stuck["id"]}).json()
@@ -138,8 +143,7 @@ def test_retry_clears_escalation(client):
 
 
 def test_cancel_terminal_and_idempotent(client):
-    reqs = client.get("/api/requests").json()
-    intake = next(r for r in reqs if r["status"] == "submitted")
+    intake = submitted_request(client, title="Cancel me")
     d = client.post(f"/api/requests/{intake['id']}/cancel", json={"actor": "Kim P."}).json()
     assert d["status"] == "cancelled"
     d2 = client.post(f"/api/requests/{intake['id']}/cancel", json={"actor": "Kim P."}).json()
@@ -159,21 +163,23 @@ def test_registry_crud(client):
 
 def test_stage_clock_and_last_event(client):
     """The Pipeline view's inputs: stage_entered_at moves on transitions; last_event rides along."""
-    reqs = client.get("/api/requests").json()
-    hero = next(r for r in reqs if r["ref"] == "REQ-2041")  # done by earlier tests
-    assert hero["stage_entered_at"] is not None
-    assert hero["last_event"] and "Deployed" in hero["last_event"]
+    hero = approved_request(client, title="Stage clock probe")
+    for _ in range(10):
+        client.post("/api/simulator/tick")
+    client.post(f"/api/requests/{hero['id']}/approve", json={"actor": "Kim P."})  # merge gate → done
+    done = next(r for r in client.get("/api/requests").json() if r["id"] == hero["id"])
+    assert done["stage_entered_at"] is not None
+    assert done["last_event"] and "Deployed" in done["last_event"]
 
     # a fresh approve stamps a new stage clock
-    target = next(r for r in reqs if r["ref"] == "REQ-2042" and r["gate"] == "approve_spec")
+    target = submitted_request(client, title="Stage clock second probe")
     before = target["stage_entered_at"]
     d = client.post(f"/api/requests/{target['id']}/approve", json={"actor": "Kim P."}).json()
     assert d["stage_entered_at"] > before
 
 
 def test_comments(client):
-    reqs = client.get("/api/requests").json()
-    r = reqs[0]
+    r = submitted_request(client, title="Comment thread")
     c = client.post(f"/api/requests/{r['id']}/comments", json={"body": "Looks fine to me."}).json()
     assert c["author"] == "Kim P."
     cs = client.get(f"/api/requests/{r['id']}/comments").json()

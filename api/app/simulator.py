@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from . import lifecycle
 from .events import emit
-from .models import Request, utcnow
+from .models import PIPELINE_STAGES, Request, utcnow
 
 # (stage, steps) — each step is (title, fields-payload). After the last step of
 # a stage the item advances to the next stage. Review ends at the merge gate.
@@ -36,7 +36,7 @@ def tick(db: Session) -> list[str]:
     items = (
         db.query(Request)
         .filter(Request.status == "approved", Request.needs_human.is_(False))
-        .filter(Request.stage.in_(["architecture", "build", "review"]))
+        .filter(Request.stage.in_(PIPELINE_STAGES))
         .order_by(Request.id)
         .all()
     )

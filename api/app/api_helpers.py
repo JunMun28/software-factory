@@ -30,11 +30,19 @@ def pipeline():
 
 # ---------- stateless ORM helpers ----------
 
+def prospective_repo(r: Request) -> str:
+    """The repo Approve will create for an app-less request — the ONE
+    derivation shared by the gate event and the UI confirmation dialog,
+    so the admin always confirms exactly the name that gets recorded."""
+    return f"micron/{(r.new_app_name or r.title).lower().replace(' ', '-')[:30]}"
+
+
 def to_out(r: Request, model=RequestOut, **extra):
     d = model.model_validate(r, from_attributes=True)
     d.app_name = r.app_name
     d.app_key = r.app.key if r.app else None
     d.repo = r.app.repo if r.app else None
+    d.prospective_repo = None if r.app else prospective_repo(r)
     for k, v in extra.items():
         setattr(d, k, v)
     return d

@@ -11,7 +11,7 @@ Routes:
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -173,25 +173,44 @@ def submit(rid: int, extra: Note | None = None, db: Session = Depends(get_db)):
     r = get_request(db, rid)
     if r.status not in ("draft", "submitted"):
         return to_out(r, RequestDetail)  # idempotent
-    if extra and extra.note:
-        r.extra_detail = extra.note
-    r.status = "submitted"
-    emit(db, r, "milestone_summary", f"New request filed in #{r.app_name}",
-         payload={"fields": {"Type": r.type, "From": r.reporter, "Stage": "Triage"},
-                  "context": f"Intake interview completed · {len(r.turns)} answers", "Ref": r.ref})
-    db.add(AuditEvent(request_id=r.id, actor=r.reporter, action="submitted",
-                      note="filed this request and completed intake"))
-    # Stage 1 brain writes the grounded Draft spec, then the spec gate is raised
-    lines, note = get_brain().draft_spec(r)
-    db.add_all(lines)
-    r.spec_open_note = note
-    r.stage = "spec"
-    r.status = "pending_approval"
-    r.gate = "approve_spec"
-    r.stage_entered_at = utcnow()
-    emit(db, r, "gate_event", "Draft spec generated — 1 open question before it can be approved",
-         broadcast=True,
-         payload={"gate": "approve_spec",
-                  "fields": {"Status": "Awaiting approval", "Assumptions": "1", "Ref": r.ref}})
+    # atomic claim (mirrors approve), committed BEFORE the brain runs: of two
+    # concurrent submits exactly one drafts the spec — the loser sees 0 rows
+    # claimed and replays idempotently. Committing first also means the write
+    # lock is never held across a (possibly slow) brain call.
+    claimed = db.execute(
+        update(Request)
+        .where(Request.id == r.id, Request.status.in_(("draft", "submitted")))
+        .values(status="pending_approval")
+    ).rowcount
     db.commit()
+    if not claimed:
+        db.refresh(r)
+        return to_out(r, RequestDetail)
+    try:
+        if extra and extra.note:
+            r.extra_detail = extra.note
+        r.status = "submitted"
+        emit(db, r, "milestone_summary", f"New request filed in #{r.app_name}",
+             payload={"fields": {"Type": r.type, "From": r.reporter, "Stage": "Triage"},
+                      "context": f"Intake interview completed · {len(r.turns)} answers", "Ref": r.ref})
+        db.add(AuditEvent(request_id=r.id, actor=r.reporter, action="submitted",
+                          note="filed this request and completed intake"))
+        # Stage 1 brain writes the grounded Draft spec, then the spec gate is raised
+        lines, note = get_brain().draft_spec(r)
+        db.add_all(lines)
+        r.spec_open_note = note
+        r.stage = "spec"
+        r.status = "pending_approval"
+        r.gate = "approve_spec"
+        r.stage_entered_at = utcnow()
+        emit(db, r, "gate_event", "Draft spec generated — 1 open question before it can be approved",
+             broadcast=True,
+             payload={"gate": "approve_spec",
+                      "fields": {"Status": "Awaiting approval", "Assumptions": "1", "Ref": r.ref}})
+        db.commit()
+    except Exception:
+        db.rollback()
+        r.status = "draft"  # hand the claim back — a failed brain must not strand the request
+        db.commit()
+        raise
     return to_out(r, RequestDetail)

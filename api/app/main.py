@@ -6,22 +6,17 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 
-from . import api_helpers, settings, simulator
+from . import api_helpers, settings, simulator, startup
 from .claude_exec import runner_mode
 from .claude_runner import ClaudeRunner
-from .db import SessionLocal, engine, migrate
-from .events import emit
-from .models import Comment, ProgressEvent, Request
+from .db import SessionLocal, migrate
 from .routers import events as events_router
 from .routers import gates, registry, system
 from .routers import requests as requests_router
 from .seed import seed
 
 log = logging.getLogger("factory")
-
-PIPELINE_STAGES = ("architecture", "build", "review")
 
 
 def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = None) -> FastAPI:
@@ -32,39 +27,13 @@ def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = 
         added = migrate()  # generic models-vs-schema diff — new columns never 500 existing DBs
         if added:
             log.info("migrated: added %s", ", ".join(added))
-        with engine.connect() as conn:
-            conn.execute(text("UPDATE requests SET stage_entered_at = updated_at WHERE stage_entered_at IS NULL"))
-            conn.commit()
+        startup.backfill_stage_clock()
         with SessionLocal() as db:
             if settings.SEED_DEMO:
                 seed(db)
-            # one-time backfill: comments ride the progress_event log (ADR 0012)
-            if not db.query(ProgressEvent).filter(ProgressEvent.kind == "comment").count():
-                for c in db.query(Comment).all():
-                    db.add(ProgressEvent(
-                        request_id=c.request_id, subject_id=c.request.app_id, kind="comment",
-                        stage=c.request.stage, actor=c.author, bot=False, broadcast=False,
-                        title=c.body[:300],
-                        payload={"comment_id": c.id, "initials": c.initials, "color": c.color, "body": c.body},
-                        created_at=c.created_at,
-                    ))
-                db.commit()
+            startup.backfill_comment_events(db)
             if runner_mode() == "claude":
-                # a restart kills the pipeline worker threads; anything left mid-stage
-                # is orphaned — escalate it so it is VISIBLE and Retry can re-drive it
-                # (stop + flag, never auto-rerun: CONTEXT.md escalation, ADR 0013)
-                orphans = db.query(Request).filter(
-                    Request.status == "approved", Request.needs_human.is_(False),
-                    Request.gate.is_(None), Request.stage.in_(PIPELINE_STAGES),
-                ).all()
-                for r in orphans:
-                    r.needs_human = True
-                    r.needs_human_reason = "Pipeline orphaned by a server restart — Retry re-runs the stage"
-                    emit(db, r, "escalation",
-                         "Escalated — needs a human (pipeline orphaned by a server restart)",
-                         broadcast=True, payload={"Ref": r.ref, "reason": "server restart mid-pipeline"})
-                    log.warning("startup: %s was orphaned mid-%s — escalated for Retry", r.ref, r.stage)
-                db.commit()
+                startup.escalate_orphans(db)
         task = None
         interval = auto_tick if auto_tick is not None else settings.SIM_INTERVAL
         if runner_mode() == "claude":

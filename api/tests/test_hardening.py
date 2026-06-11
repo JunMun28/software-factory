@@ -1,28 +1,10 @@
 """Production-hardening tests: validation, limits, edge transitions, ops endpoints.
 
-Each test creates its own resources so it is independent of test_api's mutations
-(the suite shares one app/db per session).
+Each test creates its own resources (helpers.py factories) so it is independent
+of every other test (the suite shares one app/db per session).
 """
-
-
-def _new_request(client, **over):
-    apps = client.get("/api/apps").json()
-    body = {
-        "type": "enh", "title": over.pop("title", "Hardening fixture"),
-        "description": over.pop("description", "A fixture request for hardening tests."),
-        "app_id": over.pop("app_id", apps[0]["id"]),
-        **over,
-    }
-    r = client.post("/api/requests", json=body)
-    assert r.status_code == 201, r.text
-    return r.json()
-
-
-def _submitted(client, **over):
-    r = _new_request(client, **over)
-    d = client.post(f"/api/requests/{r['id']}/submit", json={}).json()
-    assert d["status"] == "pending_approval"
-    return d
+from helpers import new_request as _new_request
+from helpers import submitted_request as _submitted
 
 
 def test_health(client):

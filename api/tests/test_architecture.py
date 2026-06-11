@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from helpers import approved_request, submitted_request
 
 from app import claude_runner
 from app.claude_exec import ClaudeResult
@@ -40,12 +41,7 @@ def claude_client(monkeypatch):
 
 
 def _spec_gated_request(client, title="Hardening probe"):
-    apps = client.get("/api/apps").json()
-    r = client.post("/api/requests", json={
-        "type": "enh", "title": title, "description": "x", "app_id": apps[0]["id"],
-    }).json()
-    client.post(f"/api/requests/{r['id']}/submit", json={})
-    return r
+    return submitted_request(client, title=title, description="x")
 
 
 # ---------- Retry re-drives the real pipeline ----------
@@ -123,10 +119,7 @@ def ws_root(tmp_path, monkeypatch):
 
 
 def _approved(client, title):
-    r = _spec_gated_request(client, title)
-    d = client.post(f"/api/requests/{r['id']}/approve", json={"actor": "Kim P."}).json()
-    assert d["status"] == "approved"
-    return d
+    return approved_request(client, title=title, description="x")
 
 
 def test_crashed_stage_escalates(client, ws_root):
@@ -209,6 +202,36 @@ def test_isolation_gate_catches_config_cheat(client, ws_root):
     assert "Test-isolation gate" in out["needs_human_reason"]
     ws = workspace_for(Request(ref=out["ref"]))
     assert "collect_ignore" not in (ws / "conftest.py").read_text()  # reverted
+
+
+# ---------- migrate() never strands old rows on NULL ----------
+
+def test_migrate_defaults_new_not_null_columns(client):
+    """ADR 0013: adding a NOT NULL column must never 500 an existing DB —
+    pre-existing rows take the model's default, not NULL."""
+    from sqlalchemy import text
+
+    from app.db import engine, migrate
+
+    with engine.connect() as conn:  # simulate a DB from before the column existed
+        conn.execute(text("ALTER TABLE requests DROP COLUMN repo_ready"))
+        conn.commit()
+    assert "requests.repo_ready" in migrate()
+    resp = client.get("/api/requests")
+    assert resp.status_code == 200
+    assert all(r["repo_ready"] is False for r in resp.json())
+
+
+# ---------- a double submit drafts exactly one spec ----------
+
+def test_submit_replay_never_drafts_twice(client):
+    r = submitted_request(client, title="Submit replay", description="x")
+    before = client.get(f"/api/requests/{r['id']}").json()["spec_lines"]
+    d2 = client.post(f"/api/requests/{r['id']}/submit", json={}).json()
+    assert d2["status"] == "pending_approval"
+    assert client.get(f"/api/requests/{r['id']}").json()["spec_lines"] == before
+    evs = client.get("/api/events", params={"request_id": r["id"]}).json()
+    assert sum(e["title"].startswith("Draft spec generated") for e in evs) == 1
 
 
 # ---------- poll path is O(new) ----------
