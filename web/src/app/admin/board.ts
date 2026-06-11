@@ -16,7 +16,7 @@ import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
 import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, timeAgo } from '../core/util';
-import { Avatar, Glyph, Icon, Sig } from '../kit/kit';
+import { Avatar, Glyph, Icon, PopMenu, Sig } from '../kit/kit';
 import { AdminShell, ViewSeg } from './admin-shell';
 
 const STAGE_COLS: { key: string; glyph: string }[] = [
@@ -419,7 +419,7 @@ export class DetailPanel {
 /** C2 — Board: fixed stage columns; Group-by adds Jira-style horizontal swimlanes. */
 @Component({
   selector: 'sf-board-page',
-  imports: [AdminShell, Glyph, Icon, Avatar, BCard, DetailPanel, ViewSeg],
+  imports: [AdminShell, Glyph, Icon, Avatar, BCard, DetailPanel, ViewSeg, PopMenu],
   template: `
     <admin-shell active="board" title="Board">
       <sf-view-seg headerRight active="board" />
@@ -454,37 +454,26 @@ export class DetailPanel {
             <span style="color:var(--fg1);font-weight:600">{{ groupLabel() }}</span>
             <sf-icon name="chevDown" [size]="13" color="var(--faint)" />
           </button>
-          @if (menu()) {
-            <div style="position:fixed;inset:0;z-index:19" (click)="menu.set(false)"></div>
-            <div
-              style="position:absolute;top:calc(100% + 5px);left:0;z-index:20;width:184px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);overflow:hidden;padding:5px"
-            >
-              <div
-                style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);padding:5px 9px 4px"
+          <sf-pop-menu [open]="menu()" [width]="184" align="left" (closed)="menu.set(false)">
+            <div class="pop__group">Swimlanes by</div>
+            @for (g of groupOpts; track g[0]) {
+              <button
+                class="pop__opt"
+                [class.on]="groupBy() === g[0]"
+                (click)="groupBy.set($any(g[0])); menu.set(false)"
               >
-                Swimlanes by
-              </div>
-              @for (g of groupOpts; track g[0]) {
-                <button
-                  (click)="groupBy.set($any(g[0])); menu.set(false)"
-                  style="display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 9px;border-radius:6px;border:none;cursor:pointer;font-family:var(--body);font-size:13.5px"
-                  [style.background]="groupBy() === g[0] ? 'var(--a50)' : 'transparent'"
-                  [style.color]="groupBy() === g[0] ? 'var(--a700)' : 'var(--fg2)'"
-                  [style.font-weight]="groupBy() === g[0] ? 600 : 500"
-                >
-                  <sf-icon
-                    [name]="g[2]"
-                    [size]="15"
-                    [color]="groupBy() === g[0] ? 'var(--a600)' : 'var(--muted)'"
-                  />
-                  <span style="flex:1">{{ g[1] }}</span>
-                  @if (groupBy() === g[0]) {
-                    <sf-icon name="check" [size]="15" color="var(--a600)" />
-                  }
-                </button>
-              }
-            </div>
-          }
+                <sf-icon
+                  [name]="g[2]"
+                  [size]="15"
+                  [color]="groupBy() === g[0] ? 'var(--a600)' : 'var(--muted)'"
+                />
+                <span style="flex:1">{{ g[1] }}</span>
+                @if (groupBy() === g[0]) {
+                  <sf-icon name="check" [size]="15" color="var(--a600)" />
+                }
+              </button>
+            }
+          </sf-pop-menu>
         </div>
       </span>
 
