@@ -10,7 +10,7 @@ import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
 import { clock, timeAgo, utc } from '../core/util';
-import { Avatar, Glyph, Icon, Mark } from '../kit/kit';
+import { Avatar, Glyph, Icon, Mark, PopMenu } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
 interface FeedMsg {
@@ -45,7 +45,7 @@ interface FeedMsg {
  *  messages arrive through the identical cursor. */
 @Component({
   selector: 'sf-feed-page',
-  imports: [AdminShell, Glyph, Icon, Mark, Avatar, FormsModule],
+  imports: [AdminShell, Glyph, Icon, Mark, Avatar, FormsModule, PopMenu],
   template: `
     <admin-shell [active]="'feed:' + key()" title="Apps">
       <div style="position:absolute;inset:0;display:flex;flex-direction:column">
@@ -72,26 +72,16 @@ interface FeedMsg {
               <button class="btn ghost sm" (click)="followOpen = !followOpen">
                 Following: {{ follow() }} <sf-icon name="chevDown" [size]="13" />
               </button>
-              @if (followOpen) {
-                <span style="position:fixed;inset:0;z-index:19" (click)="followOpen = false"></span>
-                <span
-                  style="position:absolute;top:calc(100% + 5px);right:0;z-index:20;display:block;width:200px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:5px"
-                >
-                  @for (lvl of followLevels; track lvl) {
-                    <button
-                      style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:none;cursor:pointer;font-family:var(--body);font-size:13px"
-                      [style.background]="follow() === lvl ? 'var(--a50)' : ''"
-                      [style.color]="follow() === lvl ? 'var(--a700)' : 'var(--fg2)'"
-                      (click)="setFollow(lvl)"
-                    >
-                      <span style="flex:1">{{ lvl }}</span>
-                      @if (follow() === lvl) {
-                        <sf-icon name="check" [size]="14" color="var(--a600)" />
-                      }
-                    </button>
-                  }
-                </span>
-              }
+              <sf-pop-menu [open]="followOpen" [width]="200" (closed)="followOpen = false">
+                @for (lvl of followLevels; track lvl) {
+                  <button class="pop__opt" [class.on]="follow() === lvl" (click)="setFollow(lvl)">
+                    <span style="flex:1">{{ lvl }}</span>
+                    @if (follow() === lvl) {
+                      <sf-icon name="check" [size]="14" color="var(--a600)" />
+                    }
+                  </button>
+                }
+              </sf-pop-menu>
             </span>
           </span>
         </div>
