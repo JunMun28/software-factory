@@ -1,7 +1,7 @@
 # Software Factory — local dev & verification
 # Stack: FastAPI + uv (api/) · Angular 22 (web/) · SQLite (throwaway, gitignored)
 
-.PHONY: dev api web test test-web build smoke verify reset up backup
+.PHONY: dev api web test test-web build smoke lint verify reset up backup
 
 WEB_PORT ?= 4200   # e.g. `make dev WEB_PORT=4300` if :4200 is taken
 
@@ -36,8 +36,13 @@ build:
 smoke:
 	./scripts/smoke.sh
 
-## Everything: backend tests + web tests + build + smoke. Green = safe.
-verify: test test-web build smoke
+## Lint both sides (ruff + eslint + prettier check)
+lint:
+	cd api && uv run ruff check .
+	cd web && npx ng lint && npm run format:check
+
+## Everything: lint + backend tests + web tests + build + smoke. Green = safe.
+verify: lint test test-web build smoke
 	@echo "" && echo "✓ VERIFY PASSED — tests, build, and smoke all green"
 
 ## Production-shaped deployment: nginx + API + persistent volume on :8080

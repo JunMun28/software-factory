@@ -25,9 +25,17 @@ jobs:
         working-directory: api
         run: uv run pytest -q
 
+      - name: API lint
+        working-directory: api
+        run: uv run ruff check .
+
       - name: Frontend install
         working-directory: web
         run: npm ci
+
+      - name: Frontend lint
+        working-directory: web
+        run: npx ng lint && npm run format:check
 
       - name: Frontend unit tests
         working-directory: web
