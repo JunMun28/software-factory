@@ -485,7 +485,12 @@ export class AdminShell {
 
   // ---- palette ----
   paletteActions = [
-    { icon: 'pipeline', lbl: 'Go to Mission control', hint: 'G M', act: () => this.go('/admin/mission') },
+    {
+      icon: 'pipeline',
+      lbl: 'Go to Mission control',
+      hint: 'G M',
+      act: () => this.go('/admin/mission'),
+    },
     { icon: 'pipeline', lbl: 'Go to Pipeline', hint: 'G P', act: () => this.go('/admin/pipeline') },
     { icon: 'check', lbl: 'Go to Approval queue', hint: 'G T', act: () => this.go('/admin/queue') },
     { icon: 'plus', lbl: 'New issue', hint: 'C', act: () => this.newIssue.set(true) },

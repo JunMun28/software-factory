@@ -211,12 +211,24 @@ describe('elapsedShort', () => {
 describe('healthLine', () => {
   it('renders a healthy run', () => {
     expect(
-      healthLine({ step: 3, of: 6, label: 'implementing the change', health: 'healthy', seconds_since_event: 100 }),
+      healthLine({
+        step: 3,
+        of: 6,
+        label: 'implementing the change',
+        health: 'healthy',
+        seconds_since_event: 100,
+      }),
     ).toBe('implementing the change · 1m 40s · healthy');
   });
   it('renders a slow run', () => {
     expect(
-      healthLine({ step: 2, of: 9, label: 'running the test suite', health: 'slow', seconds_since_event: 305 }),
+      healthLine({
+        step: 2,
+        of: 9,
+        label: 'running the test suite',
+        health: 'slow',
+        seconds_since_event: 305,
+      }),
     ).toBe('running the test suite · 5m 05s · slow');
   });
   it('renders no signal without a label', () => {

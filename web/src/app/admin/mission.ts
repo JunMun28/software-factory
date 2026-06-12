@@ -29,7 +29,9 @@ import { AdminShell } from './admin-shell';
                 <sf-glyph type="check" [size]="22" color="var(--green)" [fill]="1" />
                 <div>
                   <div class="msn-hero__title">Nothing needs you</div>
-                  <div class="msn-hero__sub">Gates clear · no escalations. Runs continue below.</div>
+                  <div class="msn-hero__sub">
+                    Gates clear · no escalations. Runs continue below.
+                  </div>
                 </div>
               </div>
             }
@@ -43,12 +45,12 @@ import { AdminShell } from './admin-shell';
               </div>
               @for (g of m.gates; track g.request.id) {
                 <div
-                class="msn-gate"
-                [class.msn-gate--merge]="g.request.gate === 'approve_merge'"
-                [class.msn-focus]="flatIdx(g.request) === focusIdx()"
-                tabindex="0"
-                (focus)="focusIdx.set(flatIdx(g.request))"
-              >
+                  class="msn-gate"
+                  [class.msn-gate--merge]="g.request.gate === 'approve_merge'"
+                  [class.msn-focus]="flatIdx(g.request) === focusIdx()"
+                  tabindex="0"
+                  (focus)="focusIdx.set(flatIdx(g.request))"
+                >
                   <div class="msn-gate__top">
                     <sf-glyph type="ring" [size]="15" [fill]="0.5" color="var(--a500)" />
                     <span class="msn-gate__title">{{ g.request.title }}</span>
@@ -66,7 +68,9 @@ import { AdminShell } from './admin-shell';
                   </div>
                   <div class="msn-evid">
                     @for (bit of evidenceBits(g.evidence); track bit.text) {
-                      <span class="msn-evid__bit" [class.green]="bit.tone === 'green'">{{ bit.text }}</span>
+                      <span class="msn-evid__bit" [class.green]="bit.tone === 'green'">{{
+                        bit.text
+                      }}</span>
                     }
                   </div>
                   @if (g.evidence?.assumptions?.length) {
@@ -186,9 +190,17 @@ import { AdminShell } from './admin-shell';
               @for (r of m.recent; track r.id) {
                 <div class="msn-done" (click)="openIssue(r)">
                   <sf-glyph
-                    [type]="r.status === 'done' ? 'check' : r.status === 'cancelled' ? 'strike' : 'flag'"
+                    [type]="
+                      r.status === 'done' ? 'check' : r.status === 'cancelled' ? 'strike' : 'flag'
+                    "
                     [size]="13"
-                    [color]="r.status === 'done' ? 'var(--green)' : r.status === 'cancelled' ? 'var(--faint)' : 'var(--amber)'"
+                    [color]="
+                      r.status === 'done'
+                        ? 'var(--green)'
+                        : r.status === 'cancelled'
+                          ? 'var(--faint)'
+                          : 'var(--amber)'
+                    "
                   />
                   <span
                     class="msn-done__title"
@@ -196,7 +208,9 @@ import { AdminShell } from './admin-shell';
                     >{{ r.title }}</span
                   >
                   <span class="msn-meta">{{ recentLine(r) }}</span>
-                  <span class="mono msn-ref" style="margin-left:auto">{{ timeAgo(r.updated_at) }}</span>
+                  <span class="mono msn-ref" style="margin-left:auto">{{
+                    timeAgo(r.updated_at)
+                  }}</span>
                 </div>
               }
             }
@@ -221,55 +235,293 @@ import { AdminShell } from './admin-shell';
     </admin-shell>
   `,
   styles: `
-    .msn-empty{display:flex;align-items:center;gap:10px;justify-content:center;padding:48px 0;color:var(--muted);font-size:13px}
-    .msn-bandhead{display:flex;align-items:center;gap:9px;margin:22px 2px 10px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg2)}
-    .msn-bandhead:first-child{margin-top:0}
-    .msn-count{font-size:11px;color:var(--faint);background:var(--surface-2);border-radius:9px;padding:0 7px;font-weight:500}
-    .msn-hint{margin-left:auto;font-size:11px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--faint)}
-    .msn-gate,.msn-run{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg)}
-    .msn-gate{padding:13px 16px 11px;margin-bottom:9px}
-    .msn-gate__top{display:flex;align-items:center;gap:9px;min-width:0}
-    .msn-gate__title{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .amber-pill,.red-pill{font-size:9.5px;font-weight:600;letter-spacing:.05em;border-radius:4px;padding:1.5px 6px;white-space:nowrap;flex:none}
-    .amber-pill{color:var(--amber);background:var(--amber-bg);border:1px solid var(--amber-line)}
-    .red-pill{color:var(--red);background:var(--red-bg);border:1px solid var(--red-line,#e7aea7)}
-    .msn-meta{font-size:11.5px;color:var(--muted);white-space:nowrap}
-    .msn-ref{font-size:11px;color:var(--faint)}
-    .msn-evid{display:flex;flex-wrap:wrap;gap:5px 16px;margin:9px 0 0 24px;font-size:12px;color:var(--fg2)}
-    .msn-evid__bit.green{color:var(--green-tx);font-weight:500}
-    .msn-assume{display:flex;align-items:center;gap:6px;margin:5px 0 0 24px;font-size:12px;color:var(--amber)}
-    .msn-side{margin:6px 0 0 24px;font-size:11.5px;color:var(--faint)}
-    .msn-clear{padding:14px 16px;color:var(--muted);font-size:12.5px}
-    .msn-run{display:flex;align-items:center;gap:12px;padding:10px 16px;margin-bottom:8px}
-    .msn-run--slow{border-color:var(--amber-line)}
-    .msn-gate--red{border-color:var(--red-line,#e7aea7)}
-    .msn-focus{box-shadow:inset 0 0 0 2px var(--a500)}
-    .msn-pulse{flex:none;width:8px;height:8px;border-radius:50%;background:var(--a500);position:relative}
-    .msn-pulse::after{content:'';position:absolute;inset:-5px;border-radius:50%;border:1px solid var(--a500);opacity:.35;animation:msn-pulse 1.8s var(--ease) infinite}
-    .msn-pulse.amber,.msn-pfill.amber{background:var(--amber)}
-    .msn-pulse.amber::after{border-color:var(--amber)}
-    @keyframes msn-pulse{from{transform:scale(.6);opacity:.5}to{transform:scale(1.5);opacity:0}}
-    @media(prefers-reduced-motion:reduce){.msn-pulse::after{animation:none}}
-    .msn-run__id{flex:1;min-width:0}
-    .msn-run__title{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .msn-run__meta{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
-    .msn-stagepill{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--a700);background:var(--a50);border-radius:4px;padding:1.5px 6px}
-    .msn-progress{flex:none;width:130px}
-    .msn-ptrack{height:5px;border-radius:3px;background:var(--surface-3);overflow:hidden}
-    .msn-pfill{height:100%;background:var(--a500);border-radius:3px;transition:width var(--dur) var(--ease)}
-    .msn-pstep{display:block;text-align:right;font-size:10.5px;color:var(--muted);margin-top:3px}
-    .msn-runstate{flex:none;min-width:170px;font-size:12px;color:var(--fg2)}
-    .amber-tx{color:var(--amber)}
-    .msn-steer{display:flex;align-items:center;gap:8px;margin:-4px 0 8px 36px}
-    .msn-steer .input{flex:1}
-    .msn-steer__err{font-size:11.5px;color:var(--red)}
-    .msn-escal{margin:8px 0 0 24px;font-size:12.5px;color:var(--red)}
-    .msn-done{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--hairline);font-size:12.5px;color:var(--muted);cursor:pointer}
-    .msn-done:hover{background:var(--surface-2)}
-    .msn-done__title{color:var(--fg1);font-weight:500}
-    .msn-hero{display:flex;align-items:center;gap:14px;justify-content:center;padding:30px 0 8px}
-    .msn-hero__title{font-size:15px;font-weight:600}
-    .msn-hero__sub{font-size:12px;color:var(--muted)}
+    .msn-empty {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: center;
+      padding: 48px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .msn-bandhead {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 22px 2px 10px;
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--fg2);
+    }
+    .msn-bandhead:first-child {
+      margin-top: 0;
+    }
+    .msn-count {
+      font-size: 11px;
+      color: var(--faint);
+      background: var(--surface-2);
+      border-radius: 9px;
+      padding: 0 7px;
+      font-weight: 500;
+    }
+    .msn-hint {
+      margin-left: auto;
+      font-size: 11px;
+      font-weight: 400;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--faint);
+    }
+    .msn-gate,
+    .msn-run {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+    }
+    .msn-gate {
+      padding: 13px 16px 11px;
+      margin-bottom: 9px;
+    }
+    .msn-gate__top {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+    }
+    .msn-gate__title {
+      font-size: 13.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .amber-pill,
+    .red-pill {
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      border-radius: 4px;
+      padding: 1.5px 6px;
+      white-space: nowrap;
+      flex: none;
+    }
+    .amber-pill {
+      color: var(--amber);
+      background: var(--amber-bg);
+      border: 1px solid var(--amber-line);
+    }
+    .red-pill {
+      color: var(--red);
+      background: var(--red-bg);
+      border: 1px solid var(--red-line, #e7aea7);
+    }
+    .msn-meta {
+      font-size: 11.5px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .msn-ref {
+      font-size: 11px;
+      color: var(--faint);
+    }
+    .msn-evid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px 16px;
+      margin: 9px 0 0 24px;
+      font-size: 12px;
+      color: var(--fg2);
+    }
+    .msn-evid__bit.green {
+      color: var(--green-tx);
+      font-weight: 500;
+    }
+    .msn-assume {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 5px 0 0 24px;
+      font-size: 12px;
+      color: var(--amber);
+    }
+    .msn-side {
+      margin: 6px 0 0 24px;
+      font-size: 11.5px;
+      color: var(--faint);
+    }
+    .msn-clear {
+      padding: 14px 16px;
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+    .msn-run {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      margin-bottom: 8px;
+    }
+    .msn-run--slow {
+      border-color: var(--amber-line);
+    }
+    .msn-gate--red {
+      border-color: var(--red-line, #e7aea7);
+    }
+    .msn-focus {
+      box-shadow: inset 0 0 0 2px var(--a500);
+    }
+    .msn-pulse {
+      flex: none;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--a500);
+      position: relative;
+    }
+    .msn-pulse::after {
+      content: '';
+      position: absolute;
+      inset: -5px;
+      border-radius: 50%;
+      border: 1px solid var(--a500);
+      opacity: 0.35;
+      animation: msn-pulse 1.8s var(--ease) infinite;
+    }
+    .msn-pulse.amber,
+    .msn-pfill.amber {
+      background: var(--amber);
+    }
+    .msn-pulse.amber::after {
+      border-color: var(--amber);
+    }
+    @keyframes msn-pulse {
+      from {
+        transform: scale(0.6);
+        opacity: 0.5;
+      }
+      to {
+        transform: scale(1.5);
+        opacity: 0;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .msn-pulse::after {
+        animation: none;
+      }
+    }
+    .msn-run__id {
+      flex: 1;
+      min-width: 0;
+    }
+    .msn-run__title {
+      display: block;
+      font-size: 13.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .msn-run__meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+    .msn-stagepill {
+      font-family: var(--mono);
+      font-size: 9.5px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--a700);
+      background: var(--a50);
+      border-radius: 4px;
+      padding: 1.5px 6px;
+    }
+    .msn-progress {
+      flex: none;
+      width: 130px;
+    }
+    .msn-ptrack {
+      height: 5px;
+      border-radius: 3px;
+      background: var(--surface-3);
+      overflow: hidden;
+    }
+    .msn-pfill {
+      height: 100%;
+      background: var(--a500);
+      border-radius: 3px;
+      transition: width var(--dur) var(--ease);
+    }
+    .msn-pstep {
+      display: block;
+      text-align: right;
+      font-size: 10.5px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+    .msn-runstate {
+      flex: none;
+      min-width: 170px;
+      font-size: 12px;
+      color: var(--fg2);
+    }
+    .amber-tx {
+      color: var(--amber);
+    }
+    .msn-steer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: -4px 0 8px 36px;
+    }
+    .msn-steer .input {
+      flex: 1;
+    }
+    .msn-steer__err {
+      font-size: 11.5px;
+      color: var(--red);
+    }
+    .msn-escal {
+      margin: 8px 0 0 24px;
+      font-size: 12.5px;
+      color: var(--red);
+    }
+    .msn-done {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--hairline);
+      font-size: 12.5px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .msn-done:hover {
+      background: var(--surface-2);
+    }
+    .msn-done__title {
+      color: var(--fg1);
+      font-weight: 500;
+    }
+    .msn-hero {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      justify-content: center;
+      padding: 30px 0 8px;
+    }
+    .msn-hero__title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .msn-hero__sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
   `,
 })
 export class Mission {
@@ -336,7 +588,9 @@ export class Mission {
   }
 
   /** spec gate: "3 of 4 lines grounded in answers"; merge gate: tests/diff/reviewer. */
-  evidenceBits(ev: Evidence | null): { icon: string; text: string; tone: '' | 'green' | 'purple' }[] {
+  evidenceBits(
+    ev: Evidence | null,
+  ): { icon: string; text: string; tone: '' | 'green' | 'purple' }[] {
     if (!ev) return [{ icon: 'check', text: 'no evidence recorded', tone: '' }];
     if (ev.kind === 'spec') {
       const bits: { icon: string; text: string; tone: '' | 'green' | 'purple' }[] = [
@@ -347,12 +601,20 @@ export class Mission {
         },
       ];
       if (ev.interview_count)
-        bits.push({ icon: 'check', text: `spec drafted from interview (${ev.interview_count} Q)`, tone: '' });
+        bits.push({
+          icon: 'check',
+          text: `spec drafted from interview (${ev.interview_count} Q)`,
+          tone: '',
+        });
       return bits;
     }
     const bits: { icon: string; text: string; tone: '' | 'green' | 'purple' }[] = [];
     if (ev.tests_total != null)
-      bits.push({ icon: 'check', text: `${ev.tests_passed}/${ev.tests_total} tests pass`, tone: 'green' });
+      bits.push({
+        icon: 'check',
+        text: `${ev.tests_passed}/${ev.tests_total} tests pass`,
+        tone: 'green',
+      });
     if (ev.diff_added != null)
       bits.push({
         icon: 'check',
