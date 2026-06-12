@@ -6,7 +6,7 @@ import { Evidence, FactoryRequest, MissionGate } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
-import { elapsedShort, healthLine } from '../core/util';
+import { elapsedShort, healthLine, timeAgo } from '../core/util';
 import { ApproveModal, Autofocus, Glyph, Icon, SendBackModal } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
@@ -24,47 +24,58 @@ import { AdminShell } from './admin-shell';
       <div class="list scroll" style="padding:18px 0 40px">
         <div style="max-width:920px;margin:0 auto;padding:0 22px">
           @if (m(); as m) {
-            <!-- NEEDS ME — gates -->
-            <div class="msn-bandhead">
-              <sf-icon name="flag" [size]="13" color="var(--amber)" />
-              <span>Needs me — gates</span>
-              <span class="msn-count">{{ m.gates.length }}</span>
-              <span class="msn-hint">grounded · A approve · S send back</span>
-            </div>
-            @for (g of m.gates; track g.request.id) {
-              <div class="msn-gate" [class.msn-gate--merge]="g.request.gate === 'approve_merge'">
-                <div class="msn-gate__top">
-                  <sf-glyph type="ring" [size]="15" [fill]="0.5" color="var(--a500)" />
-                  <span class="msn-gate__title">{{ g.request.title }}</span>
-                  <span class="amber-pill">{{ gatePill(g.request) }}</span>
-                  <span class="msn-meta">{{ g.request.app_name }}</span>
-                  <span class="mono msn-ref">{{ g.request.ref }}</span>
-                  <span style="margin-left:auto"></span>
-                  <button class="btn primary sm" (click)="confirming.set(g.request)">
-                    Approve <kbd class="kbd">A</kbd>
-                  </button>
-                  <button class="btn sm" (click)="sendingBack.set(g.request)">
-                    Send back <kbd class="kbd">S</kbd>
-                  </button>
-                  <button class="btn sm" (click)="openInQueue(g.request)">Open</button>
+            @if (allClear()) {
+              <div class="msn-hero">
+                <sf-glyph type="check" [size]="22" color="var(--green)" [fill]="1" />
+                <div>
+                  <div class="msn-hero__title">Nothing needs you</div>
+                  <div class="msn-hero__sub">Gates clear · no escalations. Runs continue below.</div>
                 </div>
-                <div class="msn-evid">
-                  @for (bit of evidenceBits(g.evidence); track bit.text) {
-                    <span class="msn-evid__bit" [class.green]="bit.tone === 'green'">{{ bit.text }}</span>
-                  }
-                </div>
-                @if (g.evidence?.assumptions?.length) {
-                  <div class="msn-assume">
-                    <sf-glyph type="dotted" [size]="13" color="var(--amber)" />
-                    {{ g.evidence!.assumptions.length }} assumption{{
-                      g.evidence!.assumptions.length === 1 ? '' : 's'
-                    }}: {{ g.evidence!.assumptions[0] }}
-                  </div>
-                }
-                <div class="msn-side">{{ sideEffects(g.request) }}</div>
               </div>
-            } @empty {
-              <div class="msn-clear">No gates waiting on you.</div>
+            }
+            @if (!allClear()) {
+              <!-- NEEDS ME — gates -->
+              <div class="msn-bandhead">
+                <sf-icon name="flag" [size]="13" color="var(--amber)" />
+                <span>Needs me — gates</span>
+                <span class="msn-count">{{ m.gates.length }}</span>
+                <span class="msn-hint">grounded · A approve · S send back</span>
+              </div>
+              @for (g of m.gates; track g.request.id) {
+                <div class="msn-gate" [class.msn-gate--merge]="g.request.gate === 'approve_merge'">
+                  <div class="msn-gate__top">
+                    <sf-glyph type="ring" [size]="15" [fill]="0.5" color="var(--a500)" />
+                    <span class="msn-gate__title">{{ g.request.title }}</span>
+                    <span class="amber-pill">{{ gatePill(g.request) }}</span>
+                    <span class="msn-meta">{{ g.request.app_name }}</span>
+                    <span class="mono msn-ref">{{ g.request.ref }}</span>
+                    <span style="margin-left:auto"></span>
+                    <button class="btn primary sm" (click)="confirming.set(g.request)">
+                      Approve <kbd class="kbd">A</kbd>
+                    </button>
+                    <button class="btn sm" (click)="sendingBack.set(g.request)">
+                      Send back <kbd class="kbd">S</kbd>
+                    </button>
+                    <button class="btn sm" (click)="openInQueue(g.request)">Open</button>
+                  </div>
+                  <div class="msn-evid">
+                    @for (bit of evidenceBits(g.evidence); track bit.text) {
+                      <span class="msn-evid__bit" [class.green]="bit.tone === 'green'">{{ bit.text }}</span>
+                    }
+                  </div>
+                  @if (g.evidence?.assumptions?.length) {
+                    <div class="msn-assume">
+                      <sf-glyph type="dotted" [size]="13" color="var(--amber)" />
+                      {{ g.evidence!.assumptions.length }} assumption{{
+                        g.evidence!.assumptions.length === 1 ? '' : 's'
+                      }}: {{ g.evidence!.assumptions[0] }}
+                    </div>
+                  }
+                  <div class="msn-side">{{ sideEffects(g.request) }}</div>
+                </div>
+              } @empty {
+                <div class="msn-clear">No gates waiting on you.</div>
+              }
             }
 
             <!-- IN FLIGHT — autonomous runs -->
@@ -121,6 +132,56 @@ import { AdminShell } from './admin-shell';
               }
             } @empty {
               <div class="msn-clear">Nothing running right now.</div>
+            }
+
+            <!-- STALLED — needs a human -->
+            @if (m.stalled.length) {
+              <div class="msn-bandhead">
+                <sf-icon name="flag" [size]="13" color="var(--red)" />
+                <span>Needs a human — stalled</span>
+                <span class="msn-count">{{ m.stalled.length }}</span>
+              </div>
+              @for (r of m.stalled; track r.id) {
+                <div class="msn-gate msn-gate--red">
+                  <div class="msn-gate__top">
+                    <sf-glyph type="flag" [size]="15" color="var(--red)" />
+                    <span class="msn-gate__title">{{ r.title }}</span>
+                    <span class="red-pill">NEEDS HUMAN</span>
+                    <span class="msn-meta">{{ r.app_name }}</span>
+                    <span class="mono msn-ref">{{ r.ref }}</span>
+                    <span style="margin-left:auto"></span>
+                    <button class="btn sm" (click)="retry(r)">Retry stage</button>
+                    <button class="btn sm" (click)="openIssue(r)">Open issue</button>
+                  </div>
+                  @if (r.needs_human_reason) {
+                    <div class="msn-escal">{{ r.needs_human_reason }}</div>
+                  }
+                </div>
+              }
+            }
+
+            <!-- RECENTLY DONE & WITH SUBMITTER -->
+            @if (m.recent.length) {
+              <div class="msn-bandhead">
+                <sf-glyph type="check" [size]="13" color="var(--green)" />
+                <span>Recently done &amp; with submitter</span>
+              </div>
+              @for (r of m.recent; track r.id) {
+                <div class="msn-done" (click)="openIssue(r)">
+                  <sf-glyph
+                    [type]="r.status === 'done' ? 'check' : r.status === 'cancelled' ? 'strike' : 'flag'"
+                    [size]="13"
+                    [color]="r.status === 'done' ? 'var(--green)' : r.status === 'cancelled' ? 'var(--faint)' : 'var(--amber)'"
+                  />
+                  <span
+                    class="msn-done__title"
+                    [style.text-decoration]="r.status === 'cancelled' ? 'line-through' : ''"
+                    >{{ r.title }}</span
+                  >
+                  <span class="msn-meta">{{ recentLine(r) }}</span>
+                  <span class="mono msn-ref" style="margin-left:auto">{{ timeAgo(r.updated_at) }}</span>
+                </div>
+              }
             }
           } @else {
             <div class="msn-empty">Loading…</div>
@@ -317,6 +378,20 @@ import { AdminShell } from './admin-shell';
       margin: -4px 0 8px 36px; }
     .msn-steer .input { flex: 1; }
     .msn-steer__err { font-size: 11.5px; color: var(--red); }
+    .msn-gate--red { border-color: var(--red-line, #e7aea7); }
+    .red-pill { font-size: 9.5px; font-weight: 600; letter-spacing: 0.05em;
+      color: var(--red); background: var(--red-bg); border: 1px solid var(--red-line, #e7aea7);
+      border-radius: 4px; padding: 1.5px 6px; white-space: nowrap; flex: none; }
+    .msn-escal { margin: 8px 0 0 24px; font-size: 12.5px; color: var(--red); }
+    .msn-done { display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+      border-bottom: 1px solid var(--hairline); font-size: 12.5px;
+      color: var(--muted); cursor: pointer; }
+    .msn-done:hover { background: var(--surface-2); }
+    .msn-done__title { color: var(--fg1); font-weight: 500; }
+    .msn-hero { display: flex; align-items: center; gap: 14px; justify-content: center;
+      padding: 30px 0 8px; }
+    .msn-hero__title { font-size: 15px; font-weight: 600; }
+    .msn-hero__sub { font-size: 12px; color: var(--muted); }
   `,
 })
 export class Mission {
@@ -342,6 +417,7 @@ export class Mission {
   /** Expose display helpers for template. */
   healthLine = healthLine;
   elapsedShort = elapsedShort;
+  timeAgo = timeAgo;
 
   openSteer(r: FactoryRequest) {
     this.steerErr.set('');
@@ -428,5 +504,21 @@ export class Mission {
 
   openInQueue(r: FactoryRequest) {
     this.router.navigate(['/admin/queue'], { queryParams: { sel: r.id } });
+  }
+
+  retry(r: FactoryRequest) {
+    this.api.retry(r.id, this.session.user().name).subscribe(() => this.poll.nudge());
+  }
+  openIssue(r: FactoryRequest) {
+    this.router.navigateByUrl(`/admin/issue/${r.id}`);
+  }
+  allClear = computed(() => {
+    const m = this.m();
+    return !!m && m.gates.length === 0 && m.stalled.length === 0;
+  });
+  recentLine(r: FactoryRequest): string {
+    if (r.status === 'done') return 'deployed to production';
+    if (r.status === 'cancelled') return 'cancelled';
+    return 'sent back · waiting on the submitter';
   }
 }
