@@ -122,6 +122,7 @@ def cancel(rid: int, body: Note | None = None, db: Session = Depends(get_db)):
     r.status = "cancelled"
     r.gate = None
     r.needs_human = False
+    r.needs_human_reason = None
     actor = (body.actor if body else None) or "Kim P."
     emit(db, r, "recovery_action", f"Request cancelled by {actor}",
          actor=actor, bot=False, payload={"Ref": r.ref})

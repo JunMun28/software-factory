@@ -263,3 +263,49 @@ def test_send_back_clears_escalation(client):
     d = client.post(f"/api/requests/{gated['id']}/send-back",
                     json={"note": "Which CSV source?", "actor": "Kim P."}).json()
     assert d["needs_human"] is False and d["needs_human_reason"] is None
+
+
+def test_run_state_slow_health(client, monkeypatch):
+    from app import settings
+    from app.db import SessionLocal
+    from app.models import Request
+    from app.supervision import run_state
+
+    hero = approved_request(client, title="Slow health probe")
+    client.post("/api/simulator/tick")
+    monkeypatch.setattr(settings, "RUN_SLOW_AFTER_SECONDS", 0.0)
+    with SessionLocal() as db:
+        r = db.get(Request, hero["id"])
+        assert run_state(db, r)["health"] == "slow"
+
+
+def test_steer_unconsumed_when_run_reaches_gate(client):
+    # 4 arch + 6 build + 3 review steps = 13 ticks to exhaust the review plan;
+    # at that point gate is still None so steer is still in_flight → 201.
+    # Tick 14 raises the merge gate; the gate raise must NOT ack the note.
+    hero = approved_request(client, title="Steer race probe")
+    for _ in range(13):
+        client.post("/api/simulator/tick")
+    resp = client.post(f"/api/requests/{hero['id']}/steer", json={"note": "too late"})
+    assert resp.status_code == 201
+    note_id = resp.json()["id"]
+
+    client.post("/api/simulator/tick")  # raises the merge gate; must NOT ack
+    d = client.get(f"/api/requests/{hero['id']}").json()
+    assert d["gate"] == "approve_merge"
+    acked = {i for e in _events(client, hero["id"], "step_summary")
+             for i in (e["payload"] or {}).get("acked_steer_ids", [])}
+    assert note_id not in acked, "gate raise must not consume the note"
+
+
+def test_merge_gate_without_verification_has_no_evidence(client):
+    from app.db import SessionLocal
+    from app.models import Request
+
+    gated = submitted_request(client, title="No evidence probe")
+    with SessionLocal() as db:  # simulate a legacy/pre-revamp DB row at the merge gate
+        r = db.get(Request, gated["id"])
+        r.gate = "approve_merge"
+        db.commit()
+    d = client.get(f"/api/requests/{gated['id']}").json()
+    assert d["evidence"] is None  # UI renders "no evidence recorded"

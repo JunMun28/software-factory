@@ -307,11 +307,16 @@ export class Feed {
     });
 
     // the poll loop's delta IS the update path — no refetching
+    // Firehose guard (ADR 0014): mirrors backend TRACE_ONLY_KINDS — step-level
+    // events belong only in the per-request trace, not in the channel feed.
+    const TRACE_ONLY_KINDS = new Set(['step_summary', 'steer_note', 'verification']);
     effect(() => {
       const delta = this.poll.delta();
       const appId = this.app()?.id;
       if (!appId || !delta.length) return;
-      const fresh = delta.filter((e) => e.subject_id === appId && !this.seen.has(e.id));
+      const fresh = delta.filter(
+        (e) => e.subject_id === appId && !this.seen.has(e.id) && !TRACE_ONLY_KINDS.has(e.kind),
+      );
       if (!fresh.length) return;
       fresh.forEach((e) => this.seen.add(e.id));
       if (
