@@ -44,3 +44,6 @@ def test_verification_emitted_at_merge_gate(client):
     assert p["tests_passed"] == 8 and p["tests_total"] == 8
     assert p["reviewer_verdict"] == "no blocking findings"
     assert p["diff_added"] == 412 and p["files_changed"] == 9
+    titles = [e["title"] for e in _events(client, hero["id"], "milestone_summary")]
+    assert any(t.startswith("GREEN:") for t in titles)
+    assert any("Review report posted" in t for t in titles)

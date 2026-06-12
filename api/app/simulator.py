@@ -58,11 +58,14 @@ MILESTONE_AFTER: dict[str, dict[int, int]] = {
     "build": {3: 0, 6: 1},
     "review": {3: 0},
 }
+for _s in PIPELINE_STAGES:
+    assert set(MILESTONE_AFTER[_s]) <= set(range(1, len(STEP_PLANS[_s]) + 1))
+    assert all(i < len(STAGE_SCRIPTS[_s]) for i in MILESTONE_AFTER[_s].values())
 
 
 def emit_verification(db: Session, req: Request) -> None:
     """The evidence the merge gate renders (spec §5) — fabricated by the sim
-    from the same numbers its review script reports."""
+    matching the numbers its review script reports."""
     emit(db, req, "verification", "Verification report — ready for the merge gate",
          stage="review",
          payload={"tests_passed": 8, "tests_total": 8, "diff_added": 412,
