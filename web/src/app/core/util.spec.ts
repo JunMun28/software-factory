@@ -203,6 +203,9 @@ describe('elapsedShort', () => {
     expect(elapsedShort(3600)).toBe('1h');
     expect(elapsedShort(9000)).toBe('2h 30m');
   });
+  it('never renders 60m — floors the minutes remainder', () => {
+    expect(elapsedShort(7170)).toBe('1h 59m');
+  });
 });
 
 describe('healthLine', () => {

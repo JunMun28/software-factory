@@ -121,7 +121,7 @@ export function elapsedShort(seconds: number): string {
     return `${m}m ${String(s % 60).padStart(2, '0')}s`;
   }
   const h = Math.floor(s / 3600);
-  const m = Math.round((s % 3600) / 60);
+  const m = Math.floor((s % 3600) / 60);
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
