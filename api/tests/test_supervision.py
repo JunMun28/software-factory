@@ -199,3 +199,26 @@ def test_detail_carries_run_and_evidence(client):
     d = client.get(f"/api/requests/{gated['id']}").json()
     assert d["run"] is None
     assert d["evidence"]["kind"] == "spec" and d["evidence"]["total_lines"] >= 1
+
+
+def test_mission_aggregate(client):
+    gated = submitted_request(client, title="Mission gate probe")
+    running = approved_request(client, title="Mission run probe")
+    client.post("/api/simulator/tick")
+
+    m = client.get("/api/mission").json()
+    assert set(m) == {"gates", "runs", "stalled", "recent", "cursor"}
+    assert m["cursor"] > 0
+
+    gate = next(g for g in m["gates"] if g["request"]["id"] == gated["id"])
+    assert gate["request"]["gate"] == "approve_spec"
+    assert gate["evidence"]["kind"] == "spec"
+
+    run = next(r for r in m["runs"] if r["request"]["id"] == running["id"])
+    assert run["run"]["step"] >= 1 and run["run"]["health"] in ("healthy", "slow")
+
+    assert all(s["needs_human"] for s in m["stalled"])
+    assert all(g["request"]["needs_human"] is False for g in m["gates"])
+    open_ids = {g["request"]["id"] for g in m["gates"]} | {r["request"]["id"] for r in m["runs"]}
+    recent_ids = {r["id"] for r in m["recent"]}
+    assert not (open_ids & recent_ids), "an item appears in exactly one band"

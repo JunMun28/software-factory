@@ -140,6 +140,25 @@ class RequestDetail(RequestOut):
     evidence: EvidenceOut | None = None
 
 
+class MissionGate(BaseModel):
+    request: RequestOut
+    evidence: EvidenceOut | None = None  # None → UI shows "no evidence recorded"
+
+
+class MissionRun(BaseModel):
+    request: RequestOut
+    run: RunStateOut
+
+
+class MissionOut(BaseModel):
+    """One poll for the Mission control home (spec §6)."""
+    gates: list[MissionGate]
+    runs: list[MissionRun]
+    stalled: list[RequestOut]
+    recent: list[RequestOut]
+    cursor: int
+
+
 class RequestCreate(BaseModel):
     type: Literal["bug", "enh", "new", "other"]
     title: str = Field(default="", max_length=200)

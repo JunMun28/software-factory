@@ -167,7 +167,7 @@ class SpecLine(Base):
 class ProgressEvent(Base):
     """ADR 0008: append-only, typed, two-axis progress log.
 
-    kind: milestone_summary | gate_event | escalation | recovery_action
+    kind: milestone_summary | gate_event | escalation | recovery_action | comment | step_summary | verification | steer_note
     """
 
     __tablename__ = "progress_events"
