@@ -66,7 +66,7 @@ EVENTS_AFTER=$(curl -s "$API/events?request_id=$RID" | jqpy "print(len(d))")
 [ "$EVENTS_BEFORE" = "$EVENTS_AFTER" ] || fail "approve replay emitted duplicate events"
 ok "approve replay is idempotent (ADR 0006)"
 
-for i in $(seq 1 8); do curl -s -X POST "$API/simulator/tick" >/dev/null; done
+for i in $(seq 1 16); do curl -s -X POST "$API/simulator/tick" >/dev/null; done
 GATE=$(curl -s "$API/requests/$RID" | jqpy "print(d['stage'], d['gate'])")
 [ "$GATE" = "review approve_merge" ] || fail "simulator did not stop at the merge gate ($GATE)"
 ok "stages 2-5 ran; factory waits at the merge gate (humans gate the irreversible)"

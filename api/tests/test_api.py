@@ -114,7 +114,7 @@ def test_simulator_drives_stages_to_merge_gate(client):
     hero = approved_request(client, title="Simulator drive")
     assert hero["stage"] == "architecture"
 
-    for _ in range(10):
+    for _ in range(16):
         client.post("/api/simulator/tick")
     hero = client.get(f"/api/requests/{hero['id']}").json()
     assert hero["stage"] == "review" and hero["gate"] == "approve_merge"
@@ -164,7 +164,7 @@ def test_registry_crud(client):
 def test_stage_clock_and_last_event(client):
     """The Pipeline view's inputs: stage_entered_at moves on transitions; last_event rides along."""
     hero = approved_request(client, title="Stage clock probe")
-    for _ in range(10):
+    for _ in range(16):
         client.post("/api/simulator/tick")
     client.post(f"/api/requests/{hero['id']}/approve", json={"actor": "Kim P."})  # merge gate → done
     done = next(r for r in client.get("/api/requests").json() if r["id"] == hero["id"])

@@ -1,10 +1,11 @@
 """Factory simulator — stands in for the Stage 2–6 CI agents.
 
-Each tick advances every in-flight (approved) Work item one step through a
-deterministic per-stage script, emitting the same milestone summaries /
-gate events the real Copilot agents would post as PR comments (ADR 0004).
+Each tick advances every in-flight (approved) Work item one STEP through a
+deterministic per-stage plan, emitting a step_summary (the trace heartbeat
+the supervision UI reads) plus the same milestone summaries / gate events
+the real agents would post as PR comments (ADR 0004, ADR 0014).
 The Review→Done boundary is a human gate (approve_merge) — the simulator
-stops there and waits for an Admin, exactly like the real Factory.
+emits its verification report, raises the gate, and waits for an Admin.
 """
 from sqlalchemy.orm import Session
 
@@ -12,8 +13,33 @@ from . import lifecycle
 from .events import emit
 from .models import PIPELINE_STAGES, Request, utcnow
 
-# (stage, steps) — each step is (title, fields-payload). After the last step of
-# a stage the item advances to the next stage. Review ends at the merge gate.
+# (stage, steps) — each step is (label, why). One step per tick; the stage
+# advances when its plan is exhausted. Labels feed run-state and the
+# submitter's plain-language activity line, so keep them human.
+STEP_PLANS: dict[str, list[tuple[str, str]]] = {
+    "architecture": [
+        ("reading SPEC.md", "grounding the plan in the approved spec"),
+        ("drafting PLAN.md", "smallest architecture that satisfies every spec line"),
+        ("writing ADRs", "recording the decisions worth keeping"),
+        ("validating plan against SPEC.md", "every spec line maps to a plan step"),
+    ],
+    "build": [
+        ("authoring failing tests", "RED first — the tests define done"),
+        ("running the RED gate", "new tests must fail for the right reason"),
+        ("implementing the change", "smallest diff that turns RED to GREEN"),
+        ("running the test suite", "expecting all green"),
+        ("refactoring", "cleanup with the tests as a safety net"),
+        ("running the test-isolation gate", "the implementer must not touch test files"),
+    ],
+    "review": [
+        ("running the review pass", "an independent read of the full diff"),
+        ("collecting findings", "blocking findings stop the line"),
+        ("writing the verification report", "evidence for the merge gate"),
+    ],
+}
+
+# Legacy milestone summaries (feed content) — unchanged text, now fired at a
+# fixed checkpoint: MILESTONE_AFTER[stage][sim_step reached] = script index.
 STAGE_SCRIPTS: dict[str, list[tuple[str, dict]]] = {
     "architecture": [
         ("Architecture plan drafted — PLAN.md committed", {"Artifacts": "PLAN.md", "ADRs": "2 drafted"}),
@@ -25,9 +51,25 @@ STAGE_SCRIPTS: dict[str, list[tuple[str, dict]]] = {
     ],
     "review": [
         ("Review report posted — no blocking findings", {"Findings": "0 blocking · 2 nits", "Diff": "+412 −38"}),
-        # second step raises the merge gate (handled in tick())
     ],
 }
+MILESTONE_AFTER: dict[str, dict[int, int]] = {
+    "architecture": {2: 0, 4: 1},
+    "build": {3: 0, 6: 1},
+    "review": {3: 0},
+}
+
+
+def emit_verification(db: Session, req: Request) -> None:
+    """The evidence the merge gate renders (spec §5) — fabricated by the sim
+    from the same numbers its review script reports."""
+    emit(db, req, "verification", "Verification report — ready for the merge gate",
+         stage="review",
+         payload={"tests_passed": 8, "tests_total": 8, "diff_added": 412,
+                  "diff_removed": 38, "files_changed": 9,
+                  "reviewer_verdict": "no blocking findings",
+                  "assumptions": [line.text for line in req.spec_lines if line.assume],
+                  "Ref": req.ref})
 
 
 def tick(db: Session) -> list[str]:
@@ -41,20 +83,28 @@ def tick(db: Session) -> list[str]:
         .all()
     )
     for req in items:
-        script = STAGE_SCRIPTS[req.stage]
+        plan = STEP_PLANS[req.stage]
         step = req.sim_step
-        if req.stage == "review" and step >= len(script):
-            # raise the merge gate once, then wait for a human
+        if req.stage == "review" and step >= len(plan):
+            # verification report, then raise the merge gate once, then wait for a human
             if req.gate != "approve_merge":
+                emit_verification(db, req)
                 lifecycle.raise_merge_gate(db, req)
                 moved.append(f"{req.ref}: merge gate raised")
             continue
-        if step < len(script):
-            title, fields = script[step]
-            emit(db, req, "milestone_summary", title, payload={"fields": fields, "Ref": req.ref})
+        if step < len(plan):
+            label, why = plan[step]
+            emit(db, req, "step_summary", f"{label} ({step + 1}/{len(plan)})",
+                 payload={"step": step + 1, "of": len(plan), "label": label,
+                          "why": why, "Ref": req.ref})
             req.sim_step += 1
-            moved.append(f"{req.ref}: {req.stage} · {title}")
-        if req.sim_step >= len(script) and req.stage != "review":
+            moved.append(f"{req.ref}: {req.stage} · {label}")
+            mi = MILESTONE_AFTER[req.stage].get(req.sim_step)
+            if mi is not None:
+                title, fields = STAGE_SCRIPTS[req.stage][mi]
+                emit(db, req, "milestone_summary", title,
+                     payload={"fields": fields, "Ref": req.ref})
+        if req.sim_step >= len(plan) and req.stage != "review":
             nxt = {"architecture": "build", "build": "review"}[req.stage]
             req.stage = nxt
             req.sim_step = 0
