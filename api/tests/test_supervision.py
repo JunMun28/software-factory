@@ -1,7 +1,7 @@
 """Supervision revamp backend (spec 2026-06-12): step events, run-state,
 steer, trace, mission aggregate, gate evidence."""
 
-from helpers import approved_request
+from helpers import approved_request, submitted_request
 
 
 def _events(client, rid, kind=None):
@@ -47,3 +47,66 @@ def test_verification_emitted_at_merge_gate(client):
     titles = [e["title"] for e in _events(client, hero["id"], "milestone_summary")]
     assert any(t.startswith("GREEN:") for t in titles)
     assert any("Review report posted" in t for t in titles)
+
+
+def test_run_state_derivation(client):
+    from app.db import SessionLocal
+    from app.models import Request
+    from app.supervision import run_state
+
+    hero = approved_request(client, title="Run state probe")
+    with SessionLocal() as db:
+        r = db.get(Request, hero["id"])
+        rs = run_state(db, r)
+        assert rs == {"step": 0, "of": 4, "label": None, "health": "no_signal",
+                      "seconds_since_event": rs["seconds_since_event"]}
+
+    client.post("/api/simulator/tick")
+    with SessionLocal() as db:
+        r = db.get(Request, hero["id"])
+        rs = run_state(db, r)
+        assert rs["step"] == 1 and rs["of"] == 4
+        assert rs["label"] == "reading SPEC.md"
+        assert rs["health"] == "healthy"  # event written milliseconds ago
+
+
+def test_run_state_none_unless_in_flight(client):
+    from app.db import SessionLocal
+    from app.models import Request
+    from app.supervision import run_state
+
+    gated = submitted_request(client, title="Gated probe")  # at the spec gate
+    with SessionLocal() as db:
+        r = db.get(Request, gated["id"])
+        assert run_state(db, r) is None
+
+
+def test_evidence_for_spec_gate(client):
+    from app.db import SessionLocal
+    from app.models import Request
+    from app.supervision import evidence
+
+    gated = submitted_request(client, title="Spec evidence probe")
+    with SessionLocal() as db:
+        r = db.get(Request, gated["id"])
+        ev = evidence(db, r)
+        assert ev is not None and ev["kind"] == "spec"
+        assert ev["total_lines"] >= 1
+        assert isinstance(ev["assumptions"], list)
+
+
+def test_evidence_for_merge_gate(client):
+    from app.db import SessionLocal
+    from app.models import Request
+    from app.supervision import evidence
+
+    hero = approved_request(client, title="Merge evidence probe")
+    for _ in range(16):
+        client.post("/api/simulator/tick")
+    with SessionLocal() as db:
+        r = db.get(Request, hero["id"])
+        assert r.gate == "approve_merge"
+        ev = evidence(db, r)
+        assert ev["kind"] == "merge"
+        assert ev["tests_passed"] == 8 and ev["tests_total"] == 8
+        assert ev["reviewer_verdict"] == "no blocking findings"

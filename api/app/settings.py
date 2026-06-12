@@ -21,6 +21,12 @@ WORKSPACES = Path(os.environ.get("FACTORY_WORKSPACES", str(API_DIR / "workspaces
 SAMPLE = Path(os.environ.get("FACTORY_SAMPLE", str(REPO_DIR / "sample")))
 STAGE_TIMEOUT = int(os.environ.get("FACTORY_STAGE_TIMEOUT", "300"))
 SIM_INTERVAL = float(os.environ.get("SIM_INTERVAL", "0") or 0)
+# run-state health (spec 2026-06-12 §5): a run with no step event for this
+# long renders "slow". Default 3× the sim tick; fixed fallback when the
+# interval is 0 (tests, manual ticking).
+RUN_SLOW_AFTER_SECONDS = float(os.environ.get("RUN_SLOW_AFTER_SECONDS", "0") or 0) or (
+    3 * SIM_INTERVAL if SIM_INTERVAL > 0 else 30.0
+)
 # demo world on first boot — on for dev/tests, OFF in the compose stack so a
 # production DB never starts polluted with fictional requests and audit rows
 SEED_DEMO = os.environ.get("FACTORY_SEED_DEMO", "1").lower() not in ("0", "false", "no")
