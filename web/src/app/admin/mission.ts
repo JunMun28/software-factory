@@ -2,11 +2,11 @@ import { Component, HostListener, computed, inject, signal } from '@angular/core
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { Evidence, FactoryRequest, MissionGate } from '../core/models';
+import { Evidence, FactoryRequest } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
-import { elapsedShort, healthLine, timeAgo } from '../core/util';
+import { healthLine, timeAgo } from '../core/util';
 import { ApproveModal, Autofocus, Glyph, Icon, SendBackModal } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
@@ -38,7 +38,7 @@ import { AdminShell } from './admin-shell';
             @if (!allClear()) {
               <!-- NEEDS ME — gates -->
               <div class="msn-bandhead">
-                <sf-icon name="flag" [size]="13" color="var(--amber)" />
+                <sf-glyph type="ring" [size]="13" [fill]="0.5" color="var(--amber)" />
                 <span>Needs me — gates</span>
                 <span class="msn-count">{{ m.gates.length }}</span>
                 <span class="msn-hint">J/K move · ↵ open · A approve · S send back</span>
@@ -46,8 +46,7 @@ import { AdminShell } from './admin-shell';
               @for (g of m.gates; track g.request.id) {
                 <div
                   class="msn-gate"
-                  [class.msn-gate--merge]="g.request.gate === 'approve_merge'"
-                  [class.msn-focus]="flatIdx(g.request) === focusIdx()"
+                  [class.msn-focus]="flatIdx(g.request) === focusAt()"
                   tabindex="0"
                   (focus)="focusIdx.set(flatIdx(g.request))"
                 >
@@ -68,9 +67,12 @@ import { AdminShell } from './admin-shell';
                   </div>
                   <div class="msn-evid">
                     @for (bit of evidenceBits(g.evidence); track bit.text) {
-                      <span class="msn-evid__bit" [class.green]="bit.tone === 'green'">{{
-                        bit.text
-                      }}</span>
+                      <span
+                        class="msn-evid__bit"
+                        [class.green]="bit.tone === 'green'"
+                        [class.purple]="bit.tone === 'purple'"
+                        >{{ bit.text }}</span
+                      >
                     }
                   </div>
                   @if (g.evidence?.assumptions?.length) {
@@ -99,7 +101,7 @@ import { AdminShell } from './admin-shell';
               <div
                 class="msn-run"
                 [class.msn-run--slow]="it.run.health === 'slow'"
-                [class.msn-focus]="flatIdx(it.request) === focusIdx()"
+                [class.msn-focus]="flatIdx(it.request) === focusAt()"
                 tabindex="0"
                 (focus)="focusIdx.set(flatIdx(it.request))"
               >
@@ -121,9 +123,11 @@ import { AdminShell } from './admin-shell';
                   </div>
                   <span class="mono msn-pstep">step {{ it.run.step }} / {{ it.run.of }}</span>
                 </div>
-                <span class="msn-runstate" [class.amber-tx]="it.run.health === 'slow'">{{
-                  healthLine(it.run)
-                }}</span>
+                <span
+                  class="msn-runstate"
+                  [style.color]="it.run.health === 'slow' ? 'var(--amber)' : null"
+                  >{{ healthLine(it.run) }}</span
+                >
                 @if (steered().has(it.request.id)) {
                   <span class="chip">note queued</span>
                 }
@@ -160,7 +164,7 @@ import { AdminShell } from './admin-shell';
               @for (r of m.stalled; track r.id) {
                 <div
                   class="msn-gate msn-gate--red"
-                  [class.msn-focus]="flatIdx(r) === focusIdx()"
+                  [class.msn-focus]="flatIdx(r) === focusAt()"
                   tabindex="0"
                   (focus)="focusIdx.set(flatIdx(r))"
                 >
@@ -199,7 +203,7 @@ import { AdminShell } from './admin-shell';
                         ? 'var(--green)'
                         : r.status === 'cancelled'
                           ? 'var(--faint)'
-                          : 'var(--amber)'
+                          : 'var(--muted)'
                     "
                   />
                   <span
@@ -308,14 +312,14 @@ import { AdminShell } from './admin-shell';
       flex: none;
     }
     .amber-pill {
-      color: var(--amber);
+      color: var(--amber-tx);
       background: var(--amber-bg);
       border: 1px solid var(--amber-line);
     }
     .red-pill {
-      color: var(--red);
+      color: var(--red-tx);
       background: var(--red-bg);
-      border: 1px solid var(--red-line, #e7aea7);
+      border: 1px solid var(--red-line);
     }
     .msn-meta {
       font-size: 11.5px;
@@ -337,6 +341,9 @@ import { AdminShell } from './admin-shell';
     .msn-evid__bit.green {
       color: var(--green-tx);
       font-weight: 500;
+    }
+    .msn-evid__bit.purple {
+      color: var(--a700);
     }
     .msn-assume {
       display: flex;
@@ -367,7 +374,7 @@ import { AdminShell } from './admin-shell';
       border-color: var(--amber-line);
     }
     .msn-gate--red {
-      border-color: var(--red-line, #e7aea7);
+      border-color: var(--red-line);
     }
     .msn-focus {
       box-shadow: inset 0 0 0 2px var(--a500);
@@ -469,9 +476,6 @@ import { AdminShell } from './admin-shell';
       font-size: 12px;
       color: var(--fg2);
     }
-    .amber-tx {
-      color: var(--amber);
-    }
     .msn-steer {
       display: flex;
       align-items: center;
@@ -536,8 +540,6 @@ export class Mission {
   confirming = signal<FactoryRequest | null>(null);
   sendingBack = signal<FactoryRequest | null>(null);
 
-  gates = computed<MissionGate[]>(() => this.m()?.gates ?? []);
-
   steeringId = signal<number | null>(null);
   steerText = signal('');
   steerErr = signal('');
@@ -546,7 +548,6 @@ export class Mission {
 
   /** Expose display helpers for template. */
   healthLine = healthLine;
-  elapsedShort = elapsedShort;
   timeAgo = timeAgo;
 
   openSteer(r: FactoryRequest) {
@@ -588,42 +589,36 @@ export class Mission {
   }
 
   /** spec gate: "3 of 4 lines grounded in answers"; merge gate: tests/diff/reviewer. */
-  evidenceBits(
-    ev: Evidence | null,
-  ): { icon: string; text: string; tone: '' | 'green' | 'purple' }[] {
-    if (!ev) return [{ icon: 'check', text: 'no evidence recorded', tone: '' }];
+  evidenceBits(ev: Evidence | null): { text: string; tone: '' | 'green' | 'purple' }[] {
+    if (!ev) return [{ text: 'no evidence recorded', tone: '' }];
     if (ev.kind === 'spec') {
-      const bits: { icon: string; text: string; tone: '' | 'green' | 'purple' }[] = [
+      const bits: { text: string; tone: '' | 'green' | 'purple' }[] = [
         {
-          icon: 'check',
           text: `${ev.grounded_lines ?? 0} of ${ev.total_lines ?? 0} lines grounded in answers`,
           tone: 'green',
         },
       ];
       if (ev.interview_count)
         bits.push({
-          icon: 'check',
           text: `spec drafted from interview (${ev.interview_count} Q)`,
           tone: '',
         });
       return bits;
     }
-    const bits: { icon: string; text: string; tone: '' | 'green' | 'purple' }[] = [];
+    const bits: { text: string; tone: '' | 'green' | 'purple' }[] = [];
     if (ev.tests_total != null)
       bits.push({
-        icon: 'check',
         text: `${ev.tests_passed}/${ev.tests_total} tests pass`,
         tone: 'green',
       });
     if (ev.diff_added != null)
       bits.push({
-        icon: 'check',
         text: `diff +${ev.diff_added} −${ev.diff_removed} · ${ev.files_changed} files`,
         tone: '',
       });
     if (ev.reviewer_verdict)
-      bits.push({ icon: 'check', text: `reviewer: ${ev.reviewer_verdict}`, tone: 'purple' });
-    return bits.length ? bits : [{ icon: 'check', text: 'no evidence recorded', tone: '' }];
+      bits.push({ text: `reviewer: ${ev.reviewer_verdict}`, tone: 'purple' });
+    return bits.length ? bits : [{ text: 'no evidence recorded', tone: '' }];
   }
 
   sideEffects(r: FactoryRequest): string {
@@ -664,6 +659,9 @@ export class Mission {
 
   focusIdx = signal(0);
 
+  /** focusIdx clamped to the live list — gates leave the band on approve, so the raw index can go stale. */
+  focusAt = computed(() => Math.max(0, Math.min(this.focusIdx(), this.focusables().length - 1)));
+
   /** J/K traversal list: every actionable row in render order. */
   focusables = computed<{ kind: 'gate' | 'run' | 'stalled'; r: FactoryRequest }[]>(() => {
     const m = this.m();
@@ -685,13 +683,13 @@ export class Mission {
     if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey) return;
     if (this.confirming() || this.sendingBack() || this.steeringId() !== null) return;
     const k = e.key.toLowerCase();
-    const cur = this.focusables()[this.focusIdx()];
+    const cur = this.focusables()[this.focusAt()];
     if (k === 'j' || e.key === 'ArrowDown') {
       e.preventDefault();
-      this.focusIdx.update((s) => Math.min(this.focusables().length - 1, s + 1));
+      this.focusIdx.set(Math.min(this.focusables().length - 1, this.focusAt() + 1));
     } else if (k === 'k' || e.key === 'ArrowUp') {
       e.preventDefault();
-      this.focusIdx.update((s) => Math.max(0, s - 1));
+      this.focusIdx.set(Math.max(0, this.focusAt() - 1));
     } else if (e.key === 'Enter' && cur) {
       e.preventDefault();
       this.openIssue(cur.r);
