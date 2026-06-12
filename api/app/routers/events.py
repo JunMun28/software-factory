@@ -21,6 +21,10 @@ from ..schemas import CommentIn, CommentOut, EventOut, FeedPage, RequestOut
 
 router = APIRouter()
 
+# Firehose guard (ADR 0014): step-level kinds render only in the per-request
+# trace; the channel feed stays milestone-level so app surfaces stay calm.
+TRACE_ONLY_KINDS = ("step_summary", "steer_note", "verification")
+
 
 # ---------- shared helpers (events-local, no side-effects) ----------
 
@@ -73,7 +77,9 @@ def subject_feed(key: str, after: int = 0, limit: int = 100, db: Session = Depen
     if not a:
         raise HTTPException(404, "Unknown app")
     limit = min(limit, 300)
-    base = joined_events(db).filter(ProgressEvent.subject_id == a.id)
+    base = (joined_events(db)
+            .filter(ProgressEvent.subject_id == a.id)
+            .filter(ProgressEvent.kind.notin_(TRACE_ONLY_KINDS)))
     if after > 0:
         rows = base.filter(ProgressEvent.id > after).order_by(ProgressEvent.id).limit(limit).all()
     else:

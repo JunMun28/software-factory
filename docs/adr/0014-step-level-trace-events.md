@@ -26,6 +26,7 @@ plus event recency at read time; nothing mutable is stored.
   per-request trace (`/api/requests/{rid}/trace`). This is the firehose
   guard: channel surfaces stay calm, drill-down gets detail.
 - Health ("slow") is a derived threshold (RUN_SLOW_AFTER_SECONDS, default
-  3× SIM_INTERVAL) — honest about signal recency, never a stored claim.
+  3× SIM_INTERVAL, fixed 30s fallback when the sim drives off-interval) —
+  honest about signal recency, never a stored claim.
 - Real (non-sim) runners must emit step_summary/verification to stay
   first-class on the supervision surfaces; the sim demonstrates the contract.

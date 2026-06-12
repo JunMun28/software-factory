@@ -227,14 +227,26 @@ def test_mission_aggregate(client):
 
 
 def test_seeded_run_has_step_trace(client):
+    """The seeded steps 1-3 (of=6) are append-only — later ticks add steps
+    but never remove them, so this asserts in any test order."""
     sso = next(r for r in client.get("/api/requests").json() if r["ref"] == "REQ-2029")
-    if sso["status"] != "approved" or sso["stage"] != "build":
-        return  # an earlier test already drove the seeded item past build
     steps = _events(client, sso["id"], "step_summary")
-    assert len(steps) >= 3, "seed must include the in-flight step trace"
-    build_steps = [s for s in steps if s["payload"]["of"] == 6]
-    assert len(build_steps) >= 3
-    assert build_steps[-1]["payload"]["label"] == "implementing the change"
+    build_steps = [s for s in steps if s["payload"]["of"] == 6 and s["payload"]["step"] <= 3]
+    assert len(build_steps) >= 3, "seed must include the in-flight step trace"
+    labels = [s["payload"]["label"] for s in build_steps[:3]]
+    assert labels[0] == "authoring failing tests"
+    assert labels[2] == "implementing the change"
+
+
+def test_channel_feed_excludes_trace_kinds(client):
+    hero = approved_request(client, title="Feed firehose probe")
+    client.post("/api/simulator/tick")
+    app_key = hero["app_key"]
+    feed = client.get(f"/api/subjects/{app_key}/feed").json()
+    kinds = {e["kind"] for e in feed["items"]}
+    assert "step_summary" not in kinds and "verification" not in kinds and "steer_note" not in kinds
+    trace = client.get(f"/api/requests/{hero['id']}/trace").json()
+    assert "step_summary" in {e["kind"] for e in trace["items"]}
 
 
 def test_send_back_clears_escalation(client):
