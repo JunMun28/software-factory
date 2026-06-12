@@ -91,9 +91,12 @@ def seed(db: Session) -> None:
                   **KP)
 
     # --- In flight (Building — gives board/feed life) ---
+    # sim_step=3: the seeded "RED: 8 failing tests authored" milestone corresponds
+    # to the build checkpoint after step 3 (authoring failing tests → running the
+    # RED gate → implementing the change).
     r_sso = req("REQ-2029", "Migrate auth to SSO", "enh", "billing",
                 stage="build", status="approved", reporter=("Dana L.", "DL"), created=ago(days=2), entered=ago(hours=20),
-                repo_ready=True, spec_pr_open=True, stage2_fired=True, sim_step=1, **KP)
+                repo_ready=True, spec_pr_open=True, stage2_fired=True, sim_step=3, **KP)
 
     # --- Done / cancelled history ---
     req("REQ-2044", "Fix typo in approval email", "bug", "northwind",
@@ -180,6 +183,15 @@ def seed(db: Session) -> None:
     ]):
         ev = e(r_sso, kind, title, payload=payload, bot=kind != "gate_event",
                actor="Factory" if kind != "gate_event" else "Kim P.", broadcast=kind == "gate_event")
+        ev.created_at = dt
+
+    for i, (label, why, dt) in enumerate([
+        ("authoring failing tests", "RED first — the tests define done", ago(hours=20)),
+        ("running the RED gate", "new tests must fail for the right reason", ago(hours=16)),
+        ("implementing the change", "smallest diff that turns RED to GREEN", ago(minutes=2)),
+    ]):
+        ev = e(r_sso, "step_summary", f"{label} ({i + 1}/6)",
+               payload={"step": i + 1, "of": 6, "label": label, "why": why, "Ref": r_sso.ref})
         ev.created_at = dt
 
     db.add(AuditEvent(request_id=r_export.id, actor="Jordan D.", action="submitted",

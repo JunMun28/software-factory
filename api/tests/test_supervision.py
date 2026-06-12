@@ -226,6 +226,17 @@ def test_mission_aggregate(client):
     assert not (stalled_ids & recent_ids), "stalled and recent are exclusive too"
 
 
+def test_seeded_run_has_step_trace(client):
+    sso = next(r for r in client.get("/api/requests").json() if r["ref"] == "REQ-2029")
+    if sso["status"] != "approved" or sso["stage"] != "build":
+        return  # an earlier test already drove the seeded item past build
+    steps = _events(client, sso["id"], "step_summary")
+    assert len(steps) >= 3, "seed must include the in-flight step trace"
+    build_steps = [s for s in steps if s["payload"]["of"] == 6]
+    assert len(build_steps) >= 3
+    assert build_steps[-1]["payload"]["label"] == "implementing the change"
+
+
 def test_send_back_clears_escalation(client):
     from app.db import SessionLocal
     from app.models import Request
