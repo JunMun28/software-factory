@@ -1,7 +1,8 @@
 """Derived run-state, steer-note bookkeeping, and gate evidence (ADR 0014).
 
-Everything here is DERIVED from the append-only progress_event log (ADR 0008)
-at read time — no mutable run columns exist, and the log is never UPDATEd.
+Everything here is DERIVED at read time — from the append-only progress_event
+log (ADR 0008) plus the Request row snapshot — no mutable run columns exist,
+and the log is never UPDATEd.
 A steer note is "consumed" when a later step_summary lists its id in
 payload.acked_steer_ids; pending notes are computed, never flagged in place.
 """
@@ -10,8 +11,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from . import settings
-from .models import PIPELINE_STAGES, ProgressEvent, Request, utcnow
-from .simulator import STEP_PLANS
+from .models import PIPELINE_STAGES, STEP_PLANS, ProgressEvent, Request, utcnow
 
 
 def _aware(dt: datetime | None) -> datetime | None:
@@ -40,6 +40,8 @@ def run_state(db: Session, r: Request) -> dict | None:
                   ProgressEvent.stage == r.stage)
           .order_by(ProgressEvent.id.desc())
           .first())
+    if ev is not None and _aware(ev.created_at) < _aware(r.stage_entered_at):
+        ev = None  # pre-Retry attempt — the stage clock was reset with the stage unchanged
     plan_len = len(STEP_PLANS.get(r.stage, []))
     last_at = _aware(ev.created_at) if ev else _aware(r.stage_entered_at)
     seconds = max(0, int((utcnow() - last_at).total_seconds())) if last_at else 0
@@ -54,7 +56,7 @@ def run_state(db: Session, r: Request) -> dict | None:
 
 
 def pending_steer_notes(db: Session, r: Request) -> list[ProgressEvent]:
-    """Steer notes not yet acknowledged by a later step_summary."""
+    """Steer notes whose id no step_summary has acknowledged."""
     rows = (db.query(ProgressEvent)
             .filter(ProgressEvent.request_id == r.id,
                     ProgressEvent.kind.in_(("steer_note", "step_summary")))

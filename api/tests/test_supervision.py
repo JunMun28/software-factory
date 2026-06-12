@@ -70,6 +70,25 @@ def test_run_state_derivation(client):
         assert rs["health"] == "healthy"  # event written milliseconds ago
 
 
+def test_run_state_ignores_pre_retry_step_events(client):
+    """Retry resets sim_step/stage_entered_at with the stage unchanged — step
+    events from the failed attempt must not leak into the fresh run's state."""
+    from app.db import SessionLocal
+    from app.models import Request, utcnow
+    from app.supervision import run_state
+
+    hero = approved_request(client, title="Retry stale probe")
+    client.post("/api/simulator/tick")  # one step event exists
+    with SessionLocal() as db:
+        r = db.get(Request, hero["id"])
+        assert run_state(db, r)["step"] == 1  # sanity: the event counts now
+        r.stage_entered_at = utcnow()  # what Retry / gate-raise do
+        db.commit()
+        rs = run_state(db, r)
+        assert rs["step"] == 0
+        assert rs["health"] == "no_signal"
+
+
 def test_run_state_none_unless_in_flight(client):
     from app.db import SessionLocal
     from app.models import Request

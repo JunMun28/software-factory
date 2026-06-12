@@ -11,32 +11,7 @@ from sqlalchemy.orm import Session
 
 from . import lifecycle
 from .events import emit
-from .models import PIPELINE_STAGES, Request, utcnow
-
-# (stage, steps) — each step is (label, why). One step per tick; the stage
-# advances when its plan is exhausted. Labels feed run-state and the
-# submitter's plain-language activity line, so keep them human.
-STEP_PLANS: dict[str, list[tuple[str, str]]] = {
-    "architecture": [
-        ("reading SPEC.md", "grounding the plan in the approved spec"),
-        ("drafting PLAN.md", "smallest architecture that satisfies every spec line"),
-        ("writing ADRs", "recording the decisions worth keeping"),
-        ("validating plan against SPEC.md", "every spec line maps to a plan step"),
-    ],
-    "build": [
-        ("authoring failing tests", "RED first — the tests define done"),
-        ("running the RED gate", "new tests must fail for the right reason"),
-        ("implementing the change", "smallest diff that turns RED to GREEN"),
-        ("running the test suite", "expecting all green"),
-        ("refactoring", "cleanup with the tests as a safety net"),
-        ("running the test-isolation gate", "the implementer must not touch test files"),
-    ],
-    "review": [
-        ("running the review pass", "an independent read of the full diff"),
-        ("collecting findings", "blocking findings stop the line"),
-        ("writing the verification report", "evidence for the merge gate"),
-    ],
-}
+from .models import PIPELINE_STAGES, STEP_PLANS, Request, utcnow
 
 # Legacy milestone summaries (feed content) — unchanged text, now fired at a
 # fixed checkpoint: MILESTONE_AFTER[stage][sim_step reached] = script index.
