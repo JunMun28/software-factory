@@ -222,3 +222,21 @@ def test_mission_aggregate(client):
     open_ids = {g["request"]["id"] for g in m["gates"]} | {r["request"]["id"] for r in m["runs"]}
     recent_ids = {r["id"] for r in m["recent"]}
     assert not (open_ids & recent_ids), "an item appears in exactly one band"
+    stalled_ids = {s["id"] for s in m["stalled"]}
+    assert not (stalled_ids & recent_ids), "stalled and recent are exclusive too"
+
+
+def test_send_back_clears_escalation(client):
+    from app.db import SessionLocal
+    from app.models import Request
+
+    gated = submitted_request(client, title="Send-back escalation probe")
+    with SessionLocal() as db:  # simulate a prior escalation on a gated item
+        r = db.get(Request, gated["id"])
+        r.needs_human = True
+        r.needs_human_reason = "spec generation flaked"
+        db.commit()
+
+    d = client.post(f"/api/requests/{gated['id']}/send-back",
+                    json={"note": "Which CSV source?", "actor": "Kim P."}).json()
+    assert d["needs_human"] is False and d["needs_human_reason"] is None
