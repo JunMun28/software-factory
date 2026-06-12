@@ -6,7 +6,8 @@ import { Evidence, FactoryRequest, MissionGate } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
-import { ApproveModal, Glyph, Icon, SendBackModal } from '../kit/kit';
+import { elapsedShort, healthLine } from '../core/util';
+import { ApproveModal, Autofocus, Glyph, Icon, SendBackModal } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
 /** Mission control — the supervision home (spec §6): what needs me, what's
@@ -14,7 +15,7 @@ import { AdminShell } from './admin-shell';
  *  (Store.mission), bands render top-down by consequence. */
 @Component({
   selector: 'sf-mission-page',
-  imports: [AdminShell, Icon, Glyph, ApproveModal, SendBackModal],
+  imports: [AdminShell, Icon, Glyph, ApproveModal, SendBackModal, Autofocus],
   template: `
     <admin-shell active="mission" title="Mission control">
       <span headerExtra class="row" style="gap:10px">
@@ -64,6 +65,62 @@ import { AdminShell } from './admin-shell';
               </div>
             } @empty {
               <div class="msn-clear">No gates waiting on you.</div>
+            }
+
+            <!-- IN FLIGHT — autonomous runs -->
+            <div class="msn-bandhead">
+              <sf-glyph type="dotted" [size]="13" color="var(--a500)" />
+              <span>In flight — autonomous runs</span>
+              <span class="msn-count">{{ m.runs.length }}</span>
+              <span class="msn-hint">live run-state · steer to course-correct</span>
+            </div>
+            @for (it of m.runs; track it.request.id) {
+              <div class="msn-run" [class.msn-run--slow]="it.run.health === 'slow'">
+                <span class="msn-pulse" [class.amber]="it.run.health !== 'healthy'"></span>
+                <div class="msn-run__id">
+                  <span class="msn-run__title">{{ it.request.title }}</span>
+                  <span class="msn-run__meta">
+                    <span class="msn-stagepill">{{ it.request.stage }}</span>
+                    {{ it.request.app_name }} <span class="mono msn-ref">{{ it.request.ref }}</span>
+                  </span>
+                </div>
+                <div class="msn-progress">
+                  <div class="msn-ptrack">
+                    <div
+                      class="msn-pfill"
+                      [class.amber]="it.run.health === 'slow'"
+                      [style.width.%]="it.run.of ? (100 * it.run.step) / it.run.of : 0"
+                    ></div>
+                  </div>
+                  <span class="mono msn-pstep">step {{ it.run.step }} / {{ it.run.of }}</span>
+                </div>
+                <span class="msn-runstate" [class.amber-tx]="it.run.health === 'slow'">{{
+                  healthLine(it.run)
+                }}</span>
+                @if (steered().has(it.request.id)) {
+                  <span class="chip">note queued</span>
+                }
+                <button class="btn sm" (click)="openSteer(it.request)">Steer</button>
+              </div>
+              @if (steeringId() === it.request.id) {
+                <div class="msn-steer">
+                  <input
+                    class="input"
+                    placeholder="Add a constraint the next step must honor…"
+                    [value]="steerText()"
+                    (input)="steerText.set($any($event.target).value)"
+                    (keydown.enter)="sendSteer(it.request)"
+                    (keydown.escape)="steeringId.set(null)"
+                    sfAutofocus
+                  />
+                  <button class="btn primary sm" (click)="sendSteer(it.request)">Send</button>
+                  @if (steerErr()) {
+                    <span class="msn-steer__err">{{ steerErr() }}</span>
+                  }
+                </div>
+              }
+            } @empty {
+              <div class="msn-clear">Nothing running right now.</div>
             }
           } @else {
             <div class="msn-empty">Loading…</div>
@@ -196,6 +253,70 @@ import { AdminShell } from './admin-shell';
       color: var(--muted);
       font-size: 12.5px;
     }
+    .msn-run {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 10px 16px;
+      margin-bottom: 8px;
+    }
+    .msn-run--slow {
+      border-color: var(--amber-line);
+    }
+    .msn-pulse {
+      flex: none;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--a500);
+      position: relative;
+    }
+    .msn-pulse::after {
+      content: '';
+      position: absolute;
+      inset: -5px;
+      border-radius: 50%;
+      border: 1px solid var(--a500);
+      opacity: 0.35;
+      animation: msn-pulse 1.8s var(--ease) infinite;
+    }
+    .msn-pulse.amber {
+      background: var(--amber);
+    }
+    .msn-pulse.amber::after {
+      border-color: var(--amber);
+    }
+    @keyframes msn-pulse {
+      from { transform: scale(0.6); opacity: 0.5; }
+      to { transform: scale(1.5); opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .msn-pulse::after { animation: none; }
+    }
+    .msn-run__id { flex: 1; min-width: 0; }
+    .msn-run__title { display: block; font-size: 13.5px; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .msn-run__meta { display: flex; align-items: center; gap: 8px;
+      font-size: 11.5px; color: var(--muted); }
+    .msn-stagepill { font-family: var(--mono); font-size: 9.5px;
+      letter-spacing: 0.05em; text-transform: uppercase; color: var(--a700);
+      background: var(--a50); border-radius: 4px; padding: 1.5px 6px; }
+    .msn-progress { flex: none; width: 130px; }
+    .msn-ptrack { height: 5px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+    .msn-pfill { height: 100%; background: var(--a500); border-radius: 3px;
+      transition: width var(--dur) var(--ease); }
+    .msn-pfill.amber { background: var(--amber); }
+    .msn-pstep { display: block; text-align: right; font-size: 10.5px;
+      color: var(--muted); margin-top: 3px; }
+    .msn-runstate { flex: none; min-width: 170px; font-size: 12px; color: var(--fg2); }
+    .amber-tx { color: var(--amber); }
+    .msn-steer { display: flex; align-items: center; gap: 8px;
+      margin: -4px 0 8px 36px; }
+    .msn-steer .input { flex: 1; }
+    .msn-steer__err { font-size: 11.5px; color: var(--red); }
   `,
 })
 export class Mission {
@@ -211,6 +332,42 @@ export class Mission {
   sendingBack = signal<FactoryRequest | null>(null);
 
   gates = computed<MissionGate[]>(() => this.m()?.gates ?? []);
+
+  steeringId = signal<number | null>(null);
+  steerText = signal('');
+  steerErr = signal('');
+  /** ids steered this session — renders the optimistic "note queued" chip until acked. */
+  steered = signal<Set<number>>(new Set());
+
+  /** Expose display helpers for template. */
+  healthLine = healthLine;
+  elapsedShort = elapsedShort;
+
+  openSteer(r: FactoryRequest) {
+    this.steerErr.set('');
+    this.steerText.set('');
+    this.steeringId.set(this.steeringId() === r.id ? null : r.id);
+  }
+
+  sendSteer(r: FactoryRequest) {
+    const note = this.steerText().trim();
+    if (!note) return;
+    this.api.steer(r.id, note, this.session.user().name).subscribe({
+      next: () => {
+        this.steeringId.set(null);
+        this.steered.update((s) => new Set(s).add(r.id));
+        this.poll.nudge();
+      },
+      error: (e: { status?: number }) => {
+        // 409 = no longer in flight (reached a gate mid-typing) — keep the text, say why
+        this.steerErr.set(
+          e?.status === 409
+            ? 'Run is no longer in flight — it reached a gate.'
+            : 'Could not send — try again.',
+        );
+      },
+    });
+  }
 
   subtitle = computed(() => {
     const m = this.m();
