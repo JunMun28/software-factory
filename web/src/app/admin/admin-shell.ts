@@ -30,6 +30,11 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
         </button>
 
         <div class="adm-seclabel">Primary</div>
+        <button class="navrow" [class.on]="active() === 'mission'" (click)="go('/admin/mission')">
+          <span class="navrow__ic"><sf-icon name="pipeline" [size]="17" /></span
+          ><span class="navrow__label">Mission control</span>
+          <span class="navrow__tip">Mission <kbd class="kbd">G</kbd><kbd class="kbd">M</kbd></span>
+        </button>
         <button class="navrow" [class.on]="active() === 'pipeline'" (click)="go('/admin/pipeline')">
           <span class="navrow__ic"><sf-icon name="pipeline" [size]="17" /></span
           ><span class="navrow__label">Pipeline</span>
@@ -418,6 +423,7 @@ export class AdminShell {
 
   cheatNav: [string, string][] = [
     ['Command palette', '⌘ K'],
+    ['Mission control', 'G M'],
     ['Pipeline', 'G P'],
     ['Board', 'G B'],
     ['List', 'G L'],
@@ -479,6 +485,7 @@ export class AdminShell {
 
   // ---- palette ----
   paletteActions = [
+    { icon: 'pipeline', lbl: 'Go to Mission control', hint: 'G M', act: () => this.go('/admin/mission') },
     { icon: 'pipeline', lbl: 'Go to Pipeline', hint: 'G P', act: () => this.go('/admin/pipeline') },
     { icon: 'check', lbl: 'Go to Approval queue', hint: 'G T', act: () => this.go('/admin/queue') },
     { icon: 'plus', lbl: 'New issue', hint: 'C', act: () => this.newIssue.set(true) },
@@ -560,6 +567,7 @@ export class AdminShell {
     if (this.gPending) {
       const k = e.key.toLowerCase();
       const nav: Record<string, string> = {
+        m: '/admin/mission',
         p: '/admin/pipeline',
         b: '/admin/board',
         l: '/admin/list',
