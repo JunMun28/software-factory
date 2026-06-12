@@ -129,3 +129,38 @@ def test_evidence_for_merge_gate(client):
         assert ev["kind"] == "merge"
         assert ev["tests_passed"] == 8 and ev["tests_total"] == 8
         assert ev["reviewer_verdict"] == "no blocking findings"
+
+
+def test_steer_appends_and_is_acked_next_step(client):
+    hero = approved_request(client, title="Steer probe")
+    client.post("/api/simulator/tick")  # step 1 done, run clearly in flight
+
+    resp = client.post(f"/api/requests/{hero['id']}/steer",
+                       json={"note": "Prefer the existing CSV parser", "actor": "Kim P."})
+    assert resp.status_code == 201
+    note_id = resp.json()["id"]
+
+    notes = _events(client, hero["id"], "steer_note")
+    assert len(notes) == 1 and notes[0]["actor"] == "Kim P." and notes[0]["bot"] is False
+
+    client.post("/api/simulator/tick")  # the very next step must acknowledge
+    steps = _events(client, hero["id"], "step_summary")
+    last = steps[-1]["payload"]
+    assert note_id in last["acked_steer_ids"]
+    assert "honoring note" in last["why"]
+
+    client.post("/api/simulator/tick")  # acked notes are not re-acked
+    steps = _events(client, hero["id"], "step_summary")
+    assert "acked_steer_ids" not in (steps[-1]["payload"] or {})
+
+
+def test_steer_409_when_not_in_flight(client):
+    gated = submitted_request(client, title="Steer gate probe")  # spec gate
+    resp = client.post(f"/api/requests/{gated['id']}/steer", json={"note": "x"})
+    assert resp.status_code == 409
+
+    hero = approved_request(client, title="Steer merge-gate probe")
+    for _ in range(16):
+        client.post("/api/simulator/tick")  # park it at the merge gate
+    resp = client.post(f"/api/requests/{hero['id']}/steer", json={"note": "x"})
+    assert resp.status_code == 409, "at a gate = waiting on a human, not steerable"

@@ -28,7 +28,9 @@ from ..schemas import (
     RequestDetail,
     RequestOut,
     RequestUpdate,
+    SteerIn,
 )
+from ..supervision import in_flight
 
 router = APIRouter()
 
@@ -214,3 +216,17 @@ def submit(rid: int, extra: Note | None = None, db: Session = Depends(get_db)):
         db.commit()
         raise
     return to_out(r, RequestDetail)
+
+
+@router.post("/api/requests/{rid}/steer", status_code=201)
+def steer(rid: int, body: SteerIn, db: Session = Depends(get_db)):
+    """Append a steer note for a RUNNING build (spec §6). 409 anywhere else:
+    at a gate the human verb is approve/send-back; stalled has Recovery."""
+    r = get_request(db, rid)
+    if not in_flight(r):
+        raise HTTPException(409, "Steer is only available while a run is in flight")
+    ev = emit(db, r, "steer_note", body.note[:300], actor=body.actor, bot=False, body=body.note)
+    db.add(AuditEvent(request_id=r.id, actor=body.actor, action="steered", note=body.note[:300]))
+    db.flush()  # assign the event id before returning it
+    db.commit()
+    return {"id": ev.id, "status": "queued"}

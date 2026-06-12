@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from . import lifecycle
 from .events import emit
 from .models import PIPELINE_STAGES, STEP_PLANS, Request, utcnow
+from .supervision import pending_steer_notes
 
 # Legacy milestone summaries (feed content) — unchanged text, now fired at a
 # fixed checkpoint: MILESTONE_AFTER[stage][sim_step reached] = script index.
@@ -72,9 +73,14 @@ def tick(db: Session) -> list[str]:
             continue
         if step < len(plan):
             label, why = plan[step]
+            payload = {"step": step + 1, "of": len(plan), "label": label,
+                       "why": why, "Ref": req.ref}
+            notes = pending_steer_notes(db, req)
+            if notes:
+                payload["acked_steer_ids"] = [n.id for n in notes]
+                payload["why"] = f"{why} — honoring note: {notes[-1].body[:80]}"
             emit(db, req, "step_summary", f"{label} ({step + 1}/{len(plan)})",
-                 payload={"step": step + 1, "of": len(plan), "label": label,
-                          "why": why, "Ref": req.ref})
+                 payload=payload)
             req.sim_step += 1
             moved.append(f"{req.ref}: {req.stage} · {label}")
             mi = MILESTONE_AFTER[req.stage].get(req.sim_step)

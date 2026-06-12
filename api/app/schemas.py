@@ -163,6 +163,13 @@ class Note(BaseModel):
     actor: str = Field(default="Kim P.", max_length=80)
 
 
+class SteerIn(BaseModel):
+    """A mid-run course-correction note (spec §5): consumed by the runner at
+    the next step boundary."""
+    note: str = Field(min_length=1, max_length=1000)
+    actor: str = Field(default="Kim P.", max_length=80)
+
+
 class CommentIn(BaseModel):
     body: str = Field(min_length=1, max_length=4000)
     author: str = Field(default="Kim P.", max_length=80)
