@@ -1,4 +1,4 @@
-import { FactoryRequest } from './models';
+import { FactoryRequest, RunState } from './models';
 
 /** API timestamps are UTC; SQLite round-trips them naive, so re-tag before parsing. */
 export function utc(iso: string): Date {
@@ -110,4 +110,24 @@ export function confirmSteps(r: FactoryRequest): [string, string][] {
     ['Open the SPEC.md pull request', 'from the grounded draft'],
     ['Start the Architecture stage', 'hands off to Stage 2'],
   ];
+}
+
+/** Compact elapsed time for run rows: 8s · 1m 40s · 2h 30m. */
+export function elapsedShort(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) {
+    const m = Math.floor(s / 60);
+    return `${m}m ${String(s % 60).padStart(2, '0')}s`;
+  }
+  const h = Math.floor(s / 3600);
+  const m = Math.round((s % 3600) / 60);
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+/** The run row's one-line state: "label · elapsed · health", honest when silent. */
+export function healthLine(run: RunState): string {
+  if (run.health === 'no_signal' || !run.label)
+    return `no signal for ${elapsedShort(run.seconds_since_event)}`;
+  return `${run.label} · ${elapsedShort(run.seconds_since_event)} · ${run.health}`;
 }

@@ -5,7 +5,9 @@ import {
   boardGlyph,
   clock,
   confirmSteps,
+  elapsedShort,
   gateLabel,
+  healthLine,
   inFlight,
   plainStage,
   postApproval,
@@ -184,5 +186,39 @@ describe('postApproval / inFlight — shared stage-subset helpers', () => {
     );
     expect(inFlight(req({ stage: 'done', status: 'done' }))).toBe(false);
     expect(inFlight(req())).toBe(false);
+  });
+});
+
+describe('elapsedShort', () => {
+  it('formats seconds under a minute', () => {
+    expect(elapsedShort(8)).toBe('8s');
+    expect(elapsedShort(59)).toBe('59s');
+  });
+  it('formats minutes with seconds', () => {
+    expect(elapsedShort(60)).toBe('1m 00s');
+    expect(elapsedShort(100)).toBe('1m 40s');
+    expect(elapsedShort(3599)).toBe('59m 59s');
+  });
+  it('formats hours above an hour', () => {
+    expect(elapsedShort(3600)).toBe('1h');
+    expect(elapsedShort(9000)).toBe('2h 30m');
+  });
+});
+
+describe('healthLine', () => {
+  it('renders a healthy run', () => {
+    expect(
+      healthLine({ step: 3, of: 6, label: 'implementing the change', health: 'healthy', seconds_since_event: 100 }),
+    ).toBe('implementing the change · 1m 40s · healthy');
+  });
+  it('renders a slow run', () => {
+    expect(
+      healthLine({ step: 2, of: 9, label: 'running the test suite', health: 'slow', seconds_since_event: 305 }),
+    ).toBe('running the test suite · 5m 05s · slow');
+  });
+  it('renders no signal without a label', () => {
+    expect(
+      healthLine({ step: 0, of: 4, label: null, health: 'no_signal', seconds_since_event: 12 }),
+    ).toBe('no signal for 12s');
   });
 });
