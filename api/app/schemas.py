@@ -61,6 +61,31 @@ class AuditOut(BaseModel):
     created_at: datetime
 
 
+class RunStateOut(BaseModel):
+    """Derived run-state for an in-flight build (spec §5 — never stored)."""
+    step: int
+    of: int
+    label: str | None = None
+    health: Literal["healthy", "slow", "no_signal"]
+    seconds_since_event: int
+
+
+class EvidenceOut(BaseModel):
+    """What the admin sees before approving (spec §6). kind='spec' uses the
+    grounded-lines fields; kind='merge' uses the verification fields."""
+    kind: Literal["spec", "merge"]
+    grounded_lines: int | None = None
+    total_lines: int | None = None
+    interview_count: int | None = None
+    tests_passed: int | None = None
+    tests_total: int | None = None
+    diff_added: int | None = None
+    diff_removed: int | None = None
+    files_changed: int | None = None
+    reviewer_verdict: str | None = None
+    assumptions: list[str] = []
+
+
 class RequestOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -111,6 +136,8 @@ class RequestDetail(RequestOut):
     comments: list[CommentOut] = []
     audit: list[AuditOut] = []
     duplicate: dict | None = None
+    run: RunStateOut | None = None
+    evidence: EvidenceOut | None = None
 
 
 class RequestCreate(BaseModel):

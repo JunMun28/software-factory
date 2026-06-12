@@ -164,3 +164,38 @@ def test_steer_409_when_not_in_flight(client):
         client.post("/api/simulator/tick")  # park it at the merge gate
     resp = client.post(f"/api/requests/{hero['id']}/steer", json={"note": "x"})
     assert resp.status_code == 409, "at a gate = waiting on a human, not steerable"
+
+
+def test_trace_keyset(client):
+    hero = approved_request(client, title="Trace probe")
+    client.post("/api/simulator/tick")
+
+    page = client.get(f"/api/requests/{hero['id']}/trace").json()
+    assert page["items"] and page["cursor"] > 0
+    kinds = {e["kind"] for e in page["items"]}
+    assert "step_summary" in kinds and "gate_event" in kinds
+    ids = [e["id"] for e in page["items"]]
+    assert ids == sorted(ids), "ascending within the page"
+
+    cursor = page["cursor"]
+    assert client.get(f"/api/requests/{hero['id']}/trace",
+                      params={"after": cursor}).json()["items"] == []
+    client.post("/api/simulator/tick")
+    newer = client.get(f"/api/requests/{hero['id']}/trace",
+                       params={"after": cursor}).json()
+    assert newer["items"] and all(e["id"] > cursor for e in newer["items"])
+
+    assert client.get("/api/requests/999999/trace").status_code == 404
+
+
+def test_detail_carries_run_and_evidence(client):
+    hero = approved_request(client, title="Detail blocks probe")
+    client.post("/api/simulator/tick")
+    d = client.get(f"/api/requests/{hero['id']}").json()
+    assert d["run"]["step"] == 1 and d["run"]["label"] == "reading SPEC.md"
+    assert d["evidence"] is None  # not at a gate
+
+    gated = submitted_request(client, title="Detail evidence probe")
+    d = client.get(f"/api/requests/{gated['id']}").json()
+    assert d["run"] is None
+    assert d["evidence"]["kind"] == "spec" and d["evidence"]["total_lines"] >= 1

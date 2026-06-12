@@ -83,6 +83,23 @@ def subject_feed(key: str, after: int = 0, limit: int = 100, db: Session = Depen
     return FeedPage(items=items, cursor=cursor)
 
 
+@router.get("/api/requests/{rid}/trace", response_model=FeedPage)
+def request_trace(rid: int, after: int = 0, limit: int = 200, db: Session = Depends(get_db)):
+    """The per-request trace (ADR 0014): with no cursor, the LATEST `limit`
+    items (ascending); with ?after=, only newer. Same keyset shape as the
+    subject feed, so the poll seam is identical."""
+    get_request(db, rid)  # 404 before reading the log
+    limit = min(limit, 500)
+    base = joined_events(db).filter(ProgressEvent.request_id == rid)
+    if after > 0:
+        rows = base.filter(ProgressEvent.id > after).order_by(ProgressEvent.id).limit(limit).all()
+    else:
+        rows = list(reversed(base.order_by(ProgressEvent.id.desc()).limit(limit).all()))
+    items = serialize_events(rows)
+    cursor = items[-1].id if items else after
+    return FeedPage(items=items, cursor=cursor)
+
+
 # ---------- comments ----------
 
 @router.post("/api/requests/{rid}/comments", response_model=CommentOut, status_code=201)

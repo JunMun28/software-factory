@@ -21,6 +21,7 @@ from ..events import emit
 from ..interview import MAX_QUESTIONS, Question, answered_count, get_brain
 from ..models import AuditEvent, InterviewTurn, ProgressEvent, Request, utcnow
 from ..schemas import (
+    EvidenceOut,
     InterviewAnswer,
     InterviewState,
     Note,
@@ -28,9 +29,10 @@ from ..schemas import (
     RequestDetail,
     RequestOut,
     RequestUpdate,
+    RunStateOut,
     SteerIn,
 )
-from ..supervision import in_flight
+from ..supervision import evidence, in_flight, run_state
 
 router = APIRouter()
 
@@ -92,6 +94,10 @@ def request_detail(rid: int, db: Session = Depends(get_db)):
     r = get_request(db, rid)
     d = to_out(r, RequestDetail)
     d.audit = [a for a in db.query(AuditEvent).filter(AuditEvent.request_id == rid).order_by(AuditEvent.created_at).all()]
+    rs = run_state(db, r)
+    d.run = RunStateOut(**rs) if rs is not None else None
+    ev = evidence(db, r)
+    d.evidence = EvidenceOut(**ev) if ev is not None else None
     # naive duplicate hint: another recent request on the same app sharing a title
     # word >4 chars. Only meaningful before approval — past that, skip the scan
     # (it used to run a full per-app table load on every detail poll).
