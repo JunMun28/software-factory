@@ -7,6 +7,7 @@ import {
   CommentItem,
   FactoryRequest,
   InterviewState,
+  MissionOut,
   ProgressEvent,
   RequestDetail,
 } from './models';
@@ -103,6 +104,21 @@ export class Api {
   }
   inbox() {
     return this.http.get<FactoryRequest[]>(`${BASE}/inbox`);
+  }
+  mission() {
+    return this.http.get<MissionOut>(`${BASE}/mission`);
+  }
+  steer(id: number, note: string, actor: string) {
+    return this.http.post<{ id: number; status: string }>(`${BASE}/requests/${id}/steer`, {
+      note,
+      actor,
+    });
+  }
+  trace(id: number, after = 0, limit = 200) {
+    return this.http.get<{ items: ProgressEvent[]; cursor: number }>(
+      `${BASE}/requests/${id}/trace`,
+      { params: { after: String(after), limit: String(limit) } },
+    );
   }
   tick() {
     return this.http.post<{ moved: string[] }>(`${BASE}/simulator/tick`, {});

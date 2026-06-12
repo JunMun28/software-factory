@@ -133,3 +133,47 @@ export interface ProgressEvent {
   request_ref: string | null;
   request_title: string | null;
 }
+
+/** Derived run-state for an in-flight build (ADR 0014 — computed server-side, never stored). */
+export interface RunState {
+  step: number;
+  of: number;
+  label: string | null;
+  health: 'healthy' | 'slow' | 'no_signal';
+  seconds_since_event: number;
+}
+
+/** What the admin sees before approving (spec §6 evidence strip). */
+export interface Evidence {
+  kind: 'spec' | 'merge';
+  grounded_lines: number | null;
+  total_lines: number | null;
+  interview_count: number | null;
+  tests_passed: number | null;
+  tests_total: number | null;
+  diff_added: number | null;
+  diff_removed: number | null;
+  files_changed: number | null;
+  reviewer_verdict: string | null;
+  assumptions: string[];
+}
+
+export interface MissionGate {
+  request: FactoryRequest;
+  /** null → render "no evidence recorded" (legacy/pre-revamp gates). */
+  evidence: Evidence | null;
+}
+
+export interface MissionRun {
+  request: FactoryRequest;
+  run: RunState;
+}
+
+/** One poll for the Mission control home (spec §6). */
+export interface MissionOut {
+  gates: MissionGate[];
+  runs: MissionRun[];
+  stalled: FactoryRequest[];
+  recent: FactoryRequest[];
+  cursor: number;
+}
