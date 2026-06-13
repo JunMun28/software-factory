@@ -1,10 +1,10 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
+import { Api } from '../core/api.service';
 import { FactoryRequest } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
-import { Store } from '../core/store.service';
 import { plainStage, timeAgo } from '../core/util';
 import { Icon, Pill, Sig, TypeChip } from '../kit/kit';
 import { SubShell } from './sub-shell';
@@ -91,12 +91,14 @@ export class MyRequests {
   private router = inject(Router);
   private session = inject(Session);
   private poll = inject(Poll);
-  private store = inject(Store);
+  private api = inject(Api);
+
+  /** Own fetch — the submitter face must not pull the admin Store's projections
+   *  (apps/inbox/mission) that injecting Store would poll every tick. */
+  private requests = signal<FactoryRequest[]>([]);
 
   show = signal<'active' | 'all'>('active');
-  all = computed(() =>
-    this.store.requests().filter((r) => r.reporter === this.session.user().name),
-  );
+  all = computed(() => this.requests().filter((r) => r.reporter === this.session.user().name));
 
   needsInput = computed(() => this.all().filter((r) => r.status === 'sent_back'));
   rows = computed(() => {
@@ -107,6 +109,10 @@ export class MyRequests {
 
   constructor() {
     this.poll.start();
+    effect(() => {
+      this.poll.version();
+      this.api.requests().subscribe((v) => this.requests.set(v));
+    });
   }
 
   ps = plainStage;

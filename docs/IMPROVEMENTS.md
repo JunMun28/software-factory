@@ -19,6 +19,17 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **perf: submitter face no longer polls the admin aggregates** ·
+  `my-requests.ts` injected the root `Store` only for `store.requests()`, but
+  that instantiated the singleton whose effect fetched `requests` + `apps` +
+  `inbox` + the heavy `mission` aggregate every 4s. Swapped it for a direct
+  `api.requests()` effect (the `SubRequestDetail` pattern) — submitters never
+  instantiate Store now · evidence: `make verify` ✓; Performance API on a fresh
+  submitter session shows only `/api/events`, `/api/events/cursor`,
+  `/api/requests` — **no** `/api/mission` / `/api/inbox` / `/api/apps`; page
+  renders correctly (Jordan D.: 7 active rows + needs-input band), no console
+  errors.
+
 - 2026-06-14 · **a11y: concise `aria-label` on each Mission row** · with J/K now
   focusing rows (iteration 10), a screen reader was reading the raw cell jumble
   (title + "SPEC GATE" + evidence + every button). New pure `missionRowLabel()`
