@@ -1,4 +1,4 @@
-import { Evidence, FactoryRequest, RunState } from './models';
+import { Evidence, FactoryRequest, ProgressEvent, RunState } from './models';
 
 /** API timestamps are UTC; SQLite round-trips them naive, so re-tag before parsing. */
 export function utc(iso: string): Date {
@@ -155,4 +155,54 @@ export function healthLine(run: RunState): string {
   if (run.health === 'no_signal' || !run.label)
     return `no signal for ${elapsedShort(run.seconds_since_event)}`;
   return `${run.label} · ${elapsedShort(run.seconds_since_event)} · ${run.health}`;
+}
+
+export interface TraceRow {
+  id: number;
+  kind: ProgressEvent['kind'];
+  title: string;
+  /** step_summary only */
+  step?: number;
+  of?: number;
+  label?: string;
+  why?: string;
+  /** this row is a steer note that a later step acknowledged */
+  acked?: boolean;
+  /** this step_summary consumed one or more steer notes */
+  acksSteer?: boolean;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface TraceGroup {
+  stage: string;
+  label: string;
+  rows: TraceRow[];
+}
+
+/** Flatten the per-request trace into stage-grouped rows for the timeline (ADR 0014).
+ *  Steer-note consumption is derived: a step_summary's payload.acked_steer_ids marks both
+ *  the consuming step and the consumed notes. */
+export function groupTrace(events: ProgressEvent[]): TraceGroup[] {
+  const acked = new Set<number>();
+  for (const e of events)
+    for (const id of (e.payload?.['acked_steer_ids'] as number[] | undefined) ?? []) acked.add(id);
+
+  const groups: TraceGroup[] = [];
+  for (const e of events) {
+    const p = e.payload ?? {};
+    const row: TraceRow = {
+      id: e.id, kind: e.kind, title: e.title, payload: e.payload, created_at: e.created_at,
+      step: p['step'] as number | undefined,
+      of: p['of'] as number | undefined,
+      label: p['label'] as string | undefined,
+      why: p['why'] as string | undefined,
+      acked: e.kind === 'steer_note' && acked.has(e.id),
+      acksSteer: e.kind === 'step_summary' && Array.isArray(p['acked_steer_ids']) && (p['acked_steer_ids'] as unknown[]).length > 0,
+    };
+    const last = groups[groups.length - 1];
+    if (last && last.stage === e.stage) last.rows.push(row);
+    else groups.push({ stage: e.stage, label: STAGE_LABEL[e.stage] ?? e.stage, rows: [row] });
+  }
+  return groups;
 }

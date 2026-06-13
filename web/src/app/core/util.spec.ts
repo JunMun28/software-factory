@@ -8,6 +8,7 @@ import {
   elapsedShort,
   evidenceBits,
   gateLabel,
+  groupTrace,
   healthLine,
   inFlight,
   plainStage,
@@ -268,5 +269,41 @@ describe('evidenceBits', () => {
   });
   it('merge gate with no verification fields → no evidence recorded', () => {
     expect(evidenceBits({ ...base, kind: 'merge' } as Evidence)).toEqual([{ text: 'no evidence recorded', tone: '' }]);
+  });
+});
+
+describe('groupTrace', () => {
+  const ev = (id: number, kind: string, stage: string, payload: Record<string, unknown> = {}, title = '') =>
+    ({ id, kind, stage, payload, title, actor: 'Factory', bot: true, broadcast: false,
+       request_id: 1, subject_id: 1, body: null, created_at: '2026-06-12T00:00:00Z',
+       request_ref: null, request_title: null }) as any;
+
+  it('groups consecutive events by stage in order', () => {
+    const g = groupTrace([
+      ev(1, 'step_summary', 'architecture', { step: 1, of: 4, label: 'reading SPEC.md' }),
+      ev(2, 'step_summary', 'architecture', { step: 2, of: 4, label: 'drafting PLAN.md' }),
+      ev(3, 'step_summary', 'build', { step: 1, of: 6, label: 'authoring failing tests' }),
+    ]);
+    expect(g.map((x) => x.stage)).toEqual(['architecture', 'build']);
+    expect(g[0].rows).toHaveLength(2);
+    expect(g[1].rows).toHaveLength(1);
+  });
+
+  it('marks a step that acknowledges a steer note', () => {
+    const g = groupTrace([
+      ev(5, 'steer_note', 'build', {}, 'Reuse the CSV parser'),
+      ev(6, 'step_summary', 'build', { step: 3, of: 6, label: 'implementing', acked_steer_ids: [5] }),
+    ]);
+    const rows = g[0].rows;
+    expect(rows.find((r) => r.kind === 'steer_note')?.acked).toBe(true);
+    expect(rows.find((r) => r.kind === 'step_summary')?.acksSteer).toBe(true);
+  });
+
+  it('keeps gate and verification events as rows', () => {
+    const g = groupTrace([
+      ev(7, 'verification', 'review', { tests_passed: 8 }, 'Verification report'),
+      ev(8, 'gate_event', 'review', { gate: 'approve_merge' }, 'Waiting at the merge gate'),
+    ]);
+    expect(g[0].rows.map((r) => r.kind)).toEqual(['verification', 'gate_event']);
   });
 });
