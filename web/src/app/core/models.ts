@@ -96,6 +96,10 @@ export interface RequestDetail extends FactoryRequest {
   comments: CommentItem[];
   audit: AuditItem[];
   duplicate: { ref: string; title: string; id: number } | null;
+  /** Live run state — present only while a build is in-flight (Plan 1). */
+  run: RunState | null;
+  /** Gate evidence — present only while parked at a gate (Plan 1). */
+  evidence: Evidence | null;
 }
 
 export interface InterviewState {

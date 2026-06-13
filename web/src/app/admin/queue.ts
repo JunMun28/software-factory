@@ -11,6 +11,7 @@ import {
   ApproveModal,
   CancelConfirm,
   EscalationBox,
+  EvidenceStrip,
   Glyph,
   Icon,
   InterviewAnswers,
@@ -32,6 +33,7 @@ import { AdminShell } from './admin-shell';
     Mark,
     Sig,
     EscalationBox,
+    EvidenceStrip,
     SpecLines,
     InterviewAnswers,
     ApproveModal,
@@ -220,12 +222,17 @@ import { AdminShell } from './admin-shell';
                 }
               }
 
-              <div class="section-eyebrow" style="margin-bottom:10px">Draft spec</div>
-              <sf-spec-lines
-                [lines]="r.spec_lines"
-                emptyText="No draft spec yet."
-                [openNote]="r.spec_open_note"
-              />
+              @if (r.gate === 'approve_merge') {
+                <div class="section-eyebrow" style="margin-bottom:10px">Verification</div>
+                <sf-evidence-strip [evidence]="r.evidence" />
+              } @else {
+                <div class="section-eyebrow" style="margin-bottom:10px">Draft spec</div>
+                <sf-spec-lines
+                  [lines]="r.spec_lines"
+                  emptyText="No draft spec yet."
+                  [openNote]="r.spec_open_note"
+                />
+              }
               <div style="height:64px"></div>
             </div>
           }
