@@ -30,16 +30,11 @@ export const routes: Routes = [
     loadComponent: () => import('./submitter/request-detail').then((m) => m.SubRequestDetail),
   },
 
-  { path: 'admin', pathMatch: 'full', redirectTo: 'admin/pipeline' },
+  { path: 'admin', pathMatch: 'full', redirectTo: 'admin/mission' },
   {
-    path: 'admin/pipeline',
+    path: 'admin/mission',
     canActivate: [adminGuard],
-    loadComponent: () => import('./admin/pipeline').then((m) => m.Pipeline),
-  },
-  {
-    path: 'admin/board',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/board').then((m) => m.Board),
+    loadComponent: () => import('./admin/mission').then((m) => m.Mission),
   },
   {
     path: 'admin/list',
@@ -52,9 +47,9 @@ export const routes: Routes = [
     loadComponent: () => import('./admin/queue').then((m) => m.ApprovalQueue),
   },
   {
-    path: 'admin/issue/:id',
+    path: 'admin/requests/:id',
     canActivate: [adminGuard],
-    loadComponent: () => import('./admin/issue').then((m) => m.IssueDetail),
+    loadComponent: () => import('./admin/request-detail').then((m) => m.RequestDetailPage),
   },
   {
     path: 'admin/apps/:key',

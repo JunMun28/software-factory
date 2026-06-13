@@ -103,8 +103,8 @@ def test_stage_clock_advances_with_stages(client):
     d = _submitted(client)
     a = client.post(f"/api/requests/{d['id']}/approve", json={"actor": "Kim P."}).json()
     clock_arch = a["stage_entered_at"]
-    client.post("/api/simulator/tick")  # arch step 1
-    client.post("/api/simulator/tick")  # arch step 2 → advance to build
+    for _ in range(4):  # architecture is a 4-step plan → advance to build
+        client.post("/api/simulator/tick")
     b = client.get(f"/api/requests/{d['id']}").json()
     assert b["stage"] == "build" and b["stage_entered_at"] > clock_arch
 

@@ -11,6 +11,7 @@ import {
   ApproveModal,
   CancelConfirm,
   EscalationBox,
+  EvidenceStrip,
   Glyph,
   Icon,
   InterviewAnswers,
@@ -32,6 +33,7 @@ import { AdminShell } from './admin-shell';
     Mark,
     Sig,
     EscalationBox,
+    EvidenceStrip,
     SpecLines,
     InterviewAnswers,
     ApproveModal,
@@ -220,12 +222,17 @@ import { AdminShell } from './admin-shell';
                 }
               }
 
-              <div class="section-eyebrow" style="margin-bottom:10px">Draft spec</div>
-              <sf-spec-lines
-                [lines]="r.spec_lines"
-                emptyText="No draft spec yet."
-                [openNote]="r.spec_open_note"
-              />
+              @if (r.gate === 'approve_merge') {
+                <div class="section-eyebrow" style="margin-bottom:10px">Verification</div>
+                <sf-evidence-strip [evidence]="r.evidence" />
+              } @else {
+                <div class="section-eyebrow" style="margin-bottom:10px">Draft spec</div>
+                <sf-spec-lines
+                  [lines]="r.spec_lines"
+                  emptyText="No draft spec yet."
+                  [openNote]="r.spec_open_note"
+                />
+              }
               <div style="height:64px"></div>
             </div>
           }
@@ -344,7 +351,6 @@ export class ApprovalQueue {
         r.app_name,
         r.app_id ? 'matches the app named in intake' : 'new app — repo created on approval',
       ],
-      ['Owner', r.assignee ?? 'Kim P.', 'owns the recent specs for this app'],
       [
         'Priority',
         prio,
@@ -356,7 +362,7 @@ export class ApprovalQueue {
     this.triageRow.update((m) => ({ ...m, [i]: m[i] === v ? (undefined as never) : v }));
   }
   acceptAllTriage(_r: RequestDetail) {
-    this.triageRow.set({ 0: 'ok', 1: 'ok', 2: 'ok' });
+    this.triageRow.set({ 0: 'ok', 1: 'ok' });
     this.triageDone.set(true);
   }
   approve(r: RequestDetail) {
@@ -377,7 +383,7 @@ export class ApprovalQueue {
     this.api.retry(r.id, this.session.user().name).subscribe(() => this.poll.nudge());
   }
   openIssue(id: number) {
-    this.router.navigateByUrl(`/admin/issue/${id}`);
+    this.router.navigateByUrl(`/admin/requests/${id}`);
   }
 
   /** The single-key grammar the headers advertise: J/K move · ↵ open · A/S/C act. */

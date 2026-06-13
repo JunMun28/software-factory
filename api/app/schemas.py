@@ -61,6 +61,31 @@ class AuditOut(BaseModel):
     created_at: datetime
 
 
+class RunStateOut(BaseModel):
+    """Derived run-state for an in-flight build (spec §5 — never stored)."""
+    step: int
+    of: int
+    label: str | None = None
+    health: Literal["healthy", "slow", "no_signal"]
+    seconds_since_event: int
+
+
+class EvidenceOut(BaseModel):
+    """What the admin sees before approving (spec §6). kind='spec' uses the
+    grounded-lines fields; kind='merge' uses the verification fields."""
+    kind: Literal["spec", "merge"]
+    grounded_lines: int | None = None
+    total_lines: int | None = None
+    interview_count: int | None = None
+    tests_passed: int | None = None
+    tests_total: int | None = None
+    diff_added: int | None = None
+    diff_removed: int | None = None
+    files_changed: int | None = None
+    reviewer_verdict: str | None = None
+    assumptions: list[str] = []
+
+
 class RequestOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -88,9 +113,6 @@ class RequestOut(BaseModel):
     needs_human_reason: str | None
     reporter: str
     reporter_initials: str
-    assignee: str | None
-    assignee_initials: str | None
-    assignee_color: str | None
     labels: list | None
     send_back_question: str | None
     send_back_response: str | None
@@ -111,6 +133,27 @@ class RequestDetail(RequestOut):
     comments: list[CommentOut] = []
     audit: list[AuditOut] = []
     duplicate: dict | None = None
+    run: RunStateOut | None = None
+    evidence: EvidenceOut | None = None
+
+
+class MissionGate(BaseModel):
+    request: RequestOut
+    evidence: EvidenceOut | None = None  # None → UI shows "no evidence recorded"
+
+
+class MissionRun(BaseModel):
+    request: RequestOut
+    run: RunStateOut
+
+
+class MissionOut(BaseModel):
+    """One poll for the Mission control home (spec §6)."""
+    gates: list[MissionGate]
+    runs: list[MissionRun]
+    stalled: list[RequestOut]
+    recent: list[RequestOut]
+    cursor: int
 
 
 class RequestCreate(BaseModel):
@@ -160,6 +203,13 @@ class InterviewState(BaseModel):
 
 class Note(BaseModel):
     note: str = Field(default="", max_length=4000)
+    actor: str = Field(default="Kim P.", max_length=80)
+
+
+class SteerIn(BaseModel):
+    """A mid-run course-correction note (spec §5): consumed by the runner at
+    the next step boundary."""
+    note: str = Field(min_length=1, max_length=1000)
     actor: str = Field(default="Kim P.", max_length=80)
 
 

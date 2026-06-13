@@ -37,6 +37,31 @@ STAGES = ["intake", "spec", "architecture", "build", "review", "done"]
 # definition every module shares (orphan rescan, Retry re-drive, sim tick).
 PIPELINE_STAGES = ("architecture", "build", "review")
 
+# (stage, steps) — each step is (label, why). One step per tick; the stage
+# advances when its plan is exhausted. Labels feed run-state and the
+# submitter's plain-language activity line, so keep them human.
+STEP_PLANS: dict[str, list[tuple[str, str]]] = {
+    "architecture": [
+        ("reading SPEC.md", "grounding the plan in the approved spec"),
+        ("drafting PLAN.md", "smallest architecture that satisfies every spec line"),
+        ("writing ADRs", "recording the decisions worth keeping"),
+        ("validating plan against SPEC.md", "every spec line maps to a plan step"),
+    ],
+    "build": [
+        ("authoring failing tests", "RED first — the tests define done"),
+        ("running the RED gate", "new tests must fail for the right reason"),
+        ("implementing the change", "smallest diff that turns RED to GREEN"),
+        ("running the test suite", "expecting all green"),
+        ("refactoring", "cleanup with the tests as a safety net"),
+        ("running the test-isolation gate", "the implementer must not touch test files"),
+    ],
+    "review": [
+        ("running the review pass", "an independent read of the full diff"),
+        ("collecting findings", "blocking findings stop the line"),
+        ("writing the verification report", "evidence for the merge gate"),
+    ],
+}
+
 
 class Request(Base):
     __tablename__ = "requests"
@@ -65,9 +90,6 @@ class Request(Base):
 
     reporter: Mapped[str] = mapped_column(String(80), default="Jordan D.")
     reporter_initials: Mapped[str] = mapped_column(String(4), default="JD")
-    assignee: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    assignee_initials: Mapped[str | None] = mapped_column(String(4), nullable=True)
-    assignee_color: Mapped[str | None] = mapped_column(String(12), nullable=True)
     labels: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     send_back_question: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -142,7 +164,7 @@ class SpecLine(Base):
 class ProgressEvent(Base):
     """ADR 0008: append-only, typed, two-axis progress log.
 
-    kind: milestone_summary | gate_event | escalation | recovery_action
+    kind: milestone_summary | gate_event | escalation | recovery_action | comment | step_summary | verification | steer_note
     """
 
     __tablename__ = "progress_events"

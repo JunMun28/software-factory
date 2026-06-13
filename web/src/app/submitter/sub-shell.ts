@@ -30,7 +30,7 @@ import { Avatar, Glyph, Mark, PopMenu } from '../kit/kit';
             </button>
             <sf-pop-menu [open]="whoOpen" [width]="230" (closed)="whoOpen = false">
               <button class="pop__opt" (click)="switchRole()">
-                <sf-avatar [sm]="true" color="#6E5A8A">KP</sf-avatar> Switch to Kim P.
+                <sf-avatar [sm]="true" color="var(--avatar)">KP</sf-avatar> Switch to Kim P.
                 <span style="margin-left:auto;font-size:10.5px;color:var(--faint)">Reviewer</span>
               </button>
             </sf-pop-menu>
@@ -79,7 +79,7 @@ export class SubShell {
   switchRole() {
     this.whoOpen = false;
     this.session.signIn('admin');
-    this.router.navigateByUrl('/admin/pipeline');
+    this.router.navigateByUrl('/admin/mission');
   }
 
   active = input<'new' | 'list' | ''>('');

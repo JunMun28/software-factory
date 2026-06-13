@@ -11,14 +11,14 @@ export interface User {
 export const SUBMITTER: User = {
   name: 'Jordan D.',
   initials: 'JD',
-  color: '#7A6E9A',
+  color: 'var(--avatar)',
   email: 'jordan.diaz@micron.com',
   role: 'submitter',
 };
 export const ADMIN: User = {
   name: 'Kim P.',
   initials: 'KP',
-  color: '#6E5A8A',
+  color: 'var(--avatar)',
   email: 'kim.park@micron.com',
   role: 'admin',
 };

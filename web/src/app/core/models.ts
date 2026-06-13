@@ -73,9 +73,6 @@ export interface FactoryRequest {
   needs_human_reason: string | null;
   reporter: string;
   reporter_initials: string;
-  assignee: string | null;
-  assignee_initials: string | null;
-  assignee_color: string | null;
   labels: { name: string; color: string }[] | null;
   send_back_question: string | null;
   send_back_response: string | null;
@@ -96,6 +93,10 @@ export interface RequestDetail extends FactoryRequest {
   comments: CommentItem[];
   audit: AuditItem[];
   duplicate: { ref: string; title: string; id: number } | null;
+  /** Live run state — present only while a build is in-flight (Plan 1). */
+  run: RunState | null;
+  /** Gate evidence — present only while parked at a gate (Plan 1). */
+  evidence: Evidence | null;
 }
 
 export interface InterviewState {
@@ -113,7 +114,15 @@ export interface ProgressEvent {
   id: number;
   request_id: number | null;
   subject_id: number | null;
-  kind: 'milestone_summary' | 'gate_event' | 'escalation' | 'recovery_action' | 'comment';
+  kind:
+    | 'milestone_summary'
+    | 'gate_event'
+    | 'escalation'
+    | 'recovery_action'
+    | 'comment'
+    | 'step_summary'
+    | 'steer_note'
+    | 'verification';
   stage: string;
   actor: string;
   bot: boolean;
@@ -124,4 +133,48 @@ export interface ProgressEvent {
   created_at: string;
   request_ref: string | null;
   request_title: string | null;
+}
+
+/** Derived run-state for an in-flight build (ADR 0014 — computed server-side, never stored). */
+export interface RunState {
+  step: number;
+  of: number;
+  label: string | null;
+  health: 'healthy' | 'slow' | 'no_signal';
+  seconds_since_event: number;
+}
+
+/** What the admin sees before approving (spec §6 evidence strip). */
+export interface Evidence {
+  kind: 'spec' | 'merge';
+  grounded_lines: number | null;
+  total_lines: number | null;
+  interview_count: number | null;
+  tests_passed: number | null;
+  tests_total: number | null;
+  diff_added: number | null;
+  diff_removed: number | null;
+  files_changed: number | null;
+  reviewer_verdict: string | null;
+  assumptions: string[];
+}
+
+export interface MissionGate {
+  request: FactoryRequest;
+  /** null → render "no evidence recorded" (legacy/pre-revamp gates). */
+  evidence: Evidence | null;
+}
+
+export interface MissionRun {
+  request: FactoryRequest;
+  run: RunState;
+}
+
+/** One poll for the Mission control home (spec §6). */
+export interface MissionOut {
+  gates: MissionGate[];
+  runs: MissionRun[];
+  stalled: FactoryRequest[];
+  recent: FactoryRequest[];
+  cursor: number;
 }

@@ -13,6 +13,7 @@ from .claude_runner import ClaudeRunner
 from .db import SessionLocal, migrate
 from .routers import events as events_router
 from .routers import gates, registry, system
+from .routers import mission as mission_router
 from .routers import requests as requests_router
 from .seed import seed
 
@@ -77,6 +78,7 @@ def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = 
     app.include_router(events_router.router)
     app.include_router(requests_router.router)
     app.include_router(gates.router)
+    app.include_router(mission_router.router)
 
     return app
 

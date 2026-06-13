@@ -21,6 +21,10 @@ from ..schemas import CommentIn, CommentOut, EventOut, FeedPage, RequestOut
 
 router = APIRouter()
 
+# Firehose guard (ADR 0014): step-level kinds render only in the per-request
+# trace; the channel feed stays milestone-level so app surfaces stay calm.
+TRACE_ONLY_KINDS = ("step_summary", "steer_note", "verification")
+
 
 # ---------- shared helpers (events-local, no side-effects) ----------
 
@@ -73,7 +77,26 @@ def subject_feed(key: str, after: int = 0, limit: int = 100, db: Session = Depen
     if not a:
         raise HTTPException(404, "Unknown app")
     limit = min(limit, 300)
-    base = joined_events(db).filter(ProgressEvent.subject_id == a.id)
+    base = (joined_events(db)
+            .filter(ProgressEvent.subject_id == a.id)
+            .filter(ProgressEvent.kind.notin_(TRACE_ONLY_KINDS)))
+    if after > 0:
+        rows = base.filter(ProgressEvent.id > after).order_by(ProgressEvent.id).limit(limit).all()
+    else:
+        rows = list(reversed(base.order_by(ProgressEvent.id.desc()).limit(limit).all()))
+    items = serialize_events(rows)
+    cursor = items[-1].id if items else after
+    return FeedPage(items=items, cursor=cursor)
+
+
+@router.get("/api/requests/{rid}/trace", response_model=FeedPage)
+def request_trace(rid: int, after: int = 0, limit: int = 200, db: Session = Depends(get_db)):
+    """The per-request trace (ADR 0014): with no cursor, the LATEST `limit`
+    items (ascending); with ?after=, only newer. Same keyset shape as the
+    subject feed, so the poll seam is identical."""
+    get_request(db, rid)  # 404 before reading the log
+    limit = min(limit, 500)
+    base = joined_events(db).filter(ProgressEvent.request_id == rid)
     if after > 0:
         rows = base.filter(ProgressEvent.id > after).order_by(ProgressEvent.id).limit(limit).all()
     else:

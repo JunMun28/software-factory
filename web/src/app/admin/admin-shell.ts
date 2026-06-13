@@ -9,7 +9,7 @@ import { Store } from '../core/store.service';
 import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
 
 /** The Admin Control Center shell — inverted-L: sidebar + header + dense canvas.
- *  Owns the keyboard layer: ⌘K palette, `?` cheat-sheet, C new-issue, G-nav. */
+ *  Owns the keyboard layer: ⌘K palette, `?` cheat-sheet, C new-request, G-nav. */
 @Component({
   selector: 'admin-shell',
   imports: [Mark, Icon, Glyph, Avatar, FormsModule, Autofocus],
@@ -23,27 +23,24 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
         <button
           class="btn primary"
           style="width:100%;justify-content:flex-start;margin-top:12px;margin-bottom:4px"
-          (click)="newIssue.set(true)"
+          (click)="go('/submit/new')"
         >
-          <sf-icon name="plus" [size]="16" /> New issue
+          <sf-icon name="plus" [size]="16" /> New request
           <kbd class="kbd" style="margin-left:auto">C</kbd>
         </button>
 
         <div class="adm-seclabel">Primary</div>
-        <button class="navrow" [class.on]="active() === 'pipeline'" (click)="go('/admin/pipeline')">
+        <button class="navrow" [class.on]="active() === 'mission'" (click)="go('/admin/mission')">
           <span class="navrow__ic"><sf-icon name="pipeline" [size]="17" /></span
-          ><span class="navrow__label">Pipeline</span>
-          <span class="navrow__tip">Pipeline <kbd class="kbd">G</kbd><kbd class="kbd">P</kbd></span>
-        </button>
-        <button class="navrow" [class.on]="active() === 'board'" (click)="go('/admin/board')">
-          <span class="navrow__ic"><sf-icon name="board" [size]="17" /></span
-          ><span class="navrow__label">Board</span>
-          <span class="navrow__tip">Board <kbd class="kbd">G</kbd><kbd class="kbd">B</kbd></span>
+          ><span class="navrow__label">Mission control</span>
+          <span class="navrow__tip">Mission <kbd class="kbd">G</kbd><kbd class="kbd">M</kbd></span>
         </button>
         <button class="navrow" [class.on]="active() === 'list'" (click)="go('/admin/list')">
           <span class="navrow__ic"><sf-icon name="list" [size]="17" /></span
-          ><span class="navrow__label">List</span>
-          <span class="navrow__tip">List <kbd class="kbd">G</kbd><kbd class="kbd">L</kbd></span>
+          ><span class="navrow__label">All requests</span>
+          <span class="navrow__tip"
+            >All requests <kbd class="kbd">G</kbd><kbd class="kbd">L</kbd></span
+          >
         </button>
         <button class="navrow" [class.on]="active() === 'needsme'" (click)="go('/admin/inbox')">
           <span class="navrow__ic"><sf-icon name="inbox" [size]="17" /></span
@@ -57,8 +54,8 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
         </button>
         <button class="navrow" [class.on]="active() === 'queue'" (click)="go('/admin/queue')">
           <span class="navrow__ic"><sf-glyph type="ring" [size]="15" [fill]="0.4" /></span
-          ><span class="navrow__label">Approval queue</span>
-          <span class="navrow__tip">Triage <kbd class="kbd">G</kbd><kbd class="kbd">T</kbd></span>
+          ><span class="navrow__label">Gates</span>
+          <span class="navrow__tip">Gates <kbd class="kbd">G</kbd><kbd class="kbd">T</kbd></span>
         </button>
 
         <div class="adm-seclabel">Apps</div>
@@ -122,7 +119,7 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
                   style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 9px;border-radius:6px;border:none;cursor:pointer;font-family:var(--body);font-size:13px;background:none;color:var(--fg2)"
                   (click)="switchRole()"
                 >
-                  <sf-avatar [sm]="true" color="#7A6E9A">JD</sf-avatar> Switch to Jordan D.
+                  <sf-avatar [sm]="true" color="var(--avatar)">JD</sf-avatar> Switch to Jordan D.
                   <span style="margin-left:auto;font-size:10.5px;color:var(--faint)"
                     >Submitter</span
                   >
@@ -145,7 +142,7 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
               <span
                 class="chip"
                 [class.solid]="mode !== 'claude'"
-                [style.color]="mode === 'claude' ? 'var(--a700)' : 'var(--muted)'"
+                [style.color]="mode === 'claude' ? 'var(--accent-tx)' : 'var(--muted)'"
                 [style.border-color]="mode === 'claude' ? 'var(--accent-tint-bd)' : ''"
                 [style.background]="mode === 'claude' ? 'var(--a50)' : ''"
                 title="Which agents drive Stages 2–6 (FACTORY_RUNNER)"
@@ -269,114 +266,6 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
               </div>
             </div>
           }
-
-          <!-- new-issue modal -->
-          @if (newIssue()) {
-            <div
-              class="palette-scrim"
-              style="align-items:flex-start;padding-top:76px"
-              (click)="newIssue.set(false)"
-            >
-              <div
-                class="palette"
-                style="width:580px;max-width:94%"
-                (click)="$event.stopPropagation()"
-              >
-                <div
-                  class="row"
-                  style="gap:9px;padding:14px 18px 12px;border-bottom:1px solid var(--border)"
-                >
-                  <span style="font-size:12.5px;color:var(--muted)">New issue in</span>
-                  <div style="position:relative">
-                    <button
-                      class="btn ghost sm"
-                      style="gap:5px"
-                      (click)="niAppsOpen.set(!niAppsOpen())"
-                    >
-                      <span style="color:var(--faint)">#</span> {{ niAppName() }}
-                      <sf-icon name="chevDown" [size]="13" />
-                    </button>
-                    @if (niAppsOpen()) {
-                      <div
-                        style="position:absolute;top:calc(100% + 4px);left:0;z-index:20;width:230px;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-pop);padding:5px"
-                      >
-                        @for (a of apps(); track a.id) {
-                          <button
-                            style="display:flex;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:none;cursor:pointer;font-family:var(--body);font-size:13.5px;gap:8px"
-                            (click)="niApp.set(a.id); niAppsOpen.set(false)"
-                          >
-                            <span style="color:var(--faint)">#</span>{{ a.name }}
-                          </button>
-                        }
-                      </div>
-                    }
-                  </div>
-                  <button
-                    class="btn ghost sm"
-                    style="margin-left:auto"
-                    (click)="newIssue.set(false)"
-                  >
-                    <kbd class="kbd">Esc</kbd>
-                  </button>
-                </div>
-                <div style="padding:16px 18px">
-                  <div class="seg" style="margin-bottom:14px">
-                    @for (t of niTypes; track t[0]) {
-                      <button
-                        [class.on]="niType() === t[0]"
-                        (click)="niType.set(t[0])"
-                        style="display:inline-flex;align-items:center;gap:6px"
-                      >
-                        <sf-icon [name]="t[2]" [size]="13" /> {{ t[1] }}
-                      </button>
-                    }
-                  </div>
-                  <input
-                    sfAutofocus
-                    class="input"
-                    placeholder="Issue title"
-                    [ngModel]="niTitle()"
-                    (ngModelChange)="niTitle.set($event)"
-                    style="font-size:17px;font-weight:600;border:none;padding:4px 0;min-height:0"
-                  />
-                  <textarea
-                    class="input area"
-                    placeholder="Add a description…  Use @ to mention, or attach an image"
-                    [ngModel]="niDesc()"
-                    (ngModelChange)="niDesc.set($event)"
-                    style="border:none;padding:6px 0;min-height:70px"
-                  ></textarea>
-                  <div class="row" style="gap:7px;flex-wrap:wrap;margin-top:6px">
-                    <span class="chip" style="gap:6px"
-                      ><sf-avatar [sm]="true" color="#6E5A8A">KP</sf-avatar> Kim P.</span
-                    >
-                    <span class="chip" style="gap:6px"
-                      ><sf-icon name="chevUp" [size]="13" color="var(--amber)" /> Normal</span
-                    >
-                    <span class="chip lbl--add" style="gap:5px"
-                      ><sf-icon name="plus" [size]="12" /> Label</span
-                    >
-                    <span class="chip" style="gap:6px"
-                      ><sf-icon name="image" [size]="13" /> Attach</span
-                    >
-                  </div>
-                </div>
-                <div
-                  class="row"
-                  style="gap:9px;padding:12px 18px;border-top:1px solid var(--border);justify-content:flex-end"
-                >
-                  <button class="btn" (click)="newIssue.set(false)">Cancel</button>
-                  <button
-                    class="btn primary"
-                    [disabled]="!niTitle().trim()"
-                    (click)="createIssue()"
-                  >
-                    Create issue <kbd class="kbd">↵</kbd>
-                  </button>
-                </div>
-              </div>
-            </div>
-          }
         </div>
       </div>
     </div>
@@ -389,8 +278,8 @@ export class AdminShell {
   session = inject(Session);
   poll = inject(Poll);
 
-  active = input<string>('board');
-  title = input<string>('Board');
+  active = input<string>('mission');
+  title = input<string>('Mission control');
 
   apps = this.store.apps;
   inboxItems = this.store.inbox;
@@ -400,30 +289,17 @@ export class AdminShell {
 
   paletteOpen = signal(false);
   cheats = signal(false);
-  newIssue = signal(false);
   whoOpen = signal(false);
   query = signal('');
   palSel = signal(0);
 
-  niType = signal('bug');
-  niApp = signal<number | null>(null);
-  niAppsOpen = signal(false);
-  niTitle = signal('');
-  niDesc = signal('');
-  niTypes: [string, string, string][] = [
-    ['bug', 'Bug fix', 'bug'],
-    ['enh', 'Enhancement', 'spark'],
-    ['new', 'New app', 'app'],
-  ];
-
   cheatNav: [string, string][] = [
     ['Command palette', '⌘ K'],
-    ['Pipeline', 'G P'],
-    ['Board', 'G B'],
-    ['List', 'G L'],
+    ['Mission control', 'G M'],
+    ['All requests', 'G L'],
     ['Needs-me inbox', 'G I'],
-    ['Approval queue', 'G T'],
-    ['New issue', 'C'],
+    ['Gates', 'G T'],
+    ['New request', 'C'],
     ['This menu', '?'],
   ];
   cheatItem: [string, string][] = [
@@ -448,40 +324,17 @@ export class AdminShell {
     return s <= 4 ? 'just now' : `${s}s ago`;
   }
 
-  niAppName() {
-    const a = this.apps().find((x) => x.id === this.niApp());
-    return a?.name ?? this.apps()[0]?.name ?? 'Pick an app';
-  }
-
-  createIssue() {
-    const u = this.session.user();
-    const appId = this.niApp() ?? this.apps()[0]?.id ?? null;
-    this.api
-      .createRequest({
-        type: this.niType(),
-        title: this.niTitle().trim(),
-        description: this.niDesc().trim(),
-        app_id: this.niType() === 'new' ? null : appId,
-        new_app_name: this.niType() === 'new' ? this.niTitle().trim() : null,
-        reporter: u.name,
-        reporter_initials: u.initials,
-      })
-      .subscribe((r) => {
-        this.api.submit(r.id).subscribe(() => {
-          this.newIssue.set(false);
-          this.niTitle.set('');
-          this.niDesc.set('');
-          this.poll.nudge();
-          this.router.navigateByUrl(`/admin/issue/${r.id}`);
-        });
-      });
-  }
-
   // ---- palette ----
   paletteActions = [
-    { icon: 'pipeline', lbl: 'Go to Pipeline', hint: 'G P', act: () => this.go('/admin/pipeline') },
-    { icon: 'check', lbl: 'Go to Approval queue', hint: 'G T', act: () => this.go('/admin/queue') },
-    { icon: 'plus', lbl: 'New issue', hint: 'C', act: () => this.newIssue.set(true) },
+    {
+      icon: 'pipeline',
+      lbl: 'Go to Mission control',
+      hint: 'G M',
+      act: () => this.go('/admin/mission'),
+    },
+    { icon: 'check', lbl: 'Go to Gates', hint: 'G T', act: () => this.go('/admin/queue') },
+    { icon: 'list', lbl: 'Go to All requests', hint: 'G L', act: () => this.go('/admin/list') },
+    { icon: 'plus', lbl: 'New request', hint: 'C', act: () => this.go('/submit/new') },
     { icon: 'inbox', lbl: 'Go to Needs-me inbox', hint: 'G I', act: () => this.go('/admin/inbox') },
     {
       icon: 'refresh',
@@ -553,15 +406,13 @@ export class AdminShell {
     if (e.key === 'Escape') {
       this.paletteOpen.set(false);
       this.cheats.set(false);
-      this.newIssue.set(false);
       return;
     }
     if (typing) return;
     if (this.gPending) {
       const k = e.key.toLowerCase();
       const nav: Record<string, string> = {
-        p: '/admin/pipeline',
-        b: '/admin/board',
+        m: '/admin/mission',
         l: '/admin/list',
         i: '/admin/inbox',
         t: '/admin/queue',
@@ -583,33 +434,20 @@ export class AdminShell {
       this.gTimer = setTimeout(() => (this.gPending = false), 900);
       return;
     }
-    // C = New issue everywhere except the queue, where C cancels the focused item
-    if (e.key === 'c' && !this.paletteOpen() && !this.newIssue() && this.active() !== 'queue') {
+    // C = New request everywhere except surfaces that own the C key (queue cancels the
+    // focused item; request-detail cancels the request) — there C must not double-fire.
+    if (
+      e.key === 'c' &&
+      !this.paletteOpen() &&
+      this.active() !== 'queue' &&
+      this.active() !== 'request-detail'
+    ) {
       e.preventDefault();
-      this.newIssue.set(true);
+      this.go('/submit/new');
       return;
     }
     if (e.key === '?' && !this.paletteOpen()) {
       this.cheats.update((c) => !c);
     }
-  }
-}
-
-/** The List ⇄ Board ⇄ Pipeline lens toggle (one collection, three projections). */
-@Component({
-  selector: 'sf-view-seg',
-  template: `
-    <div class="seg">
-      <button [class.on]="active() === 'list'" (click)="go('/admin/list')">List</button>
-      <button [class.on]="active() === 'board'" (click)="go('/admin/board')">Board</button>
-      <button [class.on]="active() === 'pipeline'" (click)="go('/admin/pipeline')">Pipeline</button>
-    </div>
-  `,
-})
-export class ViewSeg {
-  private router = inject(Router);
-  active = input<'list' | 'board' | 'pipeline'>('pipeline');
-  go(url: string) {
-    this.router.navigateByUrl(url);
   }
 }

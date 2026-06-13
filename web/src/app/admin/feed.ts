@@ -112,7 +112,9 @@ interface FeedMsg {
                 @if (m.cont) {
                   <div class="smsg__gutter">{{ m.time }}</div>
                 } @else if (m.bot) {
-                  <div class="smsg__av" style="background:#F2E6FA"><sf-mark [size]="18" /></div>
+                  <div class="smsg__av" style="background:var(--accent-tint)">
+                    <sf-mark [size]="18" />
+                  </div>
                 } @else {
                   <div class="smsg__av" [style.background]="m.color">{{ m.initials }}</div>
                 }
@@ -196,22 +198,6 @@ interface FeedMsg {
 
         <!-- composer -->
         <div class="scomposer">
-          <div class="scomposer__bar">
-            <button class="scomposer__ic" title="Bold">
-              <span style="font-weight:700;font-size:13px">B</span>
-            </button>
-            <button class="scomposer__ic" title="Italic">
-              <span style="font-style:italic;font-size:13px">i</span>
-            </button>
-            <button class="scomposer__ic" title="Link"><sf-icon name="link" [size]="15" /></button>
-            <span style="width:1px;height:18px;background:var(--border);margin:0 4px"></span>
-            <button class="scomposer__ic" title="Mention">
-              <span style="font-size:14px;font-weight:600">&#64;</span>
-            </button>
-            <button class="scomposer__ic" title="Attach">
-              <sf-icon name="plus" [size]="16" />
-            </button>
-          </div>
           <div class="scomposer__row">
             <input
               class="scomposer__field"
@@ -307,11 +293,16 @@ export class Feed {
     });
 
     // the poll loop's delta IS the update path — no refetching
+    // Firehose guard (ADR 0014): mirrors backend TRACE_ONLY_KINDS — step-level
+    // events belong only in the per-request trace, not in the channel feed.
+    const TRACE_ONLY_KINDS = new Set(['step_summary', 'steer_note', 'verification']);
     effect(() => {
       const delta = this.poll.delta();
       const appId = this.app()?.id;
       if (!appId || !delta.length) return;
-      const fresh = delta.filter((e) => e.subject_id === appId && !this.seen.has(e.id));
+      const fresh = delta.filter(
+        (e) => e.subject_id === appId && !this.seen.has(e.id) && !TRACE_ONLY_KINDS.has(e.kind),
+      );
       if (!fresh.length) return;
       fresh.forEach((e) => this.seen.add(e.id));
       if (
@@ -329,17 +320,12 @@ export class Feed {
     });
   }
 
-  /** People actually on this channel's requests (assignees + reporters). */
+  /** People actually on this channel's requests (reporters). */
   members = computed(() => {
     const seen = new Map<string, { initials: string; color: string }>();
     for (const r of this.requests()) {
-      if (r.assignee_initials)
-        seen.set(r.assignee_initials, {
-          initials: r.assignee_initials,
-          color: r.assignee_color ?? '#6E5A8A',
-        });
       if (r.reporter_initials)
-        seen.set(r.reporter_initials, { initials: r.reporter_initials, color: '#7A6E9A' });
+        seen.set(r.reporter_initials, { initials: r.reporter_initials, color: 'var(--avatar)' });
     }
     return [...seen.values()].slice(0, 3);
   });
@@ -394,7 +380,7 @@ export class Feed {
             .join('')
             .slice(0, 2)
             .toUpperCase(),
-        color: (p['color'] as string) ?? '#6E5A8A',
+        color: (p['color'] as string) ?? 'var(--avatar)',
         time: clock(e.created_at),
         iso: e.created_at,
         cont: false,
@@ -432,7 +418,7 @@ export class Feed {
         .join('')
         .slice(0, 2)
         .toUpperCase(),
-      color: '#6E5A8A',
+      color: 'var(--avatar)',
       time: clock(e.created_at),
       iso: e.created_at,
       cont: false,
@@ -515,7 +501,7 @@ export class Feed {
     this.router.navigate(['/admin/queue'], { queryParams: { sel: id } });
   }
   openIssue(id: number) {
-    this.router.navigateByUrl(`/admin/issue/${id}`);
+    this.router.navigateByUrl(`/admin/requests/${id}`);
   }
 
   age = timeAgo;

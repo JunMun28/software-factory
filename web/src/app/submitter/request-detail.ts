@@ -6,7 +6,7 @@ import { Api } from '../core/api.service';
 import { RequestDetail } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
-import { plainStage, timeAgo } from '../core/util';
+import { plainActivity, plainStage, timeAgo } from '../core/util';
 import { Glyph, Icon, Pill, Sig, TypeChip } from '../kit/kit';
 import { SubShell } from './sub-shell';
 
@@ -70,7 +70,7 @@ interface TlRow {
           @if (sent()) {
             <div
               class="card fade-in"
-              style="margin-top:20px;padding:14px 16px;display:flex;align-items:center;gap:10px;background:var(--green-bg);border-color:#BCDBC9"
+              style="margin-top:20px;padding:14px 16px;display:flex;align-items:center;gap:10px;background:var(--green-bg);border-color:var(--green-line)"
             >
               <sf-glyph type="check" [size]="18" color="var(--green)" />
               <span style="font-size:14px;color:var(--green-tx)"
@@ -229,7 +229,7 @@ export class SubRequestDetail {
               fill: 0.4,
               color: 'var(--a500)',
               title: 'Building',
-              meta: 'the Factory is on it',
+              meta: plainActivity(r.run) ?? 'the Factory is on it',
             },
       );
       if (stageIdx >= 2 && r.stage !== 'done') {
@@ -238,7 +238,7 @@ export class SubRequestDetail {
           fill: 0.6,
           color: 'var(--a500)',
           title: 'In review',
-          meta: 'final checks',
+          meta: plainActivity(r.run) ?? 'final checks',
         });
         rows.push({ glyph: 'dotted', title: 'Deployed', ghost: true });
       } else if (r.stage === 'done') {

@@ -1,4 +1,4 @@
-import { FactoryRequest } from './models';
+import { Evidence, FactoryRequest, ProgressEvent, RunState } from './models';
 
 /** API timestamps are UTC; SQLite round-trips them naive, so re-tag before parsing. */
 export function utc(iso: string): Date {
@@ -79,16 +79,8 @@ export function gateLabel(r: FactoryRequest): string | null {
   return null;
 }
 
-/** Stages that only exist after the spec gate cleared (factory owns the work). */
-export const POST_APPROVAL_STAGES: readonly string[] = ['architecture', 'build', 'review', 'done'];
-
 /** Stages where agents are actively working — post-approval, not yet done. */
-export const IN_FLIGHT_STAGES: readonly string[] = ['architecture', 'build', 'review'];
-
-/** True once the request is past the spec gate (approved or already in a later stage). */
-export function postApproval(r: FactoryRequest): boolean {
-  return ['approved', 'done'].includes(r.status) || POST_APPROVAL_STAGES.includes(r.stage);
-}
+const IN_FLIGHT_STAGES: readonly string[] = ['architecture', 'build', 'review'];
 
 /** Agents working with no gate or escalation in the way. */
 export function inFlight(r: FactoryRequest): boolean {
@@ -110,4 +102,143 @@ export function confirmSteps(r: FactoryRequest): [string, string][] {
     ['Open the SPEC.md pull request', 'from the grounded draft'],
     ['Start the Architecture stage', 'hands off to Stage 2'],
   ];
+}
+
+/** Compact elapsed time for run rows: 8s · 1m 40s · 2h 30m. */
+export function elapsedShort(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) {
+    const m = Math.floor(s / 60);
+    return `${m}m ${String(s % 60).padStart(2, '0')}s`;
+  }
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+export interface EvidenceBit {
+  text: string;
+  tone: '' | 'green' | 'purple';
+}
+
+/** The evidence strip's bits (spec §6): spec gates show grounding, merge gates show
+ *  tests/diff/reviewer. null or a verification-less merge gate → "no evidence recorded". */
+export function evidenceBits(ev: Evidence | null): EvidenceBit[] {
+  const none: EvidenceBit[] = [{ text: 'no evidence recorded', tone: '' }];
+  if (!ev) return none;
+  if (ev.kind === 'spec') {
+    const bits: EvidenceBit[] = [
+      {
+        text: `${ev.grounded_lines ?? 0} of ${ev.total_lines ?? 0} lines grounded in answers`,
+        tone: 'green',
+      },
+    ];
+    if (ev.interview_count)
+      bits.push({ text: `spec drafted from interview (${ev.interview_count} Q)`, tone: '' });
+    return bits;
+  }
+  const bits: EvidenceBit[] = [];
+  if (ev.tests_total != null)
+    bits.push({ text: `${ev.tests_passed}/${ev.tests_total} tests pass`, tone: 'green' });
+  if (ev.diff_added != null)
+    bits.push({
+      text: `diff +${ev.diff_added} −${ev.diff_removed} · ${ev.files_changed} files`,
+      tone: '',
+    });
+  if (ev.reviewer_verdict) bits.push({ text: `reviewer: ${ev.reviewer_verdict}`, tone: 'purple' });
+  return bits.length ? bits : none;
+}
+
+/** The run row's one-line state: "label · elapsed · health", honest when silent. */
+export function healthLine(run: RunState): string {
+  if (run.health === 'no_signal' || !run.label)
+    return `no signal for ${elapsedShort(run.seconds_since_event)}`;
+  return `${run.label} · ${elapsedShort(run.seconds_since_event)} · ${run.health}`;
+}
+
+export interface TraceRow {
+  id: number;
+  kind: ProgressEvent['kind'];
+  title: string;
+  /** step_summary only */
+  step?: number;
+  of?: number;
+  label?: string;
+  why?: string;
+  /** this row is a steer note that a later step acknowledged */
+  acked?: boolean;
+  /** this step_summary consumed one or more steer notes */
+  acksSteer?: boolean;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface TraceGroup {
+  stage: string;
+  label: string;
+  rows: TraceRow[];
+}
+
+/** Admin step labels → submitter-safe phrases. Anything NOT in this map is
+ *  rendered as the generic fallback, so internal/GitHub vocabulary can never
+ *  leak to the submitter face (CONTEXT.md). */
+const ACTIVITY_WORDS: Record<string, string> = {
+  'reading SPEC.md': 'reading your request',
+  'drafting PLAN.md': 'planning the work',
+  'writing ADRs': 'planning the work',
+  'validating plan against SPEC.md': 'checking the plan',
+  'authoring failing tests': 'writing tests',
+  'running the RED gate': 'writing tests',
+  'implementing the change': 'making the change',
+  'running the test suite': 'running the tests',
+  refactoring: 'tidying up',
+  'running the test-isolation gate': 'running the tests',
+  'running the review pass': 'reviewing the work',
+  'collecting findings': 'reviewing the work',
+  'writing the verification report': 'finishing the review',
+};
+
+/** The submitter's "what's happening now" line, derived from the live run.
+ *  null when nothing is running. Safe by construction — unknown labels become
+ *  "working on it", never the raw label. */
+export function plainActivity(run: RunState | null): string | null {
+  if (!run) return null;
+  const phrase = (run.label && ACTIVITY_WORDS[run.label]) || 'working on it';
+  if (run.of > 0 && run.step > 0) return `${phrase} · step ${run.step} of ${run.of}`;
+  return phrase;
+}
+
+/** Flatten the per-request trace into stage-grouped rows for the timeline (ADR 0014).
+ *  Steer-note consumption is derived: a step_summary's payload.acked_steer_ids marks both
+ *  the consuming step and the consumed notes. */
+export function groupTrace(events: ProgressEvent[]): TraceGroup[] {
+  const acked = new Set<number>();
+  for (const e of events)
+    for (const id of (e.payload?.['acked_steer_ids'] as number[] | undefined) ?? []) acked.add(id);
+
+  const groups: TraceGroup[] = [];
+  for (const e of events) {
+    const p = e.payload ?? {};
+    const row: TraceRow = {
+      id: e.id,
+      kind: e.kind,
+      title: e.title,
+      payload: e.payload,
+      created_at: e.created_at,
+      step: p['step'] as number | undefined,
+      of: p['of'] as number | undefined,
+      label: p['label'] as string | undefined,
+      why: p['why'] as string | undefined,
+      acked: e.kind === 'steer_note' && acked.has(e.id),
+      acksSteer:
+        e.kind === 'step_summary' &&
+        Array.isArray(p['acked_steer_ids']) &&
+        (p['acked_steer_ids'] as unknown[]).length > 0,
+    };
+    const last = groups[groups.length - 1];
+    if (last && last.stage === e.stage) last.rows.push(row);
+    else groups.push({ stage: e.stage, label: STAGE_LABEL[e.stage] ?? e.stage, rows: [row] });
+  }
+  return groups;
 }

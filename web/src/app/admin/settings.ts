@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 
+import { Theme } from '../core/theme.service';
 import { Glyph, Icon, PopMenu } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
@@ -94,12 +95,32 @@ interface EvtPrefs {
               </sf-pop-menu>
             </span>
           </div>
+          <div class="card" style="margin-top:18px;padding:18px 20px">
+            <h2 style="font-size:20px">Appearance</h2>
+            <div class="row" style="margin-top:14px;gap:8px">
+              <div class="seg">
+                <button [class.on]="theme.choice() === 'light'" (click)="theme.set('light')">
+                  Light
+                </button>
+                <button [class.on]="theme.choice() === 'dark'" (click)="theme.set('dark')">
+                  Dark
+                </button>
+                <button [class.on]="theme.choice() === 'system'" (click)="theme.set('system')">
+                  System
+                </button>
+              </div>
+              <span style="font-size:12.5px;color:var(--muted)"
+                >Follows your device when set to System.</span
+              >
+            </div>
+          </div>
         </div>
       </div>
     </admin-shell>
   `,
 })
 export class Settings {
+  protected theme = inject(Theme);
   digest = '08:00 PT';
   digestOpen = false;
   digestTimes = ['07:00 PT', '08:00 PT', '09:00 PT', '17:00 PT'];

@@ -81,6 +81,10 @@ def send_back(rid: int, body: Note, db: Session = Depends(get_db)):
         raise HTTPException(409, f"Cannot send back from status '{r.status}'")
     r.status = "sent_back"
     r.gate = None
+    # the send-back IS the recovery action resolving the escalation — clear it
+    # like retry does, or the request stays in the 'stalled' band forever
+    r.needs_human = False
+    r.needs_human_reason = None
     r.send_back_question = body.note or "Could you add a bit more detail?"
     r.send_back_rounds += 1
     r.stage_entered_at = utcnow()
@@ -118,6 +122,7 @@ def cancel(rid: int, body: Note | None = None, db: Session = Depends(get_db)):
     r.status = "cancelled"
     r.gate = None
     r.needs_human = False
+    r.needs_human_reason = None
     actor = (body.actor if body else None) or "Kim P."
     emit(db, r, "recovery_action", f"Request cancelled by {actor}",
          actor=actor, bot=False, payload={"Ref": r.ref})

@@ -1,7 +1,7 @@
 """Seed data — one coherent world state matching the design prototype's demo content.
 
 The design screens each carried their own static demo data; here it is reconciled
-into a single truth so every surface (board, list, queue, feed, inbox, submitter
+into a single truth so every surface (mission, list, gates, feed, inbox, submitter
 views) reads from the same records.
 """
 from datetime import timedelta
@@ -10,9 +10,6 @@ from sqlalchemy.orm import Session
 
 from .events import emit
 from .models import App, AuditEvent, Comment, InterviewTurn, Request, SpecLine, utcnow
-
-KP = {"assignee": "Kim P.", "assignee_initials": "KP", "assignee_color": "#6E5A8A"}
-RM = {"assignee": "Raj M.", "assignee_initials": "RM", "assignee_color": "#8A5A5A"}
 
 
 def ago(**kw):
@@ -65,41 +62,40 @@ def seed(db: Session) -> None:
                    desc="Exporting a month of expenses is painfully slow — it takes about 5 minutes and "
                         "sometimes times out before it finishes. I just want one button that gives me the "
                         "whole month in CSV and Excel.",
-                   labels=[{"name": "export", "color": "var(--a500)"}, {"name": "performance", "color": "var(--info)"}],
-                   **KP)
+                   labels=[{"name": "export", "color": "var(--a500)"}, {"name": "performance", "color": "var(--info)"}])
     r_csv = req("REQ-2042", "CSV import for vendors", "enh", "vendor",
                 stage="spec", status="pending_approval", gate="approve_spec",
                 reporter=("Priya S.", "PS"), created=ago(hours=3), entered=ago(hours=2, minutes=30),
-                desc="Let us bulk-import the vendor list from a CSV instead of keying entries one by one.",
-                **KP)
+                desc="Let us bulk-import the vendor list from a CSV instead of keying entries one by one.")
     r_sync = req("REQ-2043", "Offline sync mode", "new", "fieldops",
                  stage="spec", status="submitted", needs_human=True,
                  needs_human_reason="Spec generation failed 3× — the request references a payments API the Factory can't reach.",
-                 created=ago(hours=2), reporter=("Dana L.", "DL"), **RM)
+                 created=ago(hours=2), reporter=("Dana L.", "DL"))
     r_typo2 = req("REQ-2040", "Approval email typo", "bug", "northwind",
                   stage="spec", status="pending_approval", gate="approve_spec",
                   created=ago(days=1),
-                  desc='The approval email says "you request has been approve" — two typos in one line.',
-                  **KP)
+                  desc='The approval email says "you request has been approve" — two typos in one line.')
 
     # --- Sent back (the S5 hero) ---
     r_vlist = req("REQ-2038", "Add CSV import to vendor list", "enh", "northwind",
                   stage="spec", status="sent_back", created=ago(days=3), entered=ago(days=2, hours=20),
                   send_back_question="Which systems should we import the CSV from? Concur, or your bank export too?",
                   send_back_rounds=1,
-                  desc="Importing the vendor list by hand takes an hour a week — a CSV upload would remove it.",
-                  **KP)
+                  desc="Importing the vendor list by hand takes an hour a week — a CSV upload would remove it.")
 
-    # --- In flight (Building — gives board/feed life) ---
+    # --- In flight (Building — gives the in-flight band life) ---
+    # sim_step=3: the seeded "RED: 8 failing tests authored" milestone corresponds
+    # to the build checkpoint after step 3 (authoring failing tests → running the
+    # RED gate → implementing the change).
     r_sso = req("REQ-2029", "Migrate auth to SSO", "enh", "billing",
                 stage="build", status="approved", reporter=("Dana L.", "DL"), created=ago(days=2), entered=ago(hours=20),
-                repo_ready=True, spec_pr_open=True, stage2_fired=True, sim_step=1, **KP)
+                repo_ready=True, spec_pr_open=True, stage2_fired=True, sim_step=3)
 
     # --- Done / cancelled history ---
     req("REQ-2044", "Fix typo in approval email", "bug", "northwind",
-        stage="done", status="done", created=ago(weeks=1), repo_ready=True, spec_pr_open=True, stage2_fired=True, **KP)
+        stage="done", status="done", created=ago(weeks=1), repo_ready=True, spec_pr_open=True, stage2_fired=True)
     req("REQ-2017", "Monthly expense CSV", "enh", "northwind",
-        stage="done", status="done", created=ago(weeks=3), repo_ready=True, spec_pr_open=True, stage2_fired=True, **KP)
+        stage="done", status="done", created=ago(weeks=3), repo_ready=True, spec_pr_open=True, stage2_fired=True)
     req("REQ-2030", "Old vendor sync (no longer needed)", "enh", None,
         stage="intake", status="cancelled", created=ago(weeks=3), new_app_name="Legacy")
     db.flush()
@@ -180,6 +176,15 @@ def seed(db: Session) -> None:
     ]):
         ev = e(r_sso, kind, title, payload=payload, bot=kind != "gate_event",
                actor="Factory" if kind != "gate_event" else "Kim P.", broadcast=kind == "gate_event")
+        ev.created_at = dt
+
+    for i, (label, why, dt) in enumerate([
+        ("authoring failing tests", "RED first — the tests define done", ago(hours=20)),
+        ("running the RED gate", "new tests must fail for the right reason", ago(hours=16)),
+        ("implementing the change", "smallest diff that turns RED to GREEN", ago(minutes=2)),
+    ]):
+        ev = e(r_sso, "step_summary", f"{label} ({i + 1}/6)",
+               payload={"step": i + 1, "of": 6, "label": label, "why": why, "Ref": r_sso.ref})
         ev.created_at = dt
 
     db.add(AuditEvent(request_id=r_export.id, actor="Jordan D.", action="submitted",

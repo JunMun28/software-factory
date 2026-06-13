@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { FactoryRequest } from './models';
+import { Evidence, FactoryRequest } from './models';
 import {
   boardGlyph,
   clock,
   confirmSteps,
+  elapsedShort,
+  evidenceBits,
   gateLabel,
+  groupTrace,
+  healthLine,
   inFlight,
+  plainActivity,
   plainStage,
-  postApproval,
   timeAgo,
   utc,
 } from './util';
@@ -38,9 +42,6 @@ function req(over: Partial<FactoryRequest> = {}): FactoryRequest {
     needs_human_reason: null,
     reporter: 'J',
     reporter_initials: 'JD',
-    assignee: null,
-    assignee_initials: null,
-    assignee_color: null,
     labels: null,
     send_back_question: null,
     send_back_response: null,
@@ -168,14 +169,7 @@ describe('confirmSteps — the irreversible steps behind Approve', () => {
   });
 });
 
-describe('postApproval / inFlight — shared stage-subset helpers', () => {
-  it('postApproval is true once approved or in a post-gate stage', () => {
-    expect(postApproval(req({ status: 'approved', stage: 'spec' }))).toBe(true);
-    expect(postApproval(req({ status: 'submitted', stage: 'build' }))).toBe(true);
-    expect(postApproval(req({ status: 'done', stage: 'done' }))).toBe(true);
-    expect(postApproval(req())).toBe(false);
-    expect(postApproval(req({ status: 'pending_approval', stage: 'spec' }))).toBe(false);
-  });
+describe('inFlight — agents working stage helper', () => {
   it('inFlight means agents working: post-approval stage, no gate, no escalation', () => {
     expect(inFlight(req({ stage: 'build', status: 'approved' }))).toBe(true);
     expect(inFlight(req({ stage: 'build', status: 'approved', needs_human: true }))).toBe(false);
@@ -184,5 +178,207 @@ describe('postApproval / inFlight — shared stage-subset helpers', () => {
     );
     expect(inFlight(req({ stage: 'done', status: 'done' }))).toBe(false);
     expect(inFlight(req())).toBe(false);
+  });
+});
+
+describe('elapsedShort', () => {
+  it('formats seconds under a minute', () => {
+    expect(elapsedShort(8)).toBe('8s');
+    expect(elapsedShort(59)).toBe('59s');
+  });
+  it('formats minutes with seconds', () => {
+    expect(elapsedShort(60)).toBe('1m 00s');
+    expect(elapsedShort(100)).toBe('1m 40s');
+    expect(elapsedShort(3599)).toBe('59m 59s');
+  });
+  it('formats hours above an hour', () => {
+    expect(elapsedShort(3600)).toBe('1h');
+    expect(elapsedShort(9000)).toBe('2h 30m');
+  });
+  it('never renders 60m — floors the minutes remainder', () => {
+    expect(elapsedShort(7170)).toBe('1h 59m');
+  });
+});
+
+describe('healthLine', () => {
+  it('renders a healthy run', () => {
+    expect(
+      healthLine({
+        step: 3,
+        of: 6,
+        label: 'implementing the change',
+        health: 'healthy',
+        seconds_since_event: 100,
+      }),
+    ).toBe('implementing the change · 1m 40s · healthy');
+  });
+  it('renders a slow run', () => {
+    expect(
+      healthLine({
+        step: 2,
+        of: 9,
+        label: 'running the test suite',
+        health: 'slow',
+        seconds_since_event: 305,
+      }),
+    ).toBe('running the test suite · 5m 05s · slow');
+  });
+  it('renders no signal without a label', () => {
+    expect(
+      healthLine({ step: 0, of: 4, label: null, health: 'no_signal', seconds_since_event: 12 }),
+    ).toBe('no signal for 12s');
+  });
+});
+
+describe('evidenceBits', () => {
+  const base = {
+    grounded_lines: null,
+    total_lines: null,
+    interview_count: null,
+    tests_passed: null,
+    tests_total: null,
+    diff_added: null,
+    diff_removed: null,
+    files_changed: null,
+    reviewer_verdict: null,
+    assumptions: [] as string[],
+  };
+  it('null evidence → single "no evidence recorded" bit', () => {
+    expect(evidenceBits(null)).toEqual([{ text: 'no evidence recorded', tone: '' }]);
+  });
+  it('spec gate → grounded-lines + interview bits', () => {
+    const bits = evidenceBits({
+      ...base,
+      kind: 'spec',
+      grounded_lines: 3,
+      total_lines: 4,
+      interview_count: 4,
+    } as Evidence);
+    expect(bits[0]).toEqual({ text: '3 of 4 lines grounded in answers', tone: 'green' });
+    expect(bits[1]).toEqual({ text: 'spec drafted from interview (4 Q)', tone: '' });
+  });
+  it('spec gate with no interview omits the interview bit', () => {
+    const bits = evidenceBits({
+      ...base,
+      kind: 'spec',
+      grounded_lines: 2,
+      total_lines: 3,
+      interview_count: 0,
+    } as Evidence);
+    expect(bits).toHaveLength(1);
+  });
+  it('merge gate → tests + diff + reviewer bits', () => {
+    const bits = evidenceBits({
+      ...base,
+      kind: 'merge',
+      tests_passed: 8,
+      tests_total: 8,
+      diff_added: 412,
+      diff_removed: 38,
+      files_changed: 9,
+      reviewer_verdict: 'no blocking findings',
+    } as Evidence);
+    expect(bits[0]).toEqual({ text: '8/8 tests pass', tone: 'green' });
+    expect(bits[1]).toEqual({ text: 'diff +412 −38 · 9 files', tone: '' });
+    expect(bits[2]).toEqual({ text: 'reviewer: no blocking findings', tone: 'purple' });
+  });
+  it('merge gate with no verification fields → no evidence recorded', () => {
+    expect(evidenceBits({ ...base, kind: 'merge' } as Evidence)).toEqual([
+      { text: 'no evidence recorded', tone: '' },
+    ]);
+  });
+});
+
+describe('groupTrace', () => {
+  const ev = (
+    id: number,
+    kind: string,
+    stage: string,
+    payload: Record<string, unknown> = {},
+    title = '',
+  ) =>
+    ({
+      id,
+      kind,
+      stage,
+      payload,
+      title,
+      actor: 'Factory',
+      bot: true,
+      broadcast: false,
+      request_id: 1,
+      subject_id: 1,
+      body: null,
+      created_at: '2026-06-12T00:00:00Z',
+      request_ref: null,
+      request_title: null,
+    }) as any;
+
+  it('groups consecutive events by stage in order', () => {
+    const g = groupTrace([
+      ev(1, 'step_summary', 'architecture', { step: 1, of: 4, label: 'reading SPEC.md' }),
+      ev(2, 'step_summary', 'architecture', { step: 2, of: 4, label: 'drafting PLAN.md' }),
+      ev(3, 'step_summary', 'build', { step: 1, of: 6, label: 'authoring failing tests' }),
+    ]);
+    expect(g.map((x) => x.stage)).toEqual(['architecture', 'build']);
+    expect(g[0].rows).toHaveLength(2);
+    expect(g[1].rows).toHaveLength(1);
+  });
+
+  it('marks a step that acknowledges a steer note', () => {
+    const g = groupTrace([
+      ev(5, 'steer_note', 'build', {}, 'Reuse the CSV parser'),
+      ev(6, 'step_summary', 'build', {
+        step: 3,
+        of: 6,
+        label: 'implementing',
+        acked_steer_ids: [5],
+      }),
+    ]);
+    const rows = g[0].rows;
+    expect(rows.find((r) => r.kind === 'steer_note')?.acked).toBe(true);
+    expect(rows.find((r) => r.kind === 'step_summary')?.acksSteer).toBe(true);
+  });
+
+  it('keeps gate and verification events as rows', () => {
+    const g = groupTrace([
+      ev(7, 'verification', 'review', { tests_passed: 8 }, 'Verification report'),
+      ev(8, 'gate_event', 'review', { gate: 'approve_merge' }, 'Waiting at the merge gate'),
+    ]);
+    expect(g[0].rows.map((r) => r.kind)).toEqual(['verification', 'gate_event']);
+  });
+});
+
+describe('plainActivity', () => {
+  const run = (label: string | null, step = 6, of = 9) => ({
+    label,
+    step,
+    of,
+    health: 'healthy' as const,
+    seconds_since_event: 5,
+  });
+  it('translates a known admin label to plain words with progress', () => {
+    expect(plainActivity(run('authoring failing tests'))).toBe('writing tests · step 6 of 9');
+    expect(plainActivity(run('implementing the change'))).toBe('making the change · step 6 of 9');
+    expect(plainActivity(run('running the review pass'))).toBe('reviewing the work · step 6 of 9');
+  });
+  it('NEVER leaks an unknown/internal label — falls back to a safe phrase', () => {
+    expect(plainActivity(run('git rebase onto main'))).toBe('working on it · step 6 of 9');
+    expect(plainActivity(run('SPEC.md PR #142'))).toBe('working on it · step 6 of 9');
+    expect(plainActivity(run(null))).toBe('working on it · step 6 of 9');
+  });
+  it('omits progress when step/of are missing', () => {
+    expect(
+      plainActivity({
+        label: 'refactoring',
+        step: 0,
+        of: 0,
+        health: 'no_signal',
+        seconds_since_event: 1,
+      }),
+    ).toBe('tidying up');
+  });
+  it('returns null for no run', () => {
+    expect(plainActivity(null)).toBeNull();
   });
 });

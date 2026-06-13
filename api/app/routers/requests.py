@@ -21,6 +21,7 @@ from ..events import emit
 from ..interview import MAX_QUESTIONS, Question, answered_count, get_brain
 from ..models import AuditEvent, InterviewTurn, ProgressEvent, Request, utcnow
 from ..schemas import (
+    EvidenceOut,
     InterviewAnswer,
     InterviewState,
     Note,
@@ -28,7 +29,10 @@ from ..schemas import (
     RequestDetail,
     RequestOut,
     RequestUpdate,
+    RunStateOut,
+    SteerIn,
 )
+from ..supervision import evidence, in_flight, run_state
 
 router = APIRouter()
 
@@ -90,6 +94,10 @@ def request_detail(rid: int, db: Session = Depends(get_db)):
     r = get_request(db, rid)
     d = to_out(r, RequestDetail)
     d.audit = [a for a in db.query(AuditEvent).filter(AuditEvent.request_id == rid).order_by(AuditEvent.created_at).all()]
+    rs = run_state(db, r)
+    d.run = RunStateOut(**rs) if rs is not None else None
+    ev = evidence(db, r)
+    d.evidence = EvidenceOut(**ev) if ev is not None else None
     # naive duplicate hint: another recent request on the same app sharing a title
     # word >4 chars. Only meaningful before approval — past that, skip the scan
     # (it used to run a full per-app table load on every detail poll).
@@ -214,3 +222,17 @@ def submit(rid: int, extra: Note | None = None, db: Session = Depends(get_db)):
         db.commit()
         raise
     return to_out(r, RequestDetail)
+
+
+@router.post("/api/requests/{rid}/steer", status_code=201)
+def steer(rid: int, body: SteerIn, db: Session = Depends(get_db)):
+    """Append a steer note for a RUNNING build (spec §6). 409 anywhere else:
+    at a gate the human verb is approve/send-back; stalled has Recovery."""
+    r = get_request(db, rid)
+    if not in_flight(r):
+        raise HTTPException(409, "Steer is only available while a run is in flight")
+    ev = emit(db, r, "steer_note", body.note[:300], actor=body.actor, bot=False, body=body.note)
+    db.add(AuditEvent(request_id=r.id, actor=body.actor, action="steered", note=body.note[:300]))
+    db.flush()  # assign the event id before returning it
+    db.commit()
+    return {"id": ev.id, "status": "queued"}
