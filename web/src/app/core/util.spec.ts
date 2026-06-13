@@ -11,6 +11,7 @@ import {
   groupTrace,
   healthLine,
   inFlight,
+  plainActivity,
   plainStage,
   postApproval,
   timeAgo,
@@ -356,5 +357,25 @@ describe('groupTrace', () => {
       ev(8, 'gate_event', 'review', { gate: 'approve_merge' }, 'Waiting at the merge gate'),
     ]);
     expect(g[0].rows.map((r) => r.kind)).toEqual(['verification', 'gate_event']);
+  });
+});
+
+describe('plainActivity', () => {
+  const run = (label: string | null, step = 6, of = 9) => ({ label, step, of, health: 'healthy' as const, seconds_since_event: 5 });
+  it('translates a known admin label to plain words with progress', () => {
+    expect(plainActivity(run('authoring failing tests'))).toBe('writing tests · step 6 of 9');
+    expect(plainActivity(run('implementing the change'))).toBe('making the change · step 6 of 9');
+    expect(plainActivity(run('running the review pass'))).toBe('reviewing the work · step 6 of 9');
+  });
+  it('NEVER leaks an unknown/internal label — falls back to a safe phrase', () => {
+    expect(plainActivity(run('git rebase onto main'))).toBe('working on it · step 6 of 9');
+    expect(plainActivity(run('SPEC.md PR #142'))).toBe('working on it · step 6 of 9');
+    expect(plainActivity(run(null))).toBe('working on it · step 6 of 9');
+  });
+  it('omits progress when step/of are missing', () => {
+    expect(plainActivity({ label: 'refactoring', step: 0, of: 0, health: 'no_signal', seconds_since_event: 1 })).toBe('tidying up');
+  });
+  it('returns null for no run', () => {
+    expect(plainActivity(null)).toBeNull();
   });
 });

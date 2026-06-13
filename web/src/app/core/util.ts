@@ -188,6 +188,35 @@ export interface TraceGroup {
   rows: TraceRow[];
 }
 
+/** Admin step labels → submitter-safe phrases. Anything NOT in this map is
+ *  rendered as the generic fallback, so internal/GitHub vocabulary can never
+ *  leak to the submitter face (CONTEXT.md). */
+const ACTIVITY_WORDS: Record<string, string> = {
+  'reading SPEC.md': 'reading your request',
+  'drafting PLAN.md': 'planning the work',
+  'writing ADRs': 'planning the work',
+  'validating plan against SPEC.md': 'checking the plan',
+  'authoring failing tests': 'writing tests',
+  'running the RED gate': 'writing tests',
+  'implementing the change': 'making the change',
+  'running the test suite': 'running the tests',
+  refactoring: 'tidying up',
+  'running the test-isolation gate': 'running the tests',
+  'running the review pass': 'reviewing the work',
+  'collecting findings': 'reviewing the work',
+  'writing the verification report': 'finishing the review',
+};
+
+/** The submitter's "what's happening now" line, derived from the live run.
+ *  null when nothing is running. Safe by construction — unknown labels become
+ *  "working on it", never the raw label. */
+export function plainActivity(run: RunState | null): string | null {
+  if (!run) return null;
+  const phrase = (run.label && ACTIVITY_WORDS[run.label]) || 'working on it';
+  if (run.of > 0 && run.step > 0) return `${phrase} · step ${run.step} of ${run.of}`;
+  return phrase;
+}
+
 /** Flatten the per-request trace into stage-grouped rows for the timeline (ADR 0014).
  *  Steer-note consumption is derived: a step_summary's payload.acked_steer_ids marks both
  *  the consuming step and the consumed notes. */
