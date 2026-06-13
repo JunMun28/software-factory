@@ -233,7 +233,7 @@ export class Mark {
   /></span>`,
 })
 export class Avatar {
-  color = input<string>('#7A6E9A');
+  color = input<string>('var(--avatar)');
   sm = input<boolean>(false);
   lg = input<boolean>(false);
 }
@@ -359,7 +359,7 @@ export class PopMenu {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Glyph],
   template: `
-    <div class="openq" style="border-color:#e7aea7;background:var(--red-bg)">
+    <div class="openq" style="border-color:var(--red-line);background:var(--red-bg)">
       <div class="row" style="gap:8px;margin-bottom:5px">
         <sf-glyph type="flag" [size]="14" color="var(--red)" /><span
           style="font-size:13px;font-weight:600;color:var(--red-tx)"
@@ -418,7 +418,7 @@ export class EscalationBox {
               >Open questions · assumptions</span
             >
           </div>
-          <div style="font-size:13.5px;color:#3a2d10;line-height:1.45">{{ note }}</div>
+          <div style="font-size:13.5px;color:var(--amber-tx);line-height:1.45">{{ note }}</div>
         </div>
       }
     }
@@ -645,7 +645,7 @@ export class CancelConfirm {
       font-weight: 500;
     }
     .evstrip__bit.purple {
-      color: var(--a700);
+      color: var(--accent-tx);
     }
     .evstrip__assume {
       display: flex;

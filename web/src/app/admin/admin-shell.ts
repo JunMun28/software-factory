@@ -127,7 +127,7 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
                   style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 9px;border-radius:6px;border:none;cursor:pointer;font-family:var(--body);font-size:13px;background:none;color:var(--fg2)"
                   (click)="switchRole()"
                 >
-                  <sf-avatar [sm]="true" color="#7A6E9A">JD</sf-avatar> Switch to Jordan D.
+                  <sf-avatar [sm]="true" color="var(--avatar)">JD</sf-avatar> Switch to Jordan D.
                   <span style="margin-left:auto;font-size:10.5px;color:var(--faint)"
                     >Submitter</span
                   >
@@ -150,7 +150,7 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
               <span
                 class="chip"
                 [class.solid]="mode !== 'claude'"
-                [style.color]="mode === 'claude' ? 'var(--a700)' : 'var(--muted)'"
+                [style.color]="mode === 'claude' ? 'var(--accent-tx)' : 'var(--muted)'"
                 [style.border-color]="mode === 'claude' ? 'var(--accent-tint-bd)' : ''"
                 [style.background]="mode === 'claude' ? 'var(--a50)' : ''"
                 title="Which agents drive Stages 2–6 (FACTORY_RUNNER)"
@@ -353,7 +353,7 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
                   ></textarea>
                   <div class="row" style="gap:7px;flex-wrap:wrap;margin-top:6px">
                     <span class="chip" style="gap:6px"
-                      ><sf-avatar [sm]="true" color="#6E5A8A">KP</sf-avatar> Kim P.</span
+                      ><sf-avatar [sm]="true" color="var(--avatar)">KP</sf-avatar> Kim P.</span
                     >
                     <span class="chip" style="gap:6px"
                       ><sf-icon name="chevUp" [size]="13" color="var(--amber)" /> Normal</span

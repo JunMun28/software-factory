@@ -70,7 +70,7 @@ interface TlRow {
           @if (sent()) {
             <div
               class="card fade-in"
-              style="margin-top:20px;padding:14px 16px;display:flex;align-items:center;gap:10px;background:var(--green-bg);border-color:#BCDBC9"
+              style="margin-top:20px;padding:14px 16px;display:flex;align-items:center;gap:10px;background:var(--green-bg);border-color:var(--green-line)"
             >
               <sf-glyph type="check" [size]="18" color="var(--green)" />
               <span style="font-size:14px;color:var(--green-tx)"

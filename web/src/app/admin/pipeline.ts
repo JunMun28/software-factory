@@ -95,7 +95,7 @@ interface Group {
                       >#{{ r.app_name }} · {{ typeShort[r.type] }}</span
                     >
                     @if (r.assignee_initials) {
-                      <sf-avatar [sm]="true" [color]="r.assignee_color ?? '#7A6E9A'">{{
+                      <sf-avatar [sm]="true" [color]="r.assignee_color ?? 'var(--avatar)'">{{
                         r.assignee_initials
                       }}</sf-avatar>
                     }
@@ -113,7 +113,7 @@ interface Group {
                     } @else if (r.status === 'cancelled') {
                       <span class="chip">cancelled</span>
                     } @else if (r.status === 'approved') {
-                      <span style="font-size:11.5px;color:var(--a700)"
+                      <span style="font-size:11.5px;color:var(--accent-tx)"
                         >{{ stageShort[stageIdx(r)] }} · agents working</span
                       >
                     } @else {
@@ -203,7 +203,7 @@ interface Group {
       box-shadow: var(--shadow-pop);
     }
     .pipe-row--red {
-      border-color: #e7aea7;
+      border-color: var(--red-line);
     }
     .pipe-row--focus {
       box-shadow: inset 0 0 0 2px var(--a500);

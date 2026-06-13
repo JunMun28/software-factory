@@ -41,7 +41,9 @@ import { SubShell } from './sub-shell';
                   >{{ needsInput().length }} request{{ needsInput().length > 1 ? 's' : '' }}</span
                 >
               </div>
-              <div style="font-size:15.5px;font-weight:600;color:#3a2d10">{{ r.title }}</div>
+              <div style="font-size:15.5px;font-weight:600;color:var(--amber-tx)">
+                {{ r.title }}
+              </div>
               <div style="font-size:13.5px;color:var(--amber-tx)">
                 The reviewer has a question before this can move on.
               </div>

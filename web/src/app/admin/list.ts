@@ -58,7 +58,7 @@ interface Band {
                 }
               </span>
               @if (r.assignee_initials) {
-                <sf-avatar [sm]="true" [color]="r.assignee_color ?? '#7A6E9A'">{{
+                <sf-avatar [sm]="true" [color]="r.assignee_color ?? 'var(--avatar)'">{{
                   r.assignee_initials
                 }}</sf-avatar>
               } @else {

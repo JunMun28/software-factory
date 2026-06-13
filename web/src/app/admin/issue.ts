@@ -200,7 +200,7 @@ interface ActivityRow {
               @for (a of activity(); track $index) {
                 @if (a.kind === 'comment') {
                   <div class="cmt">
-                    <sf-avatar [color]="a.color ?? '#6E5A8A'">{{ a.initials }}</sf-avatar>
+                    <sf-avatar [color]="a.color ?? 'var(--avatar)'">{{ a.initials }}</sf-avatar>
                     <div class="cmt__body">
                       <div class="cmt__head">
                         <span class="cmt__name">{{ a.actor }}</span
@@ -226,7 +226,7 @@ interface ActivityRow {
                 }
               }
               <div class="row" style="gap:11px;margin-top:6px;align-items:flex-start">
-                <sf-avatar color="#6E5A8A">{{ session.user().initials }}</sf-avatar>
+                <sf-avatar color="var(--avatar)">{{ session.user().initials }}</sf-avatar>
                 <div class="ccomposer" [class.focus]="composerFocus()" style="flex:1">
                   <textarea
                     class="ccomposer__area"
@@ -291,7 +291,7 @@ interface ActivityRow {
                 <span class="idmeta__k">Assignee</span
                 ><span class="idmeta__v row" style="gap:7px">
                   @if (r.assignee) {
-                    <sf-avatar [sm]="true" [color]="r.assignee_color ?? '#7A6E9A'">{{
+                    <sf-avatar [sm]="true" [color]="r.assignee_color ?? 'var(--avatar)'">{{
                       r.assignee_initials
                     }}</sf-avatar>
                     {{ r.assignee }}
@@ -303,7 +303,9 @@ interface ActivityRow {
               <div class="idmeta">
                 <span class="idmeta__k">Reporter</span
                 ><span class="idmeta__v row" style="gap:7px"
-                  ><sf-avatar [sm]="true" color="#7A6E9A">{{ r.reporter_initials }}</sf-avatar>
+                  ><sf-avatar [sm]="true" color="var(--avatar)">{{
+                    r.reporter_initials
+                  }}</sf-avatar>
                   {{ r.reporter }}</span
                 >
               </div>
@@ -343,8 +345,8 @@ interface ActivityRow {
               <div class="idmeta" style="border-bottom:none">
                 <span class="idmeta__k">Subscribers</span>
                 <span class="idmeta__v row"
-                  ><sf-avatar [sm]="true" color="#6E5A8A">KP</sf-avatar
-                  ><sf-avatar [sm]="true" color="#7A6E9A">{{
+                  ><sf-avatar [sm]="true" color="var(--avatar)">KP</sf-avatar
+                  ><sf-avatar [sm]="true" color="var(--avatar)">{{
                     r.reporter_initials
                   }}</sf-avatar></span
                 >

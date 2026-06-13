@@ -407,7 +407,7 @@ import { AdminShell } from './admin-shell';
       font-size: 9.5px;
       letter-spacing: 0.05em;
       text-transform: uppercase;
-      color: var(--a700);
+      color: var(--accent-tx);
       background: var(--a50);
       border-radius: 4px;
       padding: 1.5px 6px;

@@ -81,7 +81,7 @@ import { AdminShell } from './admin-shell';
               <label class="field-label">Repo mapping</label>
               <div class="input focus">
                 <input
-                  style="border:none;outline:none;background:none;font-family:var(--mono);font-size:12.5px;color:var(--a700);flex:1"
+                  style="border:none;outline:none;background:none;font-family:var(--mono);font-size:12.5px;color:var(--accent-tx);flex:1"
                   [(ngModel)]="form.repo"
                   placeholder="micron/repo-name"
                 />

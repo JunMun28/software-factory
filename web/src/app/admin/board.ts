@@ -75,7 +75,7 @@ const STAGE_COLS: { key: string; glyph: string }[] = [
         }
         <span class="row" style="margin-left:auto;gap:6px">
           @if (r().assignee_initials) {
-            <sf-avatar [sm]="true" [color]="r().assignee_color ?? '#7A6E9A'">{{
+            <sf-avatar [sm]="true" [color]="r().assignee_color ?? 'var(--avatar)'">{{
               r().assignee_initials
             }}</sf-avatar>
           } @else {
@@ -350,7 +350,7 @@ export class DetailPanel {
           style="padding:5px 11px 5px 8px;font-size:12.5px;gap:7px"
           [style.background]="mine() ? 'var(--a50)' : 'var(--surface)'"
           [style.border-color]="mine() ? 'var(--accent-tint-bd)' : 'var(--border-strong)'"
-          [style.color]="mine() ? 'var(--a700)' : 'var(--muted)'"
+          [style.color]="mine() ? 'var(--accent-tx)' : 'var(--muted)'"
         >
           @if (mine()) {
             <sf-avatar [sm]="true" [color]="session.user().color">{{
@@ -438,7 +438,7 @@ export class DetailPanel {
                 }
                 @if (groupBy() === 'owner') {
                   @if (lane.av) {
-                    <sf-avatar [sm]="true" [color]="lane.color ?? '#7A6E9A'">{{
+                    <sf-avatar [sm]="true" [color]="lane.color ?? 'var(--avatar)'">{{
                       lane.av
                     }}</sf-avatar>
                   } @else {

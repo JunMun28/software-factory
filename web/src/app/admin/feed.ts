@@ -112,7 +112,9 @@ interface FeedMsg {
                 @if (m.cont) {
                   <div class="smsg__gutter">{{ m.time }}</div>
                 } @else if (m.bot) {
-                  <div class="smsg__av" style="background:#F2E6FA"><sf-mark [size]="18" /></div>
+                  <div class="smsg__av" style="background:var(--accent-tint)">
+                    <sf-mark [size]="18" />
+                  </div>
                 } @else {
                   <div class="smsg__av" [style.background]="m.color">{{ m.initials }}</div>
                 }
@@ -325,10 +327,10 @@ export class Feed {
       if (r.assignee_initials)
         seen.set(r.assignee_initials, {
           initials: r.assignee_initials,
-          color: r.assignee_color ?? '#6E5A8A',
+          color: r.assignee_color ?? 'var(--avatar)',
         });
       if (r.reporter_initials)
-        seen.set(r.reporter_initials, { initials: r.reporter_initials, color: '#7A6E9A' });
+        seen.set(r.reporter_initials, { initials: r.reporter_initials, color: 'var(--avatar)' });
     }
     return [...seen.values()].slice(0, 3);
   });
@@ -383,7 +385,7 @@ export class Feed {
             .join('')
             .slice(0, 2)
             .toUpperCase(),
-        color: (p['color'] as string) ?? '#6E5A8A',
+        color: (p['color'] as string) ?? 'var(--avatar)',
         time: clock(e.created_at),
         iso: e.created_at,
         cont: false,
@@ -421,7 +423,7 @@ export class Feed {
         .join('')
         .slice(0, 2)
         .toUpperCase(),
-      color: '#6E5A8A',
+      color: 'var(--avatar)',
       time: clock(e.created_at),
       iso: e.created_at,
       cont: false,

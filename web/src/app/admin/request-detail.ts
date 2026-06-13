@@ -192,7 +192,7 @@ import { AdminShell } from './admin-shell';
               </div>
             }
             <div class="row" style="gap:11px;margin-top:10px;align-items:flex-start">
-              <sf-avatar color="#6E5A8A">{{ session.user().initials }}</sf-avatar>
+              <sf-avatar color="var(--avatar)">{{ session.user().initials }}</sf-avatar>
               <div style="flex:1;display:flex;flex-direction:column;gap:8px">
                 <textarea
                   class="input"
@@ -270,7 +270,7 @@ import { AdminShell } from './admin-shell';
     }
     .rd-row__ack {
       font-size: 10.5px;
-      color: var(--a700);
+      color: var(--accent-tx);
       background: var(--a50);
       border-radius: 4px;
       padding: 1px 6px;
@@ -310,7 +310,7 @@ import { AdminShell } from './admin-shell';
       gap: 8px;
       padding: 5px 0 5px 4px;
       font-size: 12.5px;
-      color: var(--a700);
+      color: var(--accent-tx);
     }
     .rd-steer__txt {
       color: var(--fg2);
