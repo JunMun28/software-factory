@@ -1,4 +1,4 @@
-import { Evidence, FactoryRequest, ProgressEvent, RunState } from './models';
+import { Evidence, FactoryRequest, MissionOut, ProgressEvent, RunState } from './models';
 
 /** API timestamps are UTC; SQLite round-trips them naive, so re-tag before parsing. */
 export function utc(iso: string): Date {
@@ -218,6 +218,20 @@ export function liveStatus(r: FactoryRequest, run: RunState | null): string {
   const base = plainStage(r).label;
   const activity = inFlight(r) ? plainActivity(run) : null;
   return activity ? `${base} — ${activity}` : base;
+}
+
+/** Concise, screen-reader-friendly summary of Mission control for an aria-live
+ *  region: attention items first (gates, stalled), then the ambient running
+ *  count. Re-announced only when a count changes, so it stays low-noise. */
+export function missionSummary(m: MissionOut): string {
+  const parts: string[] = [];
+  const g = m.gates.length;
+  const s = m.stalled.length;
+  const r = m.runs.length;
+  if (g) parts.push(`${g} gate${g === 1 ? '' : 's'} waiting on you`);
+  if (s) parts.push(`${s} stalled`);
+  if (r) parts.push(`${r} running`);
+  return parts.length ? parts.join(' · ') : 'All clear — nothing needs you';
 }
 
 /** Flatten the per-request trace into stage-grouped rows for the timeline (ADR 0014).

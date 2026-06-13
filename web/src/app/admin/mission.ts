@@ -6,7 +6,7 @@ import { FactoryRequest } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
-import { healthLine, timeAgo } from '../core/util';
+import { healthLine, missionSummary, timeAgo } from '../core/util';
 import { ApproveModal, Autofocus, EvidenceStrip, Glyph, Icon, SendBackModal } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
@@ -24,6 +24,8 @@ import { AdminShell } from './admin-shell';
       <div class="list scroll" style="padding:18px 0 40px">
         <div style="max-width:920px;margin:0 auto;padding:0 22px">
           @if (m(); as m) {
+            <!-- Screen-reader-only live region: announces the mission summary as polling updates it. -->
+            <div class="sr-only" role="status" aria-live="polite">{{ summary(m) }}</div>
             @if (allClear()) {
               <div class="msn-hero">
                 <sf-glyph type="check" [size]="22" color="var(--green)" [fill]="1" />
@@ -514,6 +516,8 @@ export class Mission {
   /** Expose display helpers for template. */
   healthLine = healthLine;
   timeAgo = timeAgo;
+  /** Concise mission summary for the aria-live region — announced on each poll change. */
+  summary = missionSummary;
 
   openSteer(r: FactoryRequest) {
     this.steerErr.set('');

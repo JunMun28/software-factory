@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { Evidence, FactoryRequest } from './models';
+import { Evidence, FactoryRequest, MissionOut } from './models';
 import {
   boardGlyph,
   clock,
@@ -12,6 +12,7 @@ import {
   healthLine,
   inFlight,
   liveStatus,
+  missionSummary,
   plainActivity,
   plainStage,
   timeAgo,
@@ -425,5 +426,46 @@ describe('liveStatus — the submitter aria-live announcement', () => {
     expect(
       liveStatus(req({ status: 'approved', stage: 'build' }), run('git rebase onto main')),
     ).toBe('Building — working on it · step 6 of 9');
+  });
+});
+
+describe('missionSummary — the Mission control aria-live summary', () => {
+  const mission = (over: Partial<MissionOut> = {}): MissionOut => ({
+    gates: [],
+    runs: [],
+    stalled: [],
+    recent: [],
+    cursor: 0,
+    ...over,
+  });
+  const gate = () => ({ request: req(), evidence: null });
+  const runItem = () => ({
+    request: req(),
+    run: { label: 'x', step: 1, of: 4, health: 'healthy' as const, seconds_since_event: 1 },
+  });
+
+  it('says all clear when nothing needs the admin', () => {
+    expect(missionSummary(mission())).toBe('All clear — nothing needs you');
+  });
+
+  it('pluralises gates and leads with the attention items', () => {
+    expect(missionSummary(mission({ gates: [gate()] }))).toBe('1 gate waiting on you');
+    expect(missionSummary(mission({ gates: [gate(), gate()] }))).toBe('2 gates waiting on you');
+  });
+
+  it('joins gates, stalled, and running in consequence order', () => {
+    expect(
+      missionSummary(
+        mission({
+          gates: [gate(), gate()],
+          stalled: [req()],
+          runs: [runItem(), runItem(), runItem()],
+        }),
+      ),
+    ).toBe('2 gates waiting on you · 1 stalled · 3 running');
+  });
+
+  it('omits the zero bands — running only', () => {
+    expect(missionSummary(mission({ runs: [runItem()] }))).toBe('1 running');
   });
 });
