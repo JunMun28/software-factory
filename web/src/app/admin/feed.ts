@@ -196,22 +196,6 @@ interface FeedMsg {
 
         <!-- composer -->
         <div class="scomposer">
-          <div class="scomposer__bar">
-            <button class="scomposer__ic" title="Bold">
-              <span style="font-weight:700;font-size:13px">B</span>
-            </button>
-            <button class="scomposer__ic" title="Italic">
-              <span style="font-style:italic;font-size:13px">i</span>
-            </button>
-            <button class="scomposer__ic" title="Link"><sf-icon name="link" [size]="15" /></button>
-            <span style="width:1px;height:18px;background:var(--border);margin:0 4px"></span>
-            <button class="scomposer__ic" title="Mention">
-              <span style="font-size:14px;font-weight:600">&#64;</span>
-            </button>
-            <button class="scomposer__ic" title="Attach">
-              <sf-icon name="plus" [size]="16" />
-            </button>
-          </div>
           <div class="scomposer__row">
             <input
               class="scomposer__field"
@@ -520,7 +504,7 @@ export class Feed {
     this.router.navigate(['/admin/queue'], { queryParams: { sel: id } });
   }
   openIssue(id: number) {
-    this.router.navigateByUrl(`/admin/issue/${id}`);
+    this.router.navigateByUrl(`/admin/requests/${id}`);
   }
 
   age = timeAgo;

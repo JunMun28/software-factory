@@ -384,7 +384,7 @@ export class ApprovalQueue {
     this.api.retry(r.id, this.session.user().name).subscribe(() => this.poll.nudge());
   }
   openIssue(id: number) {
-    this.router.navigateByUrl(`/admin/issue/${id}`);
+    this.router.navigateByUrl(`/admin/requests/${id}`);
   }
 
   /** The single-key grammar the headers advertise: J/K move · ↵ open · A/S/C act. */

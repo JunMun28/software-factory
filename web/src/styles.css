@@ -2628,13 +2628,6 @@ input.input {
   background: var(--surface);
   overflow: hidden;
 }
-.scomposer__bar {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--hairline);
-}
 .scomposer__ic {
   width: 28px;
   height: 28px;

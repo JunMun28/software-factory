@@ -577,7 +577,7 @@ export class Mission {
     this.api.retry(r.id, this.session.user().name).subscribe(() => this.poll.nudge());
   }
   openIssue(r: FactoryRequest) {
-    this.router.navigateByUrl(`/admin/issue/${r.id}`);
+    this.router.navigateByUrl(`/admin/requests/${r.id}`);
   }
   allClear = computed(() => {
     const m = this.m();
