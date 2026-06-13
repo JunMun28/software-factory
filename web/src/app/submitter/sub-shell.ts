@@ -79,7 +79,7 @@ export class SubShell {
   switchRole() {
     this.whoOpen = false;
     this.session.signIn('admin');
-    this.router.navigateByUrl('/admin/pipeline');
+    this.router.navigateByUrl('/admin/mission');
   }
 
   active = input<'new' | 'list' | ''>('');

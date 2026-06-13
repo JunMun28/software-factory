@@ -30,7 +30,7 @@ export const routes: Routes = [
     loadComponent: () => import('./submitter/request-detail').then((m) => m.SubRequestDetail),
   },
 
-  { path: 'admin', pathMatch: 'full', redirectTo: 'admin/pipeline' },
+  { path: 'admin', pathMatch: 'full', redirectTo: 'admin/mission' },
   {
     path: 'admin/mission',
     canActivate: [adminGuard],

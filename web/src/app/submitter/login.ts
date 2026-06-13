@@ -94,7 +94,7 @@ export class Login {
     this.loading.set(role);
     setTimeout(() => {
       this.session.signIn(role);
-      this.router.navigateByUrl(role === 'admin' ? '/admin/pipeline' : '/submit/new');
+      this.router.navigateByUrl(role === 'admin' ? '/admin/mission' : '/submit/new');
     }, 900);
   }
 }
