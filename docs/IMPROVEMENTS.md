@@ -10,6 +10,13 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **docs: fix drift in AGENTS.md "Where things live"** · the
+  agent-cold-start entry point omitted the entire `api/app/routers/` HTTP layer;
+  added a row documenting the 6 routers (system / registry / events / gates /
+  mission / requests, wired in `main.py`) and corrected the ADR range "0001–0013"
+  → "0001–0015" (15 ADRs exist) · evidence: `make verify` ✓; router purposes
+  verified against each module's docstring, ADR count against `docs/adr/`.
+
 - 2026-06-14 · **UX: Mission header subtitle surfaces the stalled count** · the
   always-visible header omitted `stalled` (needs-human, the most urgent state),
   so sighted admins saw *less* than SR users (whom `missionSummary` already tells
