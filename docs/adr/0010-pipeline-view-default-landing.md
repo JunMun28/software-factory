@@ -1,6 +1,6 @@
 # The Pipeline (runs) view is the Control center's default landing; the board becomes a lens
 
-**Status:** accepted
+**Status:** superseded by ADR 0015
 
 The Control center's default landing is a **Pipeline view** — one row per Work item,
 the six stages compressed into an inline **stage strip** with the two human gates as
