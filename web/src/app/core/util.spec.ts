@@ -361,7 +361,13 @@ describe('groupTrace', () => {
 });
 
 describe('plainActivity', () => {
-  const run = (label: string | null, step = 6, of = 9) => ({ label, step, of, health: 'healthy' as const, seconds_since_event: 5 });
+  const run = (label: string | null, step = 6, of = 9) => ({
+    label,
+    step,
+    of,
+    health: 'healthy' as const,
+    seconds_since_event: 5,
+  });
   it('translates a known admin label to plain words with progress', () => {
     expect(plainActivity(run('authoring failing tests'))).toBe('writing tests · step 6 of 9');
     expect(plainActivity(run('implementing the change'))).toBe('making the change · step 6 of 9');
@@ -373,7 +379,15 @@ describe('plainActivity', () => {
     expect(plainActivity(run(null))).toBe('working on it · step 6 of 9');
   });
   it('omits progress when step/of are missing', () => {
-    expect(plainActivity({ label: 'refactoring', step: 0, of: 0, health: 'no_signal', seconds_since_event: 1 })).toBe('tidying up');
+    expect(
+      plainActivity({
+        label: 'refactoring',
+        step: 0,
+        of: 0,
+        health: 'no_signal',
+        seconds_since_event: 1,
+      }),
+    ).toBe('tidying up');
   });
   it('returns null for no run', () => {
     expect(plainActivity(null)).toBeNull();
