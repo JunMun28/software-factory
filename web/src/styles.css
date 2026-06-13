@@ -232,14 +232,14 @@ h4 {
 }
 .scroll::-webkit-scrollbar-thumb,
 .scroll-x::-webkit-scrollbar-thumb {
-  background: #dad9e0;
+  background: var(--border-strong);
   border-radius: 8px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 .scroll::-webkit-scrollbar-thumb:hover,
 .scroll-x::-webkit-scrollbar-thumb:hover {
-  background: #c5c4ce;
+  background: var(--muted);
   background-clip: content-box;
 }
 
@@ -350,7 +350,7 @@ h4 {
 .sig.red {
   color: var(--red-tx);
   background: var(--red-bg);
-  border: 1px solid #e7aea7;
+  border: 1px solid var(--red-line);
 }
 .sig .kbd {
   background: rgba(0, 0, 0, 0.04);
@@ -438,11 +438,11 @@ h4 {
 }
 .btn.danger {
   color: var(--red-tx);
-  border-color: #e7aea7;
+  border-color: var(--red-line);
   background: var(--red-bg);
 }
 .btn.danger:hover {
-  background: #f7deda;
+  background: var(--red-bg);
 }
 .btn.lg {
   font-size: 15px;
@@ -788,7 +788,7 @@ input.input {
 }
 .reqrow:hover {
   border-color: var(--border-strong);
-  background: #fcfcfe;
+  background: var(--surface);
 }
 .reqrow__main {
   flex: 1;
@@ -1207,7 +1207,7 @@ input.input {
   display: flex;
 }
 .navrow.on .navrow__ic {
-  color: var(--a600);
+  color: var(--accent-tx);
 }
 .navrow__label {
   flex: 1;
