@@ -137,15 +137,23 @@ export function evidenceBits(ev: Evidence | null): EvidenceBit[] {
   if (!ev) return none;
   if (ev.kind === 'spec') {
     const bits: EvidenceBit[] = [
-      { text: `${ev.grounded_lines ?? 0} of ${ev.total_lines ?? 0} lines grounded in answers`, tone: 'green' },
+      {
+        text: `${ev.grounded_lines ?? 0} of ${ev.total_lines ?? 0} lines grounded in answers`,
+        tone: 'green',
+      },
     ];
-    if (ev.interview_count) bits.push({ text: `spec drafted from interview (${ev.interview_count} Q)`, tone: '' });
+    if (ev.interview_count)
+      bits.push({ text: `spec drafted from interview (${ev.interview_count} Q)`, tone: '' });
     return bits;
   }
   const bits: EvidenceBit[] = [];
-  if (ev.tests_total != null) bits.push({ text: `${ev.tests_passed}/${ev.tests_total} tests pass`, tone: 'green' });
+  if (ev.tests_total != null)
+    bits.push({ text: `${ev.tests_passed}/${ev.tests_total} tests pass`, tone: 'green' });
   if (ev.diff_added != null)
-    bits.push({ text: `diff +${ev.diff_added} −${ev.diff_removed} · ${ev.files_changed} files`, tone: '' });
+    bits.push({
+      text: `diff +${ev.diff_added} −${ev.diff_removed} · ${ev.files_changed} files`,
+      tone: '',
+    });
   if (ev.reviewer_verdict) bits.push({ text: `reviewer: ${ev.reviewer_verdict}`, tone: 'purple' });
   return bits.length ? bits : none;
 }
@@ -192,13 +200,20 @@ export function groupTrace(events: ProgressEvent[]): TraceGroup[] {
   for (const e of events) {
     const p = e.payload ?? {};
     const row: TraceRow = {
-      id: e.id, kind: e.kind, title: e.title, payload: e.payload, created_at: e.created_at,
+      id: e.id,
+      kind: e.kind,
+      title: e.title,
+      payload: e.payload,
+      created_at: e.created_at,
       step: p['step'] as number | undefined,
       of: p['of'] as number | undefined,
       label: p['label'] as string | undefined,
       why: p['why'] as string | undefined,
       acked: e.kind === 'steer_note' && acked.has(e.id),
-      acksSteer: e.kind === 'step_summary' && Array.isArray(p['acked_steer_ids']) && (p['acked_steer_ids'] as unknown[]).length > 0,
+      acksSteer:
+        e.kind === 'step_summary' &&
+        Array.isArray(p['acked_steer_ids']) &&
+        (p['acked_steer_ids'] as unknown[]).length > 0,
     };
     const last = groups[groups.length - 1];
     if (last && last.stage === e.stage) last.rows.push(row);

@@ -57,6 +57,11 @@ export const routes: Routes = [
     loadComponent: () => import('./admin/queue').then((m) => m.ApprovalQueue),
   },
   {
+    path: 'admin/requests/:id',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./admin/request-detail').then((m) => m.RequestDetailPage),
+  },
+  {
     path: 'admin/issue/:id',
     canActivate: [adminGuard],
     loadComponent: () => import('./admin/issue').then((m) => m.IssueDetail),

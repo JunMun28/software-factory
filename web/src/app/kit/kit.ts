@@ -616,21 +616,45 @@ export class CancelConfirm {
   template: `
     <div class="evstrip">
       @for (bit of bits(); track bit.text) {
-        <span class="evstrip__bit" [class.green]="bit.tone === 'green'" [class.purple]="bit.tone === 'purple'">{{ bit.text }}</span>
+        <span
+          class="evstrip__bit"
+          [class.green]="bit.tone === 'green'"
+          [class.purple]="bit.tone === 'purple'"
+          >{{ bit.text }}</span
+        >
       }
     </div>
     @if (assumptions().length) {
       <div class="evstrip__assume">
         <sf-glyph type="dotted" [size]="13" color="var(--amber)" />
-        {{ assumptions().length }} assumption{{ assumptions().length === 1 ? '' : 's' }}: {{ assumptions()[0] }}
+        {{ assumptions().length }} assumption{{ assumptions().length === 1 ? '' : 's' }}:
+        {{ assumptions()[0] }}
       </div>
     }
   `,
   styles: `
-    .evstrip { display: flex; flex-wrap: wrap; gap: 5px 16px; font-size: 12px; color: var(--fg2); }
-    .evstrip__bit.green { color: var(--green-tx); font-weight: 500; }
-    .evstrip__bit.purple { color: var(--a700); }
-    .evstrip__assume { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 12px; color: var(--amber-tx); }
+    .evstrip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px 16px;
+      font-size: 12px;
+      color: var(--fg2);
+    }
+    .evstrip__bit.green {
+      color: var(--green-tx);
+      font-weight: 500;
+    }
+    .evstrip__bit.purple {
+      color: var(--a700);
+    }
+    .evstrip__assume {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 5px;
+      font-size: 12px;
+      color: var(--amber-tx);
+    }
   `,
 })
 export class EvidenceStrip {
