@@ -19,6 +19,12 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **a11y: my-requests Active/All filter conveys state** · the last
+  visual-only `.seg` single-select — added `role="group" aria-label="Filter
+  requests"` + `[attr.aria-pressed]` on each button. Completes segmented-control
+  a11y app-wide · evidence: `make verify` ✓; live — group labelled, `aria-pressed`
+  flips Active/All true/false ↔ false/true on toggle.
+
 - 2026-06-14 · **a11y: announce the live interview question to screen readers** ·
   the interview is a real-time Q&A whose question changes in place, but nothing
   announced it — SR users were never told a new follow-up appeared. New
@@ -185,8 +191,10 @@ _(nothing in progress)_
 
 - The `.seg` "Active/All" filter on submitter my-requests has the same
   visual-only selection (no `aria-pressed`) · Accessibility · impact:L · risk:L
-- Interview answer composer + the **review** screen — remaining intake a11y
-  (interview live region ✓ done; audit the answer input label + review screen) ·
+- Review screen has 5 identically-named "Edit" buttons (all navigate to
+  `/submit/new`) — give each a distinguishing `aria-label` or a single edit
+  control · Accessibility · impact:L · risk:L
+- Interview answer composer input label (the interview live region is done) ·
   Accessibility · impact:L · risk:L
 
 - Feed action buttons (React / Open / More in `admin/feed.ts`) are non-functional

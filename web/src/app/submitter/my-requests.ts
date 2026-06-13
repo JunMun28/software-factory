@@ -26,9 +26,21 @@ import { SubShell } from './sub-shell';
           </button>
         </div>
         <div class="row" style="gap:16px;margin-bottom:18px">
-          <div class="seg">
-            <button [class.on]="show() === 'active'" (click)="show.set('active')">Active</button>
-            <button [class.on]="show() === 'all'" (click)="show.set('all')">All</button>
+          <div class="seg" role="group" aria-label="Filter requests">
+            <button
+              [class.on]="show() === 'active'"
+              [attr.aria-pressed]="show() === 'active'"
+              (click)="show.set('active')"
+            >
+              Active
+            </button>
+            <button
+              [class.on]="show() === 'all'"
+              [attr.aria-pressed]="show() === 'all'"
+              (click)="show.set('all')"
+            >
+              All
+            </button>
           </div>
         </div>
 
