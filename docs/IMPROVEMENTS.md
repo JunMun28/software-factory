@@ -19,6 +19,14 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **a11y: Mission J/K moves real DOM focus** · J/K previously moved
+  the `.msn-focus` highlight (via `focusIdx`) but never real DOM focus, so
+  keyboard focus diverged from the visual cursor and SR users heard nothing.
+  Added `viewChildren('frow')` over the gate/run/stalled/done rows and a
+  `.focus()` on `rows()[focusAt()]` after each J/K update · evidence:
+  `make verify` ✓; dispatched `j`/`k` moves `document.activeElement` across rows
+  (gate 1→2→3→back) and `activeElement === .msn-focus` row; screenshot (dark).
+
 - 2026-06-14 · **fix: GitHub-safe `prospective_repo` slug** (first bolder pick) ·
   was space-replace only, so a title with `/` produced a nested path
   (`"a/b"` → `micron/a/b`), punctuation leaked, `"  x  "` left dashes, and an
@@ -109,13 +117,14 @@ _(nothing in progress)_
 - `next_ref()` ref allocation incl. the malformed-ref fallback branch is untested
   (DB-dependent — needs a session fixture) · Test coverage · impact:L · risk:L
 
-- Mission control J/K keyboard nav updates a visual `focusIdx` only — it never
-  moves real DOM focus, so keyboard/SR users get no focus move or announcement
-  on J/K · Accessibility · impact:M · risk:M
-- Mission actionable rows (gate/run/stalled/done) are `tabindex` divs without
-  `role="button"` — keyboard-reachable now, but SR announces them generically,
-  not as actionable. Consider a shared focusable-row directive with role ·
+- Mission actionable rows are `tabindex` divs without a row/grid role — they take
+  focus now (J/K + Tab), but a roving-tabindex + `role` listbox/grid pattern
+  would announce them as a navigable collection. Larger ARIA design task ·
   Accessibility · impact:M · risk:M
+- When an action button (Approve/Send/Open) **inside** a Mission row has focus,
+  the global `onKey` shortcuts (a/s/Enter) still fire against `focusAt()` — guard
+  with `tag === 'button'` so a focused button handles its own keys · Correctness ·
+  impact:L · risk:L
 - Untested core services: `store.service`, `api.service`, `guards`
   (`theme.service` ✓ done) · Test coverage · impact:M · risk:L
 - Only 5 `aria-label`/`role` occurrences app-wide — sweep icon-only buttons for

@@ -1,4 +1,12 @@
-import { Component, HostListener, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  HostListener,
+  computed,
+  inject,
+  signal,
+  viewChildren,
+} from '@angular/core';
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
@@ -47,6 +55,7 @@ import { AdminShell } from './admin-shell';
               </div>
               @for (g of m.gates; track g.request.id) {
                 <div
+                  #frow
                   class="msn-gate"
                   [class.msn-focus]="flatIdx(g.request) === focusAt()"
                   tabindex="0"
@@ -86,6 +95,7 @@ import { AdminShell } from './admin-shell';
             </div>
             @for (it of m.runs; track it.request.id) {
               <div
+                #frow
                 class="msn-run"
                 [class.msn-run--slow]="it.run.health === 'slow'"
                 [class.msn-focus]="flatIdx(it.request) === focusAt()"
@@ -150,6 +160,7 @@ import { AdminShell } from './admin-shell';
               </div>
               @for (r of m.stalled; track r.id) {
                 <div
+                  #frow
                   class="msn-gate msn-gate--red"
                   [class.msn-focus]="flatIdx(r) === focusAt()"
                   tabindex="0"
@@ -180,6 +191,7 @@ import { AdminShell } from './admin-shell';
               </div>
               @for (r of m.recent; track r.id) {
                 <div
+                  #frow
                   class="msn-done"
                   [class.msn-focus]="flatIdx(r) === focusAt()"
                   tabindex="0"
@@ -617,6 +629,15 @@ export class Mission {
     return this.focusables().findIndex((x) => x.r.id === r.id);
   }
 
+  /** The focusable row elements, in render (= focusables) order. */
+  private rows = viewChildren<ElementRef<HTMLElement>>('frow');
+
+  /** Move real DOM focus to the J/K-highlighted row so keyboard focus and screen
+   *  readers follow the visual cursor. Optional-chained against a mid-render mismatch. */
+  private focusRow() {
+    this.rows()[this.focusAt()]?.nativeElement.focus();
+  }
+
   @HostListener('window:keydown', ['$event'])
   onKey(e: KeyboardEvent) {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
@@ -627,9 +648,11 @@ export class Mission {
     if (k === 'j' || e.key === 'ArrowDown') {
       e.preventDefault();
       this.focusIdx.set(Math.min(this.focusables().length - 1, this.focusAt() + 1));
+      this.focusRow();
     } else if (k === 'k' || e.key === 'ArrowUp') {
       e.preventDefault();
       this.focusIdx.set(Math.max(0, this.focusAt() - 1));
+      this.focusRow();
     } else if (e.key === 'Enter' && cur) {
       e.preventDefault();
       this.openIssue(cur.r);
