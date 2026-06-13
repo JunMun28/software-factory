@@ -90,9 +90,6 @@ class Request(Base):
 
     reporter: Mapped[str] = mapped_column(String(80), default="Jordan D.")
     reporter_initials: Mapped[str] = mapped_column(String(4), default="JD")
-    assignee: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    assignee_initials: Mapped[str | None] = mapped_column(String(4), nullable=True)
-    assignee_color: Mapped[str | None] = mapped_column(String(12), nullable=True)
     labels: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     send_back_question: Mapped[str | None] = mapped_column(Text, nullable=True)

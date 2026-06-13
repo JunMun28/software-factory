@@ -73,9 +73,6 @@ export interface FactoryRequest {
   needs_human_reason: string | null;
   reporter: string;
   reporter_initials: string;
-  assignee: string | null;
-  assignee_initials: string | null;
-  assignee_color: string | null;
   labels: { name: string; color: string }[] | null;
   send_back_question: string | null;
   send_back_response: string | null;

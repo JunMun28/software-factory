@@ -320,15 +320,10 @@ export class Feed {
     });
   }
 
-  /** People actually on this channel's requests (assignees + reporters). */
+  /** People actually on this channel's requests (reporters). */
   members = computed(() => {
     const seen = new Map<string, { initials: string; color: string }>();
     for (const r of this.requests()) {
-      if (r.assignee_initials)
-        seen.set(r.assignee_initials, {
-          initials: r.assignee_initials,
-          color: r.assignee_color ?? 'var(--avatar)',
-        });
       if (r.reporter_initials)
         seen.set(r.reporter_initials, { initials: r.reporter_initials, color: 'var(--avatar)' });
     }

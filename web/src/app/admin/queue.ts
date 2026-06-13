@@ -351,7 +351,6 @@ export class ApprovalQueue {
         r.app_name,
         r.app_id ? 'matches the app named in intake' : 'new app — repo created on approval',
       ],
-      ['Owner', r.assignee ?? 'Kim P.', 'owns the recent specs for this app'],
       [
         'Priority',
         prio,
@@ -363,7 +362,7 @@ export class ApprovalQueue {
     this.triageRow.update((m) => ({ ...m, [i]: m[i] === v ? (undefined as never) : v }));
   }
   acceptAllTriage(_r: RequestDetail) {
-    this.triageRow.set({ 0: 'ok', 1: 'ok', 2: 'ok' });
+    this.triageRow.set({ 0: 'ok', 1: 'ok' });
     this.triageDone.set(true);
   }
   approve(r: RequestDetail) {

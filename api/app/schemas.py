@@ -113,9 +113,6 @@ class RequestOut(BaseModel):
     needs_human_reason: str | None
     reporter: str
     reporter_initials: str
-    assignee: str | None
-    assignee_initials: str | None
-    assignee_color: str | None
     labels: list | None
     send_back_question: str | None
     send_back_response: str | None
