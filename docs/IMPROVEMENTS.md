@@ -10,6 +10,15 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **UX: Mission header subtitle surfaces the stalled count** · the
+  always-visible header omitted `stalled` (needs-human, the most urgent state),
+  so sighted admins saw *less* than SR users (whom `missionSummary` already tells
+  about stalled). Extracted the inline subtitle into a pure, tested
+  `missionSubtitle()` that inserts "· N stalled" between gates and builds only
+  when present (wording otherwise unchanged) · evidence: `make verify` ✓ (57 web
+  tests, +4); live subtitle verified "7 gates waiting on you · 1 stalled · 0
+  builds running" in light + dark (1440).
+
 - 2026-06-14 · **a11y: Mission "recently done" rows are keyboard-accessible** ·
   the `.msn-done` rows were click-only (no `tabindex`, not in `focusables()`) —
   keyboard-unreachable, unlike every other actionable Mission row. Added

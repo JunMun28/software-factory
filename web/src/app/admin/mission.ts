@@ -6,7 +6,7 @@ import { FactoryRequest } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
-import { healthLine, missionSummary, timeAgo } from '../core/util';
+import { healthLine, missionSubtitle, missionSummary, timeAgo } from '../core/util';
 import { ApproveModal, Autofocus, EvidenceStrip, Glyph, Icon, SendBackModal } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
@@ -553,10 +553,7 @@ export class Mission {
 
   subtitle = computed(() => {
     const m = this.m();
-    if (!m) return '';
-    const g = m.gates.length;
-    const r = m.runs.length;
-    return `${g} gate${g === 1 ? '' : 's'} waiting on you · ${r} build${r === 1 ? '' : 's'} running`;
+    return m ? missionSubtitle(m) : '';
   });
 
   gatePill(r: FactoryRequest) {

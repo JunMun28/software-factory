@@ -13,6 +13,7 @@ import {
   healthLine,
   inFlight,
   liveStatus,
+  missionSubtitle,
   missionSummary,
   plainActivity,
   plainStage,
@@ -468,6 +469,52 @@ describe('missionSummary — the Mission control aria-live summary', () => {
 
   it('omits the zero bands — running only', () => {
     expect(missionSummary(mission({ runs: [runItem()] }))).toBe('1 running');
+  });
+});
+
+describe('missionSubtitle — the Mission header counts', () => {
+  const mission = (over: Partial<MissionOut> = {}): MissionOut => ({
+    gates: [],
+    runs: [],
+    stalled: [],
+    recent: [],
+    cursor: 0,
+    ...over,
+  });
+  const gate = () => ({ request: req(), evidence: null });
+  const runItem = () => ({
+    request: req(),
+    run: { label: 'x', step: 1, of: 4, health: 'healthy' as const, seconds_since_event: 1 },
+  });
+
+  it('keeps the existing wording when nothing is stalled', () => {
+    expect(
+      missionSubtitle(
+        mission({ gates: [gate(), gate()], runs: [runItem(), runItem(), runItem()] }),
+      ),
+    ).toBe('2 gates waiting on you · 3 builds running');
+  });
+
+  it('surfaces the stalled count between gates and builds when present', () => {
+    expect(
+      missionSubtitle(
+        mission({
+          gates: [gate(), gate()],
+          stalled: [req()],
+          runs: [runItem(), runItem(), runItem()],
+        }),
+      ),
+    ).toBe('2 gates waiting on you · 1 stalled · 3 builds running');
+  });
+
+  it('singularises gate and build', () => {
+    expect(missionSubtitle(mission({ gates: [gate()], runs: [runItem()] }))).toBe(
+      '1 gate waiting on you · 1 build running',
+    );
+  });
+
+  it('shows the zeros when all clear (unchanged from before)', () => {
+    expect(missionSubtitle(mission())).toBe('0 gates waiting on you · 0 builds running');
   });
 });
 

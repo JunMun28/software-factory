@@ -241,6 +241,20 @@ export function missionSummary(m: MissionOut): string {
   return parts.length ? parts.join(' · ') : 'All clear — nothing needs you';
 }
 
+/** The Mission control header subtitle — at-a-glance counts for sighted admins.
+ *  Surfaces the urgent `stalled` count (needs-human) between gates and builds,
+ *  but only when present, so it matches what missionSummary announces to SR
+ *  users while preserving the existing wording when nothing is stalled. */
+export function missionSubtitle(m: MissionOut): string {
+  const g = m.gates.length;
+  const s = m.stalled.length;
+  const r = m.runs.length;
+  const parts = [`${g} gate${g === 1 ? '' : 's'} waiting on you`];
+  if (s) parts.push(`${s} stalled`);
+  parts.push(`${r} build${r === 1 ? '' : 's'} running`);
+  return parts.join(' · ');
+}
+
 /** The admin request-detail one-line state. Control-center vocabulary is intended
  *  here (admin surface) — gate / Building / Stalled wording. Also fed to the
  *  page's aria-live region so SR supervisors hear it change as polling advances. */
