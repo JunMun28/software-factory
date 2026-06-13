@@ -4,8 +4,8 @@ import { Router } from '@angular/router';
 import { FactoryRequest } from '../core/models';
 import { Store } from '../core/store.service';
 import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, inFlight, timeAgo } from '../core/util';
-import { Avatar, Glyph, Icon, Sig } from '../kit/kit';
-import { AdminShell, ViewSeg } from './admin-shell';
+import { Glyph, Icon, Sig } from '../kit/kit';
+import { AdminShell } from './admin-shell';
 
 interface Band {
   key: string;
@@ -17,13 +17,12 @@ interface Band {
 /** C2b — List view: grouped by stage band; rows open the full-screen issue. */
 @Component({
   selector: 'sf-list-page',
-  imports: [AdminShell, Glyph, Icon, Avatar, Sig, ViewSeg],
+  imports: [AdminShell, Glyph, Icon, Sig],
   template: `
-    <admin-shell active="list" title="Requests">
+    <admin-shell active="list" title="All requests">
       <span headerExtra class="row" style="gap:9px">
         <span style="font-size:12.5px;color:var(--muted)">grouped by stage</span>
       </span>
-      <sf-view-seg headerRight active="list" />
       <div class="list scroll">
         @for (band of bands(); track band.key) {
           <div class="lband">
@@ -57,13 +56,6 @@ interface Band {
                   }}</sf-sig>
                 }
               </span>
-              @if (r.assignee_initials) {
-                <sf-avatar [sm]="true" [color]="r.assignee_color ?? 'var(--avatar)'">{{
-                  r.assignee_initials
-                }}</sf-avatar>
-              } @else {
-                <span style="width:20px"></span>
-              }
               <span class="lrow__stage">{{ stageLabel[r.stage] }}</span>
               <span class="lrow__age">{{ age(r) }}</span>
             </div>
@@ -142,6 +134,6 @@ export class ListView {
     return timeAgo(r.created_at);
   }
   open(r: FactoryRequest) {
-    this.router.navigateByUrl(`/admin/issue/${r.id}`);
+    this.router.navigateByUrl(`/admin/requests/${r.id}`);
   }
 }
