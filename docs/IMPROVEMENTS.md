@@ -10,6 +10,12 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **test: unit-cover `prospective_repo()`** · new
+  `api/tests/test_api_helpers.py` (4 tests, in-memory `Request`, no DB): title
+  slug, `new_app_name` precedence, lowercase/space→dash, `[:30]` truncation —
+  pins the repo-name contract the admin confirms before irreversible repo
+  creation · evidence: `make verify` ✓ (ruff + pytest green incl. 4 new).
+
 - 2026-06-14 · **docs: fix drift in AGENTS.md "Where things live"** · the
   agent-cold-start entry point omitted the entire `api/app/routers/` HTTP layer;
   added a row documenting the 6 routers (system / registry / events / gates /
@@ -77,6 +83,17 @@ _(nothing in progress)_
   computed style (1×1px, `clip: rect(0,0,0,0)`); no visual regression.
 
 ## Backlog (ranked by impact ÷ risk)
+
+- `prospective_repo()` slug only replaces spaces — a title with a slash or
+  special char yields a malformed repo name (e.g. "a/b" → `micron/a-/-b`).
+  Sanitize to GitHub-safe chars + strip leading/trailing dashes. Behaviour change
+  to the shared gate-event/UI derivation → needs human sign-off · Correctness ·
+  impact:M · risk:M
+- Feed action buttons (React / Open / More in `admin/feed.ts`) are non-functional
+  placeholders (no `(click)` handler) — wire them or remove the dead controls ·
+  Features/UX · impact:L · risk:L
+- `next_ref()` ref allocation incl. the malformed-ref fallback branch is untested
+  (DB-dependent — needs a session fixture) · Test coverage · impact:L · risk:L
 
 - Mission control J/K keyboard nav updates a visual `focusIdx` only — it never
   moves real DOM focus, so keyboard/SR users get no focus move or announcement
