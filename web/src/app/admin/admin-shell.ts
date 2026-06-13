@@ -9,7 +9,7 @@ import { Store } from '../core/store.service';
 import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
 
 /** The Admin Control Center shell — inverted-L: sidebar + header + dense canvas.
- *  Owns the keyboard layer: ⌘K palette, `?` cheat-sheet, C new-issue, G-nav. */
+ *  Owns the keyboard layer: ⌘K palette, `?` cheat-sheet, C new-request, G-nav. */
 @Component({
   selector: 'admin-shell',
   imports: [Mark, Icon, Glyph, Avatar, FormsModule, Autofocus],
@@ -278,8 +278,8 @@ export class AdminShell {
   session = inject(Session);
   poll = inject(Poll);
 
-  active = input<string>('board');
-  title = input<string>('Board');
+  active = input<string>('mission');
+  title = input<string>('Mission control');
 
   apps = this.store.apps;
   inboxItems = this.store.inbox;

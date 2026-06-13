@@ -1,7 +1,7 @@
 """Seed data — one coherent world state matching the design prototype's demo content.
 
 The design screens each carried their own static demo data; here it is reconciled
-into a single truth so every surface (board, list, queue, feed, inbox, submitter
+into a single truth so every surface (mission, list, gates, feed, inbox, submitter
 views) reads from the same records.
 """
 from datetime import timedelta
@@ -83,7 +83,7 @@ def seed(db: Session) -> None:
                   send_back_rounds=1,
                   desc="Importing the vendor list by hand takes an hour a week — a CSV upload would remove it.")
 
-    # --- In flight (Building — gives board/feed life) ---
+    # --- In flight (Building — gives the in-flight band life) ---
     # sim_step=3: the seeded "RED: 8 failing tests authored" milestone corresponds
     # to the build checkpoint after step 3 (authoring failing tests → running the
     # RED gate → implementing the change).
