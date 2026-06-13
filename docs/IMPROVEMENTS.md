@@ -10,6 +10,19 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **a11y: Mission "recently done" rows are keyboard-accessible** ·
+  the `.msn-done` rows were click-only (no `tabindex`, not in `focusables()`) —
+  keyboard-unreachable, unlike every other actionable Mission row. Added
+  `tabindex="0"` + `(focus)` + `[class.msn-focus]` and appended `m.recent` (kind
+  `done`) to `focusables()`, so J/K and Tab now reach them and the existing Enter
+  handler opens them. Mirrors the gate/run/stalled rows exactly (no button
+  conversion, no CSS reset, no key-handler change) · evidence: `make verify` ✓;
+  component-state proof (`focusables()` len 14 incl. 6 `done`, `flatIdx` correct,
+  highlight binding fires when `focusIdx` lands on a done row); focus highlight
+  renders on a done row in light (1440) + dark. Note: programmatic `.focus()`
+  can't fire the handler in a background preview window (no document focus) — the
+  same is true of the gate rows; verified via component state instead.
+
 - 2026-06-14 · **a11y: aria-live run state on admin request-detail** · the
   supervisor's per-request deep-dive now announces its live state line
   ("Building · Architecture · step 3/6", "Waiting at the merge gate", "Stalled —
@@ -52,11 +65,18 @@ _(nothing in progress)_
 - Mission control J/K keyboard nav updates a visual `focusIdx` only — it never
   moves real DOM focus, so keyboard/SR users get no focus move or announcement
   on J/K · Accessibility · impact:M · risk:M
-- 6 clickable non-`<button>` elements — audit for keyboard access (Enter/Space +
-  role/tabindex) · Accessibility · impact:M · risk:L
+- Mission actionable rows (gate/run/stalled/done) are `tabindex` divs without
+  `role="button"` — keyboard-reachable now, but SR announces them generically,
+  not as actionable. Consider a shared focusable-row directive with role ·
+  Accessibility · impact:M · risk:M
 - Untested core services: `store.service`, `api.service`, `guards`
   (`theme.service` ✓ done) · Test coverage · impact:M · risk:L
 - Only 5 `aria-label`/`role` occurrences app-wide — sweep icon-only buttons for
   accessible names · Accessibility · impact:M · risk:L
 
 ## Won't-do / blocked
+
+- The 5 scrim/backdrop `(click)` divs (palette, popmenu, registry, who-menu
+  overlays) — intentionally not keyboard-focusable; they're click-outside-to-
+  dismiss and keyboard users dismiss via Escape / the toggle button. Making a
+  scrim focusable is an anti-pattern.

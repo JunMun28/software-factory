@@ -179,7 +179,13 @@ import { AdminShell } from './admin-shell';
                 <span>Recently done &amp; with submitter</span>
               </div>
               @for (r of m.recent; track r.id) {
-                <div class="msn-done" (click)="openIssue(r)">
+                <div
+                  class="msn-done"
+                  [class.msn-focus]="flatIdx(r) === focusAt()"
+                  tabindex="0"
+                  (focus)="focusIdx.set(flatIdx(r))"
+                  (click)="openIssue(r)"
+                >
                   <sf-glyph
                     [type]="
                       r.status === 'done' ? 'check' : r.status === 'cancelled' ? 'strike' : 'flag'
@@ -599,13 +605,14 @@ export class Mission {
   focusAt = computed(() => Math.max(0, Math.min(this.focusIdx(), this.focusables().length - 1)));
 
   /** J/K traversal list: every actionable row in render order. */
-  focusables = computed<{ kind: 'gate' | 'run' | 'stalled'; r: FactoryRequest }[]>(() => {
+  focusables = computed<{ kind: 'gate' | 'run' | 'stalled' | 'done'; r: FactoryRequest }[]>(() => {
     const m = this.m();
     if (!m) return [];
     return [
       ...m.gates.map((g) => ({ kind: 'gate' as const, r: g.request })),
       ...m.runs.map((x) => ({ kind: 'run' as const, r: x.request })),
       ...m.stalled.map((r) => ({ kind: 'stalled' as const, r })),
+      ...m.recent.map((r) => ({ kind: 'done' as const, r })),
     ];
   });
 
