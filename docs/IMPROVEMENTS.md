@@ -19,6 +19,15 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **a11y: announce the live interview question to screen readers** ·
+  the interview is a real-time Q&A whose question changes in place, but nothing
+  announced it — SR users were never told a new follow-up appeared. New
+  `liveQuestion` computed (busy → "Thinking…", done → done line, else the
+  question) rendered in a stable sr-only `role=status aria-live=polite` region
+  (absolute → zero layout change) · evidence: `make verify` ✓; live — region
+  resolves to the current question and updated Q1→Q2 ("In a sentence…" → "Got it.
+  How many items…") when answered.
+
 - 2026-06-14 · **a11y: finish the new-request form (type cards + dropdowns)** ·
   type-card buttons now expose `aria-pressed` (the first/primary choice's
   selection); the Which-app? / How-often? dropdown triggers expose
@@ -176,9 +185,9 @@ _(nothing in progress)_
 
 - The `.seg` "Active/All" filter on submitter my-requests has the same
   visual-only selection (no `aria-pressed`) · Accessibility · impact:L · risk:L
-- Interview + review intake screens (the steps after new-request) — last
-  untouched submitter surfaces; audit for label/role gaps · Accessibility ·
-  impact:M · risk:L
+- Interview answer composer + the **review** screen — remaining intake a11y
+  (interview live region ✓ done; audit the answer input label + review screen) ·
+  Accessibility · impact:L · risk:L
 
 - Feed action buttons (React / Open / More in `admin/feed.ts`) are non-functional
   placeholders (no `(click)` handler) — wire them or remove the dead controls ·
