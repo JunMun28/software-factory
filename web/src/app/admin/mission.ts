@@ -3,6 +3,7 @@ import {
   ElementRef,
   HostListener,
   computed,
+  effect,
   inject,
   signal,
   viewChildren,
@@ -10,10 +11,9 @@ import {
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { FactoryRequest } from '../core/models';
+import { FactoryRequest, MissionOut } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
-import { Store } from '../core/store.service';
 import {
   healthLine,
   missionRowLabel,
@@ -26,7 +26,7 @@ import { AdminShell } from './admin-shell';
 
 /** Mission control — the supervision home (spec §6): what needs me, what's
  *  running autonomously, what stalled, what just finished. One poll
- *  (Store.mission), bands render top-down by consequence. */
+ *  (its own api.mission() fetch), bands render top-down by consequence. */
 @Component({
   selector: 'sf-mission-page',
   imports: [AdminShell, Icon, Glyph, ApproveModal, SendBackModal, Autofocus, EvidenceStrip],
@@ -525,12 +525,20 @@ import { AdminShell } from './admin-shell';
 })
 export class Mission {
   protected router = inject(Router);
-  private store = inject(Store);
   private api = inject(Api);
   private poll = inject(Poll);
   protected session = inject(Session);
 
-  m = this.store.mission;
+  /** The heavy mission aggregate is fetched by THIS page (not the shell-wide
+   *  Store), so no other admin page polls /api/mission. */
+  m = signal<MissionOut | null>(null);
+
+  constructor() {
+    effect(() => {
+      this.poll.version();
+      this.api.mission().subscribe((v) => this.m.set(v));
+    });
+  }
 
   confirming = signal<FactoryRequest | null>(null);
   sendingBack = signal<FactoryRequest | null>(null);

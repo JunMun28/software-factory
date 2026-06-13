@@ -19,6 +19,15 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **perf: heavy `mission` aggregate no longer polled on non-Mission
+  admin pages** · the root `Store` fetched `mission` every 4s on every admin page
+  though only Mission reads it (and ADR 0013 only documents Store owning
+  requests/apps/inbox — `mission` was bolted on later). Moved the fetch into the
+  Mission component's own `api.mission()` effect; Store realigned to
+  requests/apps/inbox · evidence: `make verify` ✓; Performance API shows the
+  Registry page fetches **no** `/api/mission`, while Mission fetches it (2×) and
+  renders (7 gates, 14 rows); screenshot — no visual regression.
+
 - 2026-06-14 · **perf: submitter face no longer polls the admin aggregates** ·
   `my-requests.ts` injected the root `Store` only for `store.requests()`, but
   that instantiated the singleton whose effect fetched `requests` + `apps` +
