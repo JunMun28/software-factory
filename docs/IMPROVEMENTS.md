@@ -10,6 +10,13 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-13 · **test coverage: unit tests for `theme.service`** · 8 hermetic
+  tests added (`core/theme.service.spec.ts`): default-to-system, valid/junk
+  stored choice, `resolved()` across every branch, `data-theme` write on
+  construction, `set()` persist + re-apply, and private-mode (throwing
+  localStorage) survival. Pure additive, no behavior change · evidence:
+  `make verify` ✓ (vitest suite green incl. 8 new theme tests).
+
 - 2026-06-13 · **a11y: aria-live mission summary on Mission control (admin)** ·
   the supervisor's primary polling screen had no live region; SR admins now hear
   a concise "N gates waiting · N stalled · N running" (or "All clear") summary as
@@ -40,8 +47,8 @@ _(nothing in progress)_
   on J/K · Accessibility · impact:M · risk:M
 - 6 clickable non-`<button>` elements — audit for keyboard access (Enter/Space +
   role/tabindex) · Accessibility · impact:M · risk:L
-- Untested core services: `theme.service`, `store.service`, `api.service`,
-  `guards` · Test coverage · impact:M · risk:L
+- Untested core services: `store.service`, `api.service`, `guards`
+  (`theme.service` ✓ done) · Test coverage · impact:M · risk:L
 - Only 5 `aria-label`/`role` occurrences app-wide — sweep icon-only buttons for
   accessible names · Accessibility · impact:M · risk:L
 
