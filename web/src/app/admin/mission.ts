@@ -661,7 +661,9 @@ export class Mission {
   @HostListener('window:keydown', ['$event'])
   onKey(e: KeyboardEvent) {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey) return;
+    // A focused control owns its own keys — don't let the global shortcuts hijack
+    // Enter/A/S on a row's Approve/Send/Open/Steer button (focus reachable via Tab).
+    if (tag === 'input' || tag === 'textarea' || tag === 'button' || e.metaKey || e.ctrlKey) return;
     if (this.confirming() || this.sendingBack() || this.steeringId() !== null) return;
     const k = e.key.toLowerCase();
     const cur = this.focusables()[this.focusAt()];

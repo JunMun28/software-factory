@@ -19,6 +19,14 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **fix: focused action buttons no longer hijacked by Mission's
+  global shortcuts** · the `onKey` `window:keydown` handler fired the
+  J/K/A/S/Enter shortcuts for any non-input target, so Enter on a focused
+  **Approve** button ran `openIssue(focusAt())` + `preventDefault()` — navigating
+  away instead of approving. Added `tag === 'button'` to the early-return guard ·
+  evidence: `make verify` ✓; before/after repro — Enter-on-Approve `navigatedAway`
+  true→false (stays on `/admin/mission`), and J/K from a row still moves focus.
+
 - 2026-06-14 · **perf: heavy `mission` aggregate no longer polled on non-Mission
   admin pages** · the root `Store` fetched `mission` every 4s on every admin page
   though only Mission reads it (and ADR 0013 only documents Store owning
@@ -150,10 +158,6 @@ _(nothing in progress)_
   focus now (J/K + Tab), but a roving-tabindex + `role` listbox/grid pattern
   would announce them as a navigable collection. Larger ARIA design task ·
   Accessibility · impact:M · risk:M
-- When an action button (Approve/Send/Open) **inside** a Mission row has focus,
-  the global `onKey` shortcuts (a/s/Enter) still fire against `focusAt()` — guard
-  with `tag === 'button'` so a focused button handles its own keys · Correctness ·
-  impact:L · risk:L
 - Untested core services: `store.service`, `api.service`, `guards`
   (`theme.service` ✓ done) · Test coverage · impact:M · risk:L
 - Only 5 `aria-label`/`role` occurrences app-wide — sweep icon-only buttons for
