@@ -13,6 +13,7 @@ import {
   healthLine,
   inFlight,
   liveStatus,
+  missionRowLabel,
   missionSubtitle,
   missionSummary,
   plainActivity,
@@ -515,6 +516,34 @@ describe('missionSubtitle — the Mission header counts', () => {
 
   it('shows the zeros when all clear (unchanged from before)', () => {
     expect(missionSubtitle(mission())).toBe('0 gates waiting on you · 0 builds running');
+  });
+});
+
+describe('missionRowLabel — the Mission row screen-reader label', () => {
+  const base = { title: 'CSV import', app_name: 'Vendor Portal', ref: 'REQ-2042' } as const;
+  const tail = ' — CSV import, Vendor Portal, REQ-2042';
+
+  it('labels gates by their kind', () => {
+    expect(missionRowLabel('gate', req({ ...base, gate: 'approve_spec' }))).toBe(
+      `Spec gate, needs your approval${tail}`,
+    );
+    expect(missionRowLabel('gate', req({ ...base, gate: 'approve_merge' }))).toBe(
+      `Merge gate, needs your approval${tail}`,
+    );
+  });
+
+  it('labels a stalled row', () => {
+    expect(missionRowLabel('stalled', req(base))).toBe(`Stalled, needs a human${tail}`);
+  });
+
+  it('labels a running row with its stage', () => {
+    expect(missionRowLabel('run', req({ ...base, stage: 'build' }))).toBe(`Running build${tail}`);
+  });
+
+  it('labels recently-done rows by outcome', () => {
+    expect(missionRowLabel('done', req({ ...base, status: 'done' }))).toBe(`Deployed${tail}`);
+    expect(missionRowLabel('done', req({ ...base, status: 'cancelled' }))).toBe(`Cancelled${tail}`);
+    expect(missionRowLabel('done', req({ ...base, status: 'sent_back' }))).toBe(`Sent back${tail}`);
   });
 });
 

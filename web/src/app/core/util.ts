@@ -255,6 +255,27 @@ export function missionSubtitle(m: MissionOut): string {
   return parts.join(' · ');
 }
 
+/** A concise screen-reader label for a Mission control row — announced when J/K
+ *  or Tab moves focus onto the row, instead of the raw concatenated cell text
+ *  (title + pills + evidence strip + every action button). */
+export function missionRowLabel(
+  kind: 'gate' | 'run' | 'stalled' | 'done',
+  r: FactoryRequest,
+): string {
+  const where = `${r.app_name}, ${r.ref}`;
+  if (kind === 'gate') {
+    const g = r.gate === 'approve_merge' ? 'Merge gate' : 'Spec gate';
+    return `${g}, needs your approval — ${r.title}, ${where}`;
+  }
+  if (kind === 'stalled') return `Stalled, needs a human — ${r.title}, ${where}`;
+  if (kind === 'done') {
+    const s =
+      r.status === 'done' ? 'Deployed' : r.status === 'cancelled' ? 'Cancelled' : 'Sent back';
+    return `${s} — ${r.title}, ${where}`;
+  }
+  return `Running ${r.stage} — ${r.title}, ${where}`;
+}
+
 /** The admin request-detail one-line state. Control-center vocabulary is intended
  *  here (admin surface) — gate / Building / Stalled wording. Also fed to the
  *  page's aria-live region so SR supervisors hear it change as polling advances. */

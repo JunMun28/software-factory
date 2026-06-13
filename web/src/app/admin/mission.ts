@@ -14,7 +14,13 @@ import { FactoryRequest } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
-import { healthLine, missionSubtitle, missionSummary, timeAgo } from '../core/util';
+import {
+  healthLine,
+  missionRowLabel,
+  missionSubtitle,
+  missionSummary,
+  timeAgo,
+} from '../core/util';
 import { ApproveModal, Autofocus, EvidenceStrip, Glyph, Icon, SendBackModal } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
@@ -56,6 +62,7 @@ import { AdminShell } from './admin-shell';
               @for (g of m.gates; track g.request.id) {
                 <div
                   #frow
+                  [attr.aria-label]="rowLabel('gate', g.request)"
                   class="msn-gate"
                   [class.msn-focus]="flatIdx(g.request) === focusAt()"
                   tabindex="0"
@@ -96,6 +103,7 @@ import { AdminShell } from './admin-shell';
             @for (it of m.runs; track it.request.id) {
               <div
                 #frow
+                [attr.aria-label]="rowLabel('run', it.request)"
                 class="msn-run"
                 [class.msn-run--slow]="it.run.health === 'slow'"
                 [class.msn-focus]="flatIdx(it.request) === focusAt()"
@@ -161,6 +169,7 @@ import { AdminShell } from './admin-shell';
               @for (r of m.stalled; track r.id) {
                 <div
                   #frow
+                  [attr.aria-label]="rowLabel('stalled', r)"
                   class="msn-gate msn-gate--red"
                   [class.msn-focus]="flatIdx(r) === focusAt()"
                   tabindex="0"
@@ -192,6 +201,7 @@ import { AdminShell } from './admin-shell';
               @for (r of m.recent; track r.id) {
                 <div
                   #frow
+                  [attr.aria-label]="rowLabel('done', r)"
                   class="msn-done"
                   [class.msn-focus]="flatIdx(r) === focusAt()"
                   tabindex="0"
@@ -536,6 +546,8 @@ export class Mission {
   timeAgo = timeAgo;
   /** Concise mission summary for the aria-live region — announced on each poll change. */
   summary = missionSummary;
+  /** Per-row screen-reader label (the row is focusable via J/K — iteration 10). */
+  rowLabel = missionRowLabel;
 
   openSteer(r: FactoryRequest) {
     this.steerErr.set('');

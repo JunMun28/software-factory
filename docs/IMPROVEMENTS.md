@@ -19,6 +19,15 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **a11y: concise `aria-label` on each Mission row** · with J/K now
+  focusing rows (iteration 10), a screen reader was reading the raw cell jumble
+  (title + "SPEC GATE" + evidence + every button). New pure `missionRowLabel()`
+  helper bound as `[attr.aria-label]` gives a clean summary per row ("Spec gate,
+  needs your approval — …", "Stalled, needs a human — …", "Deployed — …",
+  "Running <stage> — …") · evidence: `make verify` ✓ (61 web tests, +4); live DOM
+  confirmed the rendered labels on the gate/stalled/done rows. Completes the
+  Mission keyboard-a11y arc (live region → focus reachable → real focus → label).
+
 - 2026-06-14 · **a11y: Mission J/K moves real DOM focus** · J/K previously moved
   the `.msn-focus` highlight (via `focusIdx`) but never real DOM focus, so
   keyboard focus diverged from the visual cursor and SR users heard nothing.
