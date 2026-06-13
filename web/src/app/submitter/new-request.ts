@@ -24,6 +24,7 @@ import { SubShell } from './sub-shell';
             <button
               class="typecard focusable"
               [class.on]="draft.type === t.t"
+              [attr.aria-pressed]="draft.type === t.t"
               (click)="draft.type = $any(t.t)"
             >
               <sf-icon
@@ -47,11 +48,14 @@ import { SubShell } from './sub-shell';
           <div class="fade-in" style="margin-top:26px;display:flex;flex-direction:column;gap:18px">
             @if (draft.type === 'bug' || draft.type === 'enh') {
               <div>
-                <label class="field-label">Which app?</label>
+                <label class="field-label" id="nr-app-lbl">Which app?</label>
                 <div class="dd-wrap">
                   <button
+                    id="nr-app-dd"
                     class="input"
                     style="cursor:pointer;text-align:left"
+                    aria-labelledby="nr-app-lbl nr-app-dd"
+                    [attr.aria-expanded]="appsOpen()"
                     (click)="toggleApps()"
                   >
                     @if (selectedApp(); as a) {
@@ -119,11 +123,14 @@ import { SubShell } from './sub-shell';
                   />
                 </div>
                 <div>
-                  <label class="field-label">How often?</label>
+                  <label class="field-label" id="nr-freq-lbl">How often?</label>
                   <div class="dd-wrap">
                     <button
+                      id="nr-freq-dd"
                       class="input"
                       style="cursor:pointer;text-align:left"
+                      aria-labelledby="nr-freq-lbl nr-freq-dd"
+                      [attr.aria-expanded]="freqOpen()"
                       (click)="toggleFreq()"
                     >
                       <span [class.ph]="!draft.bugFreq">{{ draft.bugFreq || 'Every time' }}</span>

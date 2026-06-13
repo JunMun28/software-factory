@@ -19,6 +19,15 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **a11y: finish the new-request form (type cards + dropdowns)** ·
+  type-card buttons now expose `aria-pressed` (the first/primary choice's
+  selection); the Which-app? / How-often? dropdown triggers expose
+  `aria-labelledby` (field name + current value) + `aria-expanded` (open state) ·
+  evidence: `make verify` ✓; live — Bug-fix card `aria-pressed=true` (others
+  false), app dropdown name "Which app? Pick an app", `aria-expanded` false→true
+  on open. **Front-door form a11y complete** (inputs it.15 + seg groups it.16 +
+  type cards/dropdowns it.17).
+
 - 2026-06-14 · **a11y: intake segmented controls convey selection + group label**
   · the urgency/reach/impact single-selects showed the choice only via the `.on`
   CSS class. Wrapped each `.seg` in `role="group" aria-labelledby` (label ids
@@ -165,12 +174,11 @@ _(nothing in progress)_
 
 ## Backlog (ranked by impact ÷ risk)
 
-- Remaining intake single-selects: the **type cards** (bug/enh/new/other) and the
-  app / frequency **dropdown buttons** still don't convey selection / field-context
-  to SR (`aria-pressed` on the type cards; `aria-labelledby` on the dropdowns).
-  The `.seg` groups are done · Accessibility · impact:M · risk:L
 - The `.seg` "Active/All" filter on submitter my-requests has the same
   visual-only selection (no `aria-pressed`) · Accessibility · impact:L · risk:L
+- Interview + review intake screens (the steps after new-request) — last
+  untouched submitter surfaces; audit for label/role gaps · Accessibility ·
+  impact:M · risk:L
 
 - Feed action buttons (React / Open / More in `admin/feed.ts`) are non-functional
   placeholders (no `(click)` handler) — wire them or remove the dead controls ·
