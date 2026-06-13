@@ -4,11 +4,30 @@ A running backlog for the self-paced improvement loop. Each iteration: full
 sweep across all dimensions, pick the single highest impact ÷ risk item, ship it
 verified (`make verify` green), record it here, commit on `auto/improve`.
 
+> **Loop guidance (set 2026-06-14): risk appetite RAISED.** The cheap zero-risk
+> wins are largely done, and the user has greenlit bolder moves. Favor
+> high-impact items even at **moderate risk** — behaviour changes, real bug
+> fixes, meatier refactors are now in scope. The runner prompt's "prefer small /
+> low risk / no sweeping rewrites" bias is **relaxed**. Non-negotiables remain:
+> `make verify` must stay green (or full revert), the hard constraints hold
+> (append-only `progress_event`, single worker, offline-default seams), and every
+> claim needs real evidence. Still one focused improvement per iteration.
+
 ## In progress
 
 _(nothing in progress)_
 
 ## Done   (most recent first)
+
+- 2026-06-14 · **fix: GitHub-safe `prospective_repo` slug** (first bolder pick) ·
+  was space-replace only, so a title with `/` produced a nested path
+  (`"a/b"` → `micron/a/b`), punctuation leaked, `"  x  "` left dashes, and an
+  empty name gave `micron/`. Now collapses any non-`[a-z0-9._-]` run to a single
+  dash, strips separators (including after the `[:30]` clamp), and falls back to
+  `app`. Normal titles are unchanged; the gate event and UI both call this one
+  function so they stay consistent · evidence: `make verify` ✓ (8 `api_helpers`
+  tests, +4 edge cases: slash/punctuation, leading-trailing, empty→app,
+  truncation-trailing-dash).
 
 - 2026-06-14 · **test: unit-cover `prospective_repo()`** · new
   `api/tests/test_api_helpers.py` (4 tests, in-memory `Request`, no DB): title
@@ -84,11 +103,6 @@ _(nothing in progress)_
 
 ## Backlog (ranked by impact ÷ risk)
 
-- `prospective_repo()` slug only replaces spaces — a title with a slash or
-  special char yields a malformed repo name (e.g. "a/b" → `micron/a-/-b`).
-  Sanitize to GitHub-safe chars + strip leading/trailing dashes. Behaviour change
-  to the shared gate-event/UI derivation → needs human sign-off · Correctness ·
-  impact:M · risk:M
 - Feed action buttons (React / Open / More in `admin/feed.ts`) are non-functional
   placeholders (no `(click)` handler) — wire them or remove the dead controls ·
   Features/UX · impact:L · risk:L

@@ -9,6 +9,8 @@ router that fires the runner calls pipeline() inside the endpoint body
 (never at import time, so there is no startup-ordering hazard).
 """
 
+import re
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -33,8 +35,15 @@ def pipeline():
 def prospective_repo(r: Request) -> str:
     """The repo Approve will create for an app-less request — the ONE
     derivation shared by the gate event and the UI confirmation dialog,
-    so the admin always confirms exactly the name that gets recorded."""
-    return f"micron/{(r.new_app_name or r.title).lower().replace(' ', '-')[:30]}"
+    so the admin always confirms exactly the name that gets recorded.
+
+    Slugged to a GitHub-safe name: lowercase, any run of disallowed characters
+    collapsed to a single dash, separators stripped from both ends (also after
+    the 30-char clamp), with an 'app' fallback. A title with a '/' or other
+    punctuation must never produce a nested path or an empty/malformed name."""
+    name = (r.new_app_name or r.title or "").lower()
+    slug = re.sub(r"[^a-z0-9._-]+", "-", name).strip("-._")[:30].strip("-._")
+    return f"micron/{slug or 'app'}"
 
 
 def to_out(r: Request, model=RequestOut, **extra):

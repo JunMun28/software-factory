@@ -30,3 +30,26 @@ def test_lowercases_and_dashes_spaces():
 def test_truncates_the_slug_to_30_chars():
     slug = prospective_repo(_req(new_app_name="a" * 50)).split("/", 1)[1]
     assert slug == "a" * 30
+
+
+# --- GitHub-safe slugging (a malformed name is created at an irreversible step) ---
+
+
+def test_collapses_slashes_and_punctuation_to_a_single_dash():
+    # a '/' must NOT create a nested path (micron/a/b would be a different repo)
+    assert prospective_repo(_req(new_app_name="A/B  C!")) == "micron/a-b-c"
+
+
+def test_strips_leading_and_trailing_separators():
+    assert prospective_repo(_req(new_app_name="  Spaces  ")) == "micron/spaces"
+
+
+def test_falls_back_to_app_when_empty_after_slugging():
+    assert prospective_repo(_req(title="", new_app_name="")) == "micron/app"
+    assert prospective_repo(_req(new_app_name="!!!")) == "micron/app"
+
+
+def test_truncation_does_not_leave_a_trailing_dash():
+    slug = prospective_repo(_req(new_app_name="a" * 29 + " bbb")).split("/", 1)[1]
+    assert slug == "a" * 29
+    assert not slug.endswith("-")
