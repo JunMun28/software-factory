@@ -19,6 +19,15 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **a11y: intake segmented controls convey selection + group label**
+  · the urgency/reach/impact single-selects showed the choice only via the `.on`
+  CSS class. Wrapped each `.seg` in `role="group" aria-labelledby` (label ids
+  added) and added `[attr.aria-pressed]` mirroring each button's `[class.on]` —
+  SR now announces the field name + which option is selected; buttons keep
+  Tab + Enter/Space · evidence: `make verify` ✓; live form — 3 groups resolve
+  `aria-labelledby` to their label, and clicking High flips `aria-pressed`
+  Low/Normal/High → false/false/true.
+
 - 2026-06-14 · **a11y: intake-form labels associated with their inputs** · the
   front-door `new-request.ts` form had visual-only `<label>`s (no `for`/`id`), so
   its 5 native controls had no accessible name. Added `for`/`id` pairing
@@ -156,10 +165,12 @@ _(nothing in progress)_
 
 ## Backlog (ranked by impact ÷ risk)
 
-- Intake-form custom widgets (app / frequency dropdown buttons; urgency / reach /
-  impact segmented button groups) lack field-context — wrap each `.seg` group in
-  `role="group" aria-labelledby` and point the dropdown buttons at their label ·
-  Accessibility · impact:M · risk:L
+- Remaining intake single-selects: the **type cards** (bug/enh/new/other) and the
+  app / frequency **dropdown buttons** still don't convey selection / field-context
+  to SR (`aria-pressed` on the type cards; `aria-labelledby` on the dropdowns).
+  The `.seg` groups are done · Accessibility · impact:M · risk:L
+- The `.seg` "Active/All" filter on submitter my-requests has the same
+  visual-only selection (no `aria-pressed`) · Accessibility · impact:L · risk:L
 
 - Feed action buttons (React / Open / More in `admin/feed.ts`) are non-functional
   placeholders (no `(click)` handler) — wire them or remove the dead controls ·

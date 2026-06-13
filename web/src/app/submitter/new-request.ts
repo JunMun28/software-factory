@@ -151,15 +151,21 @@ import { SubShell } from './sub-shell';
             }
             @if (draft.type !== 'bug') {
               <div>
-                <label class="field-label" for="nr-reach"
+                <label class="field-label" id="nr-reach-lbl" for="nr-reach"
                   >Who's affected?
                   <span style="font-weight:400;color:var(--faint)">(optional)</span></label
                 >
                 <span class="field-help">Helps the reviewer see how much this is worth.</span>
-                <div class="seg" style="margin-bottom:8px">
+                <div
+                  class="seg"
+                  role="group"
+                  aria-labelledby="nr-reach-lbl"
+                  style="margin-bottom:8px"
+                >
                   @for (r of reaches; track r[0]) {
                     <button
                       [class.on]="!draft.reachText && draft.reach === r[0]"
+                      [attr.aria-pressed]="!draft.reachText && draft.reach === r[0]"
                       (click)="pickReach($any(r[0]))"
                     >
                       {{ r[1] }}
@@ -175,17 +181,23 @@ import { SubShell } from './sub-shell';
                 />
               </div>
               <div>
-                <label class="field-label" for="nr-impact"
+                <label class="field-label" id="nr-impact-lbl" for="nr-impact"
                   >What's the impact?
                   <span style="font-weight:400;color:var(--faint)">(optional)</span></label
                 >
                 <span class="field-help"
                   >A rough number is enough — it strengthens the case for approval.</span
                 >
-                <div class="seg" [style.margin-bottom]="draft.impactMetric ? '8px' : ''">
+                <div
+                  class="seg"
+                  role="group"
+                  aria-labelledby="nr-impact-lbl"
+                  [style.margin-bottom]="draft.impactMetric ? '8px' : ''"
+                >
                   @for (m of metrics; track m[0]) {
                     <button
                       [class.on]="draft.impactMetric === m[0]"
+                      [attr.aria-pressed]="draft.impactMetric === m[0]"
                       (click)="pickMetric($any(m[0]))"
                     >
                       {{ m[1] }}
@@ -203,10 +215,14 @@ import { SubShell } from './sub-shell';
               </div>
             }
             <div>
-              <label class="field-label">How urgent is it?</label>
-              <div class="seg">
+              <label class="field-label" id="nr-urgency-lbl">How urgent is it?</label>
+              <div class="seg" role="group" aria-labelledby="nr-urgency-lbl">
                 @for (u of urgencies; track u[0]) {
-                  <button [class.on]="draft.urgency === u[0]" (click)="draft.urgency = $any(u[0])">
+                  <button
+                    [class.on]="draft.urgency === u[0]"
+                    [attr.aria-pressed]="draft.urgency === u[0]"
+                    (click)="draft.urgency = $any(u[0])"
+                  >
                     {{ u[1] }}
                   </button>
                 }
