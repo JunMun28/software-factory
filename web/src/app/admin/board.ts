@@ -36,7 +36,7 @@ import {
   Sig,
   SpecLines,
 } from '../kit/kit';
-import { AdminShell, ViewSeg } from './admin-shell';
+import { AdminShell } from './admin-shell';
 
 const STAGE_COLS: { key: string; glyph: string }[] = [
   { key: 'intake', glyph: 'dotted' },
@@ -339,10 +339,9 @@ export class DetailPanel {
 /** C2 — Board: fixed stage columns; Group-by adds Jira-style horizontal swimlanes. */
 @Component({
   selector: 'sf-board-page',
-  imports: [AdminShell, Glyph, Icon, Avatar, BCard, DetailPanel, ViewSeg, PopMenu],
+  imports: [AdminShell, Glyph, Icon, Avatar, BCard, DetailPanel, PopMenu],
   template: `
     <admin-shell active="board" title="Board">
-      <sf-view-seg headerRight active="board" />
       <span headerExtra class="row" style="gap:11px">
         <button
           class="kpill"

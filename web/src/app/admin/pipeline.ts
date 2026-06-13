@@ -5,7 +5,7 @@ import { FactoryRequest } from '../core/models';
 import { Store } from '../core/store.service';
 import { TYPE_SHORT, inFlight as inFlightHelper, timeAgo } from '../core/util';
 import { Avatar, Icon, Sig } from '../kit/kit';
-import { AdminShell, ViewSeg } from './admin-shell';
+import { AdminShell } from './admin-shell';
 
 const STAGES = ['intake', 'spec', 'architecture', 'build', 'review', 'done'];
 const STAGE_SHORT = ['Intake', 'Spec', 'Arch', 'Build', 'Review', 'Done'];
@@ -28,7 +28,7 @@ interface Group {
  *  compressed into a stage strip with the two human gates as diamonds. */
 @Component({
   selector: 'sf-pipeline-page',
-  imports: [AdminShell, Icon, Avatar, Sig, ViewSeg],
+  imports: [AdminShell, Icon, Avatar, Sig],
   template: `
     <admin-shell active="pipeline" title="Pipeline">
       <span headerExtra class="row" style="gap:10px">
@@ -37,7 +37,7 @@ interface Group {
         >
         <span style="font-size:11.5px;color:var(--faint)">J/K move · ↵ open</span>
       </span>
-      <sf-view-seg headerRight active="pipeline" />
+
       <div class="list scroll" style="padding:14px 0 40px">
         <div style="max-width:880px;margin:0 auto;padding:0 22px">
           <!-- stage legend, aligned to the strips -->

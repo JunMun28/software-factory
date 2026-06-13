@@ -448,22 +448,3 @@ export class AdminShell {
     }
   }
 }
-
-/** The List ⇄ Board ⇄ Pipeline lens toggle (one collection, three projections). */
-@Component({
-  selector: 'sf-view-seg',
-  template: `
-    <div class="seg">
-      <button [class.on]="active() === 'list'" (click)="go('/admin/list')">List</button>
-      <button [class.on]="active() === 'board'" (click)="go('/admin/board')">Board</button>
-      <button [class.on]="active() === 'pipeline'" (click)="go('/admin/pipeline')">Pipeline</button>
-    </div>
-  `,
-})
-export class ViewSeg {
-  private router = inject(Router);
-  active = input<'list' | 'board' | 'pipeline'>('pipeline');
-  go(url: string) {
-    this.router.navigateByUrl(url);
-  }
-}
