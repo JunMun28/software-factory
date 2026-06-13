@@ -10,6 +10,16 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **a11y: aria-live run state on admin request-detail** · the
+  supervisor's per-request deep-dive now announces its live state line
+  ("Building · Architecture · step 3/6", "Waiting at the merge gate", "Stalled —
+  needs a human") to SR users. Extracted the component's `stateLine` into a pure,
+  fully-tested `adminStateLine()` helper and made the existing `.rd-state` span a
+  `role=status aria-live=polite` region (no new DOM). Completes aria-live across
+  all three live watch surfaces (submitter detail, Mission, admin detail) ·
+  evidence: `make verify` ✓ (53 web tests, +6); live region verified rendering
+  "Waiting at the merge gate"; no visual regression (admin detail light mode).
+
 - 2026-06-13 · **test coverage: unit tests for `theme.service`** · 8 hermetic
   tests added (`core/theme.service.spec.ts`): default-to-system, valid/junk
   stored choice, `resolved()` across every branch, `data-theme` write on
@@ -39,9 +49,6 @@ _(nothing in progress)_
 
 ## Backlog (ranked by impact ÷ risk)
 
-- Admin **request-detail** (`admin/request-detail.ts`) live trace still has no
-  `aria-live` — the per-request admin view, distinct from Mission's summary ·
-  Accessibility · impact:M · risk:L
 - Mission control J/K keyboard nav updates a visual `focusIdx` only — it never
   moves real DOM focus, so keyboard/SR users get no focus move or announcement
   on J/K · Accessibility · impact:M · risk:M

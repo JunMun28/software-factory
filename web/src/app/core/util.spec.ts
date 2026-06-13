@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { Evidence, FactoryRequest, MissionOut } from './models';
+import { Evidence, FactoryRequest, MissionOut, RequestDetail } from './models';
 import {
+  adminStateLine,
   boardGlyph,
   clock,
   confirmSteps,
@@ -467,5 +468,53 @@ describe('missionSummary — the Mission control aria-live summary', () => {
 
   it('omits the zero bands — running only', () => {
     expect(missionSummary(mission({ runs: [runItem()] }))).toBe('1 running');
+  });
+});
+
+describe('adminStateLine — the admin request-detail live state', () => {
+  const detail = (over: Partial<RequestDetail> = {}): RequestDetail => ({
+    ...req(),
+    turns: [],
+    spec_lines: [],
+    comments: [],
+    audit: [],
+    duplicate: null,
+    run: null,
+    evidence: null,
+    ...over,
+  });
+
+  it('escalation wins over a gate', () => {
+    expect(
+      adminStateLine(detail({ needs_human: true, gate: 'approve_merge', status: 'approved' })),
+    ).toBe('Stalled — needs a human');
+  });
+
+  it('names each gate', () => {
+    expect(adminStateLine(detail({ gate: 'approve_spec' }))).toBe('Waiting at the spec gate');
+    expect(adminStateLine(detail({ gate: 'approve_merge' }))).toBe('Waiting at the merge gate');
+  });
+
+  it('covers the terminal and handed-back states', () => {
+    expect(adminStateLine(detail({ status: 'sent_back' }))).toBe('With the submitter');
+    expect(adminStateLine(detail({ status: 'done', stage: 'done' }))).toBe('Deployed');
+    expect(adminStateLine(detail({ status: 'cancelled' }))).toBe('Cancelled');
+  });
+
+  it('shows live build progress when a run is in flight', () => {
+    const run = { label: 'x', step: 3, of: 6, health: 'healthy' as const, seconds_since_event: 1 };
+    expect(adminStateLine(detail({ status: 'approved', stage: 'architecture', run }))).toBe(
+      'Building · Architecture · step 3/6',
+    );
+  });
+
+  it('shows the building stage when approved with no run yet', () => {
+    expect(adminStateLine(detail({ status: 'approved', stage: 'build', run: null }))).toBe(
+      'Building · Build',
+    );
+  });
+
+  it('falls back to the stage label otherwise', () => {
+    expect(adminStateLine(detail({ status: 'submitted', stage: 'intake' }))).toBe('Intake');
   });
 });

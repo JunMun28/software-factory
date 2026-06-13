@@ -1,4 +1,11 @@
-import { Evidence, FactoryRequest, MissionOut, ProgressEvent, RunState } from './models';
+import {
+  Evidence,
+  FactoryRequest,
+  MissionOut,
+  ProgressEvent,
+  RequestDetail,
+  RunState,
+} from './models';
 
 /** API timestamps are UTC; SQLite round-trips them naive, so re-tag before parsing. */
 export function utc(iso: string): Date {
@@ -232,6 +239,21 @@ export function missionSummary(m: MissionOut): string {
   if (s) parts.push(`${s} stalled`);
   if (r) parts.push(`${r} running`);
   return parts.length ? parts.join(' · ') : 'All clear — nothing needs you';
+}
+
+/** The admin request-detail one-line state. Control-center vocabulary is intended
+ *  here (admin surface) — gate / Building / Stalled wording. Also fed to the
+ *  page's aria-live region so SR supervisors hear it change as polling advances. */
+export function adminStateLine(r: RequestDetail): string {
+  if (r.needs_human) return 'Stalled — needs a human';
+  if (r.gate === 'approve_spec') return 'Waiting at the spec gate';
+  if (r.gate === 'approve_merge') return 'Waiting at the merge gate';
+  if (r.status === 'sent_back') return 'With the submitter';
+  if (r.status === 'done') return 'Deployed';
+  if (r.status === 'cancelled') return 'Cancelled';
+  if (r.run) return `Building · ${STAGE_LABEL[r.stage]} · step ${r.run.step}/${r.run.of}`;
+  if (r.status === 'approved') return `Building · ${STAGE_LABEL[r.stage]}`;
+  return STAGE_LABEL[r.stage] ?? r.stage;
 }
 
 /** Flatten the per-request trace into stage-grouped rows for the timeline (ADR 0014).
