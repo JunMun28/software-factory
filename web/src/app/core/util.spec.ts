@@ -13,7 +13,6 @@ import {
   inFlight,
   plainActivity,
   plainStage,
-  postApproval,
   timeAgo,
   utc,
 } from './util';
@@ -173,14 +172,7 @@ describe('confirmSteps — the irreversible steps behind Approve', () => {
   });
 });
 
-describe('postApproval / inFlight — shared stage-subset helpers', () => {
-  it('postApproval is true once approved or in a post-gate stage', () => {
-    expect(postApproval(req({ status: 'approved', stage: 'spec' }))).toBe(true);
-    expect(postApproval(req({ status: 'submitted', stage: 'build' }))).toBe(true);
-    expect(postApproval(req({ status: 'done', stage: 'done' }))).toBe(true);
-    expect(postApproval(req())).toBe(false);
-    expect(postApproval(req({ status: 'pending_approval', stage: 'spec' }))).toBe(false);
-  });
+describe('inFlight — agents working stage helper', () => {
   it('inFlight means agents working: post-approval stage, no gate, no escalation', () => {
     expect(inFlight(req({ stage: 'build', status: 'approved' }))).toBe(true);
     expect(inFlight(req({ stage: 'build', status: 'approved', needs_human: true }))).toBe(false);

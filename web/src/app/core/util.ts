@@ -79,16 +79,8 @@ export function gateLabel(r: FactoryRequest): string | null {
   return null;
 }
 
-/** Stages that only exist after the spec gate cleared (factory owns the work). */
-export const POST_APPROVAL_STAGES: readonly string[] = ['architecture', 'build', 'review', 'done'];
-
 /** Stages where agents are actively working — post-approval, not yet done. */
-export const IN_FLIGHT_STAGES: readonly string[] = ['architecture', 'build', 'review'];
-
-/** True once the request is past the spec gate (approved or already in a later stage). */
-export function postApproval(r: FactoryRequest): boolean {
-  return ['approved', 'done'].includes(r.status) || POST_APPROVAL_STAGES.includes(r.stage);
-}
+const IN_FLIGHT_STAGES: readonly string[] = ['architecture', 'build', 'review'];
 
 /** Agents working with no gate or escalation in the way. */
 export function inFlight(r: FactoryRequest): boolean {

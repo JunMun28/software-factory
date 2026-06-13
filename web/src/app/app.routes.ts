@@ -37,16 +37,6 @@ export const routes: Routes = [
     loadComponent: () => import('./admin/mission').then((m) => m.Mission),
   },
   {
-    path: 'admin/pipeline',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/pipeline').then((m) => m.Pipeline),
-  },
-  {
-    path: 'admin/board',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/board').then((m) => m.Board),
-  },
-  {
     path: 'admin/list',
     canActivate: [adminGuard],
     loadComponent: () => import('./admin/list').then((m) => m.ListView),
@@ -60,11 +50,6 @@ export const routes: Routes = [
     path: 'admin/requests/:id',
     canActivate: [adminGuard],
     loadComponent: () => import('./admin/request-detail').then((m) => m.RequestDetailPage),
-  },
-  {
-    path: 'admin/issue/:id',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/issue').then((m) => m.IssueDetail),
   },
   {
     path: 'admin/apps/:key',
