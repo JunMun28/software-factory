@@ -42,7 +42,7 @@ import { AdminShell } from './admin-shell';
     EscalationBox,
   ],
   template: `
-    <admin-shell active="mission" title="Request">
+    <admin-shell active="request-detail" title="Request">
       <span headerExtra class="row" style="gap:7px;font-size:12.5px;color:var(--muted)">
         <button class="btn ghost sm" style="margin-left:-6px;color:var(--muted)" (click)="back()">
           <sf-icon name="back" [size]="15" /> Mission control
@@ -352,7 +352,6 @@ export class RequestDetailPage {
   retryNote = signal('');
   showRetryNote = signal(false);
   commentText = '';
-  composerFocus = signal(false);
 
   constructor() {
     let lastId: number | null = null;

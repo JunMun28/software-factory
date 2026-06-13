@@ -596,8 +596,15 @@ export class AdminShell {
       this.gTimer = setTimeout(() => (this.gPending = false), 900);
       return;
     }
-    // C = New issue everywhere except the queue, where C cancels the focused item
-    if (e.key === 'c' && !this.paletteOpen() && !this.newIssue() && this.active() !== 'queue') {
+    // C = New issue everywhere except surfaces that own the C key (queue cancels the
+    // focused item; request-detail cancels the request) — there C must not double-fire.
+    if (
+      e.key === 'c' &&
+      !this.paletteOpen() &&
+      !this.newIssue() &&
+      this.active() !== 'queue' &&
+      this.active() !== 'request-detail'
+    ) {
       e.preventDefault();
       this.newIssue.set(true);
       return;
