@@ -2,12 +2,12 @@ import { Component, HostListener, computed, inject, signal } from '@angular/core
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { Evidence, FactoryRequest } from '../core/models';
+import { FactoryRequest } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
 import { healthLine, timeAgo } from '../core/util';
-import { ApproveModal, Autofocus, Glyph, Icon, SendBackModal } from '../kit/kit';
+import { ApproveModal, Autofocus, EvidenceStrip, Glyph, Icon, SendBackModal } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
 /** Mission control — the supervision home (spec §6): what needs me, what's
@@ -15,7 +15,7 @@ import { AdminShell } from './admin-shell';
  *  (Store.mission), bands render top-down by consequence. */
 @Component({
   selector: 'sf-mission-page',
-  imports: [AdminShell, Icon, Glyph, ApproveModal, SendBackModal, Autofocus],
+  imports: [AdminShell, Icon, Glyph, ApproveModal, SendBackModal, Autofocus, EvidenceStrip],
   template: `
     <admin-shell active="mission" title="Mission control">
       <span headerExtra class="row" style="gap:10px">
@@ -66,23 +66,8 @@ import { AdminShell } from './admin-shell';
                     <button class="btn sm" (click)="openInQueue(g.request)">Open</button>
                   </div>
                   <div class="msn-evid">
-                    @for (bit of evidenceBits(g.evidence); track bit.text) {
-                      <span
-                        class="msn-evid__bit"
-                        [class.green]="bit.tone === 'green'"
-                        [class.purple]="bit.tone === 'purple'"
-                        >{{ bit.text }}</span
-                      >
-                    }
+                    <sf-evidence-strip [evidence]="g.evidence" />
                   </div>
-                  @if (g.evidence?.assumptions?.length) {
-                    <div class="msn-assume">
-                      <sf-glyph type="dotted" [size]="13" color="var(--amber)" />
-                      {{ g.evidence!.assumptions.length }} assumption{{
-                        g.evidence!.assumptions.length === 1 ? '' : 's'
-                      }}: {{ g.evidence!.assumptions[0] }}
-                    </div>
-                  }
                   <div class="msn-side">{{ sideEffects(g.request) }}</div>
                 </div>
               } @empty {
@@ -331,27 +316,7 @@ import { AdminShell } from './admin-shell';
       color: var(--faint);
     }
     .msn-evid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px 16px;
       margin: 9px 0 0 24px;
-      font-size: 12px;
-      color: var(--fg2);
-    }
-    .msn-evid__bit.green {
-      color: var(--green-tx);
-      font-weight: 500;
-    }
-    .msn-evid__bit.purple {
-      color: var(--a700);
-    }
-    .msn-assume {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin: 5px 0 0 24px;
-      font-size: 12px;
-      color: var(--amber);
     }
     .msn-side {
       margin: 6px 0 0 24px;
@@ -586,39 +551,6 @@ export class Mission {
 
   gatePill(r: FactoryRequest) {
     return r.gate === 'approve_merge' ? 'MERGE GATE' : 'SPEC GATE';
-  }
-
-  /** spec gate: "3 of 4 lines grounded in answers"; merge gate: tests/diff/reviewer. */
-  evidenceBits(ev: Evidence | null): { text: string; tone: '' | 'green' | 'purple' }[] {
-    if (!ev) return [{ text: 'no evidence recorded', tone: '' }];
-    if (ev.kind === 'spec') {
-      const bits: { text: string; tone: '' | 'green' | 'purple' }[] = [
-        {
-          text: `${ev.grounded_lines ?? 0} of ${ev.total_lines ?? 0} lines grounded in answers`,
-          tone: 'green',
-        },
-      ];
-      if (ev.interview_count)
-        bits.push({
-          text: `spec drafted from interview (${ev.interview_count} Q)`,
-          tone: '',
-        });
-      return bits;
-    }
-    const bits: { text: string; tone: '' | 'green' | 'purple' }[] = [];
-    if (ev.tests_total != null)
-      bits.push({
-        text: `${ev.tests_passed}/${ev.tests_total} tests pass`,
-        tone: 'green',
-      });
-    if (ev.diff_added != null)
-      bits.push({
-        text: `diff +${ev.diff_added} −${ev.diff_removed} · ${ev.files_changed} files`,
-        tone: '',
-      });
-    if (ev.reviewer_verdict)
-      bits.push({ text: `reviewer: ${ev.reviewer_verdict}`, tone: 'purple' });
-    return bits.length ? bits : [{ text: 'no evidence recorded', tone: '' }];
   }
 
   sideEffects(r: FactoryRequest): string {

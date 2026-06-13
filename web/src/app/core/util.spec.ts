@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { FactoryRequest } from './models';
+import { Evidence, FactoryRequest } from './models';
 import {
   boardGlyph,
   clock,
   confirmSteps,
   elapsedShort,
+  evidenceBits,
   gateLabel,
   healthLine,
   inFlight,
@@ -235,5 +236,37 @@ describe('healthLine', () => {
     expect(
       healthLine({ step: 0, of: 4, label: null, health: 'no_signal', seconds_since_event: 12 }),
     ).toBe('no signal for 12s');
+  });
+});
+
+describe('evidenceBits', () => {
+  const base = {
+    grounded_lines: null, total_lines: null, interview_count: null,
+    tests_passed: null, tests_total: null, diff_added: null, diff_removed: null,
+    files_changed: null, reviewer_verdict: null, assumptions: [] as string[],
+  };
+  it('null evidence → single "no evidence recorded" bit', () => {
+    expect(evidenceBits(null)).toEqual([{ text: 'no evidence recorded', tone: '' }]);
+  });
+  it('spec gate → grounded-lines + interview bits', () => {
+    const bits = evidenceBits({ ...base, kind: 'spec', grounded_lines: 3, total_lines: 4, interview_count: 4 } as Evidence);
+    expect(bits[0]).toEqual({ text: '3 of 4 lines grounded in answers', tone: 'green' });
+    expect(bits[1]).toEqual({ text: 'spec drafted from interview (4 Q)', tone: '' });
+  });
+  it('spec gate with no interview omits the interview bit', () => {
+    const bits = evidenceBits({ ...base, kind: 'spec', grounded_lines: 2, total_lines: 3, interview_count: 0 } as Evidence);
+    expect(bits).toHaveLength(1);
+  });
+  it('merge gate → tests + diff + reviewer bits', () => {
+    const bits = evidenceBits({
+      ...base, kind: 'merge', tests_passed: 8, tests_total: 8,
+      diff_added: 412, diff_removed: 38, files_changed: 9, reviewer_verdict: 'no blocking findings',
+    } as Evidence);
+    expect(bits[0]).toEqual({ text: '8/8 tests pass', tone: 'green' });
+    expect(bits[1]).toEqual({ text: 'diff +412 −38 · 9 files', tone: '' });
+    expect(bits[2]).toEqual({ text: 'reviewer: no blocking findings', tone: 'purple' });
+  });
+  it('merge gate with no verification fields → no evidence recorded', () => {
+    expect(evidenceBits({ ...base, kind: 'merge' } as Evidence)).toEqual([{ text: 'no evidence recorded', tone: '' }]);
   });
 });

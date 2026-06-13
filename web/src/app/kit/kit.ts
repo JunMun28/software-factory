@@ -13,8 +13,8 @@ import {
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
-import { FactoryRequest, SpecLine, Turn } from '../core/models';
-import { TYPE_LABEL, confirmSteps } from '../core/util';
+import { Evidence, FactoryRequest, SpecLine, Turn } from '../core/models';
+import { TYPE_LABEL, confirmSteps, evidenceBits } from '../core/util';
 
 /** Reliable focus for dynamically-inserted inputs (the `autofocus` attribute only
  *  works at document parse time, not for @if-rendered overlays). */
@@ -604,4 +604,37 @@ export class CancelConfirm {
   r = input.required<FactoryRequest>();
   kept = output<void>();
   confirmed = output<void>();
+}
+
+/** Shared evidence strip for gate cards (spec §6, §7): spec gates show grounding,
+ *  merge gates show tests/diff/reviewer. Assumptions rendered with the dotted amber
+ *  glyph (same affordance as SpecLines / EscalationBox). */
+@Component({
+  selector: 'sf-evidence-strip',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Glyph],
+  template: `
+    <div class="evstrip">
+      @for (bit of bits(); track bit.text) {
+        <span class="evstrip__bit" [class.green]="bit.tone === 'green'" [class.purple]="bit.tone === 'purple'">{{ bit.text }}</span>
+      }
+    </div>
+    @if (assumptions().length) {
+      <div class="evstrip__assume">
+        <sf-glyph type="dotted" [size]="13" color="var(--amber)" />
+        {{ assumptions().length }} assumption{{ assumptions().length === 1 ? '' : 's' }}: {{ assumptions()[0] }}
+      </div>
+    }
+  `,
+  styles: `
+    .evstrip { display: flex; flex-wrap: wrap; gap: 5px 16px; font-size: 12px; color: var(--fg2); }
+    .evstrip__bit.green { color: var(--green-tx); font-weight: 500; }
+    .evstrip__bit.purple { color: var(--a700); }
+    .evstrip__assume { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 12px; color: var(--amber-tx); }
+  `,
+})
+export class EvidenceStrip {
+  evidence = input<Evidence | null>(null);
+  bits = computed(() => evidenceBits(this.evidence()));
+  assumptions = computed(() => this.evidence()?.assumptions ?? []);
 }

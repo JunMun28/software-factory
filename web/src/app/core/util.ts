@@ -1,4 +1,4 @@
-import { FactoryRequest, RunState } from './models';
+import { Evidence, FactoryRequest, RunState } from './models';
 
 /** API timestamps are UTC; SQLite round-trips them naive, so re-tag before parsing. */
 export function utc(iso: string): Date {
@@ -123,6 +123,31 @@ export function elapsedShort(seconds: number): string {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+export interface EvidenceBit {
+  text: string;
+  tone: '' | 'green' | 'purple';
+}
+
+/** The evidence strip's bits (spec §6): spec gates show grounding, merge gates show
+ *  tests/diff/reviewer. null or a verification-less merge gate → "no evidence recorded". */
+export function evidenceBits(ev: Evidence | null): EvidenceBit[] {
+  const none: EvidenceBit[] = [{ text: 'no evidence recorded', tone: '' }];
+  if (!ev) return none;
+  if (ev.kind === 'spec') {
+    const bits: EvidenceBit[] = [
+      { text: `${ev.grounded_lines ?? 0} of ${ev.total_lines ?? 0} lines grounded in answers`, tone: 'green' },
+    ];
+    if (ev.interview_count) bits.push({ text: `spec drafted from interview (${ev.interview_count} Q)`, tone: '' });
+    return bits;
+  }
+  const bits: EvidenceBit[] = [];
+  if (ev.tests_total != null) bits.push({ text: `${ev.tests_passed}/${ev.tests_total} tests pass`, tone: 'green' });
+  if (ev.diff_added != null)
+    bits.push({ text: `diff +${ev.diff_added} −${ev.diff_removed} · ${ev.files_changed} files`, tone: '' });
+  if (ev.reviewer_verdict) bits.push({ text: `reviewer: ${ev.reviewer_verdict}`, tone: 'purple' });
+  return bits.length ? bits : none;
 }
 
 /** The run row's one-line state: "label · elapsed · health", honest when silent. */
