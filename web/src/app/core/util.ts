@@ -209,6 +209,17 @@ export function plainActivity(run: RunState | null): string | null {
   return phrase;
 }
 
+/** A concise, screen-reader-friendly status line for the submitter's live region.
+ *  Pairs the plain stage label with the live activity while a build is in flight,
+ *  so SR users hear progress as polling updates the page. Submitter-safe by
+ *  construction — built only from plainStage + plainActivity, which never leak
+ *  Control-center vocabulary (CONTEXT.md). */
+export function liveStatus(r: FactoryRequest, run: RunState | null): string {
+  const base = plainStage(r).label;
+  const activity = inFlight(r) ? plainActivity(run) : null;
+  return activity ? `${base} — ${activity}` : base;
+}
+
 /** Flatten the per-request trace into stage-grouped rows for the timeline (ADR 0014).
  *  Steer-note consumption is derived: a step_summary's payload.acked_steer_ids marks both
  *  the consuming step and the consumed notes. */

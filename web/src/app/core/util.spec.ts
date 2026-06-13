@@ -11,6 +11,7 @@ import {
   groupTrace,
   healthLine,
   inFlight,
+  liveStatus,
   plainActivity,
   plainStage,
   timeAgo,
@@ -380,5 +381,49 @@ describe('plainActivity', () => {
   });
   it('returns null for no run', () => {
     expect(plainActivity(null)).toBeNull();
+  });
+});
+
+describe('liveStatus — the submitter aria-live announcement', () => {
+  const run = (label: string | null, step = 6, of = 9) => ({
+    label,
+    step,
+    of,
+    health: 'healthy' as const,
+    seconds_since_event: 5,
+  });
+
+  it('pairs the plain stage with the live activity while building', () => {
+    expect(
+      liveStatus(req({ status: 'approved', stage: 'build' }), run('implementing the change')),
+    ).toBe('Building — making the change · step 6 of 9');
+  });
+
+  it('pairs the plain stage with the live activity during review', () => {
+    expect(
+      liveStatus(req({ status: 'approved', stage: 'review' }), run('running the review pass')),
+    ).toBe('In review — reviewing the work · step 6 of 9');
+  });
+
+  it('falls back to the bare label when nothing is in flight', () => {
+    expect(liveStatus(req({ status: 'pending_approval', stage: 'spec' }), null)).toBe(
+      'Spec drafted',
+    );
+    expect(liveStatus(req({ status: 'done', stage: 'done' }), null)).toBe('Deployed');
+  });
+
+  it('omits activity when a gate or escalation has paused the agents', () => {
+    expect(
+      liveStatus(
+        req({ status: 'approved', stage: 'build', needs_human: true }),
+        run('implementing the change'),
+      ),
+    ).toBe('Building');
+  });
+
+  it('never leaks an internal label into the announcement', () => {
+    expect(
+      liveStatus(req({ status: 'approved', stage: 'build' }), run('git rebase onto main')),
+    ).toBe('Building — working on it · step 6 of 9');
   });
 });
