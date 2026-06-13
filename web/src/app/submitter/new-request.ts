@@ -86,8 +86,9 @@ import { SubShell } from './sub-shell';
             }
             @if (draft.type === 'new') {
               <div>
-                <label class="field-label">What should we call it?</label>
+                <label class="field-label" for="nr-name">What should we call it?</label>
                 <input
+                  id="nr-name"
                   class="input"
                   placeholder="e.g. Quarterly headcount dashboard"
                   [(ngModel)]="draft.newName"
@@ -95,11 +96,12 @@ import { SubShell } from './sub-shell';
               </div>
             }
             <div>
-              <label class="field-label">{{ descLabel() }}</label>
+              <label class="field-label" for="nr-desc">{{ descLabel() }}</label>
               <span class="field-help"
                 >A sentence or two is plenty — we'll ask follow-ups next.</span
               >
               <textarea
+                id="nr-desc"
                 class="input area"
                 placeholder="Describe it in your own words…"
                 [(ngModel)]="draft.desc"
@@ -108,8 +110,13 @@ import { SubShell } from './sub-shell';
             @if (draft.type === 'bug') {
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
                 <div>
-                  <label class="field-label">Where did you see it?</label
-                  ><input class="input" placeholder="Page or screen" [(ngModel)]="draft.bugWhere" />
+                  <label class="field-label" for="nr-where">Where did you see it?</label
+                  ><input
+                    id="nr-where"
+                    class="input"
+                    placeholder="Page or screen"
+                    [(ngModel)]="draft.bugWhere"
+                  />
                 </div>
                 <div>
                   <label class="field-label">How often?</label>
@@ -144,7 +151,7 @@ import { SubShell } from './sub-shell';
             }
             @if (draft.type !== 'bug') {
               <div>
-                <label class="field-label"
+                <label class="field-label" for="nr-reach"
                   >Who's affected?
                   <span style="font-weight:400;color:var(--faint)">(optional)</span></label
                 >
@@ -160,6 +167,7 @@ import { SubShell } from './sub-shell';
                   }
                 </div>
                 <input
+                  id="nr-reach"
                   class="input"
                   placeholder="…or describe them, e.g. all shift supervisors in Penang"
                   [ngModel]="draft.reachText"
@@ -167,7 +175,7 @@ import { SubShell } from './sub-shell';
                 />
               </div>
               <div>
-                <label class="field-label"
+                <label class="field-label" for="nr-impact"
                   >What's the impact?
                   <span style="font-weight:400;color:var(--faint)">(optional)</span></label
                 >
@@ -186,6 +194,7 @@ import { SubShell } from './sub-shell';
                 </div>
                 @if (draft.impactMetric) {
                   <input
+                    id="nr-impact"
                     class="input fade-in"
                     [placeholder]="metricPlaceholder()"
                     [(ngModel)]="draft.impactValue"

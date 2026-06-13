@@ -19,6 +19,14 @@ _(nothing in progress)_
 
 ## Done   (most recent first)
 
+- 2026-06-14 · **a11y: intake-form labels associated with their inputs** · the
+  front-door `new-request.ts` form had visual-only `<label>`s (no `for`/`id`), so
+  its 5 native controls had no accessible name. Added `for`/`id` pairing
+  (`nr-name`/`-desc`/`-where`/`-reach`/`-impact`) — zero visual change, also adds
+  label click-to-focus · evidence: `make verify` ✓; live form — all 5 inputs
+  resolve `input.labels[0]` to their field label (verified across bug/enh/new
+  types).
+
 - 2026-06-14 · **fix: focused action buttons no longer hijacked by Mission's
   global shortcuts** · the `onKey` `window:keydown` handler fired the
   J/K/A/S/Enter shortcuts for any non-input target, so Enter on a focused
@@ -147,6 +155,11 @@ _(nothing in progress)_
   computed style (1×1px, `clip: rect(0,0,0,0)`); no visual regression.
 
 ## Backlog (ranked by impact ÷ risk)
+
+- Intake-form custom widgets (app / frequency dropdown buttons; urgency / reach /
+  impact segmented button groups) lack field-context — wrap each `.seg` group in
+  `role="group" aria-labelledby` and point the dropdown buttons at their label ·
+  Accessibility · impact:M · risk:L
 
 - Feed action buttons (React / Open / More in `admin/feed.ts`) are non-functional
   placeholders (no `(click)` handler) — wire them or remove the dead controls ·
