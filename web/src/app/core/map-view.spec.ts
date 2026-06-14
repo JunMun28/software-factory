@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { FactoryRequest, MissionOut } from './models';
-import { factoryColumns, MAP_STAGES } from './map-view';
+import { FactoryRequest, MissionOut, RequestDetail } from './models';
+import { deliveryGates, deliveryStages, factoryColumns, MAP_STAGES } from './map-view';
 
 /** Minimal FactoryRequest factory — only the fields the map reads. */
 function req(over: Partial<FactoryRequest>): FactoryRequest {
@@ -67,5 +67,55 @@ describe('factoryColumns', () => {
     const v = factoryColumns(reqs, mission());
     expect(v.gates.find((g) => g.key === 'approve_spec')!.waiting).toBe(2);
     expect(v.gates.find((g) => g.key === 'approve_merge')!.waiting).toBe(0);
+  });
+});
+
+function detail(over: Partial<RequestDetail>): RequestDetail {
+  return {
+    ...req({}),
+    turns: [], spec_lines: [], comments: [], audit: [], duplicate: null,
+    run: null, evidence: null,
+    ...over,
+  } as RequestDetail;
+}
+
+describe('deliveryStages', () => {
+  it('marks passed stages done, current stage running, later stages todo', () => {
+    const d = detail({ stage: 'build', status: 'approved', run: { step: 3, of: 6, label: 'implementing the change', health: 'healthy', seconds_since_event: 0 } });
+    const s = deliveryStages(d);
+    const at = (k: string) => s.find((x) => x.key === k)!;
+    expect(at('intake').state).toBe('done');
+    expect(at('intake').pct).toBe(100);
+    expect(at('spec').state).toBe('done');
+    expect(at('architecture').state).toBe('done');
+    expect(at('build').state).toBe('run');
+    expect(at('build').pct).toBe(50); // 3/6
+    expect(at('review').state).toBe('todo');
+    expect(at('review').pct).toBe(0);
+    expect(at('done').state).toBe('todo');
+  });
+
+  it('labels each stage with its Artifact', () => {
+    const s = deliveryStages(detail({ stage: 'spec', status: 'pending_approval', gate: 'approve_spec' }));
+    expect(s.find((x) => x.key === 'spec')!.artifact).toBe('SPEC.md');
+    expect(s.find((x) => x.key === 'build')!.artifact).toBe('Tests → implementation');
+  });
+
+  it('shows the current stage as gate when parked at a gate', () => {
+    const s = deliveryStages(detail({ stage: 'spec', status: 'pending_approval', gate: 'approve_spec' }));
+    expect(s.find((x) => x.key === 'spec')!.state).toBe('gate');
+  });
+});
+
+describe('deliveryGates', () => {
+  it('passes earlier gates and leaves later ones pending', () => {
+    const g = deliveryGates(detail({ stage: 'build', status: 'approved' }));
+    expect(g.find((x) => x.label === 'Spec approval')!.state).toBe('passed');
+    expect(g.find((x) => x.label === 'Merge gate')!.state).toBe('pending');
+  });
+
+  it('marks the active gate as awaiting', () => {
+    const g = deliveryGates(detail({ stage: 'review', status: 'approved', gate: 'approve_merge' }));
+    expect(g.find((x) => x.label === 'Merge gate')!.state).toBe('await');
   });
 });
