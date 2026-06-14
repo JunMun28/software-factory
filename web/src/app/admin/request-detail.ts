@@ -60,7 +60,7 @@ import { AdminShell } from './admin-shell';
             <div class="rd-skel rd-skel--line"></div>
             <div class="rd-skel rd-skel--line rd-skel--short"></div>
             <div class="rd-skel-rings" aria-hidden="true">
-              @for (_ of [0,1,2,3,4,5]; track $index) {
+              @for (_ of [0, 1, 2, 3, 4, 5]; track $index) {
                 <div class="rd-skel rd-skel--ring"></div>
               }
             </div>
@@ -171,84 +171,86 @@ import { AdminShell } from './admin-shell';
             @if (view() === 'map') {
               <!-- Map tabpanel -->
               <div role="tabpanel" aria-label="Delivery map">
-              <div class="rd-dmap">
-                @for (s of dstages(); track s.key) {
-                  <div class="rd-dstage">
-                    <div
-                      class="rd-dring"
-                      [class.rd-dring--done]="s.state === 'done'"
-                      [class.rd-dring--todo]="s.state === 'todo'"
-                      [style.--rp]="s.state === 'done' ? 100 : s.pct"
-                      [style.--rc]="ringColor(s)"
-                    >
-                      <span class="rd-dring__n">{{ s.pct }}%</span>
+                <div class="rd-dmap">
+                  @for (s of dstages(); track s.key) {
+                    <div class="rd-dstage">
+                      <div
+                        class="rd-dring"
+                        [class.rd-dring--done]="s.state === 'done'"
+                        [class.rd-dring--todo]="s.state === 'todo'"
+                        [style.--rp]="s.state === 'done' ? 100 : s.pct"
+                        [style.--rc]="ringColor(s)"
+                      >
+                        <span class="rd-dring__n">{{ s.pct }}%</span>
+                      </div>
+                      <div class="rd-dname">{{ s.label }}</div>
+                      <div class="rd-dart" [class.todo]="s.state === 'todo'">{{ s.artifact }}</div>
+                      <div class="rd-ddetail">{{ s.detail }}</div>
                     </div>
-                    <div class="rd-dname">{{ s.label }}</div>
-                    <div class="rd-dart" [class.todo]="s.state === 'todo'">{{ s.artifact }}</div>
-                    <div class="rd-ddetail">{{ s.detail }}</div>
-                  </div>
-                }
+                  }
+                </div>
+                <div class="rd-dgates">
+                  @for (g of dgates(); track g.label) {
+                    <span class="rd-dgate" [attr.data-st]="g.state"
+                      >{{ g.label }} · {{ g.state }}</span
+                    >
+                  }
+                </div>
               </div>
-              <div class="rd-dgates">
-                @for (g of dgates(); track g.label) {
-                  <span class="rd-dgate" [attr.data-st]="g.state"
-                    >{{ g.label }} · {{ g.state }}</span
-                  >
-                }
-              </div>
-              </div><!-- /tabpanel map -->
+              <!-- /tabpanel map -->
             } @else {
               <!-- Trace tabpanel -->
               <div role="tabpanel" aria-label="Trace">
-              @for (g of trace(); track g.stage) {
-                <div class="rd-stage">
-                  <div class="rd-stage__head">
-                    <sf-glyph type="ring" [size]="12" color="var(--a500)" [fill]="0.5" />
-                    {{ g.label }}
-                  </div>
-                  @for (row of g.rows; track row.id) {
-                    @if (row.kind === 'steer_note') {
-                      <div class="rd-steer">
-                        <sf-icon name="back" [size]="12" color="var(--a600)" />
-                        <span class="rd-steer__txt">{{ row.title }}</span>
-                        <span class="rd-steer__tag">{{ row.acked ? 'honored' : 'queued' }}</span>
-                      </div>
-                    } @else {
-                      <div class="rd-row" [class.rd-row--gate]="row.kind === 'gate_event'">
-                        <span class="rd-row__dot"
-                          ><sf-glyph [type]="rowGlyph(row.kind)" [size]="11" color="var(--muted)"
-                        /></span>
-                        <div class="rd-row__body">
-                          <div class="rd-row__head">
-                            <span class="rd-row__title">{{ rowTitle(row) }}</span>
-                            @if (row.acksSteer) {
-                              <span class="rd-row__ack">honoring your note</span>
-                            }
-                            <span class="rd-row__time">{{ ago(row.created_at) }}</span>
-                          </div>
-                          @if (row.why) {
-                            <button class="rd-row__why" (click)="toggleWhy(row.id)">
-                              <sf-icon
-                                [name]="openWhy().has(row.id) ? 'chevDown' : 'chevRight'"
-                                [size]="12"
-                              />
-                              why
-                            </button>
-                            @if (openWhy().has(row.id)) {
-                              <div class="rd-row__whytext">{{ row.why }}</div>
-                            }
-                          }
+                @for (g of trace(); track g.stage) {
+                  <div class="rd-stage">
+                    <div class="rd-stage__head">
+                      <sf-glyph type="ring" [size]="12" color="var(--a500)" [fill]="0.5" />
+                      {{ g.label }}
+                    </div>
+                    @for (row of g.rows; track row.id) {
+                      @if (row.kind === 'steer_note') {
+                        <div class="rd-steer">
+                          <sf-icon name="back" [size]="12" color="var(--a600)" />
+                          <span class="rd-steer__txt">{{ row.title }}</span>
+                          <span class="rd-steer__tag">{{ row.acked ? 'honored' : 'queued' }}</span>
                         </div>
-                      </div>
+                      } @else {
+                        <div class="rd-row" [class.rd-row--gate]="row.kind === 'gate_event'">
+                          <span class="rd-row__dot"
+                            ><sf-glyph [type]="rowGlyph(row.kind)" [size]="11" color="var(--muted)"
+                          /></span>
+                          <div class="rd-row__body">
+                            <div class="rd-row__head">
+                              <span class="rd-row__title">{{ rowTitle(row) }}</span>
+                              @if (row.acksSteer) {
+                                <span class="rd-row__ack">honoring your note</span>
+                              }
+                              <span class="rd-row__time">{{ ago(row.created_at) }}</span>
+                            </div>
+                            @if (row.why) {
+                              <button class="rd-row__why" (click)="toggleWhy(row.id)">
+                                <sf-icon
+                                  [name]="openWhy().has(row.id) ? 'chevDown' : 'chevRight'"
+                                  [size]="12"
+                                />
+                                why
+                              </button>
+                              @if (openWhy().has(row.id)) {
+                                <div class="rd-row__whytext">{{ row.why }}</div>
+                              }
+                            }
+                          </div>
+                        </div>
+                      }
                     }
-                  }
-                </div>
-              } @empty {
-                <div style="color:var(--faint);font-size:12.5px;padding:8px 0">
-                  No trace yet — work begins after the spec gate.
-                </div>
-              }
-              </div><!-- /tabpanel trace -->
+                  </div>
+                } @empty {
+                  <div style="color:var(--faint);font-size:12.5px;padding:8px 0">
+                    No trace yet — work begins after the spec gate.
+                  </div>
+                }
+              </div>
+              <!-- /tabpanel trace -->
             }
 
             <!-- comments -->
@@ -343,7 +345,7 @@ import { AdminShell } from './admin-shell';
       gap: 9px;
     }
     .rd-row__ack {
-      font-size: 11px;        /* P0: raised from 10.5px */
+      font-size: 11px; /* P0: raised from 10.5px */
       color: var(--accent-tx);
       background: var(--a50);
       border-radius: 4px;
@@ -390,7 +392,7 @@ import { AdminShell } from './admin-shell';
       color: var(--fg2);
     }
     .rd-steer__tag {
-      font-size: 11px;        /* P0: raised from 10.5px */
+      font-size: 11px; /* P0: raised from 10.5px */
       color: var(--muted);
       background: var(--surface-2);
       border-radius: 4px;
@@ -440,18 +442,47 @@ import { AdminShell } from './admin-shell';
       animation: rd-shimmer 1.4s ease infinite alternate;
     }
     @keyframes rd-shimmer {
-      from { opacity: 0.4; }
-      to   { opacity: 0.9; }
+      from {
+        opacity: 0.4;
+      }
+      to {
+        opacity: 0.9;
+      }
     }
     @media (prefers-reduced-motion: reduce) {
-      .rd-skel { animation: none; opacity: 0.5; }
+      .rd-skel {
+        animation: none;
+        opacity: 0.5;
+      }
     }
-    .rd-skel--chip  { width: 64px; height: 22px; border-radius: 999px; }
-    .rd-skel--title { width: 70%; height: 30px; border-radius: 6px; margin: 4px 0; }
-    .rd-skel--line  { width: 50%; height: 14px; border-radius: 4px; }
-    .rd-skel--short { width: 35%; }
-    .rd-skel--ring  { width: 50px; height: 50px; border-radius: 50%; flex: none; }
-    .rd-skel--block { height: 44px; }
+    .rd-skel--chip {
+      width: 64px;
+      height: 22px;
+      border-radius: 999px;
+    }
+    .rd-skel--title {
+      width: 70%;
+      height: 30px;
+      border-radius: 6px;
+      margin: 4px 0;
+    }
+    .rd-skel--line {
+      width: 50%;
+      height: 14px;
+      border-radius: 4px;
+    }
+    .rd-skel--short {
+      width: 35%;
+    }
+    .rd-skel--ring {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      flex: none;
+    }
+    .rd-skel--block {
+      height: 44px;
+    }
     .rd-skel-rings {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
@@ -476,7 +507,7 @@ import { AdminShell } from './admin-shell';
     .rd-dmap::before {
       content: '';
       position: absolute;
-      top: 41px;            /* center on 50px rings with 16px top padding */
+      top: 41px; /* center on 50px rings with 16px top padding */
       left: calc(100% / 12);
       right: calc(100% / 12);
       height: 2px;
@@ -488,11 +519,17 @@ import { AdminShell } from './admin-shell';
       animation: rd-rail 10s linear infinite;
     }
     @keyframes rd-rail {
-      from { background-position: 0% 0%; }
-      to   { background-position: 200% 0%; }
+      from {
+        background-position: 0% 0%;
+      }
+      to {
+        background-position: 200% 0%;
+      }
     }
     @media (prefers-reduced-motion: reduce) {
-      .rd-dmap::before { animation: none; }
+      .rd-dmap::before {
+        animation: none;
+      }
     }
     /* Direction arrow at rail end */
     .rd-dmap::after {
@@ -513,7 +550,7 @@ import { AdminShell } from './admin-shell';
       text-align: center;
       gap: 5px;
       position: relative;
-      z-index: 1;           /* sit above the rail */
+      z-index: 1; /* sit above the rail */
     }
 
     /* ── Delivery map ring — 3 visual states (P1) ── */
@@ -527,7 +564,7 @@ import { AdminShell } from './admin-shell';
     }
     /* done: fully filled solid disc */
     .rd-dring.rd-dring--done {
-      background: var(--rc);   /* solid fill — no track needed */
+      background: var(--rc); /* solid fill — no track needed */
     }
     /* todo: hollow/faint — only a faint border, no fill */
     .rd-dring.rd-dring--todo {
@@ -572,14 +609,14 @@ import { AdminShell } from './admin-shell';
       font-weight: 700;
     }
     .rd-dart {
-      font-size: 11px;        /* P0: raised from 10.5px */
+      font-size: 11px; /* P0: raised from 10.5px */
       color: var(--fg2);
     }
     .rd-dart.todo {
       color: var(--faint);
     }
     .rd-ddetail {
-      font-size: 11px;        /* P0: raised from 10px */
+      font-size: 11px; /* P0: raised from 10px */
       color: var(--faint);
       line-height: 1.3;
     }
@@ -590,7 +627,7 @@ import { AdminShell } from './admin-shell';
       margin-bottom: 18px;
     }
     .rd-dgate {
-      font-size: 11.5px;      /* P0: raised from 10.5px; status-bearing */
+      font-size: 11.5px; /* P0: raised from 10.5px; status-bearing */
       font-weight: 600;
       padding: 3px 9px;
       border-radius: 999px;

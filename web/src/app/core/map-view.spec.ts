@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { FactoryRequest, MissionOut, RequestDetail } from './models';
-import { deliveryGates, deliveryStages, factoryColumns, MAP_STAGES, MapCard, sortedExceptions } from './map-view';
+import {
+  deliveryGates,
+  deliveryStages,
+  factoryColumns,
+  MAP_STAGES,
+  MapCard,
+  sortedExceptions,
+} from './map-view';
 
 /** Minimal FactoryRequest factory — only the fields the map reads. */
 function req(over: Partial<FactoryRequest>): FactoryRequest {
@@ -197,7 +204,14 @@ describe('sortedExceptions', () => {
   });
 
   it('caps at the given limit', () => {
-    const cards = [card(1, 'stalled'), card(2, 'gate'), card(3, 'run'), card(4, 'run'), card(5, 'run'), card(6, 'done')];
+    const cards = [
+      card(1, 'stalled'),
+      card(2, 'gate'),
+      card(3, 'run'),
+      card(4, 'run'),
+      card(5, 'run'),
+      card(6, 'done'),
+    ];
     expect(sortedExceptions(cards, 3)).toHaveLength(3);
   });
 

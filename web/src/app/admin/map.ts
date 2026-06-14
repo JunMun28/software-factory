@@ -20,7 +20,9 @@ import { AdminShell } from './admin-shell';
         <!-- P2 toolbar: filter + search -->
         <span class="seg fm-toolbar" style="margin-left:12px">
           <button [class.on]="filter() === 'all'" (click)="filter.set('all')">All</button>
-          <button [class.on]="filter() === 'attention'" (click)="filter.set('attention')">Needs attention</button>
+          <button [class.on]="filter() === 'attention'" (click)="filter.set('attention')">
+            Needs attention
+          </button>
         </span>
         <input
           class="fm-search"
@@ -45,7 +47,7 @@ import { AdminShell } from './admin-shell';
         @if (!loaded()) {
           <!-- Loading skeleton -->
           <div class="fm-lane fm-skel-lane">
-            @for (_ of [0,1,2,3,4,5]; track $index) {
+            @for (_ of [0, 1, 2, 3, 4, 5]; track $index) {
               <div class="fm-stage">
                 <div class="fm-hd">
                   <div class="fm-skel fm-skel--ring"></div>
@@ -65,10 +67,7 @@ import { AdminShell } from './admin-shell';
               @for (col of columns(); track col.key) {
                 <div class="fm-stage">
                   <!-- Sticky per-column ring header (P1) -->
-                  <div
-                    class="fm-hd"
-                    [attr.aria-label]="hdAriaLabel(col)"
-                  >
+                  <div class="fm-hd" [attr.aria-label]="hdAriaLabel(col)">
                     <div
                       class="fm-ring"
                       [style.--rp]="ringPct(col)"
@@ -85,7 +84,8 @@ import { AdminShell } from './admin-shell';
                         [attr.aria-label]="waitingAriaLabel(col, w)"
                         (click)="filterToWaiting(col)"
                       >
-                        {{ count(col) }} {{ count(col) === 1 ? 'item' : 'items' }} · {{ w }} {{ waitingLabel(col) }} →
+                        {{ count(col) }} {{ count(col) === 1 ? 'item' : 'items' }} · {{ w }}
+                        {{ waitingLabel(col) }} →
                       </button>
                     } @else {
                       <div class="fm-sub">
@@ -117,7 +117,9 @@ import { AdminShell } from './admin-shell';
                             }
                             <span class="fm-card__ti" [title]="c.title">{{ c.title }}</span>
                           </div>
-                          <div class="fm-card__ref" [title]="c.ref + ' · ' + c.app">{{ c.ref }} · {{ c.app }}</div>
+                          <div class="fm-card__ref" [title]="c.ref + ' · ' + c.app">
+                            {{ c.ref }} · {{ c.app }}
+                          </div>
                           <div class="fm-card__meta">
                             @if (pill(c); as p) {
                               <span class="fm-pill" [attr.data-st]="c.state">{{ p }}</span>
@@ -131,7 +133,10 @@ import { AdminShell } from './admin-shell';
 
                       <!-- +N running collapse chip -->
                       @if (extraRun > 0) {
-                        <div class="fm-chip fm-chip--run" [attr.aria-label]="extraRun + ' more running'">
+                        <div
+                          class="fm-chip fm-chip--run"
+                          [attr.aria-label]="extraRun + ' more running'"
+                        >
                           <span class="fm-pulse fm-pulse--sm" aria-hidden="true"></span>
                           +{{ extraRun }} running
                         </div>
@@ -234,7 +239,7 @@ import { AdminShell } from './admin-shell';
       grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 0;
       padding: 6px 0;
-      min-width: 768px;   /* allow scroll below 768, fill above */
+      min-width: 768px; /* allow scroll below 768, fill above */
     }
     .fm-lane::before {
       content: '';
@@ -250,12 +255,20 @@ import { AdminShell } from './admin-shell';
       animation: fm-rail 8s linear infinite;
     }
     @keyframes fm-rail {
-      from { background-position: 0% 0%; }
-      to   { background-position: 200% 0%; }
+      from {
+        background-position: 0% 0%;
+      }
+      to {
+        background-position: 200% 0%;
+      }
     }
     @media (prefers-reduced-motion: reduce) {
-      .fm-lane::before { animation: none; }
-      .fm-ring { transition: none !important; }
+      .fm-lane::before {
+        animation: none;
+      }
+      .fm-ring {
+        transition: none !important;
+      }
     }
     .fm-stage {
       padding: 0 9px;
@@ -311,7 +324,7 @@ import { AdminShell } from './admin-shell';
     }
     /* Sub-line: plain item count */
     .fm-sub {
-      font-size: 11.5px;   /* raised from 10.5px (P0) */
+      font-size: 11.5px; /* raised from 10.5px (P0) */
       color: var(--muted);
     }
     /* Sub-line: interactive amber waiting chip */
@@ -319,7 +332,7 @@ import { AdminShell } from './admin-shell';
       display: inline-flex;
       align-items: center;
       gap: 0;
-      font-size: 11.5px;   /* raised from 10.5px (P0) */
+      font-size: 11.5px; /* raised from 10.5px (P0) */
       font-weight: 600;
       color: var(--amber-tx);
       background: var(--amber-bg);
@@ -331,7 +344,9 @@ import { AdminShell } from './admin-shell';
       transition: opacity var(--dur) var(--ease);
       white-space: nowrap;
     }
-    .fm-sub--wait:hover { opacity: 0.8; }
+    .fm-sub--wait:hover {
+      opacity: 0.8;
+    }
 
     /* ── Card body ── */
     .fm-cards {
@@ -345,7 +360,7 @@ import { AdminShell } from './admin-shell';
       text-align: left;
       width: 100%;
       border: 1px solid var(--border);
-      border-left-width: 3px;         /* spine (P1) */
+      border-left-width: 3px; /* spine (P1) */
       border-left-color: var(--border);
       border-radius: var(--r-lg);
       background: var(--surface);
@@ -403,11 +418,19 @@ import { AdminShell } from './admin-shell';
       inset: -3px;
     }
     @keyframes fm-pulse {
-      from { transform: scale(0.6); opacity: 0.5; }
-      to   { transform: scale(1.6); opacity: 0; }
+      from {
+        transform: scale(0.6);
+        opacity: 0.5;
+      }
+      to {
+        transform: scale(1.6);
+        opacity: 0;
+      }
     }
     @media (prefers-reduced-motion: reduce) {
-      .fm-pulse::after { animation: none; }
+      .fm-pulse::after {
+        animation: none;
+      }
     }
 
     /* ── Card text rows ── */
@@ -425,8 +448,8 @@ import { AdminShell } from './admin-shell';
     }
     .fm-card__ref {
       font-family: var(--mono);
-      font-size: 11px;       /* raised from 10px (P0); --faint → --muted */
-      color: var(--muted);   /* raised from --faint (P0) */
+      font-size: 11px; /* raised from 10px (P0); --faint → --muted */
+      color: var(--muted); /* raised from --faint (P0) */
       margin-top: 2px;
       white-space: nowrap;
       overflow: hidden;
@@ -439,7 +462,7 @@ import { AdminShell } from './admin-shell';
       margin-top: 7px;
     }
     .fm-pill {
-      font-size: 11.5px;    /* raised from 8.5px (P0) */
+      font-size: 11.5px; /* raised from 8.5px (P0) */
       font-weight: 700;
       /* removed text-transform:uppercase + letter-spacing (P0) */
       padding: 1px 6px;
@@ -467,7 +490,7 @@ import { AdminShell } from './admin-shell';
     }
     .fm-step {
       font-family: var(--mono);
-      font-size: 11px;    /* raised from 10px (P0) */
+      font-size: 11px; /* raised from 10px (P0) */
       color: var(--muted);
       margin-left: auto;
     }
@@ -522,16 +545,35 @@ import { AdminShell } from './admin-shell';
       animation: fm-shimmer 1.4s ease infinite alternate;
     }
     @keyframes fm-shimmer {
-      from { opacity: 0.4; }
-      to   { opacity: 0.9; }
+      from {
+        opacity: 0.4;
+      }
+      to {
+        opacity: 0.9;
+      }
     }
     @media (prefers-reduced-motion: reduce) {
-      .fm-skel { animation: none; opacity: 0.5; }
+      .fm-skel {
+        animation: none;
+        opacity: 0.5;
+      }
     }
-    .fm-skel--ring  { width: 58px; height: 58px; border-radius: 50%; }
-    .fm-skel--name  { width: 70%; height: 14px; }
-    .fm-skel--sub   { width: 50%; height: 11px; }
-    .fm-skel--card  { height: 72px; }
+    .fm-skel--ring {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+    }
+    .fm-skel--name {
+      width: 70%;
+      height: 14px;
+    }
+    .fm-skel--sub {
+      width: 50%;
+      height: 11px;
+    }
+    .fm-skel--card {
+      height: 72px;
+    }
   `,
 })
 export class FactoryMap {
@@ -654,15 +696,16 @@ export class FactoryMap {
 
   ringAriaLabel(col: MapColumn): string {
     const color = this.hotColor(col);
-    const worstState = color === 'var(--red)'
-      ? 'has stalled items'
-      : color === 'var(--amber)'
-      ? 'has items awaiting approval'
-      : color === 'var(--a500)'
-      ? 'has running items'
-      : color === 'var(--green)'
-      ? 'all done'
-      : 'idle';
+    const worstState =
+      color === 'var(--red)'
+        ? 'has stalled items'
+        : color === 'var(--amber)'
+          ? 'has items awaiting approval'
+          : color === 'var(--a500)'
+            ? 'has running items'
+            : color === 'var(--green)'
+              ? 'all done'
+              : 'idle';
     return `${col.label}: ${this.count(col)} items, ${worstState}`;
   }
 
