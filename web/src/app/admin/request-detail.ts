@@ -9,6 +9,7 @@ import { ProgressEvent, RequestDetail } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { STAGE_LABEL, TraceGroup, groupTrace, timeAgo } from '../core/util';
+import { DeliveryGate, DeliveryStage, deliveryGates, deliveryStages } from '../core/map-view';
 import {
   ApproveModal,
   Avatar,
@@ -126,55 +127,82 @@ import { AdminShell } from './admin-shell';
               </div>
             }
 
-            <!-- trace timeline -->
-            <div class="section-eyebrow" style="margin:8px 0 12px">Trace</div>
-            @for (g of trace(); track g.stage) {
-              <div class="rd-stage">
-                <div class="rd-stage__head">
-                  <sf-glyph type="ring" [size]="12" color="var(--a500)" [fill]="0.5" />
-                  {{ g.label }}
-                </div>
-                @for (row of g.rows; track row.id) {
-                  @if (row.kind === 'steer_note') {
-                    <div class="rd-steer">
-                      <sf-icon name="back" [size]="12" color="var(--a600)" />
-                      <span class="rd-steer__txt">{{ row.title }}</span>
-                      <span class="rd-steer__tag">{{ row.acked ? 'honored' : 'queued' }}</span>
+            <!-- trace / map toggle -->
+            <div class="row" style="margin:8px 0 14px;justify-content:space-between">
+              <span class="section-eyebrow">{{ view() === 'map' ? 'Delivery map' : 'Trace' }}</span>
+              <div class="rd-seg" role="group" aria-label="view">
+                <button class="rd-seg__b" [class.on]="view() === 'trace'" (click)="view.set('trace')">Trace</button>
+                <button class="rd-seg__b" [class.on]="view() === 'map'" (click)="view.set('map')">Map</button>
+              </div>
+            </div>
+
+            @if (view() === 'map') {
+              <div class="rd-dmap">
+                @for (s of dstages(); track s.key; let i = $index) {
+                  <div class="rd-dstage">
+                    <div class="rd-dring" [style.--rp]="s.pct" [style.--rc]="ringColor(s)">
+                      <span class="rd-dring__n">{{ s.pct }}%</span>
                     </div>
-                  } @else {
-                    <div class="rd-row" [class.rd-row--gate]="row.kind === 'gate_event'">
-                      <span class="rd-row__dot"
-                        ><sf-glyph [type]="rowGlyph(row.kind)" [size]="11" color="var(--muted)"
-                      /></span>
-                      <div class="rd-row__body">
-                        <div class="rd-row__head">
-                          <span class="rd-row__title">{{ rowTitle(row) }}</span>
-                          @if (row.acksSteer) {
-                            <span class="rd-row__ack">honoring your note</span>
-                          }
-                          <span class="rd-row__time">{{ ago(row.created_at) }}</span>
-                        </div>
-                        @if (row.why) {
-                          <button class="rd-row__why" (click)="toggleWhy(row.id)">
-                            <sf-icon
-                              [name]="openWhy().has(row.id) ? 'chevDown' : 'chevRight'"
-                              [size]="12"
-                            />
-                            why
-                          </button>
-                          @if (openWhy().has(row.id)) {
-                            <div class="rd-row__whytext">{{ row.why }}</div>
-                          }
-                        }
-                      </div>
-                    </div>
-                  }
+                    <div class="rd-dname">{{ s.label }}</div>
+                    <div class="rd-dart" [class.todo]="s.state === 'todo'">{{ s.artifact }}</div>
+                    <div class="rd-ddetail">{{ s.detail }}</div>
+                  </div>
                 }
               </div>
-            } @empty {
-              <div style="color:var(--faint);font-size:12.5px;padding:8px 0">
-                No trace yet — work begins after the spec gate.
+              <div class="rd-dgates">
+                @for (g of dgates(); track g.label) {
+                  <span class="rd-dgate" [attr.data-st]="g.state">{{ g.label }} · {{ g.state }}</span>
+                }
               </div>
+            } @else {
+              @for (g of trace(); track g.stage) {
+                <div class="rd-stage">
+                  <div class="rd-stage__head">
+                    <sf-glyph type="ring" [size]="12" color="var(--a500)" [fill]="0.5" />
+                    {{ g.label }}
+                  </div>
+                  @for (row of g.rows; track row.id) {
+                    @if (row.kind === 'steer_note') {
+                      <div class="rd-steer">
+                        <sf-icon name="back" [size]="12" color="var(--a600)" />
+                        <span class="rd-steer__txt">{{ row.title }}</span>
+                        <span class="rd-steer__tag">{{ row.acked ? 'honored' : 'queued' }}</span>
+                      </div>
+                    } @else {
+                      <div class="rd-row" [class.rd-row--gate]="row.kind === 'gate_event'">
+                        <span class="rd-row__dot"
+                          ><sf-glyph [type]="rowGlyph(row.kind)" [size]="11" color="var(--muted)"
+                        /></span>
+                        <div class="rd-row__body">
+                          <div class="rd-row__head">
+                            <span class="rd-row__title">{{ rowTitle(row) }}</span>
+                            @if (row.acksSteer) {
+                              <span class="rd-row__ack">honoring your note</span>
+                            }
+                            <span class="rd-row__time">{{ ago(row.created_at) }}</span>
+                          </div>
+                          @if (row.why) {
+                            <button class="rd-row__why" (click)="toggleWhy(row.id)">
+                              <sf-icon
+                                [name]="openWhy().has(row.id) ? 'chevDown' : 'chevRight'"
+                                [size]="12"
+                              />
+                              why
+                            </button>
+                            @if (openWhy().has(row.id)) {
+                              <div class="rd-row__whytext">{{ row.why }}</div>
+                            }
+                          }
+                        </div>
+                      </div>
+                    }
+                  }
+                </div>
+              } @empty {
+                <div style="color:var(--faint);font-size:12.5px;padding:8px 0">
+                  No trace yet — work begins after the spec gate.
+                </div>
+              }
             }
 
             <!-- comments -->
@@ -328,6 +356,105 @@ import { AdminShell } from './admin-shell';
       padding: 9px 0;
       border-bottom: 1px solid var(--hairline);
     }
+    .rd-seg {
+      display: inline-flex;
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--surface-2);
+    }
+    .rd-seg__b {
+      border: 0;
+      cursor: pointer;
+      font-family: var(--body);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      background: transparent;
+      padding: 4px 12px;
+      border-radius: 6px;
+    }
+    .rd-seg__b.on {
+      background: var(--a500);
+      color: #fff;
+    }
+    .rd-dmap {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .rd-dstage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 5px;
+    }
+    .rd-dring {
+      position: relative;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: conic-gradient(var(--rc) calc(var(--rp) * 1%), var(--surface-3) 0);
+    }
+    .rd-dring::before {
+      content: '';
+      position: absolute;
+      inset: 5px;
+      border-radius: 50%;
+      background: var(--bg);
+    }
+    .rd-dring__n {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .rd-dname {
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+    .rd-dart {
+      font-size: 10.5px;
+      color: var(--fg2);
+    }
+    .rd-dart.todo {
+      color: var(--faint);
+    }
+    .rd-ddetail {
+      font-size: 10px;
+      color: var(--faint);
+      line-height: 1.3;
+    }
+    .rd-dgates {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .rd-dgate {
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      background: var(--surface-2);
+      text-transform: capitalize;
+    }
+    .rd-dgate[data-st='passed'] {
+      color: var(--green-tx);
+      background: var(--green-bg);
+      border-color: var(--green-line);
+    }
+    .rd-dgate[data-st='await'] {
+      color: var(--amber-tx);
+      background: var(--amber-bg);
+      border-color: var(--amber-line);
+    }
   `,
 })
 export class RequestDetailPage {
@@ -345,6 +472,30 @@ export class RequestDetailPage {
   openWhy = signal<Set<number>>(new Set());
   stageLabel = STAGE_LABEL;
   ago = timeAgo;
+
+  view = signal<'trace' | 'map'>(
+    this.route.snapshot.queryParamMap.get('view') === 'map' ? 'map' : 'trace',
+  );
+  dstages = computed<DeliveryStage[]>(() => {
+    const r = this.d();
+    return r ? deliveryStages(r) : [];
+  });
+  dgates = computed<DeliveryGate[]>(() => {
+    const r = this.d();
+    return r ? deliveryGates(r) : [];
+  });
+
+  ringColor(s: DeliveryStage): string {
+    return s.state === 'done'
+      ? 'var(--green)'
+      : s.state === 'gate'
+        ? 'var(--amber)'
+        : s.state === 'stalled'
+          ? 'var(--red)'
+          : s.state === 'run'
+            ? 'var(--a500)'
+            : 'var(--surface-3)';
+  }
 
   confirming = signal(false);
   sendingBack = signal(false);
