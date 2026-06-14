@@ -6,7 +6,7 @@ import { Api } from '../core/api.service';
 import { RequestDetail } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
-import { plainActivity, plainStage, timeAgo } from '../core/util';
+import { liveStatus, plainActivity, plainStage, timeAgo } from '../core/util';
 import { Glyph, Icon, Pill, Sig, TypeChip } from '../kit/kit';
 import { SubShell } from './sub-shell';
 
@@ -34,6 +34,8 @@ interface TlRow {
           <sf-icon name="back" [size]="15" /> My requests
         </button>
         @if (req(); as r) {
+          <!-- Screen-reader-only live region: announces status as polling updates it. -->
+          <div class="sr-only" role="status" aria-live="polite">{{ live(r) }}</div>
           <div class="row" style="justify-content:space-between;align-items:flex-start;gap:14px">
             <div>
               <h1 style="font-size:25px">{{ r.title }}</h1>
@@ -148,6 +150,10 @@ export class SubRequestDetail {
 
   ps = plainStage;
   age = timeAgo;
+  /** Concise status for the aria-live region — announced to SR users on each poll. */
+  live(r: RequestDetail): string {
+    return liveStatus(r, r.run);
+  }
   go(url: string) {
     this.router.navigateByUrl(url);
   }

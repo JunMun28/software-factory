@@ -1,18 +1,32 @@
-import { Component, HostListener, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  HostListener,
+  computed,
+  effect,
+  inject,
+  signal,
+  viewChildren,
+} from '@angular/core';
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { FactoryRequest } from '../core/models';
+import { FactoryRequest, MissionOut } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
-import { Store } from '../core/store.service';
-import { healthLine, timeAgo } from '../core/util';
+import {
+  healthLine,
+  missionRowLabel,
+  missionSubtitle,
+  missionSummary,
+  timeAgo,
+} from '../core/util';
 import { ApproveModal, Autofocus, EvidenceStrip, Glyph, Icon, SendBackModal } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
 /** Mission control — the supervision home (spec §6): what needs me, what's
  *  running autonomously, what stalled, what just finished. One poll
- *  (Store.mission), bands render top-down by consequence. */
+ *  (its own api.mission() fetch), bands render top-down by consequence. */
 @Component({
   selector: 'sf-mission-page',
   imports: [AdminShell, Icon, Glyph, ApproveModal, SendBackModal, Autofocus, EvidenceStrip],
@@ -24,6 +38,8 @@ import { AdminShell } from './admin-shell';
       <div class="list scroll" style="padding:18px 0 40px">
         <div style="max-width:920px;margin:0 auto;padding:0 22px">
           @if (m(); as m) {
+            <!-- Screen-reader-only live region: announces the mission summary as polling updates it. -->
+            <div class="sr-only" role="status" aria-live="polite">{{ summary(m) }}</div>
             @if (allClear()) {
               <div class="msn-hero">
                 <sf-glyph type="check" [size]="22" color="var(--green)" [fill]="1" />
@@ -45,6 +61,8 @@ import { AdminShell } from './admin-shell';
               </div>
               @for (g of m.gates; track g.request.id) {
                 <div
+                  #frow
+                  [attr.aria-label]="rowLabel('gate', g.request)"
                   class="msn-gate"
                   [class.msn-focus]="flatIdx(g.request) === focusAt()"
                   tabindex="0"
@@ -84,6 +102,8 @@ import { AdminShell } from './admin-shell';
             </div>
             @for (it of m.runs; track it.request.id) {
               <div
+                #frow
+                [attr.aria-label]="rowLabel('run', it.request)"
                 class="msn-run"
                 [class.msn-run--slow]="it.run.health === 'slow'"
                 [class.msn-focus]="flatIdx(it.request) === focusAt()"
@@ -148,6 +168,8 @@ import { AdminShell } from './admin-shell';
               </div>
               @for (r of m.stalled; track r.id) {
                 <div
+                  #frow
+                  [attr.aria-label]="rowLabel('stalled', r)"
                   class="msn-gate msn-gate--red"
                   [class.msn-focus]="flatIdx(r) === focusAt()"
                   tabindex="0"
@@ -177,7 +199,15 @@ import { AdminShell } from './admin-shell';
                 <span>Recently done &amp; with submitter</span>
               </div>
               @for (r of m.recent; track r.id) {
-                <div class="msn-done" (click)="openIssue(r)">
+                <div
+                  #frow
+                  [attr.aria-label]="rowLabel('done', r)"
+                  class="msn-done"
+                  [class.msn-focus]="flatIdx(r) === focusAt()"
+                  tabindex="0"
+                  (focus)="focusIdx.set(flatIdx(r))"
+                  (click)="openIssue(r)"
+                >
                   <sf-glyph
                     [type]="
                       r.status === 'done' ? 'check' : r.status === 'cancelled' ? 'strike' : 'flag'
@@ -495,12 +525,20 @@ import { AdminShell } from './admin-shell';
 })
 export class Mission {
   protected router = inject(Router);
-  private store = inject(Store);
   private api = inject(Api);
   private poll = inject(Poll);
   protected session = inject(Session);
 
-  m = this.store.mission;
+  /** The heavy mission aggregate is fetched by THIS page (not the shell-wide
+   *  Store), so no other admin page polls /api/mission. */
+  m = signal<MissionOut | null>(null);
+
+  constructor() {
+    effect(() => {
+      this.poll.version();
+      this.api.mission().subscribe((v) => this.m.set(v));
+    });
+  }
 
   confirming = signal<FactoryRequest | null>(null);
   sendingBack = signal<FactoryRequest | null>(null);
@@ -514,6 +552,10 @@ export class Mission {
   /** Expose display helpers for template. */
   healthLine = healthLine;
   timeAgo = timeAgo;
+  /** Concise mission summary for the aria-live region — announced on each poll change. */
+  summary = missionSummary;
+  /** Per-row screen-reader label (the row is focusable via J/K — iteration 10). */
+  rowLabel = missionRowLabel;
 
   openSteer(r: FactoryRequest) {
     this.steerErr.set('');
@@ -543,10 +585,7 @@ export class Mission {
 
   subtitle = computed(() => {
     const m = this.m();
-    if (!m) return '';
-    const g = m.gates.length;
-    const r = m.runs.length;
-    return `${g} gate${g === 1 ? '' : 's'} waiting on you · ${r} build${r === 1 ? '' : 's'} running`;
+    return m ? missionSubtitle(m) : '';
   });
 
   gatePill(r: FactoryRequest) {
@@ -595,13 +634,14 @@ export class Mission {
   focusAt = computed(() => Math.max(0, Math.min(this.focusIdx(), this.focusables().length - 1)));
 
   /** J/K traversal list: every actionable row in render order. */
-  focusables = computed<{ kind: 'gate' | 'run' | 'stalled'; r: FactoryRequest }[]>(() => {
+  focusables = computed<{ kind: 'gate' | 'run' | 'stalled' | 'done'; r: FactoryRequest }[]>(() => {
     const m = this.m();
     if (!m) return [];
     return [
       ...m.gates.map((g) => ({ kind: 'gate' as const, r: g.request })),
       ...m.runs.map((x) => ({ kind: 'run' as const, r: x.request })),
       ...m.stalled.map((r) => ({ kind: 'stalled' as const, r })),
+      ...m.recent.map((r) => ({ kind: 'done' as const, r })),
     ];
   });
 
@@ -609,19 +649,32 @@ export class Mission {
     return this.focusables().findIndex((x) => x.r.id === r.id);
   }
 
+  /** The focusable row elements, in render (= focusables) order. */
+  private rows = viewChildren<ElementRef<HTMLElement>>('frow');
+
+  /** Move real DOM focus to the J/K-highlighted row so keyboard focus and screen
+   *  readers follow the visual cursor. Optional-chained against a mid-render mismatch. */
+  private focusRow() {
+    this.rows()[this.focusAt()]?.nativeElement.focus();
+  }
+
   @HostListener('window:keydown', ['$event'])
   onKey(e: KeyboardEvent) {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey) return;
+    // A focused control owns its own keys — don't let the global shortcuts hijack
+    // Enter/A/S on a row's Approve/Send/Open/Steer button (focus reachable via Tab).
+    if (tag === 'input' || tag === 'textarea' || tag === 'button' || e.metaKey || e.ctrlKey) return;
     if (this.confirming() || this.sendingBack() || this.steeringId() !== null) return;
     const k = e.key.toLowerCase();
     const cur = this.focusables()[this.focusAt()];
     if (k === 'j' || e.key === 'ArrowDown') {
       e.preventDefault();
       this.focusIdx.set(Math.min(this.focusables().length - 1, this.focusAt() + 1));
+      this.focusRow();
     } else if (k === 'k' || e.key === 'ArrowUp') {
       e.preventDefault();
       this.focusIdx.set(Math.max(0, this.focusAt() - 1));
+      this.focusRow();
     } else if (e.key === 'Enter' && cur) {
       e.preventDefault();
       this.openIssue(cur.r);

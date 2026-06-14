@@ -1,4 +1,11 @@
-import { Evidence, FactoryRequest, ProgressEvent, RunState } from './models';
+import {
+  Evidence,
+  FactoryRequest,
+  MissionOut,
+  ProgressEvent,
+  RequestDetail,
+  RunState,
+} from './models';
 
 /** API timestamps are UTC; SQLite round-trips them naive, so re-tag before parsing. */
 export function utc(iso: string): Date {
@@ -207,6 +214,81 @@ export function plainActivity(run: RunState | null): string | null {
   const phrase = (run.label && ACTIVITY_WORDS[run.label]) || 'working on it';
   if (run.of > 0 && run.step > 0) return `${phrase} · step ${run.step} of ${run.of}`;
   return phrase;
+}
+
+/** A concise, screen-reader-friendly status line for the submitter's live region.
+ *  Pairs the plain stage label with the live activity while a build is in flight,
+ *  so SR users hear progress as polling updates the page. Submitter-safe by
+ *  construction — built only from plainStage + plainActivity, which never leak
+ *  Control-center vocabulary (CONTEXT.md). */
+export function liveStatus(r: FactoryRequest, run: RunState | null): string {
+  const base = plainStage(r).label;
+  const activity = inFlight(r) ? plainActivity(run) : null;
+  return activity ? `${base} — ${activity}` : base;
+}
+
+/** Concise, screen-reader-friendly summary of Mission control for an aria-live
+ *  region: attention items first (gates, stalled), then the ambient running
+ *  count. Re-announced only when a count changes, so it stays low-noise. */
+export function missionSummary(m: MissionOut): string {
+  const parts: string[] = [];
+  const g = m.gates.length;
+  const s = m.stalled.length;
+  const r = m.runs.length;
+  if (g) parts.push(`${g} gate${g === 1 ? '' : 's'} waiting on you`);
+  if (s) parts.push(`${s} stalled`);
+  if (r) parts.push(`${r} running`);
+  return parts.length ? parts.join(' · ') : 'All clear — nothing needs you';
+}
+
+/** The Mission control header subtitle — at-a-glance counts for sighted admins.
+ *  Surfaces the urgent `stalled` count (needs-human) between gates and builds,
+ *  but only when present, so it matches what missionSummary announces to SR
+ *  users while preserving the existing wording when nothing is stalled. */
+export function missionSubtitle(m: MissionOut): string {
+  const g = m.gates.length;
+  const s = m.stalled.length;
+  const r = m.runs.length;
+  const parts = [`${g} gate${g === 1 ? '' : 's'} waiting on you`];
+  if (s) parts.push(`${s} stalled`);
+  parts.push(`${r} build${r === 1 ? '' : 's'} running`);
+  return parts.join(' · ');
+}
+
+/** A concise screen-reader label for a Mission control row — announced when J/K
+ *  or Tab moves focus onto the row, instead of the raw concatenated cell text
+ *  (title + pills + evidence strip + every action button). */
+export function missionRowLabel(
+  kind: 'gate' | 'run' | 'stalled' | 'done',
+  r: FactoryRequest,
+): string {
+  const where = `${r.app_name}, ${r.ref}`;
+  if (kind === 'gate') {
+    const g = r.gate === 'approve_merge' ? 'Merge gate' : 'Spec gate';
+    return `${g}, needs your approval — ${r.title}, ${where}`;
+  }
+  if (kind === 'stalled') return `Stalled, needs a human — ${r.title}, ${where}`;
+  if (kind === 'done') {
+    const s =
+      r.status === 'done' ? 'Deployed' : r.status === 'cancelled' ? 'Cancelled' : 'Sent back';
+    return `${s} — ${r.title}, ${where}`;
+  }
+  return `Running ${r.stage} — ${r.title}, ${where}`;
+}
+
+/** The admin request-detail one-line state. Control-center vocabulary is intended
+ *  here (admin surface) — gate / Building / Stalled wording. Also fed to the
+ *  page's aria-live region so SR supervisors hear it change as polling advances. */
+export function adminStateLine(r: RequestDetail): string {
+  if (r.needs_human) return 'Stalled — needs a human';
+  if (r.gate === 'approve_spec') return 'Waiting at the spec gate';
+  if (r.gate === 'approve_merge') return 'Waiting at the merge gate';
+  if (r.status === 'sent_back') return 'With the submitter';
+  if (r.status === 'done') return 'Deployed';
+  if (r.status === 'cancelled') return 'Cancelled';
+  if (r.run) return `Building · ${STAGE_LABEL[r.stage]} · step ${r.run.step}/${r.run.of}`;
+  if (r.status === 'approved') return `Building · ${STAGE_LABEL[r.stage]}`;
+  return STAGE_LABEL[r.stage] ?? r.stage;
 }
 
 /** Flatten the per-request trace into stage-grouped rows for the timeline (ADR 0014).

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { Evidence, FactoryRequest } from './models';
+import { Evidence, FactoryRequest, MissionOut, RequestDetail } from './models';
 import {
+  adminStateLine,
   boardGlyph,
   clock,
   confirmSteps,
@@ -11,6 +12,10 @@ import {
   groupTrace,
   healthLine,
   inFlight,
+  liveStatus,
+  missionRowLabel,
+  missionSubtitle,
+  missionSummary,
   plainActivity,
   plainStage,
   timeAgo,
@@ -380,5 +385,212 @@ describe('plainActivity', () => {
   });
   it('returns null for no run', () => {
     expect(plainActivity(null)).toBeNull();
+  });
+});
+
+describe('liveStatus — the submitter aria-live announcement', () => {
+  const run = (label: string | null, step = 6, of = 9) => ({
+    label,
+    step,
+    of,
+    health: 'healthy' as const,
+    seconds_since_event: 5,
+  });
+
+  it('pairs the plain stage with the live activity while building', () => {
+    expect(
+      liveStatus(req({ status: 'approved', stage: 'build' }), run('implementing the change')),
+    ).toBe('Building — making the change · step 6 of 9');
+  });
+
+  it('pairs the plain stage with the live activity during review', () => {
+    expect(
+      liveStatus(req({ status: 'approved', stage: 'review' }), run('running the review pass')),
+    ).toBe('In review — reviewing the work · step 6 of 9');
+  });
+
+  it('falls back to the bare label when nothing is in flight', () => {
+    expect(liveStatus(req({ status: 'pending_approval', stage: 'spec' }), null)).toBe(
+      'Spec drafted',
+    );
+    expect(liveStatus(req({ status: 'done', stage: 'done' }), null)).toBe('Deployed');
+  });
+
+  it('omits activity when a gate or escalation has paused the agents', () => {
+    expect(
+      liveStatus(
+        req({ status: 'approved', stage: 'build', needs_human: true }),
+        run('implementing the change'),
+      ),
+    ).toBe('Building');
+  });
+
+  it('never leaks an internal label into the announcement', () => {
+    expect(
+      liveStatus(req({ status: 'approved', stage: 'build' }), run('git rebase onto main')),
+    ).toBe('Building — working on it · step 6 of 9');
+  });
+});
+
+describe('missionSummary — the Mission control aria-live summary', () => {
+  const mission = (over: Partial<MissionOut> = {}): MissionOut => ({
+    gates: [],
+    runs: [],
+    stalled: [],
+    recent: [],
+    cursor: 0,
+    ...over,
+  });
+  const gate = () => ({ request: req(), evidence: null });
+  const runItem = () => ({
+    request: req(),
+    run: { label: 'x', step: 1, of: 4, health: 'healthy' as const, seconds_since_event: 1 },
+  });
+
+  it('says all clear when nothing needs the admin', () => {
+    expect(missionSummary(mission())).toBe('All clear — nothing needs you');
+  });
+
+  it('pluralises gates and leads with the attention items', () => {
+    expect(missionSummary(mission({ gates: [gate()] }))).toBe('1 gate waiting on you');
+    expect(missionSummary(mission({ gates: [gate(), gate()] }))).toBe('2 gates waiting on you');
+  });
+
+  it('joins gates, stalled, and running in consequence order', () => {
+    expect(
+      missionSummary(
+        mission({
+          gates: [gate(), gate()],
+          stalled: [req()],
+          runs: [runItem(), runItem(), runItem()],
+        }),
+      ),
+    ).toBe('2 gates waiting on you · 1 stalled · 3 running');
+  });
+
+  it('omits the zero bands — running only', () => {
+    expect(missionSummary(mission({ runs: [runItem()] }))).toBe('1 running');
+  });
+});
+
+describe('missionSubtitle — the Mission header counts', () => {
+  const mission = (over: Partial<MissionOut> = {}): MissionOut => ({
+    gates: [],
+    runs: [],
+    stalled: [],
+    recent: [],
+    cursor: 0,
+    ...over,
+  });
+  const gate = () => ({ request: req(), evidence: null });
+  const runItem = () => ({
+    request: req(),
+    run: { label: 'x', step: 1, of: 4, health: 'healthy' as const, seconds_since_event: 1 },
+  });
+
+  it('keeps the existing wording when nothing is stalled', () => {
+    expect(
+      missionSubtitle(
+        mission({ gates: [gate(), gate()], runs: [runItem(), runItem(), runItem()] }),
+      ),
+    ).toBe('2 gates waiting on you · 3 builds running');
+  });
+
+  it('surfaces the stalled count between gates and builds when present', () => {
+    expect(
+      missionSubtitle(
+        mission({
+          gates: [gate(), gate()],
+          stalled: [req()],
+          runs: [runItem(), runItem(), runItem()],
+        }),
+      ),
+    ).toBe('2 gates waiting on you · 1 stalled · 3 builds running');
+  });
+
+  it('singularises gate and build', () => {
+    expect(missionSubtitle(mission({ gates: [gate()], runs: [runItem()] }))).toBe(
+      '1 gate waiting on you · 1 build running',
+    );
+  });
+
+  it('shows the zeros when all clear (unchanged from before)', () => {
+    expect(missionSubtitle(mission())).toBe('0 gates waiting on you · 0 builds running');
+  });
+});
+
+describe('missionRowLabel — the Mission row screen-reader label', () => {
+  const base = { title: 'CSV import', app_name: 'Vendor Portal', ref: 'REQ-2042' } as const;
+  const tail = ' — CSV import, Vendor Portal, REQ-2042';
+
+  it('labels gates by their kind', () => {
+    expect(missionRowLabel('gate', req({ ...base, gate: 'approve_spec' }))).toBe(
+      `Spec gate, needs your approval${tail}`,
+    );
+    expect(missionRowLabel('gate', req({ ...base, gate: 'approve_merge' }))).toBe(
+      `Merge gate, needs your approval${tail}`,
+    );
+  });
+
+  it('labels a stalled row', () => {
+    expect(missionRowLabel('stalled', req(base))).toBe(`Stalled, needs a human${tail}`);
+  });
+
+  it('labels a running row with its stage', () => {
+    expect(missionRowLabel('run', req({ ...base, stage: 'build' }))).toBe(`Running build${tail}`);
+  });
+
+  it('labels recently-done rows by outcome', () => {
+    expect(missionRowLabel('done', req({ ...base, status: 'done' }))).toBe(`Deployed${tail}`);
+    expect(missionRowLabel('done', req({ ...base, status: 'cancelled' }))).toBe(`Cancelled${tail}`);
+    expect(missionRowLabel('done', req({ ...base, status: 'sent_back' }))).toBe(`Sent back${tail}`);
+  });
+});
+
+describe('adminStateLine — the admin request-detail live state', () => {
+  const detail = (over: Partial<RequestDetail> = {}): RequestDetail => ({
+    ...req(),
+    turns: [],
+    spec_lines: [],
+    comments: [],
+    audit: [],
+    duplicate: null,
+    run: null,
+    evidence: null,
+    ...over,
+  });
+
+  it('escalation wins over a gate', () => {
+    expect(
+      adminStateLine(detail({ needs_human: true, gate: 'approve_merge', status: 'approved' })),
+    ).toBe('Stalled — needs a human');
+  });
+
+  it('names each gate', () => {
+    expect(adminStateLine(detail({ gate: 'approve_spec' }))).toBe('Waiting at the spec gate');
+    expect(adminStateLine(detail({ gate: 'approve_merge' }))).toBe('Waiting at the merge gate');
+  });
+
+  it('covers the terminal and handed-back states', () => {
+    expect(adminStateLine(detail({ status: 'sent_back' }))).toBe('With the submitter');
+    expect(adminStateLine(detail({ status: 'done', stage: 'done' }))).toBe('Deployed');
+    expect(adminStateLine(detail({ status: 'cancelled' }))).toBe('Cancelled');
+  });
+
+  it('shows live build progress when a run is in flight', () => {
+    const run = { label: 'x', step: 3, of: 6, health: 'healthy' as const, seconds_since_event: 1 };
+    expect(adminStateLine(detail({ status: 'approved', stage: 'architecture', run }))).toBe(
+      'Building · Architecture · step 3/6',
+    );
+  });
+
+  it('shows the building stage when approved with no run yet', () => {
+    expect(adminStateLine(detail({ status: 'approved', stage: 'build', run: null }))).toBe(
+      'Building · Build',
+    );
+  });
+
+  it('falls back to the stage label otherwise', () => {
+    expect(adminStateLine(detail({ status: 'submitted', stage: 'intake' }))).toBe('Intake');
   });
 });

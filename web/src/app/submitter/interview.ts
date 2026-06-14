@@ -36,6 +36,8 @@ import { SubShell } from './sub-shell';
           class="scroll"
           style="flex:1;overflow-y:auto;padding:22px 26px;display:flex;flex-direction:column;gap:22px"
         >
+          <!-- sr-only live region: announces each new question / thinking / done as the interview advances -->
+          <div class="sr-only" role="status" aria-live="polite">{{ liveQuestion() }}</div>
           @for (t of st()?.turns ?? []; track t.order) {
             <div class="ai-q">
               <span class="ai-q__mark"><sf-mark [size]="17" color="#9A9AA6" /></span>
@@ -185,6 +187,16 @@ export class Interview {
     if (!s) return 'A few quick questions';
     if (s.done) return 'All done';
     return s.final ? 'Last question' : 'A few quick questions';
+  });
+
+  /** The active prompt for the sr-only aria-live region, so a screen reader hears
+   *  each new question (the question changes in place — never re-read otherwise). */
+  liveQuestion = computed(() => {
+    if (this.busy()) return 'Thinking about a follow-up…';
+    const s = this.st();
+    if (!s) return '';
+    if (s.done) return "Thanks — that's everything I need. Check the summary next.";
+    return s.question ?? '';
   });
 
   constructor() {

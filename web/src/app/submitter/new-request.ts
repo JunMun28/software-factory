@@ -24,6 +24,7 @@ import { SubShell } from './sub-shell';
             <button
               class="typecard focusable"
               [class.on]="draft.type === t.t"
+              [attr.aria-pressed]="draft.type === t.t"
               (click)="draft.type = $any(t.t)"
             >
               <sf-icon
@@ -47,11 +48,14 @@ import { SubShell } from './sub-shell';
           <div class="fade-in" style="margin-top:26px;display:flex;flex-direction:column;gap:18px">
             @if (draft.type === 'bug' || draft.type === 'enh') {
               <div>
-                <label class="field-label">Which app?</label>
+                <label class="field-label" id="nr-app-lbl">Which app?</label>
                 <div class="dd-wrap">
                   <button
+                    id="nr-app-dd"
                     class="input"
                     style="cursor:pointer;text-align:left"
+                    aria-labelledby="nr-app-lbl nr-app-dd"
+                    [attr.aria-expanded]="appsOpen()"
                     (click)="toggleApps()"
                   >
                     @if (selectedApp(); as a) {
@@ -86,8 +90,9 @@ import { SubShell } from './sub-shell';
             }
             @if (draft.type === 'new') {
               <div>
-                <label class="field-label">What should we call it?</label>
+                <label class="field-label" for="nr-name">What should we call it?</label>
                 <input
+                  id="nr-name"
                   class="input"
                   placeholder="e.g. Quarterly headcount dashboard"
                   [(ngModel)]="draft.newName"
@@ -95,11 +100,12 @@ import { SubShell } from './sub-shell';
               </div>
             }
             <div>
-              <label class="field-label">{{ descLabel() }}</label>
+              <label class="field-label" for="nr-desc">{{ descLabel() }}</label>
               <span class="field-help"
                 >A sentence or two is plenty — we'll ask follow-ups next.</span
               >
               <textarea
+                id="nr-desc"
                 class="input area"
                 placeholder="Describe it in your own words…"
                 [(ngModel)]="draft.desc"
@@ -108,15 +114,23 @@ import { SubShell } from './sub-shell';
             @if (draft.type === 'bug') {
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
                 <div>
-                  <label class="field-label">Where did you see it?</label
-                  ><input class="input" placeholder="Page or screen" [(ngModel)]="draft.bugWhere" />
+                  <label class="field-label" for="nr-where">Where did you see it?</label
+                  ><input
+                    id="nr-where"
+                    class="input"
+                    placeholder="Page or screen"
+                    [(ngModel)]="draft.bugWhere"
+                  />
                 </div>
                 <div>
-                  <label class="field-label">How often?</label>
+                  <label class="field-label" id="nr-freq-lbl">How often?</label>
                   <div class="dd-wrap">
                     <button
+                      id="nr-freq-dd"
                       class="input"
                       style="cursor:pointer;text-align:left"
+                      aria-labelledby="nr-freq-lbl nr-freq-dd"
+                      [attr.aria-expanded]="freqOpen()"
                       (click)="toggleFreq()"
                     >
                       <span [class.ph]="!draft.bugFreq">{{ draft.bugFreq || 'Every time' }}</span>
@@ -144,15 +158,21 @@ import { SubShell } from './sub-shell';
             }
             @if (draft.type !== 'bug') {
               <div>
-                <label class="field-label"
+                <label class="field-label" id="nr-reach-lbl" for="nr-reach"
                   >Who's affected?
                   <span style="font-weight:400;color:var(--faint)">(optional)</span></label
                 >
                 <span class="field-help">Helps the reviewer see how much this is worth.</span>
-                <div class="seg" style="margin-bottom:8px">
+                <div
+                  class="seg"
+                  role="group"
+                  aria-labelledby="nr-reach-lbl"
+                  style="margin-bottom:8px"
+                >
                   @for (r of reaches; track r[0]) {
                     <button
                       [class.on]="!draft.reachText && draft.reach === r[0]"
+                      [attr.aria-pressed]="!draft.reachText && draft.reach === r[0]"
                       (click)="pickReach($any(r[0]))"
                     >
                       {{ r[1] }}
@@ -160,6 +180,7 @@ import { SubShell } from './sub-shell';
                   }
                 </div>
                 <input
+                  id="nr-reach"
                   class="input"
                   placeholder="…or describe them, e.g. all shift supervisors in Penang"
                   [ngModel]="draft.reachText"
@@ -167,17 +188,23 @@ import { SubShell } from './sub-shell';
                 />
               </div>
               <div>
-                <label class="field-label"
+                <label class="field-label" id="nr-impact-lbl" for="nr-impact"
                   >What's the impact?
                   <span style="font-weight:400;color:var(--faint)">(optional)</span></label
                 >
                 <span class="field-help"
                   >A rough number is enough — it strengthens the case for approval.</span
                 >
-                <div class="seg" [style.margin-bottom]="draft.impactMetric ? '8px' : ''">
+                <div
+                  class="seg"
+                  role="group"
+                  aria-labelledby="nr-impact-lbl"
+                  [style.margin-bottom]="draft.impactMetric ? '8px' : ''"
+                >
                   @for (m of metrics; track m[0]) {
                     <button
                       [class.on]="draft.impactMetric === m[0]"
+                      [attr.aria-pressed]="draft.impactMetric === m[0]"
                       (click)="pickMetric($any(m[0]))"
                     >
                       {{ m[1] }}
@@ -186,6 +213,7 @@ import { SubShell } from './sub-shell';
                 </div>
                 @if (draft.impactMetric) {
                   <input
+                    id="nr-impact"
                     class="input fade-in"
                     [placeholder]="metricPlaceholder()"
                     [(ngModel)]="draft.impactValue"
@@ -194,10 +222,14 @@ import { SubShell } from './sub-shell';
               </div>
             }
             <div>
-              <label class="field-label">How urgent is it?</label>
-              <div class="seg">
+              <label class="field-label" id="nr-urgency-lbl">How urgent is it?</label>
+              <div class="seg" role="group" aria-labelledby="nr-urgency-lbl">
                 @for (u of urgencies; track u[0]) {
-                  <button [class.on]="draft.urgency === u[0]" (click)="draft.urgency = $any(u[0])">
+                  <button
+                    [class.on]="draft.urgency === u[0]"
+                    [attr.aria-pressed]="draft.urgency === u[0]"
+                    (click)="draft.urgency = $any(u[0])"
+                  >
                     {{ u[1] }}
                   </button>
                 }

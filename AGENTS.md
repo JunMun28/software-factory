@@ -167,11 +167,12 @@ no silent stranding (ADR 0013).
 | `api/app/events.py` | Append-only helpers for `progress_event` log |
 | `api/app/db.py` | SQLite WAL setup, session factory |
 | `api/app/models.py` | Domain model — Request, stages, gates, `progress_event` |
+| `api/app/routers/` | HTTP layer wired in `main.py` — `system`, `registry`, `events` (feed/comments/inbox), `gates` (gate + recovery actions), `mission` (control-center aggregate), `requests` (CRUD/intake/submit) |
 | `web/src/app/kit/kit.ts` | Shared Angular UI kit components |
 | `web/src/styles.css` | Global design tokens |
 | `sample/` | Template workspace copied for each real pipeline run |
 | `scripts/smoke.sh` | End-to-end lifecycle smoke test |
-| `docs/adr/` | Architecture Decision Records 0001–0013 |
+| `docs/adr/` | Architecture Decision Records 0001–0015 |
 | `CONTEXT.md` | Domain vocabulary (canonical) |
 | `VERIFICATION.md` | Manual verification flows and expected outcomes |
 

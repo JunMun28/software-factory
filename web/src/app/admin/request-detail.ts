@@ -8,8 +8,8 @@ import { Api } from '../core/api.service';
 import { ProgressEvent, RequestDetail } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
-import { STAGE_LABEL, TraceGroup, groupTrace, timeAgo } from '../core/util';
 import { DeliveryGate, DeliveryStage, deliveryGates, deliveryStages } from '../core/map-view';
+import { TraceGroup, adminStateLine, groupTrace, timeAgo } from '../core/util';
 import {
   ApproveModal,
   Avatar,
@@ -84,7 +84,7 @@ import { AdminShell } from './admin-shell';
               class="row"
               style="gap:14px;margin-bottom:16px;font-size:12.5px;color:var(--muted)"
             >
-              <span class="rd-state">{{ stateLine(r) }}</span>
+              <span class="rd-state" role="status" aria-live="polite">{{ stateLine(r) }}</span>
               <span class="rd-who">{{ whoLine(r) }}</span>
             </div>
 
@@ -661,8 +661,9 @@ export class RequestDetailPage {
   d = signal<RequestDetail | null>(null);
   events = signal<ProgressEvent[]>([]);
   openWhy = signal<Set<number>>(new Set());
-  stageLabel = STAGE_LABEL;
   ago = timeAgo;
+  /** The live one-line state, also announced via the .rd-state aria-live region. */
+  stateLine = adminStateLine;
 
   view = signal<'trace' | 'map'>(
     this.route.snapshot.queryParamMap.get('view') === 'map' ? 'map' : 'trace',
@@ -728,18 +729,6 @@ export class RequestDetailPage {
   }
 
   trace = computed<TraceGroup[]>(() => groupTrace(this.events()));
-
-  stateLine(r: RequestDetail): string {
-    if (r.needs_human) return 'Stalled — needs a human';
-    if (r.gate === 'approve_spec') return 'Waiting at the spec gate';
-    if (r.gate === 'approve_merge') return 'Waiting at the merge gate';
-    if (r.status === 'sent_back') return 'With the submitter';
-    if (r.status === 'done') return 'Deployed';
-    if (r.status === 'cancelled') return 'Cancelled';
-    if (r.run) return `Building · ${this.stageLabel[r.stage]} · step ${r.run.step}/${r.run.of}`;
-    if (r.status === 'approved') return `Building · ${this.stageLabel[r.stage]}`;
-    return this.stageLabel[r.stage] ?? r.stage;
-  }
 
   whoLine(r: RequestDetail): string {
     if (r.gate || r.needs_human) return 'waiting on you';
