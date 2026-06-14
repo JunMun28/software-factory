@@ -1,0 +1,71 @@
+import { describe, expect, it } from 'vitest';
+
+import { FactoryRequest, MissionOut } from './models';
+import { factoryColumns, MAP_STAGES } from './map-view';
+
+/** Minimal FactoryRequest factory — only the fields the map reads. */
+function req(over: Partial<FactoryRequest>): FactoryRequest {
+  return {
+    id: 1, ref: 'REQ-1', title: 'T', description: '', type: 'enh', urgency: 'normal',
+    reach: null, impact_metric: null, impact_value: null, priority: 'Normal',
+    app_id: 1, app_name: 'App', app_key: null, repo: null, prospective_repo: null,
+    new_app_name: null, stage: 'intake', status: 'submitted', gate: null,
+    needs_human: false, needs_human_reason: null, reporter: 'Jordan D.',
+    reporter_initials: 'JD', labels: null, send_back_question: null,
+    send_back_response: null, send_back_rounds: 0, repo_ready: false,
+    spec_pr_open: false, stage2_fired: false, spec_open_note: null,
+    created_at: '2026-06-14T00:00:00Z', updated_at: '2026-06-14T00:00:00Z',
+    stage_entered_at: null, last_event: null,
+    ...over,
+  };
+}
+
+function mission(over: Partial<MissionOut> = {}): MissionOut {
+  return { gates: [], runs: [], stalled: [], recent: [], cursor: 0, ...over };
+}
+
+describe('factoryColumns', () => {
+  it('returns all 6 stages in order', () => {
+    const v = factoryColumns([], mission());
+    expect(v.columns.map((c) => c.key)).toEqual(MAP_STAGES.map((s) => s.key));
+  });
+
+  it('places a gate request in its stage column with state "gate"', () => {
+    const r = req({ id: 41, stage: 'spec', status: 'pending_approval', gate: 'approve_spec' });
+    const v = factoryColumns([r], mission());
+    const spec = v.columns.find((c) => c.key === 'spec')!;
+    expect(spec.cards).toHaveLength(1);
+    expect(spec.cards[0].state).toBe('gate');
+  });
+
+  it('marks needs_human as "stalled" even when a gate is set', () => {
+    const r = req({ id: 43, stage: 'spec', status: 'submitted', needs_human: true, gate: 'approve_spec' });
+    const v = factoryColumns([r], mission());
+    expect(v.columns.find((c) => c.key === 'spec')!.cards[0].state).toBe('stalled');
+  });
+
+  it('attaches run step/of from mission.runs for an in-flight build', () => {
+    const r = req({ id: 29, stage: 'build', status: 'approved' });
+    const m = mission({ runs: [{ request: r, run: { step: 3, of: 6, label: 'x', health: 'healthy', seconds_since_event: 0 } }] });
+    const card = factoryColumns([r], m).columns.find((c) => c.key === 'build')!.cards[0];
+    expect(card.state).toBe('run');
+    expect(card.step).toBe(3);
+    expect(card.of).toBe(6);
+  });
+
+  it('excludes cancelled requests from the map', () => {
+    const r = req({ id: 30, stage: 'intake', status: 'cancelled' });
+    const v = factoryColumns([r], mission());
+    expect(v.columns.flatMap((c) => c.cards)).toHaveLength(0);
+  });
+
+  it('counts requests waiting at each human gate', () => {
+    const reqs = [
+      req({ id: 41, stage: 'spec', gate: 'approve_spec', status: 'pending_approval' }),
+      req({ id: 42, stage: 'spec', gate: 'approve_spec', status: 'pending_approval' }),
+    ];
+    const v = factoryColumns(reqs, mission());
+    expect(v.gates.find((g) => g.key === 'approve_spec')!.waiting).toBe(2);
+    expect(v.gates.find((g) => g.key === 'approve_merge')!.waiting).toBe(0);
+  });
+});
