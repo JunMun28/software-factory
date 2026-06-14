@@ -41,6 +41,27 @@ export interface FactoryMapView {
   gates: MapGate[];
 }
 
+/** Severity rank for exception sorting: lower = higher priority. */
+const EXCEPTION_RANK: Record<string, number> = {
+  stalled: 0,
+  gate: 1,
+  sent: 2,
+  run: 3,
+  triage: 4,
+  done: 5,
+};
+
+/**
+ * Return the top `cap` cards sorted by attention severity
+ * (stalled > gate > sent > run > triage > done).
+ * Pure — no side effects, safe to call in a computed().
+ */
+export function sortedExceptions(cards: MapCard[], cap = 5): MapCard[] {
+  return [...cards]
+    .sort((a, b) => (EXCEPTION_RANK[a.state] ?? 9) - (EXCEPTION_RANK[b.state] ?? 9))
+    .slice(0, cap);
+}
+
 /** Card state from a Request's lifecycle fields (priority order matters). */
 function cardState(r: FactoryRequest): MapState {
   if (r.needs_human) return 'stalled';

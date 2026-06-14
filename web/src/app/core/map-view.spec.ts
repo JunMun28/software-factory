@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { FactoryRequest, MissionOut, RequestDetail } from './models';
-import { deliveryGates, deliveryStages, factoryColumns, MAP_STAGES } from './map-view';
+import { deliveryGates, deliveryStages, factoryColumns, MAP_STAGES, MapCard, sortedExceptions } from './map-view';
 
 /** Minimal FactoryRequest factory — only the fields the map reads. */
 function req(over: Partial<FactoryRequest>): FactoryRequest {
@@ -174,5 +174,51 @@ describe('deliveryGates', () => {
   it('marks the active gate as awaiting', () => {
     const g = deliveryGates(detail({ stage: 'review', status: 'approved', gate: 'approve_merge' }));
     expect(g.find((x) => x.label === 'Merge gate')!.state).toBe('await');
+  });
+});
+
+/** Minimal MapCard factory */
+function card(id: number, state: MapCard['state']): MapCard {
+  return { id, ref: `REQ-${id}`, title: `T${id}`, app: 'App', type: 'enh', state };
+}
+
+describe('sortedExceptions', () => {
+  it('sorts by severity: stalled first, done last', () => {
+    const cards = [
+      card(1, 'done'),
+      card(2, 'run'),
+      card(3, 'stalled'),
+      card(4, 'gate'),
+      card(5, 'triage'),
+      card(6, 'sent'),
+    ];
+    const sorted = sortedExceptions(cards);
+    expect(sorted.map((c) => c.state)).toEqual(['stalled', 'gate', 'sent', 'run', 'triage']);
+  });
+
+  it('caps at the given limit', () => {
+    const cards = [card(1, 'stalled'), card(2, 'gate'), card(3, 'run'), card(4, 'run'), card(5, 'run'), card(6, 'done')];
+    expect(sortedExceptions(cards, 3)).toHaveLength(3);
+  });
+
+  it('returns fewer than cap when input is smaller', () => {
+    const cards = [card(1, 'gate'), card(2, 'run')];
+    expect(sortedExceptions(cards, 5)).toHaveLength(2);
+  });
+
+  it('does not mutate the input array', () => {
+    const cards = [card(1, 'done'), card(2, 'stalled')];
+    const copy = [...cards];
+    sortedExceptions(cards, 5);
+    expect(cards).toEqual(copy);
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(sortedExceptions([], 5)).toEqual([]);
+  });
+
+  it('default cap is 5', () => {
+    const cards = Array.from({ length: 8 }, (_, i) => card(i + 1, 'run'));
+    expect(sortedExceptions(cards)).toHaveLength(5);
   });
 });
