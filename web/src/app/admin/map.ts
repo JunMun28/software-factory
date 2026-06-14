@@ -1,7 +1,10 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
+import { Api } from '../core/api.service';
 import { factoryColumns, MapCard, MapColumn, sortedExceptions } from '../core/map-view';
+import { MissionOut } from '../core/models';
+import { Poll } from '../core/poll.service';
 import { Store } from '../core/store.service';
 import { AdminShell } from './admin-shell';
 
@@ -578,16 +581,30 @@ import { AdminShell } from './admin-shell';
 })
 export class FactoryMap {
   private store = inject(Store);
+  private api = inject(Api);
+  private poll = inject(Poll);
   private router = inject(Router);
+
+  /** Page-scoped mission aggregate. The root Store stopped polling /api/mission on
+   *  every admin page (perf, commit 7d8af99); like the Mission page, the map fetches
+   *  it itself on each poll tick for run-state (step/of) overlay. */
+  private mission = signal<MissionOut | null>(null);
+
+  constructor() {
+    effect(() => {
+      this.poll.version();
+      this.api.mission().subscribe((v) => this.mission.set(v));
+    });
+  }
 
   /** P2 filter/search signals */
   filter = signal<'all' | 'attention'>('all');
   search = signal('');
 
-  private raw = computed(() => factoryColumns(this.store.requests(), this.store.mission()));
+  private raw = computed(() => factoryColumns(this.store.requests(), this.mission()));
 
   /** True once the store has emitted at least one non-null value */
-  loaded = computed(() => this.store.requests().length > 0 || this.store.mission() !== null);
+  loaded = computed(() => this.store.requests().length > 0 || this.mission() !== null);
 
   /** Columns after filter/search (P2) */
   columns = computed(() => {
