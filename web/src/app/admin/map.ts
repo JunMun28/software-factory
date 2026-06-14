@@ -618,7 +618,8 @@ export class FactoryMap {
     return live || col.cards.length;
   }
 
-  /** P2: ring fill = fraction of column needing a human (gate + stalled) */
+  /** Ring fill = this column's live count normalized to the busiest column
+   *  (relative volume). The P2 "fraction needing a human" reframing is deferred. */
   maxCount = computed(() => Math.max(1, ...this.columns().map((c) => this.count(c))));
   ringPct(col: MapColumn): number {
     return Math.round((this.count(col) / this.maxCount()) * 100);
@@ -635,9 +636,8 @@ export class FactoryMap {
 
   /** Waiting count from column.cards (fixes mismatch vs separate gate query) */
   waitingCount(col: MapColumn): number {
-    if (col.key === 'spec') return col.cards.filter((c) => c.state === 'gate').length;
-    if (col.key === 'review') return col.cards.filter((c) => c.state === 'gate').length;
-    return 0;
+    if (col.key !== 'spec' && col.key !== 'review') return 0;
+    return col.cards.filter((c) => c.state === 'gate').length;
   }
 
   waitingLabel(col: MapColumn): string {
