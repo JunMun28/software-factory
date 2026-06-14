@@ -131,14 +131,22 @@ import { AdminShell } from './admin-shell';
             <div class="row" style="margin:8px 0 14px;justify-content:space-between">
               <span class="section-eyebrow">{{ view() === 'map' ? 'Delivery map' : 'Trace' }}</span>
               <div class="rd-seg" role="group" aria-label="view">
-                <button class="rd-seg__b" [class.on]="view() === 'trace'" (click)="view.set('trace')">Trace</button>
-                <button class="rd-seg__b" [class.on]="view() === 'map'" (click)="view.set('map')">Map</button>
+                <button
+                  class="rd-seg__b"
+                  [class.on]="view() === 'trace'"
+                  (click)="view.set('trace')"
+                >
+                  Trace
+                </button>
+                <button class="rd-seg__b" [class.on]="view() === 'map'" (click)="view.set('map')">
+                  Map
+                </button>
               </div>
             </div>
 
             @if (view() === 'map') {
               <div class="rd-dmap">
-                @for (s of dstages(); track s.key; let i = $index) {
+                @for (s of dstages(); track s.key) {
                   <div class="rd-dstage">
                     <div class="rd-dring" [style.--rp]="s.pct" [style.--rc]="ringColor(s)">
                       <span class="rd-dring__n">{{ s.pct }}%</span>
@@ -151,7 +159,9 @@ import { AdminShell } from './admin-shell';
               </div>
               <div class="rd-dgates">
                 @for (g of dgates(); track g.label) {
-                  <span class="rd-dgate" [attr.data-st]="g.state">{{ g.label }} · {{ g.state }}</span>
+                  <span class="rd-dgate" [attr.data-st]="g.state"
+                    >{{ g.label }} · {{ g.state }}</span
+                  >
                 }
               </div>
             } @else {

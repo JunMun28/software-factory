@@ -6,16 +6,41 @@ import { deliveryGates, deliveryStages, factoryColumns, MAP_STAGES } from './map
 /** Minimal FactoryRequest factory — only the fields the map reads. */
 function req(over: Partial<FactoryRequest>): FactoryRequest {
   return {
-    id: 1, ref: 'REQ-1', title: 'T', description: '', type: 'enh', urgency: 'normal',
-    reach: null, impact_metric: null, impact_value: null, priority: 'Normal',
-    app_id: 1, app_name: 'App', app_key: null, repo: null, prospective_repo: null,
-    new_app_name: null, stage: 'intake', status: 'submitted', gate: null,
-    needs_human: false, needs_human_reason: null, reporter: 'Jordan D.',
-    reporter_initials: 'JD', labels: null, send_back_question: null,
-    send_back_response: null, send_back_rounds: 0, repo_ready: false,
-    spec_pr_open: false, stage2_fired: false, spec_open_note: null,
-    created_at: '2026-06-14T00:00:00Z', updated_at: '2026-06-14T00:00:00Z',
-    stage_entered_at: null, last_event: null,
+    id: 1,
+    ref: 'REQ-1',
+    title: 'T',
+    description: '',
+    type: 'enh',
+    urgency: 'normal',
+    reach: null,
+    impact_metric: null,
+    impact_value: null,
+    priority: 'Normal',
+    app_id: 1,
+    app_name: 'App',
+    app_key: null,
+    repo: null,
+    prospective_repo: null,
+    new_app_name: null,
+    stage: 'intake',
+    status: 'submitted',
+    gate: null,
+    needs_human: false,
+    needs_human_reason: null,
+    reporter: 'Jordan D.',
+    reporter_initials: 'JD',
+    labels: null,
+    send_back_question: null,
+    send_back_response: null,
+    send_back_rounds: 0,
+    repo_ready: false,
+    spec_pr_open: false,
+    stage2_fired: false,
+    spec_open_note: null,
+    created_at: '2026-06-14T00:00:00Z',
+    updated_at: '2026-06-14T00:00:00Z',
+    stage_entered_at: null,
+    last_event: null,
     ...over,
   };
 }
@@ -39,14 +64,27 @@ describe('factoryColumns', () => {
   });
 
   it('marks needs_human as "stalled" even when a gate is set', () => {
-    const r = req({ id: 43, stage: 'spec', status: 'submitted', needs_human: true, gate: 'approve_spec' });
+    const r = req({
+      id: 43,
+      stage: 'spec',
+      status: 'submitted',
+      needs_human: true,
+      gate: 'approve_spec',
+    });
     const v = factoryColumns([r], mission());
     expect(v.columns.find((c) => c.key === 'spec')!.cards[0].state).toBe('stalled');
   });
 
   it('attaches run step/of from mission.runs for an in-flight build', () => {
     const r = req({ id: 29, stage: 'build', status: 'approved' });
-    const m = mission({ runs: [{ request: r, run: { step: 3, of: 6, label: 'x', health: 'healthy', seconds_since_event: 0 } }] });
+    const m = mission({
+      runs: [
+        {
+          request: r,
+          run: { step: 3, of: 6, label: 'x', health: 'healthy', seconds_since_event: 0 },
+        },
+      ],
+    });
     const card = factoryColumns([r], m).columns.find((c) => c.key === 'build')!.cards[0];
     expect(card.state).toBe('run');
     expect(card.step).toBe(3);
@@ -73,15 +111,30 @@ describe('factoryColumns', () => {
 function detail(over: Partial<RequestDetail>): RequestDetail {
   return {
     ...req({}),
-    turns: [], spec_lines: [], comments: [], audit: [], duplicate: null,
-    run: null, evidence: null,
+    turns: [],
+    spec_lines: [],
+    comments: [],
+    audit: [],
+    duplicate: null,
+    run: null,
+    evidence: null,
     ...over,
   } as RequestDetail;
 }
 
 describe('deliveryStages', () => {
   it('marks passed stages done, current stage running, later stages todo', () => {
-    const d = detail({ stage: 'build', status: 'approved', run: { step: 3, of: 6, label: 'implementing the change', health: 'healthy', seconds_since_event: 0 } });
+    const d = detail({
+      stage: 'build',
+      status: 'approved',
+      run: {
+        step: 3,
+        of: 6,
+        label: 'implementing the change',
+        health: 'healthy',
+        seconds_since_event: 0,
+      },
+    });
     const s = deliveryStages(d);
     const at = (k: string) => s.find((x) => x.key === k)!;
     expect(at('intake').state).toBe('done');
@@ -96,13 +149,17 @@ describe('deliveryStages', () => {
   });
 
   it('labels each stage with its Artifact', () => {
-    const s = deliveryStages(detail({ stage: 'spec', status: 'pending_approval', gate: 'approve_spec' }));
+    const s = deliveryStages(
+      detail({ stage: 'spec', status: 'pending_approval', gate: 'approve_spec' }),
+    );
     expect(s.find((x) => x.key === 'spec')!.artifact).toBe('SPEC.md');
     expect(s.find((x) => x.key === 'build')!.artifact).toBe('Tests → implementation');
   });
 
   it('shows the current stage as gate when parked at a gate', () => {
-    const s = deliveryStages(detail({ stage: 'spec', status: 'pending_approval', gate: 'approve_spec' }));
+    const s = deliveryStages(
+      detail({ stage: 'spec', status: 'pending_approval', gate: 'approve_spec' }),
+    );
     expect(s.find((x) => x.key === 'spec')!.state).toBe('gate');
   });
 });

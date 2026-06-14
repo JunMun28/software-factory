@@ -37,11 +37,17 @@ type Lane = { kind: 'stage'; col: MapColumn } | { kind: 'gate'; gate: MapGate };
               @if (it.kind === 'stage') {
                 <div class="fm-stage">
                   <div class="fm-hd">
-                    <div class="fm-ring" [style.--rp]="ringPct(it.col)" [style.--rc]="hotColor(it.col)">
+                    <div
+                      class="fm-ring"
+                      [style.--rp]="ringPct(it.col)"
+                      [style.--rc]="hotColor(it.col)"
+                    >
                       <span class="fm-ring__n">{{ count(it.col) }}</span>
                     </div>
                     <div class="fm-name">{{ it.col.label }}</div>
-                    <div class="fm-sub">{{ count(it.col) }} {{ count(it.col) === 1 ? 'item' : 'items' }}</div>
+                    <div class="fm-sub">
+                      {{ count(it.col) }} {{ count(it.col) === 1 ? 'item' : 'items' }}
+                    </div>
                   </div>
                   <div class="fm-cards">
                     @for (c of it.col.cards; track c.id) {
@@ -168,7 +174,10 @@ type Lane = { kind: 'stage'; col: MapColumn } | { kind: 'gate'; gate: MapGate };
       width: 58px;
       height: 58px;
       border-radius: 50%;
-      background: conic-gradient(var(--rc, var(--a500)) calc(var(--rp, 0) * 1%), var(--surface-3) 0);
+      background: conic-gradient(
+        var(--rc, var(--a500)) calc(var(--rp, 0) * 1%),
+        var(--surface-3) 0
+      );
     }
     .fm-ring::before {
       content: '';
@@ -419,7 +428,12 @@ export class FactoryMap {
 
   pill(c: MapCard): string | null {
     const m: Record<string, string | null> = {
-      gate: 'GATE', stalled: 'NEEDS HUMAN', run: 'RUNNING', sent: 'SENT BACK', triage: null, done: null,
+      gate: 'GATE',
+      stalled: 'NEEDS HUMAN',
+      run: 'RUNNING',
+      sent: 'SENT BACK',
+      triage: null,
+      done: null,
     };
     return m[c.state];
   }

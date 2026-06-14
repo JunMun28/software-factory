@@ -58,7 +58,8 @@ export function factoryColumns(
   mission: MissionOut | null,
 ): FactoryMapView {
   const runById = new Map<number, { step: number; of: number }>();
-  for (const mr of mission?.runs ?? []) runById.set(mr.request.id, { step: mr.run.step, of: mr.run.of });
+  for (const mr of mission?.runs ?? [])
+    runById.set(mr.request.id, { step: mr.run.step, of: mr.run.of });
 
   const columns: MapColumn[] = MAP_STAGES.map((s) => ({ key: s.key, label: s.label, cards: [] }));
   const byKey = new Map(columns.map((c) => [c.key, c]));
@@ -69,16 +70,30 @@ export function factoryColumns(
     if (!col) continue;
     const run = runById.get(r.id);
     col.cards.push({
-      id: r.id, ref: r.ref, title: r.title, app: r.app_name, type: r.type,
-      state: cardState(r), step: run?.step, of: run?.of,
+      id: r.id,
+      ref: r.ref,
+      title: r.title,
+      app: r.app_name,
+      type: r.type,
+      state: cardState(r),
+      step: run?.step,
+      of: run?.of,
     });
   }
 
   const gates: MapGate[] = [
-    { key: 'approve_spec', label: 'Spec approval', afterStage: 'spec',
-      waiting: requests.filter((r) => r.gate === 'approve_spec').length },
-    { key: 'approve_merge', label: 'Merge gate', afterStage: 'review',
-      waiting: requests.filter((r) => r.gate === 'approve_merge').length },
+    {
+      key: 'approve_spec',
+      label: 'Spec approval',
+      afterStage: 'spec',
+      waiting: requests.filter((r) => r.gate === 'approve_spec').length,
+    },
+    {
+      key: 'approve_merge',
+      label: 'Merge gate',
+      afterStage: 'review',
+      waiting: requests.filter((r) => r.gate === 'approve_merge').length,
+    },
   ];
 
   return { columns, gates };
@@ -108,10 +123,17 @@ const ARTIFACT: Record<string, string> = {
 /** State + completion of the Work item's *current* stage. */
 function currentState(d: RequestDetail): { state: StageState; pct: number; detail: string } {
   const runPct = d.run ? Math.round((d.run.step / Math.max(1, d.run.of)) * 100) : 0;
-  if (d.needs_human) return { state: 'stalled', pct: runPct || 40, detail: 'escalated — needs a human' };
-  if (d.gate) return { state: 'gate', pct: 90, detail: d.gate === 'approve_merge' ? 'awaiting merge approval' : 'awaiting spec approval' };
+  if (d.needs_human)
+    return { state: 'stalled', pct: runPct || 40, detail: 'escalated — needs a human' };
+  if (d.gate)
+    return {
+      state: 'gate',
+      pct: 90,
+      detail: d.gate === 'approve_merge' ? 'awaiting merge approval' : 'awaiting spec approval',
+    };
   if (d.status === 'sent_back') return { state: 'sent', pct: 30, detail: 'with the submitter' };
-  if (d.status === 'done' || d.stage === 'done') return { state: 'done', pct: 100, detail: 'deployed' };
+  if (d.status === 'done' || d.stage === 'done')
+    return { state: 'done', pct: 100, detail: 'deployed' };
   if (d.run) return { state: 'run', pct: runPct, detail: d.run.label ?? 'working' };
   if (d.status === 'approved') return { state: 'run', pct: 10, detail: 'starting' };
   return { state: 'triage', pct: 20, detail: 'in intake' };
@@ -121,10 +143,33 @@ function currentState(d: RequestDetail): { state: StageState; pct: number; detai
 export function deliveryStages(d: RequestDetail): DeliveryStage[] {
   const cur = MAP_STAGES.findIndex((s) => s.key === d.stage);
   return MAP_STAGES.map((s, j) => {
-    if (j < cur) return { key: s.key, label: s.label, state: 'done', pct: 100, artifact: ARTIFACT[s.key], detail: 'artifact committed' };
-    if (j > cur) return { key: s.key, label: s.label, state: 'todo', pct: 0, artifact: ARTIFACT[s.key], detail: 'not started' };
+    if (j < cur)
+      return {
+        key: s.key,
+        label: s.label,
+        state: 'done',
+        pct: 100,
+        artifact: ARTIFACT[s.key],
+        detail: 'artifact committed',
+      };
+    if (j > cur)
+      return {
+        key: s.key,
+        label: s.label,
+        state: 'todo',
+        pct: 0,
+        artifact: ARTIFACT[s.key],
+        detail: 'not started',
+      };
     const c = currentState(d);
-    return { key: s.key, label: s.label, state: c.state, pct: c.pct, artifact: ARTIFACT[s.key], detail: c.detail };
+    return {
+      key: s.key,
+      label: s.label,
+      state: c.state,
+      pct: c.pct,
+      artifact: ARTIFACT[s.key],
+      detail: c.detail,
+    };
   });
 }
 
