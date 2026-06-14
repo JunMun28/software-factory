@@ -32,6 +32,11 @@ export const routes: Routes = [
 
   { path: 'admin', pathMatch: 'full', redirectTo: 'admin/mission' },
   {
+    path: 'admin/map',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./admin/map').then((m) => m.FactoryMap),
+  },
+  {
     path: 'admin/mission',
     canActivate: [adminGuard],
     loadComponent: () => import('./admin/mission').then((m) => m.Mission),
