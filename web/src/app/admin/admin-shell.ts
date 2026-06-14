@@ -35,6 +35,11 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
           ><span class="navrow__label">Mission control</span>
           <span class="navrow__tip">Mission <kbd class="kbd">G</kbd><kbd class="kbd">M</kbd></span>
         </button>
+        <button class="navrow" [class.on]="active() === 'map'" (click)="go('/admin/map')">
+          <span class="navrow__ic"><sf-icon name="pipeline" [size]="17" /></span
+          ><span class="navrow__label">Factory map</span>
+          <span class="navrow__tip">Map <kbd class="kbd">G</kbd><kbd class="kbd">O</kbd></span>
+        </button>
         <button class="navrow" [class.on]="active() === 'list'" (click)="go('/admin/list')">
           <span class="navrow__ic"><sf-icon name="list" [size]="17" /></span
           ><span class="navrow__label">All requests</span>
@@ -296,6 +301,7 @@ export class AdminShell {
   cheatNav: [string, string][] = [
     ['Command palette', '⌘ K'],
     ['Mission control', 'G M'],
+    ['Factory map', 'G O'],
     ['All requests', 'G L'],
     ['Needs-me inbox', 'G I'],
     ['Gates', 'G T'],
@@ -332,6 +338,7 @@ export class AdminShell {
       hint: 'G M',
       act: () => this.go('/admin/mission'),
     },
+    { icon: 'pipeline', lbl: 'Go to Factory map', hint: 'G O', act: () => this.go('/admin/map') },
     { icon: 'check', lbl: 'Go to Gates', hint: 'G T', act: () => this.go('/admin/queue') },
     { icon: 'list', lbl: 'Go to All requests', hint: 'G L', act: () => this.go('/admin/list') },
     { icon: 'plus', lbl: 'New request', hint: 'C', act: () => this.go('/submit/new') },
@@ -413,6 +420,7 @@ export class AdminShell {
       const k = e.key.toLowerCase();
       const nav: Record<string, string> = {
         m: '/admin/mission',
+        o: '/admin/map',
         l: '/admin/list',
         i: '/admin/inbox',
         t: '/admin/queue',
