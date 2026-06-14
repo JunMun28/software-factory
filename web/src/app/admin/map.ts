@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 
 import { factoryColumns, MapCard, MapColumn, MapGate } from '../core/map-view';
 import { Store } from '../core/store.service';
-import { Icon } from '../kit/kit';
+import { Glyph } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
 type Lane = { kind: 'stage'; col: MapColumn } | { kind: 'gate'; gate: MapGate };
@@ -14,7 +14,7 @@ type Lane = { kind: 'stage'; col: MapColumn } | { kind: 'gate'; gate: MapGate };
  *  (stores nothing new). Mission control stays the default landing + worklist. */
 @Component({
   selector: 'sf-map-page',
-  imports: [AdminShell, Icon],
+  imports: [AdminShell, Glyph],
   template: `
     <admin-shell active="map" title="Factory map">
       <span headerExtra class="row" style="gap:10px">
@@ -69,7 +69,7 @@ type Lane = { kind: 'stage'; col: MapColumn } | { kind: 'gate'; gate: MapGate };
                 </div>
               } @else {
                 <div class="fm-gate" [class.hot]="it.gate.waiting > 0">
-                  <div class="fm-diamond"><sf-icon name="flag" [size]="13" /></div>
+                  <div class="fm-diamond"><sf-glyph type="flag" [size]="14" /></div>
                   <div class="fm-glabel">{{ it.gate.label }}</div>
                   <div class="fm-gcount">
                     {{ it.gate.waiting > 0 ? it.gate.waiting + ' waiting' : 'clear' }}
@@ -225,6 +225,38 @@ type Lane = { kind: 'stage'; col: MapColumn } | { kind: 'gate'; gate: MapGate };
     .fm-card[data-st='run'] {
       border-color: var(--accent-tint-bd);
     }
+    .fm-pulse {
+      position: relative;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--a500);
+      flex: none;
+    }
+    .fm-pulse::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 1px solid var(--a500);
+      opacity: 0.4;
+      animation: fm-pulse 1.8s var(--ease) infinite;
+    }
+    @keyframes fm-pulse {
+      from {
+        transform: scale(0.6);
+        opacity: 0.5;
+      }
+      to {
+        transform: scale(1.6);
+        opacity: 0;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .fm-pulse::after {
+        animation: none;
+      }
+    }
     .fm-card__t {
       display: flex;
       align-items: center;
@@ -315,7 +347,7 @@ type Lane = { kind: 'stage'; col: MapColumn } | { kind: 'gate'; gate: MapGate };
       border: 1.5px solid var(--border-strong);
       color: var(--muted);
     }
-    .fm-diamond sf-icon {
+    .fm-diamond sf-glyph {
       transform: rotate(-45deg);
     }
     .fm-gate.hot .fm-diamond {
