@@ -2,14 +2,15 @@ import { Component, computed, inject, input } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { ADMIN, Session, SUBMITTER } from '../core/session.service';
-import { Avatar, Glyph, Icon, Mark, PopMenu } from '../kit/kit';
+import { Avatar, Glyph, Mark, PopMenu } from '../kit/kit';
+import { WorldSwitch } from '../kit/world-switch';
 
 /** Shared submitter shell: top bar + optional intake stepper (Describe → Clarify → Review).
  *  Supervisors reach the intake form too (the console's "New request"), so the shell is
  *  role-aware: it always offers a way back to wherever "home" is for the signed-in role. */
 @Component({
   selector: 'sub-shell',
-  imports: [Mark, Avatar, Glyph, Icon, PopMenu],
+  imports: [Mark, Avatar, Glyph, PopMenu, WorldSwitch],
   template: `
     <div class="sub">
       <div class="sub-top">
@@ -19,9 +20,7 @@ import { Avatar, Glyph, Icon, Mark, PopMenu } from '../kit/kit';
         <div class="row" style="gap:16px">
           <nav class="sub-nav">
             @if (admin()) {
-              <button class="sub-back" (click)="go('/admin/mission')">
-                <sf-icon name="back" [size]="15" color="currentColor" /> Mission control
-              </button>
+              <sf-world-switch world="requests" />
             } @else {
               <button [class.on]="active() === 'new'" (click)="go('/submit/new')">
                 New request
@@ -97,11 +96,6 @@ import { Avatar, Glyph, Icon, Mark, PopMenu } from '../kit/kit';
     }
     .sub-brand:hover {
       opacity: 0.78;
-    }
-    .sub-nav .sub-back {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
     }
   `,
 })

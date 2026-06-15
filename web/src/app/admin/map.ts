@@ -1,4 +1,14 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  HostListener,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
@@ -28,13 +38,19 @@ import { AdminShell } from './admin-shell';
           </button>
         </span>
         <input
+          #searchEl
           class="fm-search"
           type="search"
           placeholder="Search…"
           [value]="search()"
           (input)="search.set($any($event.target).value)"
+          (keydown.escape)="searchEl.blur()"
           aria-label="Search work items"
         />
+        <span class="fm-keys" aria-hidden="true">
+          <kbd class="kbd">/</kbd> search <kbd class="kbd">J</kbd><kbd class="kbd">K</kbd> move
+          <kbd class="kbd">↵</kbd> open <kbd class="kbd">F</kbd> filter
+        </span>
       </span>
 
       <div class="scroll" style="position:absolute;inset:0;overflow:auto;padding:18px 20px 28px">
@@ -69,7 +85,7 @@ import { AdminShell } from './admin-shell';
               <div class="fm-now__lab">
                 <span class="fm-now__live" aria-hidden="true"></span>AGENT // NOW WORKING
               </div>
-              <div class="fm-now__lane">SINGLE-LANE · 1 / 1 ACTIVE</div>
+              <div class="fm-now__lane">1 of 1 lane active</div>
             </div>
             <div class="fm-now__run">
               <div class="fm-now__top">
@@ -78,7 +94,9 @@ import { AdminShell } from './admin-shell';
                 <span class="fm-now__stage">{{ a.stageLabel }}</span>
               </div>
               <div class="fm-now__step">{{ a.label }}…</div>
-              <div class="fm-now__bar"><span [style.width.%]="a.pct"></span></div>
+              <div class="fm-now__bar">
+                <span [style.transform]="'scaleX(' + a.pct / 100 + ')'"></span>
+              </div>
             </div>
             <div class="fm-now__meter">
               <div class="fm-now__pct">{{ a.pct }}%</div>
@@ -125,6 +143,7 @@ import { AdminShell } from './admin-shell';
                       [style.--rp]="ringPct(col)"
                       [style.--rc]="hotColor(col)"
                       [attr.aria-label]="ringAriaLabel(col)"
+                      [title]="ringTitle(col)"
                     >
                       <span class="fm-ring__n">{{ count(col) }}</span>
                     </div>
@@ -159,6 +178,7 @@ import { AdminShell } from './admin-shell';
                       @for (c of peek; track c.id) {
                         <button
                           class="fm-card"
+                          [class.fm-card--focus]="c.id === focusedId()"
                           [attr.data-st]="c.state"
                           [attr.aria-label]="cardAriaLabel(c)"
                           (click)="open(c.id)"
@@ -377,13 +397,16 @@ import { AdminShell } from './admin-shell';
     }
     .fm-now__bar > span {
       display: block;
+      width: 100%;
       height: 100%;
       border-radius: 5px;
       background: linear-gradient(90deg, var(--a500), var(--cyan));
       box-shadow: 0 0 14px var(--glow-cy);
       position: relative;
       overflow: hidden;
-      transition: width 0.6s var(--ease);
+      transform-origin: left center;
+      /* transform (not width) to keep the fill off the layout path */
+      transition: transform 0.6s var(--ease);
     }
     .fm-now__bar > span::after {
       content: '';
@@ -509,6 +532,15 @@ import { AdminShell } from './admin-shell';
     .fm-search:focus {
       border-color: var(--a500);
     }
+    /* keyboard-grammar hint (mirrors the queue header's advertised keys) */
+    .fm-keys {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--faint);
+      white-space: nowrap;
+    }
 
     /* ── Lane + stage grid (P0 fit-to-width) ── */
     .fm-scroll {
@@ -523,6 +555,7 @@ import { AdminShell } from './admin-shell';
       padding: 6px 0;
       min-width: 768px; /* allow scroll below 768, fill above */
     }
+    /* the conveyor: a calm static pipe… */
     .fm-lane::before {
       content: '';
       position: absolute;
@@ -530,25 +563,18 @@ import { AdminShell } from './admin-shell';
       right: 40px;
       top: 38px;
       height: 2px;
-      background: linear-gradient(90deg, var(--a700), var(--cyan), var(--a200));
-      box-shadow: 0 0 12px var(--glow-cy);
-      opacity: 0.6;
-      /* P2: slow rail animation */
-      background-size: 200% 100%;
-      animation: fm-rail 8s linear infinite;
+      border-radius: 2px;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        var(--cyan-line) 10%,
+        var(--cyan-line) 90%,
+        transparent
+      );
+      opacity: 0.7;
     }
-    @keyframes fm-rail {
-      from {
-        background-position: 0% 0%;
-      }
-      to {
-        background-position: 200% 0%;
-      }
-    }
+    /* …plus a glowing bead flowing downstream — see .fm-lane::after in styles.css. */
     @media (prefers-reduced-motion: reduce) {
-      .fm-lane::before {
-        animation: none;
-      }
       .fm-ring {
         transition: none !important;
       }
@@ -583,8 +609,11 @@ import { AdminShell } from './admin-shell';
         var(--surface-3) 0
       );
       box-shadow: 0 0 18px -4px var(--rc, var(--a500));
-      /* P2: animate ring fill on poll */
-      transition: background 0.6s var(--ease);
+      /* registered @property --rp lets the conic arc interpolate: the dial
+         sweeps to its value on load/poll instead of snapping */
+      transition:
+        --rp 0.8s var(--ease),
+        box-shadow 0.4s var(--ease);
     }
     .fm-ring::before {
       content: '';
@@ -665,6 +694,12 @@ import { AdminShell } from './admin-shell';
     .fm-card:hover {
       border-color: var(--glass-bd2);
       transform: translateY(-2px);
+    }
+    /* keyboard-roving focus (J/K) — distinct from hover */
+    .fm-card--focus {
+      border-color: var(--accent-tint-bd);
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
     }
     /* State spine colors (P1) */
     .fm-card[data-st='gate'] {
@@ -884,6 +919,51 @@ import { AdminShell } from './admin-shell';
     .fm-skel--card {
       height: 72px;
     }
+
+    /* Light theme: solid instrument panel, not dark's glass + glow (see ADR 0016). */
+    :host-context([data-theme='light']) .fm-kpi {
+      background: var(--surface);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      border-color: var(--border);
+      box-shadow:
+        0 1px 2px rgba(26, 22, 50, 0.05),
+        0 4px 14px -8px rgba(26, 22, 50, 0.13);
+    }
+    :host-context([data-theme='light']) .fm-card {
+      background: var(--surface);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      /* leave border-left (the state spine) to the data-st rules */
+      border-top-color: var(--border);
+      border-right-color: var(--border);
+      border-bottom-color: var(--border);
+      box-shadow:
+        0 1px 2px rgba(26, 22, 50, 0.05),
+        0 4px 14px -8px rgba(26, 22, 50, 0.13);
+    }
+    :host-context([data-theme='light']) .fm-now {
+      background: linear-gradient(118deg, var(--cyan-bg), transparent 62%), var(--surface);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      box-shadow:
+        0 1px 2px rgba(26, 22, 50, 0.05),
+        0 6px 18px -10px rgba(10, 143, 163, 0.22);
+    }
+    :host-context([data-theme='light']) .fm-now--idle {
+      background: var(--surface);
+      box-shadow:
+        0 1px 2px rgba(26, 22, 50, 0.05),
+        0 4px 14px -8px rgba(26, 22, 50, 0.11);
+    }
+    /* the conic ring carries its own color; drop the colored halo on light */
+    :host-context([data-theme='light']) .fm-ring {
+      box-shadow: 0 0 0 1px rgba(26, 22, 50, 0.04);
+    }
+    /* empty-stage placeholder: solid well, not a see-through box over the grid */
+    :host-context([data-theme='light']) .fm-empty {
+      background: var(--surface-2);
+    }
   `,
 })
 export class FactoryMap {
@@ -902,11 +982,22 @@ export class FactoryMap {
       this.poll.version();
       this.api.mission().subscribe((v) => this.mission.set(v));
     });
+    // Keep the keyboard selection in range as filter/search/poll change the card set.
+    effect(() => {
+      const n = this.flatCards().length;
+      if (untracked(this.sel) >= n) this.sel.set(Math.max(0, n - 1));
+    });
   }
 
   /** P2 filter/search signals */
   filter = signal<'all' | 'attention'>('all');
   search = signal('');
+
+  /** Keyboard roving (J/K) over the visible exception cards (flattened in column order). */
+  private searchEl = viewChild<ElementRef<HTMLInputElement>>('searchEl');
+  sel = signal(0);
+  flatCards = computed(() => this.columns().flatMap((col) => this.exceptionPeek(col)));
+  focusedId = computed(() => this.flatCards()[this.sel()]?.id ?? -1);
 
   private raw = computed(() => factoryColumns(this.store.requests(), this.mission()));
 
@@ -1040,6 +1131,12 @@ export class FactoryMap {
     return `${col.label} stage header`;
   }
 
+  /** Sighted-user legend for the conic ring: the fill and the centred number
+   *  encode different things (relative load vs item count). */
+  ringTitle(col: MapColumn): string {
+    return `${col.label}: ${this.count(col)} items · ring fill shows load relative to the busiest stage`;
+  }
+
   stats = computed(() => {
     const cards = this.raw().columns.flatMap((c) => c.cards);
     const live = cards.filter((c) => c.state !== 'done');
@@ -1068,5 +1165,43 @@ export class FactoryMap {
 
   open(id: number) {
     this.router.navigateByUrl('/admin/requests/' + id + '?view=map');
+  }
+
+  /** Map-local key grammar (advertised in the header): / search · J/K move · ↵ open · F filter.
+   *  Roving doesn't move DOM focus, so Enter on a tab-focused control defers to the native click. */
+  @HostListener('window:keydown', ['$event'])
+  onKey(e: KeyboardEvent) {
+    const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey) return;
+    const k = e.key.toLowerCase();
+    if (k === '/') {
+      e.preventDefault();
+      this.searchEl()?.nativeElement.focus();
+    } else if (k === 'f') {
+      e.preventDefault();
+      this.filter.set(this.filter() === 'all' ? 'attention' : 'all');
+    } else if (k === 'j' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      this.moveSel(1);
+    } else if (k === 'k' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.moveSel(-1);
+    } else if (e.key === 'Enter' && tag !== 'button' && tag !== 'a') {
+      const id = this.focusedId();
+      if (id >= 0) {
+        e.preventDefault();
+        this.open(id);
+      }
+    }
+  }
+
+  private moveSel(d: number) {
+    const n = this.flatCards().length;
+    if (!n) return;
+    this.sel.update((s) => Math.min(n - 1, Math.max(0, s + d)));
+    setTimeout(
+      () => document.querySelector('.fm-card--focus')?.scrollIntoView({ block: 'nearest' }),
+      0,
+    );
   }
 }

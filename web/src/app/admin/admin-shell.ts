@@ -8,12 +8,13 @@ import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
 import { Theme } from '../core/theme.service';
 import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
+import { WorldSwitch } from '../kit/world-switch';
 
 /** The Admin Control Center shell — inverted-L: sidebar + header + dense canvas.
  *  Owns the keyboard layer: ⌘K palette, `?` cheat-sheet, C new-request, G-nav. */
 @Component({
   selector: 'admin-shell',
-  imports: [Mark, Icon, Glyph, Avatar, FormsModule, Autofocus],
+  imports: [Mark, Icon, Glyph, Avatar, FormsModule, Autofocus, WorldSwitch],
   template: `
     <div class="adm">
       <aside class="adm-side">
@@ -21,9 +22,11 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
           <sf-mark [size]="18" /><span class="adm-brand__name">Factory</span>
         </div>
 
+        <sf-world-switch world="factory" [full]="true" style="display:block;margin-top:12px" />
+
         <button
           class="btn primary"
-          style="width:100%;justify-content:flex-start;margin-top:12px;margin-bottom:4px"
+          style="width:100%;justify-content:flex-start;margin-top:10px;margin-bottom:4px"
           (click)="go('/submit/new')"
         >
           <sf-icon name="plus" [size]="16" /> New request

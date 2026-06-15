@@ -618,6 +618,51 @@ input.input {
   font-weight: 600;
   background: var(--a50);
 }
+
+/* world switcher — flips the reviewer between the Factory and the request world.
+   Lives in both shells (admin sidebar + request top bar); `.full` stretches it. */
+.wswitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+}
+.wswitch.full {
+  display: flex;
+  width: 100%;
+}
+.wswitch__seg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+.wswitch.full .wswitch__seg {
+  flex: 1;
+  padding: 6px 8px;
+}
+.wswitch__seg:hover {
+  color: var(--fg1);
+}
+.wswitch__seg.on {
+  background: var(--a50);
+  color: var(--accent-tx);
+  font-weight: 600;
+  cursor: default;
+}
 .sub-id {
   display: inline-flex;
   align-items: center;
@@ -1306,15 +1351,50 @@ input.input {
     transform var(--dur) var(--ease);
   z-index: 30;
 }
-.navrow:hover .navrow__tip,
-.navrow.reveal .navrow__tip {
-  opacity: 1;
-  transform: translateY(-50%) translateX(0);
-}
 .navrow__tip .kbd {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.2);
   color: #fff;
+}
+
+/* Factory-map pipeline motion. --rp is registered so the conic ring fill
+   interpolates (the dial sweeps to its value instead of snapping); fm-flow
+   travels the bead of light along the conveyor, Intake → Done. */
+@property --rp {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+@keyframes fm-flow {
+  from {
+    background-position: -55% 0;
+  }
+  to {
+    background-position: 155% 0;
+  }
+}
+/* Factory-map conveyor flow: a glowing bead travels the pipe Intake → Done.
+   The static pipe (.fm-lane::before) lives in map.ts; this animated overlay
+   sits here next to its keyframes, off the component's CSS budget. */
+.fm-lane::after {
+  content: '';
+  position: absolute;
+  left: 80px;
+  right: 40px;
+  top: 33px;
+  height: 12px;
+  pointer-events: none;
+  background: radial-gradient(circle 5px at 50% 50%, var(--cyan), transparent 66%);
+  background-size: 230% 100%;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 0 7px var(--glow-cy));
+  animation: fm-flow 3.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-lane::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 .adm-main {
