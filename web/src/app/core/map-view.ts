@@ -209,3 +209,39 @@ export function deliveryGates(d: RequestDetail): DeliveryGate[] {
   // spec is index 1, review is index 4 in MAP_STAGES
   return [gate(1, 'approve_spec', 'Spec approval'), gate(4, 'approve_merge', 'Merge gate')];
 }
+
+export interface ActiveRun {
+  id: number;
+  ref: string;
+  title: string;
+  app: string;
+  stage: string;
+  stageLabel: string;
+  step: number;
+  of: number;
+  pct: number;
+  label: string;
+  health: 'healthy' | 'slow' | 'no_signal';
+}
+
+/** The single in-flight agent run (single-lane factory → runs[0]), flattened for
+ *  the "Now working" band. Null when nothing is running. Pure. */
+export function activeRun(mission: MissionOut | null): ActiveRun | null {
+  const mr = mission?.runs?.[0];
+  if (!mr) return null;
+  const of = Math.max(0, mr.run.of);
+  const pct = of > 0 ? Math.min(100, Math.max(0, Math.round((mr.run.step / of) * 100))) : 0;
+  return {
+    id: mr.request.id,
+    ref: mr.request.ref,
+    title: mr.request.title,
+    app: mr.request.app_name,
+    stage: mr.request.stage,
+    stageLabel: MAP_STAGES.find((s) => s.key === mr.request.stage)?.label ?? mr.request.stage,
+    step: mr.run.step,
+    of: mr.run.of,
+    pct,
+    label: mr.run.label ?? 'working',
+    health: mr.run.health,
+  };
+}

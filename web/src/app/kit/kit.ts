@@ -167,6 +167,8 @@ const ICONS: Record<string, string> = {
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a3 3 0 0 1 5.6 1.3c0 2-3 2.4-3 4M12 17h.01"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
   pipeline: '<path d="M2.5 12h6M15.5 12h6"/><path d="M12 9.2 14.8 12 12 14.8 9.2 12z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6 19 19M19 5l-1.4 1.4M6.4 17.6 5 19"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
 };
 
 @Component({

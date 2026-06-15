@@ -121,6 +121,23 @@
   /* green confirmation border */
   --green-line: #bcdbc9;
 
+  /* ── Mission Command (Factory map cockpit) ── */
+  --cyan: #0a8fa3;
+  --cyan-bg: rgba(10, 143, 163, 0.1);
+  --cyan-line: rgba(10, 143, 163, 0.3);
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-bd: rgba(40, 20, 80, 0.1);
+  --glass-bd2: rgba(80, 40, 140, 0.2);
+  --glass-hi: rgba(255, 255, 255, 0.7);
+  --mc-grid: rgba(110, 30, 200, 0.05);
+  --mc-grid2: rgba(110, 30, 200, 0.09);
+  --glow-a: rgba(164, 2, 220, 0.3);
+  --glow-cy: rgba(10, 143, 163, 0.26);
+  --glow-am: rgba(199, 120, 0, 0.28);
+  --glow-rd: rgba(210, 59, 45, 0.26);
+  --glow-gr: rgba(31, 157, 99, 0.26);
+  --glass-shadow: 0 22px 48px -26px rgba(50, 30, 90, 0.4), inset 0 1px 0 var(--glass-hi);
+
   color-scheme: light;
 }
 
@@ -176,6 +193,23 @@
   --shadow-pop: 0 6px 22px -8px rgba(0, 0, 0, 0.55), 0 2px 6px -3px rgba(0, 0, 0, 0.45);
   --shadow-overlay: 0 24px 60px -18px rgba(0, 0, 0, 0.66), 0 6px 18px -8px rgba(0, 0, 0, 0.5);
   --shadow-panel: -18px 0 44px -24px rgba(0, 0, 0, 0.55);
+
+  /* ── Mission Command (dark cockpit) ── */
+  --cyan: #22d3ee;
+  --cyan-bg: rgba(34, 211, 238, 0.1);
+  --cyan-line: rgba(34, 211, 238, 0.4);
+  --glass: rgba(26, 22, 38, 0.55);
+  --glass-bd: rgba(150, 130, 200, 0.16);
+  --glass-bd2: rgba(180, 160, 230, 0.28);
+  --glass-hi: rgba(255, 255, 255, 0.045);
+  --mc-grid: rgba(140, 90, 255, 0.05);
+  --mc-grid2: rgba(120, 80, 255, 0.08);
+  --glow-a: rgba(189, 3, 247, 0.45);
+  --glow-cy: rgba(34, 211, 238, 0.4);
+  --glow-am: rgba(240, 168, 50, 0.45);
+  --glow-rd: rgba(240, 101, 90, 0.45);
+  --glow-gr: rgba(70, 210, 138, 0.4);
+  --glass-shadow: 0 24px 60px -22px rgba(0, 0, 0, 0.7), inset 0 1px 0 var(--glass-hi);
 
   color-scheme: dark;
 }
@@ -1145,13 +1179,15 @@ input.input {
   height: 100%;
   display: flex;
   overflow: hidden;
-  background: var(--bg);
+  background: radial-gradient(1000px 560px at 80% -12%, var(--glow-a), transparent 62%), var(--bg);
 }
 .adm-side {
   width: 236px;
   flex: 0 0 236px;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent), var(--glass);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-right: 1px solid var(--glass-bd);
   display: flex;
   flex-direction: column;
   padding: 14px 12px 12px;
@@ -1169,9 +1205,10 @@ input.input {
   letter-spacing: -0.01em;
 }
 .adm-seclabel {
+  font-family: var(--mono);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--faint);
   margin: 18px 10px 5px;
@@ -1196,10 +1233,20 @@ input.input {
   background: var(--surface-2);
 }
 .navrow.on {
-  background: var(--a50);
+  background: linear-gradient(90deg, var(--a50), transparent);
   color: var(--accent-tx);
   font-weight: 600;
-  box-shadow: inset 2px 0 0 var(--a500);
+}
+.navrow.on::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 3px;
+  background: linear-gradient(var(--a500), var(--a700));
+  box-shadow: 0 0 12px var(--glow-a);
 }
 .navrow__ic {
   flex: 0 0 auto;
@@ -1284,8 +1331,10 @@ input.input {
   height: 53px;
   flex: 0 0 53px;
   padding: 0 18px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--glass-bd);
 }
 .adm-head__l {
   display: flex;
@@ -1296,7 +1345,7 @@ input.input {
 .adm-title {
   font-family: var(--display);
   font-weight: 700;
-  font-size: 18px;
+  font-size: 20px;
   letter-spacing: -0.01em;
 }
 .adm-canvas {
@@ -1318,6 +1367,25 @@ input.input {
   cursor: pointer;
 }
 .kpill:hover {
+  border-color: var(--faint);
+}
+.adm-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+.adm-iconbtn:hover {
+  color: var(--fg1);
   border-color: var(--faint);
 }
 

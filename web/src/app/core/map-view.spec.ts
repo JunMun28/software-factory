@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { FactoryRequest, MissionOut, RequestDetail } from './models';
 import {
+  activeRun,
   deliveryGates,
   deliveryStages,
   factoryColumns,
@@ -234,5 +235,65 @@ describe('sortedExceptions', () => {
   it('default cap is 5', () => {
     const cards = Array.from({ length: 8 }, (_, i) => card(i + 1, 'run'));
     expect(sortedExceptions(cards)).toHaveLength(5);
+  });
+});
+
+describe('activeRun', () => {
+  it('returns null when mission is null or has no runs', () => {
+    expect(activeRun(null)).toBeNull();
+    expect(activeRun(mission({ runs: [] }))).toBeNull();
+  });
+
+  it('flattens the first run with stage label and pct', () => {
+    const r = activeRun(
+      mission({
+        runs: [
+          {
+            request: req({
+              id: 1,
+              ref: 'REQ-2042',
+              title: 'CSV import for vendors',
+              app_name: 'Vendor Portal',
+              stage: 'architecture',
+            }),
+            run: {
+              step: 3,
+              of: 5,
+              label: 'Designing data model',
+              health: 'healthy',
+              seconds_since_event: 12,
+            },
+          },
+        ],
+      }),
+    );
+    expect(r).toEqual({
+      id: 1,
+      ref: 'REQ-2042',
+      title: 'CSV import for vendors',
+      app: 'Vendor Portal',
+      stage: 'architecture',
+      stageLabel: 'Architecture',
+      step: 3,
+      of: 5,
+      pct: 60,
+      label: 'Designing data model',
+      health: 'healthy',
+    });
+  });
+
+  it('falls back to a generic label and yields pct 0 when of is 0', () => {
+    const r = activeRun(
+      mission({
+        runs: [
+          {
+            request: req({ stage: 'build' }),
+            run: { step: 9, of: 0, label: null, health: 'slow', seconds_since_event: 0 },
+          },
+        ],
+      }),
+    )!;
+    expect(r.label).toBe('working');
+    expect(r.pct).toBe(0);
   });
 });
