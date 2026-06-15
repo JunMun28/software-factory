@@ -6,6 +6,7 @@ import { Api } from '../core/api.service';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
+import { Theme } from '../core/theme.service';
 import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
 
 /** The Admin Control Center shell — inverted-L: sidebar + header + dense canvas.
@@ -159,6 +160,16 @@ import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
             <button class="kpill" (click)="paletteOpen.set(true)">
               <sf-icon name="search" [size]="15" /> Search <kbd class="kbd">⌘K</kbd>
             </button>
+            <button
+              class="adm-iconbtn"
+              (click)="toggleTheme()"
+              [attr.aria-label]="
+                theme.resolved() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+              "
+              [title]="theme.resolved() === 'dark' ? 'Light mode' : 'Dark mode'"
+            >
+              <sf-icon [name]="theme.resolved() === 'dark' ? 'sun' : 'moon'" [size]="16" />
+            </button>
           </div>
         </header>
         <div class="adm-canvas">
@@ -282,6 +293,11 @@ export class AdminShell {
   private store = inject(Store);
   session = inject(Session);
   poll = inject(Poll);
+  theme = inject(Theme);
+
+  toggleTheme() {
+    this.theme.set(this.theme.resolved() === 'dark' ? 'light' : 'dark');
+  }
 
   active = input<string>('mission');
   title = input<string>('Mission control');

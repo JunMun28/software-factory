@@ -2,7 +2,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { factoryColumns, MapCard, MapColumn, sortedExceptions } from '../core/map-view';
+import { activeRun, factoryColumns, MapCard, MapColumn, sortedExceptions } from '../core/map-view';
 import { MissionOut } from '../core/models';
 import { Poll } from '../core/poll.service';
 import { Store } from '../core/store.service';
@@ -46,6 +46,55 @@ import { AdminShell } from './admin-shell';
             </div>
           }
         </div>
+
+        @if (active(); as a) {
+          <button
+            class="fm-now"
+            [attr.aria-label]="
+              'Agent now working on ' +
+              a.title +
+              ', ' +
+              a.ref +
+              ', ' +
+              a.app +
+              ', stage ' +
+              a.stageLabel +
+              ', ' +
+              a.pct +
+              ' percent'
+            "
+            (click)="open(a.id)"
+          >
+            <div class="fm-now__who">
+              <div class="fm-now__lab">
+                <span class="fm-now__live" aria-hidden="true"></span>AGENT // NOW WORKING
+              </div>
+              <div class="fm-now__lane">SINGLE-LANE · 1 / 1 ACTIVE</div>
+            </div>
+            <div class="fm-now__run">
+              <div class="fm-now__top">
+                <span class="fm-now__ti">{{ a.title }}</span>
+                <span class="fm-now__meta">{{ a.app }} · {{ a.ref }}</span>
+                <span class="fm-now__stage">{{ a.stageLabel }}</span>
+              </div>
+              <div class="fm-now__step">{{ a.label }}…</div>
+              <div class="fm-now__bar"><span [style.width.%]="a.pct"></span></div>
+            </div>
+            <div class="fm-now__meter">
+              <div class="fm-now__pct">{{ a.pct }}%</div>
+              @if (a.of) {
+                <div class="fm-now__step2">step {{ a.step }}/{{ a.of }}</div>
+              }
+            </div>
+          </button>
+        } @else {
+          <div class="fm-now fm-now--idle">
+            <div class="fm-now__lab">
+              <span class="fm-now__live fm-now__live--idle" aria-hidden="true"></span>AGENT // IDLE
+            </div>
+            <div class="fm-now__idletext">No active run — the lane is clear, agents ready.</div>
+          </div>
+        }
 
         @if (!loaded()) {
           <!-- Loading skeleton -->
@@ -166,37 +215,263 @@ import { AdminShell } from './admin-shell';
     </admin-shell>
   `,
   styles: `
-    /* ── KPI tiles ── */
-    .fm-kpis {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(150px, 1fr));
-      gap: 12px;
-      max-width: 760px;
-      margin-bottom: 22px;
+    /* ── Cockpit canvas: blueprint grid ── */
+    .scroll {
+      background-image:
+        linear-gradient(var(--mc-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--mc-grid) 1px, transparent 1px);
+      background-size: 44px 44px;
     }
-    .fm-kpi {
-      border: 1px solid var(--border);
-      border-radius: var(--r-lg);
-      background: var(--surface);
-      padding: 12px 14px;
+
+    /* ── Now-working band (single-lane hero) ── */
+    .fm-now {
       position: relative;
+      display: grid;
+      grid-template-columns: 190px 1fr 130px;
+      align-items: center;
+      gap: 22px;
+      width: 100%;
+      text-align: left;
+      margin-bottom: 22px;
+      padding: 16px 20px;
+      border: 1px solid var(--cyan-line);
+      border-radius: var(--r-lg);
+      background:
+        linear-gradient(120deg, var(--cyan-bg), rgba(189, 3, 247, 0.05) 55%, transparent 82%),
+        var(--glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow:
+        var(--glass-shadow),
+        0 0 50px -22px var(--glow-cy);
+      cursor: pointer;
+      font-family: var(--body);
       overflow: hidden;
+      transition:
+        border-color var(--dur) var(--ease),
+        transform var(--dur) var(--ease);
     }
-    .fm-kpi::before {
+    .fm-now:hover {
+      transform: translateY(-1px);
+      border-color: var(--cyan);
+    }
+    .fm-now::before {
       content: '';
       position: absolute;
       left: 0;
       top: 0;
       bottom: 0;
       width: 3px;
-      background: var(--kc, var(--a500));
+      background: linear-gradient(var(--cyan), var(--a500));
+      box-shadow: 0 0 16px var(--glow-cy);
+    }
+    .fm-now--idle {
+      grid-template-columns: 1fr;
+      cursor: default;
+      border-color: var(--glass-bd2);
+      background: var(--glass);
+      box-shadow: var(--glass-shadow);
+    }
+    .fm-now--idle::before {
+      background: var(--glass-bd2);
+      box-shadow: none;
+    }
+    .fm-now__who {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .fm-now__lab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      color: var(--cyan);
+    }
+    .fm-now__live {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 0 0 var(--glow-cy);
+      animation: fm-beat 1.7s infinite;
+    }
+    .fm-now__live--idle {
+      background: var(--faint);
+      box-shadow: none;
+      animation: none;
+    }
+    @keyframes fm-beat {
+      0% {
+        box-shadow: 0 0 0 0 var(--glow-cy);
+      }
+      70% {
+        box-shadow: 0 0 0 7px transparent;
+      }
+      100% {
+        box-shadow: 0 0 0 0 transparent;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .fm-now__live {
+        animation: none;
+      }
+      .fm-now__bar > span::after {
+        animation: none;
+      }
+    }
+    .fm-now__lane {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    .fm-now__run {
+      min-width: 0;
+    }
+    .fm-now__top {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .fm-now__ti {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .fm-now__meta {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .fm-now__stage {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--cyan);
+      padding: 3px 9px;
+      border-radius: 6px;
+      background: var(--cyan-bg);
+      border: 1px solid var(--cyan-line);
+      text-transform: uppercase;
+    }
+    .fm-now__step {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      color: var(--fg2);
+      margin-bottom: 11px;
+    }
+    .fm-now__bar {
+      height: 7px;
+      border-radius: 5px;
+      background: var(--surface-3);
+      overflow: hidden;
+      position: relative;
+      max-width: 560px;
+    }
+    .fm-now__bar > span {
+      display: block;
+      height: 100%;
+      border-radius: 5px;
+      background: linear-gradient(90deg, var(--a500), var(--cyan));
+      box-shadow: 0 0 14px var(--glow-cy);
+      position: relative;
+      overflow: hidden;
+      transition: width 0.6s var(--ease);
+    }
+    .fm-now__bar > span::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+      transform: translateX(-100%);
+      animation: fm-sheen 1.8s linear infinite;
+    }
+    @keyframes fm-sheen {
+      to {
+        transform: translateX(120%);
+      }
+    }
+    .fm-now__meter {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      text-align: right;
+    }
+    .fm-now__pct {
+      font-family: var(--mono);
+      font-size: 24px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .fm-now__step2 {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--faint);
+    }
+    .fm-now__idletext {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* ── Telemetry tiles ── */
+    .fm-kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .fm-kpi {
+      position: relative;
+      border: 1px solid var(--glass-bd);
+      border-radius: var(--r-lg);
+      background: linear-gradient(160deg, rgba(255, 255, 255, 0.04), transparent 60%), var(--glass);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow:
+        var(--glass-shadow),
+        0 0 30px -18px var(--kc, transparent);
+      padding: 14px 16px 13px;
+      overflow: hidden;
+    }
+    /* HUD corner ticks */
+    .fm-kpi::before,
+    .fm-kpi::after {
+      content: '';
+      position: absolute;
+      width: 11px;
+      height: 11px;
+      opacity: 0.55;
+    }
+    .fm-kpi::before {
+      top: 9px;
+      left: 9px;
+      border-top: 1.5px solid var(--glass-bd2);
+      border-left: 1.5px solid var(--glass-bd2);
+    }
+    .fm-kpi::after {
+      bottom: 9px;
+      right: 9px;
+      border-bottom: 1.5px solid var(--glass-bd2);
+      border-right: 1.5px solid var(--glass-bd2);
     }
     .fm-kpi__l {
       display: flex;
       align-items: center;
-      gap: 7px;
+      gap: 8px;
+      font-family: var(--mono);
       font-size: 11px;
       font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
       color: var(--muted);
     }
     .fm-kpi__dot {
@@ -204,11 +479,15 @@ import { AdminShell } from './admin-shell';
       height: 8px;
       border-radius: 50%;
       background: var(--kc, var(--a500));
+      box-shadow: 0 0 9px var(--kc, var(--a500));
     }
     .fm-kpi__n {
-      font-size: 25px;
+      font-family: var(--mono);
+      font-size: 40px;
       font-weight: 700;
-      margin-top: 6px;
+      line-height: 1;
+      margin-top: 12px;
+      letter-spacing: -0.02em;
       font-variant-numeric: tabular-nums;
     }
 
@@ -251,8 +530,9 @@ import { AdminShell } from './admin-shell';
       right: 40px;
       top: 38px;
       height: 2px;
-      background: linear-gradient(90deg, var(--a700), var(--a200));
-      opacity: 0.45;
+      background: linear-gradient(90deg, var(--a700), var(--cyan), var(--a200));
+      box-shadow: 0 0 12px var(--glow-cy);
+      opacity: 0.6;
       /* P2: slow rail animation */
       background-size: 200% 100%;
       animation: fm-rail 8s linear infinite;
@@ -302,6 +582,7 @@ import { AdminShell } from './admin-shell';
         var(--rc, var(--a500)) calc(var(--rp, 0) * 1%),
         var(--surface-3) 0
       );
+      box-shadow: 0 0 18px -4px var(--rc, var(--a500));
       /* P2: animate ring fill on poll */
       transition: background 0.6s var(--ease);
     }
@@ -317,12 +598,13 @@ import { AdminShell } from './admin-shell';
       inset: 0;
       display: grid;
       place-items: center;
+      font-family: var(--mono);
       font-weight: 700;
-      font-size: 18px;
+      font-size: 24px;
       font-variant-numeric: tabular-nums;
     }
     .fm-name {
-      font-size: 12.5px;
+      font-size: 14px;
       font-weight: 700;
     }
     /* Sub-line: plain item count */
@@ -362,34 +644,49 @@ import { AdminShell } from './admin-shell';
     .fm-card {
       text-align: left;
       width: 100%;
-      border: 1px solid var(--border);
+      border: 1px solid var(--glass-bd);
       border-left-width: 3px; /* spine (P1) */
-      border-left-color: var(--border);
+      border-left-color: var(--glass-bd2);
       border-radius: var(--r-lg);
-      background: var(--surface);
-      padding: 9px 10px;
+      background: linear-gradient(150deg, rgba(255, 255, 255, 0.04), transparent 70%), var(--glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow:
+        0 14px 30px -22px rgba(0, 0, 0, 0.6),
+        inset 0 1px 0 var(--glass-hi);
+      padding: 10px 11px;
       cursor: pointer;
       font-family: var(--body);
       transition:
         border-color var(--dur) var(--ease),
-        transform var(--dur) var(--ease);
+        transform var(--dur) var(--ease),
+        box-shadow var(--dur) var(--ease);
     }
     .fm-card:hover {
-      border-color: var(--border-strong);
-      transform: translateY(-1px);
+      border-color: var(--glass-bd2);
+      transform: translateY(-2px);
     }
     /* State spine colors (P1) */
     .fm-card[data-st='gate'] {
-      border-left-color: var(--amber-line);
-      border-color: var(--amber-line);
+      border-left-color: var(--amber);
+      box-shadow:
+        0 14px 30px -22px rgba(0, 0, 0, 0.6),
+        0 0 22px -12px var(--glow-am),
+        inset 0 1px 0 var(--glass-hi);
     }
     .fm-card[data-st='stalled'] {
-      border-left-color: var(--red-line);
-      border-color: var(--red-line);
+      border-left-color: var(--red);
+      box-shadow:
+        0 14px 30px -22px rgba(0, 0, 0, 0.6),
+        0 0 22px -10px var(--glow-rd),
+        inset 0 1px 0 var(--glass-hi);
     }
     .fm-card[data-st='run'] {
-      border-left-color: var(--accent-tint-bd);
-      border-color: var(--accent-tint-bd);
+      border-left-color: var(--cyan);
+      box-shadow:
+        0 14px 30px -22px rgba(0, 0, 0, 0.6),
+        0 0 22px -12px var(--glow-cy),
+        inset 0 1px 0 var(--glass-hi);
     }
     .fm-card[data-st='sent'] {
       border-left-color: var(--info);
@@ -441,7 +738,7 @@ import { AdminShell } from './admin-shell';
       display: flex;
       align-items: center;
       gap: 7px;
-      font-size: 12px;
+      font-size: 14px;
       font-weight: 600;
     }
     .fm-card__ti {
@@ -498,12 +795,22 @@ import { AdminShell } from './admin-shell';
       margin-left: auto;
     }
     .fm-empty {
-      border: 1px dashed var(--border);
+      border: 1px dashed var(--glass-bd2);
       border-radius: var(--r-lg);
-      padding: 14px 10px;
+      padding: 18px 10px;
       text-align: center;
-      color: var(--faint);
-      font-size: 11px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      background: repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.015),
+        rgba(255, 255, 255, 0.015) 8px,
+        transparent 8px,
+        transparent 16px
+      );
     }
 
     /* ── Aggregate collapse chips (P0) ── */
@@ -605,6 +912,9 @@ export class FactoryMap {
 
   /** True once the store has emitted at least one non-null value */
   loaded = computed(() => this.store.requests().length > 0 || this.mission() !== null);
+
+  /** The single active agent run for the "Now working" band (single-lane factory). */
+  active = computed(() => activeRun(this.mission()));
 
   /** Columns after filter/search (P2) */
   columns = computed(() => {
