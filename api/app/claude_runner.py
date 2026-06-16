@@ -35,6 +35,7 @@ from .claude_exec import ClaudeResult, run_claude
 from .db import SessionLocal
 from .events import emit
 from .models import Request, utcnow
+from .verification import build_payload
 
 WORKSPACES = settings.WORKSPACES
 SAMPLE = settings.SAMPLE
@@ -319,9 +320,17 @@ class ClaudeRunner:
             return False
         emit(db, req, "milestone_summary", f"Review report committed — {verdict}",
              payload={"fields": {"Artifacts": "REVIEW.md", "Agent": "Claude Code"}, "Ref": req.ref})
+        vpayload = build_payload(ws, req)
+        if vpayload["tests_total"] == 0:
+            # the suite proved green at the GREEN gate; if it cannot run now, the
+            # evidence would be a lie — escalate rather than raise a blind gate
+            self._escalate(db, req, "Verification could not be built — the suite did not run at review")
+            return False
+        emit(db, req, "verification", "Verification report — ready for the merge gate",
+             stage="review", payload=vpayload)
         lifecycle.raise_merge_gate(db, req)
         db.commit()
-        log.info("%s: review committed, merge gate raised", req.ref)
+        log.info("%s: review committed, verification emitted, merge gate raised", req.ref)
         return True
 
     # ---------- the human merge gate ----------
