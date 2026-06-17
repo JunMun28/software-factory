@@ -135,7 +135,7 @@ def test_pytest_missing_is_not_an_honest_failure(tmp_path, monkeypatch):
                 cmd, 1, stdout="", stderr="/venv/bin/python: No module named pytest")
         return real_run(cmd, **kw)
 
-    monkeypatch.setattr(claude_runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)  # _pytest lives in ws_exec now
     proc = claude_runner._pytest(tmp_path)
     assert proc.returncode == 127  # surfaced as "the gate cannot run", never as a RED pass
 
@@ -206,6 +206,20 @@ def test_review_emits_verification_for_merge_evidence(client, ws_root):
 def test_review_escalates_when_verification_cannot_be_built(client, ws_root, monkeypatch):
     monkeypatch.setattr(claude_runner, "build_payload", lambda ws, req: {"tests_total": 0})
     d = _approved_request(client, "Verification cannot build")
+    ClaudeRunner(executor=honest_executor).run_pipeline(d["id"])
+    out = client.get(f"/api/requests/{d['id']}").json()
+    assert out["needs_human"] is True
+    assert "Verification could not be built" in out["needs_human_reason"]
+    assert out["gate"] != "approve_merge"
+
+
+def test_review_escalates_when_diff_is_empty(client, ws_root, monkeypatch):
+    # a green suite whose work branch shows no diff is not honest evidence — the
+    # merge gate must not be raised on a "+0 -0 · 0 files" report (a silent
+    # git-diff failure that returned no shortstat would land here too)
+    monkeypatch.setattr(claude_runner, "build_payload",
+                        lambda ws, req: {"tests_total": 3, "files_changed": 0})
+    d = _approved_request(client, "Verification empty diff")
     ClaudeRunner(executor=honest_executor).run_pipeline(d["id"])
     out = client.get(f"/api/requests/{d['id']}").json()
     assert out["needs_human"] is True
