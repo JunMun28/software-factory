@@ -5,6 +5,17 @@
 
 WEB_PORT ?= 4200   # e.g. `make dev WEB_PORT=4300` if :4200 is taken
 
+# Angular's CLI rejects Node older than the version pinned in .nvmrc. Dev shells
+# sometimes surface an old nvm Node first on PATH (every version is installed),
+# so resolve the pinned version's bin dir via nvm and put it first. No-op when
+# nvm or that version is absent (e.g. CI that already activates a supported Node).
+NODE_BIN := $(shell export NVM_DIR="$$HOME/.nvm"; \
+	[ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh" >/dev/null 2>&1; \
+	n="$$(nvm which "$$(cat .nvmrc 2>/dev/null)" 2>/dev/null)"; [ -x "$$n" ] && dirname "$$n")
+ifneq ($(NODE_BIN),)
+export PATH := $(NODE_BIN):$(PATH)
+endif
+
 ## Run backend + frontend together (Ctrl-C stops both). Simulator ticks every 8s.
 dev:
 	@trap 'kill 0' EXIT; \
