@@ -126,7 +126,7 @@ export function elapsedShort(seconds: number): string {
 
 export interface EvidenceBit {
   text: string;
-  tone: '' | 'green' | 'purple';
+  tone: '' | 'green' | 'purple' | 'red';
 }
 
 /** The evidence strip's bits (spec §6): spec gates show grounding, merge gates show
@@ -146,8 +146,17 @@ export function evidenceBits(ev: Evidence | null): EvidenceBit[] {
     return bits;
   }
   const bits: EvidenceBit[] = [];
-  if (ev.tests_total != null)
-    bits.push({ text: `${ev.tests_passed}/${ev.tests_total} tests pass`, tone: 'green' });
+  if (ev.tests_total != null) {
+    const allPass = ev.tests_passed === ev.tests_total;
+    bits.push(
+      allPass
+        ? { text: `${ev.tests_passed}/${ev.tests_total} tests pass`, tone: 'green' }
+        : {
+            text: `${(ev.tests_total ?? 0) - (ev.tests_passed ?? 0)}/${ev.tests_total} tests failing`,
+            tone: 'red',
+          },
+    );
+  }
   if (ev.diff_added != null)
     bits.push({
       text: `diff +${ev.diff_added} −${ev.diff_removed} · ${ev.files_changed} files`,

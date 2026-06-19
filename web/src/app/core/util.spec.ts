@@ -287,6 +287,26 @@ describe('evidenceBits', () => {
     expect(bits[1]).toEqual({ text: 'diff +412 −38 · 9 files', tone: '' });
     expect(bits[2]).toEqual({ text: 'reviewer: no blocking findings', tone: 'purple' });
   });
+  it('all tests passing stays green with "pass"', () => {
+    const bits = evidenceBits({
+      ...base,
+      kind: 'merge',
+      tests_passed: 8,
+      tests_total: 8,
+    } as Evidence);
+    expect(bits[0]).toEqual({ text: '8/8 tests pass', tone: 'green' });
+  });
+  it('diverged test counts are not green and do not claim "pass"', () => {
+    const bits = evidenceBits({
+      ...base,
+      kind: 'merge',
+      tests_passed: 5,
+      tests_total: 8,
+    } as Evidence);
+    expect(bits[0].tone).not.toBe('green');
+    expect(bits[0].text).not.toContain('pass');
+    expect(bits[0]).toEqual({ text: '3/8 tests failing', tone: 'red' });
+  });
   it('merge gate with no verification fields → no evidence recorded', () => {
     expect(evidenceBits({ ...base, kind: 'merge' } as Evidence)).toEqual([
       { text: 'no evidence recorded', tone: '' },

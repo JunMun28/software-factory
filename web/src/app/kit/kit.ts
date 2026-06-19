@@ -622,6 +622,7 @@ export class CancelConfirm {
           class="evstrip__bit"
           [class.green]="bit.tone === 'green'"
           [class.purple]="bit.tone === 'purple'"
+          [class.red]="bit.tone === 'red'"
           >{{ bit.text }}</span
         >
       }
@@ -648,6 +649,10 @@ export class CancelConfirm {
     }
     .evstrip__bit.purple {
       color: var(--accent-tx);
+    }
+    .evstrip__bit.red {
+      color: var(--red-tx);
+      font-weight: 500;
     }
     .evstrip__assume {
       display: flex;

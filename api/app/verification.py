@@ -1,21 +1,42 @@
-"""Derives the merge-gate evidence payload from a finished workspace (ADR 0014).
+"""Single source of truth for the merge-gate `verification` event (ADR 0014).
 
-The real runner's review stage emits a `verification` event whose payload feeds
-supervision.evidence(); this module computes that payload from the ACTUAL
-workspace (pytest counts, the work-branch diff, the reviewer verdict) rather
-than the hardcoded numbers the simulator uses. It reads the workspace through
-the shared ws_exec git/pytest wrappers (evidence derivation, not a gate) and
-writes nothing to the DB.
+Both pipelines emit the same event through this module:
 
-Payload keys are a contract with supervision.evidence() and must match the
-simulator's emit_verification: tests_passed, tests_total, diff_added,
-diff_removed, files_changed, reviewer_verdict, assumptions, Ref.
+* the SIMULATOR (no workspace) fires fabricated numbers matching its review
+  script, and
+* the REAL runner DERIVES the payload from the ACTUAL workspace — pytest
+  counts, the work-branch diff, the reviewer verdict — read through the shared
+  ws_exec git/pytest wrappers (evidence derivation, not a gate).
+
+The event kind, title, stage, the 8-key payload SHAPE (its key set, the shared
+`assumptions` derivation and `"Ref"`), and the emit itself all live here so the
+contract with supervision.evidence() cannot drift by hand. This module must NOT
+import claude_runner or simulator (they import it); it depends only on events
+and models, neither of which imports back.
 """
 import re
 from pathlib import Path
 
+from sqlalchemy.orm import Session
+
+from .events import emit
 from .models import Request
 from .ws_exec import _git, _pytest
+
+# the verification event's contract — owned here so both emitters agree
+KIND = "verification"
+TITLE = "Verification report — ready for the merge gate"
+STAGE = "review"
+
+# the simulator's fabricated numbers — match the text its review script reports
+SIM_METRICS = {
+    "tests_passed": 8,
+    "tests_total": 8,
+    "diff_added": 412,
+    "diff_removed": 38,
+    "files_changed": 9,
+    "reviewer_verdict": "no blocking findings",
+}
 
 # pytest summary fragments: "2 passed", "1 failed", "3 errors" — rstrip("s")
 # below folds "errors" → "error" so plural and singular share one key
@@ -53,16 +74,67 @@ def _verdict(ws: Path) -> str:
     return lines[0][:120] if lines else "no review"
 
 
-def build_payload(ws: Path, req: Request) -> dict:
-    passed, total = _pytest_counts(ws)
-    files, added, removed = _diff_stat(ws)
+def _payload(
+    req: Request,
+    *,
+    tests_passed: int,
+    tests_total: int,
+    diff_added: int,
+    diff_removed: int,
+    files_changed: int,
+    reviewer_verdict: str,
+) -> dict:
+    """The one place the 8-key payload SHAPE is built. Both the fabricated
+    (simulator) and derived (runner) paths pass their six metrics through here,
+    so the key set, the `assumptions` derivation, and `"Ref"` cannot drift."""
     return {
-        "tests_passed": passed,
-        "tests_total": total,
-        "diff_added": added,
-        "diff_removed": removed,
-        "files_changed": files,
-        "reviewer_verdict": _verdict(ws),
+        "tests_passed": tests_passed,
+        "tests_total": tests_total,
+        "diff_added": diff_added,
+        "diff_removed": diff_removed,
+        "files_changed": files_changed,
+        "reviewer_verdict": reviewer_verdict,
         "assumptions": [ln.text for ln in req.spec_lines if ln.assume],
         "Ref": req.ref,
     }
+
+
+def build_payload(ws: Path, req: Request) -> dict:
+    """The real runner's DERIVED payload — metrics read from the workspace."""
+    passed, total = _pytest_counts(ws)
+    files, added, removed = _diff_stat(ws)
+    return _payload(
+        req,
+        tests_passed=passed,
+        tests_total=total,
+        diff_added=added,
+        diff_removed=removed,
+        files_changed=files,
+        reviewer_verdict=_verdict(ws),
+    )
+
+
+def emit_verification(
+    db: Session,
+    req: Request,
+    ws: Path | None = None,
+    *,
+    payload: dict | None = None,
+) -> dict:
+    """Emit the single verification event for either pipeline and return the
+    payload it wrote.
+
+    Resolution order for the payload:
+    * an explicit ``payload`` (the runner passes the dict it already built and
+      ran its escalation guard against, so the guard and the emit never diverge),
+    * else ``ws`` set → the DERIVED payload via ``build_payload(ws, req)``,
+    * else (``ws is None``) → the simulator's fabricated ``SIM_METRICS``.
+    """
+    if payload is None:
+        payload = (
+            build_payload(ws, req)
+            if ws is not None
+            else _payload(req, **SIM_METRICS)
+        )
+    emit(db, req, KIND, TITLE, stage=STAGE, payload=payload)
+    return payload

@@ -33,7 +33,7 @@ from .claude_exec import ClaudeResult, run_claude
 from .db import SessionLocal
 from .events import emit
 from .models import Request, utcnow
-from .verification import build_payload
+from .verification import build_payload, emit_verification
 from .ws_exec import _git, _pytest
 
 WORKSPACES = settings.WORKSPACES
@@ -304,8 +304,9 @@ class ClaudeRunner:
             # lie — escalate rather than raise a blind gate
             self._escalate(db, req, "Verification could not be built — the suite did not run or the diff was empty at review")
             return False
-        emit(db, req, "verification", "Verification report — ready for the merge gate",
-             stage="review", payload=vpayload)
+        # emit through the single source of truth, passing the payload the guard
+        # above already vetted so the guard and the event never diverge
+        emit_verification(db, req, ws, payload=vpayload)
         lifecycle.raise_merge_gate(db, req)
         db.commit()
         log.info("%s: review committed, verification emitted, merge gate raised", req.ref)
