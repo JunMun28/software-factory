@@ -2,12 +2,21 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
-import { RequestDetail } from '@sf/shared';
-import { Poll } from '../core/poll.service';
+import {
+  Api,
+  Glyph,
+  Icon,
+  Pill,
+  Poll,
+  RequestDetail,
+  Sig,
+  TypeChip,
+  liveStatus,
+  plainActivity,
+  plainStage,
+  timeAgo,
+} from '@sf/shared';
 import { Session } from '../core/session.service';
-import { liveStatus, plainActivity, plainStage, timeAgo } from '../core/util';
-import { Glyph, Icon, Pill, Sig, TypeChip } from '../kit/kit';
 import { SubShell } from './sub-shell';
 
 interface TlRow {

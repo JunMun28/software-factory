@@ -1,11 +1,8 @@
 import { Component, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { Api } from '../core/api.service';
-import { AppEntry } from '@sf/shared';
-import { Poll } from '../core/poll.service';
+import { Api, AppEntry, Glyph, Icon, Poll } from '@sf/shared';
 import { Store } from '../core/store.service';
-import { Glyph, Icon } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
 /** C7 — App registry: name → repo → owner, with the slide-in edit + blast-radius note. */

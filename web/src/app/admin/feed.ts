@@ -4,13 +4,21 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { map } from 'rxjs';
 
-import { Api } from '../core/api.service';
-import { ProgressEvent } from '@sf/shared';
-import { Poll } from '../core/poll.service';
+import {
+  Api,
+  Avatar,
+  Glyph,
+  Icon,
+  Mark,
+  Poll,
+  PopMenu,
+  ProgressEvent,
+  clock,
+  timeAgo,
+  utc,
+} from '@sf/shared';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
-import { clock, timeAgo, utc } from '../core/util';
-import { Avatar, Glyph, Icon, Mark, PopMenu } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
 interface FeedMsg {

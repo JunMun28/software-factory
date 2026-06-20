@@ -2,9 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
-import { InterviewState, RequestDetail } from '@sf/shared';
-import { Icon, Mark, TypeChip } from '../kit/kit';
+import { Api, Icon, InterviewState, Mark, RequestDetail, TypeChip } from '@sf/shared';
 import { SubShell } from './sub-shell';
 
 /** S2 — the adaptive AI interview: open questions answered in chat, options when natural. */

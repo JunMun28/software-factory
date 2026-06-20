@@ -1,12 +1,18 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
-import { FactoryRequest } from '@sf/shared';
-import { Poll } from '../core/poll.service';
+import {
+  Api,
+  FactoryRequest,
+  Icon,
+  Pill,
+  Poll,
+  Sig,
+  TypeChip,
+  plainStage,
+  timeAgo,
+} from '@sf/shared';
 import { Session } from '../core/session.service';
-import { plainStage, timeAgo } from '../core/util';
-import { Icon, Pill, Sig, TypeChip } from '../kit/kit';
 import { SubShell } from './sub-shell';
 
 /** S4 — My Requests: scoped to self, plain-stage vocabulary, one amber hero band. */

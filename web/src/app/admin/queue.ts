@@ -1,13 +1,8 @@
 import { Component, HostListener, effect, inject, signal, untracked } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
-import { RequestDetail } from '@sf/shared';
-import { Poll } from '../core/poll.service';
-import { Session } from '../core/session.service';
-import { Store } from '../core/store.service';
-import { TYPE_LABEL } from '../core/util';
 import {
+  Api,
   ApproveModal,
   CancelConfirm,
   EscalationBox,
@@ -16,10 +11,15 @@ import {
   Icon,
   InterviewAnswers,
   Mark,
+  Poll,
+  RequestDetail,
   SendBackModal,
   Sig,
   SpecLines,
-} from '../kit/kit';
+  TYPE_LABEL,
+} from '@sf/shared';
+import { Session } from '../core/session.service';
+import { Store } from '../core/store.service';
 import { AdminShell } from './admin-shell';
 
 /** C3 — Approval queue: the Stage-1 triage workhorse.

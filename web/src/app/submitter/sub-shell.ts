@@ -1,8 +1,8 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { Router } from '@angular/router';
 
+import { Avatar, Glyph, Mark, PopMenu } from '@sf/shared';
 import { ADMIN, Session, SUBMITTER } from '../core/session.service';
-import { Avatar, Glyph, Mark, PopMenu } from '../kit/kit';
 import { WorldSwitch } from '../kit/world-switch';
 
 /** Shared submitter shell: top bar + optional intake stepper (Describe → Clarify → Review).

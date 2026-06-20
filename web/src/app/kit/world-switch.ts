@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { Icon } from './kit';
+import { Icon } from '@sf/shared';
 
 /** Two-state world switcher: flips the reviewer between the Factory (admin console)
  *  and the request world. Only mounted for the admin role — the Factory is admin-gated,

@@ -10,18 +10,24 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
-import { FactoryRequest, MissionOut } from '@sf/shared';
-import { Poll } from '../core/poll.service';
-import { Session } from '../core/session.service';
 import {
+  Api,
+  ApproveModal,
+  Autofocus,
+  EvidenceStrip,
+  FactoryRequest,
+  Glyph,
+  Icon,
+  MissionOut,
+  Poll,
+  SendBackModal,
   healthLine,
   missionRowLabel,
   missionSubtitle,
   missionSummary,
   timeAgo,
-} from '../core/util';
-import { ApproveModal, Autofocus, EvidenceStrip, Glyph, Icon, SendBackModal } from '../kit/kit';
+} from '@sf/shared';
+import { Session } from '../core/session.service';
 import { AdminShell } from './admin-shell';
 
 /** Mission control — the supervision home (spec §6): what needs me, what's

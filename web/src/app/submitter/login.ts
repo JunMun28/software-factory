@@ -1,8 +1,8 @@
 import { Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
+import { Mark } from '@sf/shared';
 import { Session } from '../core/session.service';
-import { Mark } from '../kit/kit';
 
 /** S0 — Login / SSO front door. The curve-frame brand hero on a black field. */
 @Component({

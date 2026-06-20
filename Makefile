@@ -36,11 +36,12 @@ test:
 	cd api && uv run pytest -q
 
 ## Frontend unit tests (vitest — domain vocabulary, glyph logic, time handling).
-## Scoped to the `web` app project: the workspace also holds the @sf/shared
-## library (ADR 0017), whose source-shared, spec-less test target would
-## otherwise make a bare `ng test` non-zero.
+## Runs BOTH projects in the workspace (ADR 0017): the `web` app AND the
+## @sf/shared library, which now owns the moved util/poll/theme specs. A bare
+## `ng test` is avoided because it would try every project at once; each is run
+## explicitly so both spec sets stay in the verify chain.
 test-web:
-	cd web && npx ng test web
+	cd web && npx ng test web && npx ng test shared
 
 ## Frontend production build (catches template/type errors)
 build:

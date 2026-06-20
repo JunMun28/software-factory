@@ -13,8 +13,8 @@ import {
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
-import { Evidence, FactoryRequest, SpecLine, Turn } from '@sf/shared';
-import { TYPE_LABEL, confirmSteps, evidenceBits } from '../core/util';
+import { Evidence, FactoryRequest, SpecLine, Turn } from './models';
+import { TYPE_LABEL, confirmSteps, evidenceBits } from './util';
 
 /** Reliable focus for dynamically-inserted inputs (the `autofocus` attribute only
  *  works at document parse time, not for @if-rendered overlays). */

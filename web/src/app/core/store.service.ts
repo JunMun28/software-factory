@@ -1,8 +1,6 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
 
-import { Api } from './api.service';
-import { AppEntry, FactoryRequest } from '@sf/shared';
-import { Poll } from './poll.service';
+import { AppEntry, Api, FactoryRequest, Poll } from '@sf/shared';
 
 /**
  * The one version-keyed fetch (ADR 0013): the shell-wide projections

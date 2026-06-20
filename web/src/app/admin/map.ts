@@ -11,10 +11,8 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
+import { Api, MissionOut, Poll } from '@sf/shared';
 import { activeRun, factoryColumns, MapCard, MapColumn, sortedExceptions } from '../core/map-view';
-import { MissionOut } from '@sf/shared';
-import { Poll } from '../core/poll.service';
 import { Store } from '../core/store.service';
 import { AdminShell } from './admin-shell';
 

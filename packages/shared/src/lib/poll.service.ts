@@ -1,7 +1,7 @@
 import { Injectable, NgZone, OnDestroy, inject, signal } from '@angular/core';
 
 import { Api } from './api.service';
-import { ProgressEvent } from '@sf/shared';
+import { ProgressEvent } from './models';
 
 /**
  * ADR 0007/0008: polling now, SSE later. One keyset cursor (`?after=<event_id>`)

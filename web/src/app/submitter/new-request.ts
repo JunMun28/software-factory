@@ -2,9 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
-import { AppEntry } from '@sf/shared';
-import { Icon, PopMenu } from '../kit/kit';
+import { Api, AppEntry, Icon, PopMenu } from '@sf/shared';
 import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';
 

@@ -1,10 +1,8 @@
 import { Component, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
-import { RequestDetail } from '@sf/shared';
+import { Api, Icon, RequestDetail, TypeChip } from '@sf/shared';
 import { Session } from '../core/session.service';
-import { Icon, TypeChip } from '../kit/kit';
 import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';
 

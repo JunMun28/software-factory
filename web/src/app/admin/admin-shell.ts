@@ -2,12 +2,9 @@ import { Component, HostListener, computed, inject, input, signal } from '@angul
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
-import { Api } from '../core/api.service';
-import { Poll } from '../core/poll.service';
+import { Api, Autofocus, Avatar, Glyph, Icon, Mark, Poll, Theme } from '@sf/shared';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
-import { Theme } from '../core/theme.service';
-import { Autofocus, Avatar, Glyph, Icon, Mark } from '../kit/kit';
 import { WorldSwitch } from '../kit/world-switch';
 
 /** The Admin Control Center shell — inverted-L: sidebar + header + dense canvas.

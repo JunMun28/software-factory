@@ -4,13 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { map } from 'rxjs';
 
-import { Api } from '../core/api.service';
-import { ProgressEvent, RequestDetail } from '@sf/shared';
-import { Poll } from '../core/poll.service';
-import { Session } from '../core/session.service';
-import { DeliveryGate, DeliveryStage, deliveryGates, deliveryStages } from '../core/map-view';
-import { TraceGroup, adminStateLine, groupTrace, timeAgo } from '../core/util';
 import {
+  Api,
   ApproveModal,
   Avatar,
   CancelConfirm,
@@ -18,9 +13,18 @@ import {
   EvidenceStrip,
   Glyph,
   Icon,
+  Poll,
+  ProgressEvent,
+  RequestDetail,
   SendBackModal,
+  TraceGroup,
   TypeChip,
-} from '../kit/kit';
+  adminStateLine,
+  groupTrace,
+  timeAgo,
+} from '@sf/shared';
+import { Session } from '../core/session.service';
+import { DeliveryGate, DeliveryStage, deliveryGates, deliveryStages } from '../core/map-view';
 import { AdminShell } from './admin-shell';
 
 /** Request detail (spec §6) — the supervision replacement for the Jira issue page.

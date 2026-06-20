@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-import { Api } from '../core/api.service';
+import { Api } from '@sf/shared';
 import { Session } from '../core/session.service';
 
 /** The submitter-flow store — survives step navigation (the design's subStore). */

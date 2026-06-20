@@ -1,10 +1,8 @@
 import { Component, HostListener, effect, inject, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { FactoryRequest } from '@sf/shared';
+import { FactoryRequest, Glyph, Sig, TYPE_SHORT, timeAgo } from '@sf/shared';
 import { Store } from '../core/store.service';
-import { TYPE_SHORT, timeAgo } from '../core/util';
-import { Glyph, Sig } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
 /** C6 — Needs-me inbox: the clear-to-zero surface holding only items waiting on this Admin. */

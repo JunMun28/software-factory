@@ -10,7 +10,7 @@ import {
   MissionOut,
   ProgressEvent,
   RequestDetail,
-} from '@sf/shared';
+} from './models';
 
 // same-origin in production (nginx proxies /api); the dev server proxies via proxy.conf.json
 const BASE = '/api';

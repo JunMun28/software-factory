@@ -1,7 +1,6 @@
 import { Component, inject } from '@angular/core';
 
-import { Theme } from '../core/theme.service';
-import { Glyph, Icon, PopMenu } from '../kit/kit';
+import { Glyph, Icon, PopMenu, Theme } from '@sf/shared';
 import { AdminShell } from './admin-shell';
 
 interface EvtPrefs {

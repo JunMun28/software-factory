@@ -1,10 +1,19 @@
 import { Component, computed, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { FactoryRequest } from '@sf/shared';
+import {
+  FactoryRequest,
+  Glyph,
+  Icon,
+  STAGE_LABEL,
+  Sig,
+  TYPE_SHORT,
+  boardGlyph,
+  gateLabel,
+  inFlight,
+  timeAgo,
+} from '@sf/shared';
 import { Store } from '../core/store.service';
-import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, inFlight, timeAgo } from '../core/util';
-import { Glyph, Icon, Sig } from '../kit/kit';
 import { AdminShell } from './admin-shell';
 
 interface Band {

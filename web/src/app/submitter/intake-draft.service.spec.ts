@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Api } from '../core/api.service';
+import { Api } from '@sf/shared';
 import { Session } from '../core/session.service';
 import { IntakeDraft } from './intake-draft.service';
 
