@@ -1,12 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 
-export interface User {
-  name: string;
-  initials: string;
-  color: string;
-  email: string;
-  role: 'submitter' | 'admin';
-}
+import { User, loadStoredUser } from '@sf/shared';
 
 export const ADMIN: User = {
   name: 'Kim P.',
@@ -25,31 +19,7 @@ export const ADMIN: User = {
  */
 @Injectable({ providedIn: 'root' })
 export class Session {
-  user = signal<User>(this.load());
-
-  private load(): User {
-    try {
-      const raw = localStorage.getItem('sf-console-user');
-      if (raw) {
-        const u = JSON.parse(raw);
-        // a stale blob from an older User shape silently breaks avatars and the
-        // role guard — validate the shape and discard on mismatch
-        if (
-          u &&
-          typeof u.name === 'string' &&
-          typeof u.initials === 'string' &&
-          typeof u.color === 'string' &&
-          (u.role === 'submitter' || u.role === 'admin')
-        ) {
-          return u as User;
-        }
-        localStorage.removeItem('sf-console-user');
-      }
-    } catch {
-      /* fresh session */
-    }
-    return ADMIN;
-  }
+  user = signal<User>(loadStoredUser('sf-console-user', ADMIN));
 
   signIn(role: 'submitter' | 'admin') {
     const u: User = role === 'admin' ? ADMIN : { ...ADMIN, role: 'submitter' };

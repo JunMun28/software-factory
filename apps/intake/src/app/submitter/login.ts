@@ -32,11 +32,11 @@ import { Session } from '../core/session.service';
             </div>
             <button
               class="btn primary lg block focusable"
-              (click)="signIn('submitter')"
-              [style.opacity]="loading() === 'submitter' ? 0.92 : 1"
+              (click)="signIn()"
+              [style.opacity]="loading() ? 0.92 : 1"
               autofocus
             >
-              @if (loading() === 'submitter') {
+              @if (loading()) {
                 <span
                   style="width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;display:inline-block"
                   class="spin"
@@ -76,15 +76,15 @@ import { Session } from '../core/session.service';
 export class Login {
   private session = inject(Session);
   private router = inject(Router);
-  loading = signal<'submitter' | null>(null);
+  loading = signal(false);
 
   // Intake is submitter-only since the app split (ADR 0017 Phase 2). The reviewer
   // sign-in (which crossed into the admin world) now lives in the Control center.
-  signIn(role: 'submitter') {
+  signIn() {
     if (this.loading()) return;
-    this.loading.set(role);
+    this.loading.set(true);
     setTimeout(() => {
-      this.session.signIn(role);
+      this.session.signIn('submitter');
       this.router.navigateByUrl('/submit/new');
     }, 900);
   }

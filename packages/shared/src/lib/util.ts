@@ -5,6 +5,7 @@ import {
   ProgressEvent,
   RequestDetail,
   RunState,
+  User,
 } from './models';
 
 /** API timestamps are UTC; SQLite round-trips them naive, so re-tag before parsing. */
@@ -332,4 +333,32 @@ export function groupTrace(events: ProgressEvent[]): TraceGroup[] {
     else groups.push({ stage: e.stage, label: STAGE_LABEL[e.stage] ?? e.stage, rows: [row] });
   }
   return groups;
+}
+
+/**
+ * Load the signed-in user from localStorage, validating the stored shape. A stale
+ * blob from an older User shape silently breaks avatars and the role guard, so a
+ * mismatch is discarded and the fallback returned. Each app passes its own storage
+ * key + default (intake → submitter, console → admin).
+ */
+export function loadStoredUser(storageKey: string, fallback: User): User {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      const u = JSON.parse(raw);
+      if (
+        u &&
+        typeof u.name === 'string' &&
+        typeof u.initials === 'string' &&
+        typeof u.color === 'string' &&
+        (u.role === 'submitter' || u.role === 'admin')
+      ) {
+        return u as User;
+      }
+      localStorage.removeItem(storageKey);
+    }
+  } catch {
+    /* fresh session */
+  }
+  return fallback;
 }

@@ -10,6 +10,15 @@ export interface AppEntry {
   unread: boolean;
 }
 
+/** The signed-in person (mock until real Entra auth). Intake → submitter, console → admin. */
+export interface User {
+  name: string;
+  initials: string;
+  color: string;
+  email: string;
+  role: 'submitter' | 'admin';
+}
+
 export interface Turn {
   order: number;
   question: string;
