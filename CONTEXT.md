@@ -61,7 +61,8 @@ Request targets. A new-app Request adds a new entry when the Factory creates its
 _Avoid_: catalog, inventory.
 
 **Submitter / Admin** (Intake roles):
-Everyone signs in to the web app with **Microsoft SSO** (Entra ID). A **Submitter** files
+Everyone signs in with **Microsoft SSO** (Entra ID); each app (Intake, Control center) has its own
+sign-in (separate Entra app registrations). A **Submitter** files
 Requests and sees their own; they never touch GitHub. An **Admin** also runs the Control center,
 performs **Spec approval**, and approves the human gates (Merge gate, Deploy gate). Because the
 human gates are real GitHub approvals, each Admin **links their GitHub account once** (one-time
@@ -84,7 +85,8 @@ input to Stage 1; the `requirements-analyst` turns it into a `SPEC.md`.
 _Avoid_: ticket, ask, feature (a Request may be a bug, not a feature).
 
 **Intake form**:
-The user-facing web app that is the front door of the Factory. Flow: a user submits a Request →
+The Submitter-facing app that is the front door of the Factory — a standalone deployable with its
+own auth surface, separate from the Control center. Flow: a user submits a Request →
 the **Intake interview** asks a few follow-up questions in the same window → then it saves the
 enriched Request to its own database (for a dashboard/record) and creates a GitHub Issue
 (which triggers Stage 1). Non-technical users never touch GitHub directly.
@@ -98,9 +100,10 @@ Issue is created. Same Stage 1 brain that later writes the spec.
 _Avoid_: interrogation, survey (it's short and adaptive).
 
 **Control center**:
-The admin side of the web app — mission control for the whole Factory. It is the same web app
-as the Intake form (Intake = front door for Submitters; Control center = where Admins run
-things). Its jobs:
+The Admin-facing app — mission control for the whole Factory. It is a **separate app** from the
+Intake form (Intake = front door for Submitters; Control center = where Admins run things),
+sharing one backend API and a common domain/UI library (`@sf/shared`). An Admin who files a
+Request does so in the Intake app (same SSO). Its jobs:
 - **Kanban board** — one unified board; every Request is a card moving across **stage columns**
   *Intake → Spec → Architecture → Build → Review → Deploy → Done*. The column shows *where* a card
   is; an **attention badge** shows whether it is the Admin's move — **Approve spec** (Stage 1),
