@@ -37,8 +37,17 @@ Recipes assume the pinned Node is on PATH (`.nvmrc` → 24.15.0; `nvm use` /
 | `task build` | Angular production build (both apps) | success |
 | `task smoke` | full lifecycle against a live server | `✓ SMOKE PASSED` |
 
-The same `task verify` chain runs in CI on every push
+The same `task verify` chain runs in CI on every push and PR
 (`.github/workflows/ci.yml`).
+
+**Ownership + the @sf/shared gate (ADR 0017, Model 1).** `CODEOWNERS` requires
+the owner's approval on `apps/intake/` and `packages/shared/`. On top of that, a
+PR that touches `packages/shared/**` (`@sf/shared`) additionally runs the Intake
+app's full verify — `task verify-intake` (lint + test + build intake + smoke) via
+`.github/workflows/shared-gate.yml`. This is intentional: a shared-library change
+ripples into the Intake app at build time, so it must prove the Intake app still
+builds and passes before it can merge. A PR that does **not** touch
+`packages/shared/**` does not trigger this extra gate.
 
 ---
 

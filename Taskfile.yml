@@ -122,6 +122,24 @@ tasks:
       - echo ""
       - echo "✓ VERIFY PASSED — tests, build, and smoke all green"
 
+  # The Model 1 gate (ADR 0017): the Intake app's FULL verify, scoped to intake
+  # only. CI runs this as an extra required check on any PR that touches
+  # packages/shared (@sf/shared) — a shared change ripples into intake at build
+  # time, so we prove intake still lints, tests, builds, and drives the full
+  # lifecycle (smoke) before such a PR can merge. Kept thin so the gate is cheap.
+  verify-intake:
+    desc: "Intake app full verify (lint+test+build intake + smoke) — the @sf/shared gate"
+    cmds:
+      - cd api && uv run ruff check .
+      - npx ng lint shared
+      - npx ng lint intake
+      - npx ng test shared
+      - npx ng test intake
+      - npx ng build intake
+      - task: smoke
+      - echo ""
+      - echo "✓ INTAKE VERIFY PASSED — @sf/shared change is safe for the Intake app"
+
   # Production-shaped deployment: nginx + API + persistent volume on :8080.
   up:
     desc: Production-shaped stack (docker compose) on :8080

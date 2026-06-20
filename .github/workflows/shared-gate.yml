@@ -1,0 +1,49 @@
+name: Shared library gate
+
+# MODEL 1 GATE (ADR 0017 "Keeping the Intake app stable").
+#
+# @sf/shared (packages/shared) is plain in-repo source consumed by BOTH apps at
+# build time, so a change there is a load-bearing contract change. This workflow
+# runs the Intake app's FULL verify (lint + test + build intake + smoke) whenever
+# a PR touches packages/shared — proving the Intake app survives the change before
+# it can merge.
+#
+# WHY A NON-SHARED PR WON'T TRIGGER THIS: the `paths:` filter below is GitHub's
+# native trigger gate. If a PR changes no file under packages/shared/**, this
+# workflow is never queued — no wasted CI, no extra check. Only packages/shared
+# PRs pay the cost. (If you make this a REQUIRED status check, scope the branch
+# protection rule to the same path or use "required only when run" so non-shared
+# PRs aren't blocked waiting on a check that never reports.)
+on:
+  pull_request:
+    paths:
+      - 'packages/shared/**'
+
+jobs:
+  intake-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install web dependencies
+        run: npm ci
+
+      # Thin gate: one recipe = lint + test + build the Intake app + smoke.
+      - name: task verify-intake
+        run: task verify-intake
