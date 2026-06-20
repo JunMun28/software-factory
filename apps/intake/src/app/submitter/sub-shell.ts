@@ -1,55 +1,35 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, inject, input } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { Avatar, Glyph, Mark, PopMenu } from '@sf/shared';
-import { ADMIN, Session, SUBMITTER } from '../core/session.service';
-import { WorldSwitch } from '../kit/world-switch';
+import { Avatar, Glyph, Mark } from '@sf/shared';
+import { Session } from '../core/session.service';
 
-/** Shared submitter shell: top bar + optional intake stepper (Describe → Clarify → Review).
- *  Supervisors reach the intake form too (the console's "New request"), so the shell is
- *  role-aware: it always offers a way back to wherever "home" is for the signed-in role. */
+/** Submitter shell: top bar + optional intake stepper (Describe → Clarify → Review).
+ *  Intake is submitter-only since the app split (ADR 0017 Phase 2) — the cross-world
+ *  switcher and the role/persona switch were removed; "home" is always My requests. */
 @Component({
   selector: 'sub-shell',
-  imports: [Mark, Avatar, Glyph, PopMenu, WorldSwitch],
+  imports: [Mark, Avatar, Glyph],
   template: `
     <div class="sub">
       <div class="sub-top">
-        <button class="sub-brand" type="button" (click)="home()" [title]="homeTip()">
+        <button class="sub-brand" type="button" (click)="home()" title="My requests">
           <sf-mark [size]="20" /> Software Factory
         </button>
         <div class="row" style="gap:16px">
           <nav class="sub-nav">
-            @if (admin()) {
-              <sf-world-switch world="requests" />
-            } @else {
-              <button [class.on]="active() === 'new'" (click)="go('/submit/new')">
-                New request
-              </button>
-              <button [class.on]="active() === 'list'" (click)="go('/requests')">
-                My requests
-              </button>
-            }
+            <button [class.on]="active() === 'new'" (click)="go('/submit/new')">New request</button>
+            <button [class.on]="active() === 'list'" (click)="go('/requests')">My requests</button>
           </nav>
-          <span style="position:relative">
-            <button
-              class="sub-id"
-              style="background:none;cursor:pointer;font-family:var(--body);font-size:13px"
-              (click)="whoOpen = !whoOpen"
-            >
-              <sf-avatar [sm]="true" [color]="session.user().color">{{
-                session.user().initials
-              }}</sf-avatar>
-              {{ session.user().name }}
-            </button>
-            <sf-pop-menu [open]="whoOpen" [width]="230" (closed)="whoOpen = false">
-              <button class="pop__opt" (click)="switchRole()">
-                <sf-avatar [sm]="true" color="var(--avatar)">{{ other().initials }}</sf-avatar>
-                Switch to {{ other().name }}
-                <span style="margin-left:auto;font-size:10.5px;color:var(--faint)">{{
-                  otherRoleLabel()
-                }}</span>
-              </button>
-            </sf-pop-menu>
+          <span
+            class="sub-id"
+            style="font-family:var(--body);font-size:13px"
+            [title]="session.user().email"
+          >
+            <sf-avatar [sm]="true" [color]="session.user().color">{{
+              session.user().initials
+            }}</sf-avatar>
+            {{ session.user().name }}
           </span>
         </div>
       </div>
@@ -102,28 +82,9 @@ import { WorldSwitch } from '../kit/world-switch';
 export class SubShell {
   session = inject(Session);
   private router = inject(Router);
-  whoOpen = false;
-
-  /** Supervisors land here via the console's "New request" — give them a way home. */
-  admin = computed(() => this.session.user().role === 'admin');
-  /** The persona the role-switcher offers to become (the opposite of the current one). */
-  other = computed(() => (this.admin() ? SUBMITTER : ADMIN));
-  otherRoleLabel = computed(() => (this.admin() ? 'Submitter' : 'Reviewer'));
-  homeTip = computed(() => (this.admin() ? 'Back to Mission control' : 'My requests'));
 
   home() {
-    this.router.navigateByUrl(this.admin() ? '/admin/mission' : '/requests');
-  }
-
-  switchRole() {
-    this.whoOpen = false;
-    if (this.admin()) {
-      this.session.signIn('submitter');
-      this.router.navigateByUrl('/requests');
-    } else {
-      this.session.signIn('admin');
-      this.router.navigateByUrl('/admin/mission');
-    }
+    this.router.navigateByUrl('/requests');
   }
 
   active = input<'new' | 'list' | ''>('');

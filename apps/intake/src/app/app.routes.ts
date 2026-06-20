@@ -1,7 +1,10 @@
 import { Routes } from '@angular/router';
 
-import { adminGuard } from './core/guards';
-
+/**
+ * Intake routes (ADR 0017 Phase 2). Submitter-only since the app split — the
+ * admin world (mission/list/queue/...) and its guard moved to apps/console.
+ * Intake keeps just login + the submit/* intake flow + requests/*.
+ */
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'login' },
   { path: 'login', loadComponent: () => import('./submitter/login').then((m) => m.Login) },
@@ -28,53 +31,6 @@ export const routes: Routes = [
   {
     path: 'requests/:id',
     loadComponent: () => import('./submitter/request-detail').then((m) => m.SubRequestDetail),
-  },
-
-  { path: 'admin', pathMatch: 'full', redirectTo: 'admin/mission' },
-  {
-    path: 'admin/map',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/map').then((m) => m.FactoryMap),
-  },
-  {
-    path: 'admin/mission',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/mission').then((m) => m.Mission),
-  },
-  {
-    path: 'admin/list',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/list').then((m) => m.ListView),
-  },
-  {
-    path: 'admin/queue',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/queue').then((m) => m.ApprovalQueue),
-  },
-  {
-    path: 'admin/requests/:id',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/request-detail').then((m) => m.RequestDetailPage),
-  },
-  {
-    path: 'admin/apps/:key',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/feed').then((m) => m.Feed),
-  },
-  {
-    path: 'admin/inbox',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/inbox').then((m) => m.NeedsMe),
-  },
-  {
-    path: 'admin/registry',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/registry').then((m) => m.Registry),
-  },
-  {
-    path: 'admin/settings',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/settings').then((m) => m.Settings),
   },
 
   { path: '**', redirectTo: 'login' },

@@ -5,13 +5,12 @@ import { Router } from '@angular/router';
 import { Api, Autofocus, Avatar, Glyph, Icon, Mark, Poll, Theme } from '@sf/shared';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
-import { WorldSwitch } from '../kit/world-switch';
 
 /** The Admin Control Center shell — inverted-L: sidebar + header + dense canvas.
  *  Owns the keyboard layer: ⌘K palette, `?` cheat-sheet, C new-request, G-nav. */
 @Component({
   selector: 'admin-shell',
-  imports: [Mark, Icon, Glyph, Avatar, FormsModule, Autofocus, WorldSwitch],
+  imports: [Mark, Icon, Glyph, Avatar, FormsModule, Autofocus],
   template: `
     <div class="adm">
       <aside class="adm-side">
@@ -19,12 +18,10 @@ import { WorldSwitch } from '../kit/world-switch';
           <sf-mark [size]="18" /><span class="adm-brand__name">Factory</span>
         </div>
 
-        <sf-world-switch world="factory" [full]="true" style="display:block;margin-top:12px" />
-
         <button
           class="btn primary"
-          style="width:100%;justify-content:flex-start;margin-top:10px;margin-bottom:4px"
-          (click)="go('/submit/new')"
+          style="width:100%;justify-content:flex-start;margin-top:12px;margin-bottom:4px"
+          (click)="newRequest()"
         >
           <sf-icon name="plus" [size]="16" /> New request
           <kbd class="kbd" style="margin-left:auto">C</kbd>
@@ -108,30 +105,14 @@ import { WorldSwitch } from '../kit/world-switch';
               >Settings <kbd class="kbd">G</kbd><kbd class="kbd">S</kbd></span
             >
           </button>
-          <div style="position:relative">
-            <button class="navrow" (click)="whoOpen.set(!whoOpen())">
-              <sf-avatar [sm]="true" [color]="session.user().color">{{
-                session.user().initials
-              }}</sf-avatar>
-              <span class="navrow__label">{{ session.user().name }}</span>
-              <span style="font-size:10.5px;color:var(--faint)">Admin</span>
-            </button>
-            @if (whoOpen()) {
-              <div style="position:fixed;inset:0;z-index:29" (click)="whoOpen.set(false)"></div>
-              <div
-                style="position:absolute;bottom:calc(100% + 6px);left:0;right:0;z-index:30;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:5px"
-              >
-                <button
-                  style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 9px;border-radius:6px;border:none;cursor:pointer;font-family:var(--body);font-size:13px;background:none;color:var(--fg2)"
-                  (click)="switchRole()"
-                >
-                  <sf-avatar [sm]="true" color="var(--avatar)">JD</sf-avatar> Switch to Jordan D.
-                  <span style="margin-left:auto;font-size:10.5px;color:var(--faint)"
-                    >Submitter</span
-                  >
-                </button>
-              </div>
-            }
+          <!-- Identity. The cross-world role switch was removed in the app split
+               (ADR 0017 Phase 2 / DRE-13); each app authenticates on its own. -->
+          <div class="navrow" style="cursor:default">
+            <sf-avatar [sm]="true" [color]="session.user().color">{{
+              session.user().initials
+            }}</sf-avatar>
+            <span class="navrow__label">{{ session.user().name }}</span>
+            <span style="font-size:10.5px;color:var(--faint)">Admin</span>
           </div>
         </div>
       </aside>
@@ -310,7 +291,6 @@ export class AdminShell {
 
   paletteOpen = signal(false);
   cheats = signal(false);
-  whoOpen = signal(false);
   query = signal('');
   palSel = signal(0);
 
@@ -357,7 +337,7 @@ export class AdminShell {
     { icon: 'pipeline', lbl: 'Go to Factory map', hint: 'G O', act: () => this.go('/admin/map') },
     { icon: 'check', lbl: 'Go to Gates', hint: 'G T', act: () => this.go('/admin/queue') },
     { icon: 'list', lbl: 'Go to All requests', hint: 'G L', act: () => this.go('/admin/list') },
-    { icon: 'plus', lbl: 'New request', hint: 'C', act: () => this.go('/submit/new') },
+    { icon: 'plus', lbl: 'New request', hint: 'C', act: () => this.newRequest() },
     { icon: 'inbox', lbl: 'Go to Needs-me inbox', hint: 'G I', act: () => this.go('/admin/inbox') },
     {
       icon: 'refresh',
@@ -410,10 +390,14 @@ export class AdminShell {
     this.router.navigateByUrl(url);
   }
 
-  switchRole() {
-    this.whoOpen.set(false);
-    this.session.signIn('submitter');
-    this.router.navigateByUrl('/requests');
+  /**
+   * "New request" deep-links out to the standalone Intake app (same SSO session)
+   * once the split is fully wired — ADR 0017. The config-driven deep-link URL and
+   * its unit test land in slice 2C; until then this is a no-op so the button, the
+   * palette action, and the `C` shortcut never bounce to a dead in-app route.
+   */
+  newRequest() {
+    // TODO(DRE-14 / slice 2C): navigate to the configured Intake app origin.
   }
 
   @HostListener('window:keydown', ['$event'])
@@ -467,7 +451,7 @@ export class AdminShell {
       this.active() !== 'request-detail'
     ) {
       e.preventDefault();
-      this.go('/submit/new');
+      this.newRequest();
       return;
     }
     if (e.key === '?' && !this.paletteOpen()) {

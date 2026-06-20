@@ -61,17 +61,6 @@ import { Session } from '../core/session.service';
             <div style="font-size:13px;color:var(--muted)">
               No new password — uses your Micron account.
             </div>
-            <button
-              class="btn ghost sm"
-              style="color:var(--faint);margin-top:-6px"
-              (click)="signIn('admin')"
-            >
-              @if (loading() === 'admin') {
-                Opening…
-              } @else {
-                Sign in as a reviewer
-              }
-            </button>
           </div>
           <div style="font-size:13px;color:rgba(255,255,255,.78)">
             Trouble signing in?
@@ -87,14 +76,16 @@ import { Session } from '../core/session.service';
 export class Login {
   private session = inject(Session);
   private router = inject(Router);
-  loading = signal<'submitter' | 'admin' | null>(null);
+  loading = signal<'submitter' | null>(null);
 
-  signIn(role: 'submitter' | 'admin') {
+  // Intake is submitter-only since the app split (ADR 0017 Phase 2). The reviewer
+  // sign-in (which crossed into the admin world) now lives in the Control center.
+  signIn(role: 'submitter') {
     if (this.loading()) return;
     this.loading.set(role);
     setTimeout(() => {
       this.session.signIn(role);
-      this.router.navigateByUrl(role === 'admin' ? '/admin/mission' : '/submit/new');
+      this.router.navigateByUrl('/submit/new');
     }, 900);
   }
 }
