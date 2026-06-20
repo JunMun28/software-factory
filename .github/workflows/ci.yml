@@ -18,6 +18,11 @@ jobs:
       # Python side: uv installs/runs the FastAPI backend (api/) for pytest + smoke.
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
+        with:
+          # No cache: the action's post-job "prune cache" hangs ~5 min then exits 2
+          # on this repo (the uv project lives in api/, no root lockfile to key on).
+          # uv installs are fast — skip caching so the post step can't fail the job.
+          enable-cache: false
 
       # Node side: pin to the workspace's .nvmrc (24.15.0) — Angular's CLI rejects
       # older. Cache keyed on the repo-root lockfile (single root node_modules).

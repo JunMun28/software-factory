@@ -27,6 +27,11 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
+        with:
+          # No cache: the action's post-job "prune cache" hangs ~5 min then exits 2
+          # on this repo (uv project lives in api/, no root lockfile). Installs are
+          # fast — skip caching so the post step can't fail the job.
+          enable-cache: false
 
       - name: Set up Node
         uses: actions/setup-node@v4
