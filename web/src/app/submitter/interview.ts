@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { InterviewState, RequestDetail } from '../core/models';
+import { InterviewState, RequestDetail } from '@sf/shared';
 import { Icon, Mark, TypeChip } from '../kit/kit';
 import { SubShell } from './sub-shell';
 

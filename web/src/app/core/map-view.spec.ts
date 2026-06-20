@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { FactoryRequest, MissionOut, RequestDetail } from './models';
+import { FactoryRequest, MissionOut, RequestDetail } from '@sf/shared';
 import {
   activeRun,
   deliveryGates,

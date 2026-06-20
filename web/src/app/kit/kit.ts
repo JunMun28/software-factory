@@ -13,7 +13,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
-import { Evidence, FactoryRequest, SpecLine, Turn } from '../core/models';
+import { Evidence, FactoryRequest, SpecLine, Turn } from '@sf/shared';
 import { TYPE_LABEL, confirmSteps, evidenceBits } from '../core/util';
 
 /** Reliable focus for dynamically-inserted inputs (the `autofocus` attribute only

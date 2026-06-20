@@ -1,7 +1,7 @@
 import { Component, computed, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { FactoryRequest } from '../core/models';
+import { FactoryRequest } from '@sf/shared';
 import { Store } from '../core/store.service';
 import { STAGE_LABEL, TYPE_SHORT, boardGlyph, gateLabel, inFlight, timeAgo } from '../core/util';
 import { Glyph, Icon, Sig } from '../kit/kit';

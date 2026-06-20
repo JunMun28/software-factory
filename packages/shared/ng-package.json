@@ -1,0 +1,7 @@
+{
+  "$schema": "../../web/node_modules/ng-packagr/ng-package.schema.json",
+  "dest": "../../dist/shared",
+  "lib": {
+    "entryFile": "src/public-api.ts"
+  }
+}

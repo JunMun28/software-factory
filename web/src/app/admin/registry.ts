@@ -2,7 +2,7 @@ import { Component, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { Api } from '../core/api.service';
-import { AppEntry } from '../core/models';
+import { AppEntry } from '@sf/shared';
 import { Poll } from '../core/poll.service';
 import { Store } from '../core/store.service';
 import { Glyph, Icon } from '../kit/kit';

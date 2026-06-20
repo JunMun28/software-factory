@@ -5,7 +5,7 @@ import {
   ProgressEvent,
   RequestDetail,
   RunState,
-} from './models';
+} from '@sf/shared';
 
 /** API timestamps are UTC; SQLite round-trips them naive, so re-tag before parsing. */
 export function utc(iso: string): Date {

@@ -2,7 +2,7 @@ import { Component, HostListener, effect, inject, signal, untracked } from '@ang
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { RequestDetail } from '../core/models';
+import { RequestDetail } from '@sf/shared';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';

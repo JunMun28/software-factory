@@ -1,7 +1,7 @@
 import { Component, HostListener, effect, inject, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { FactoryRequest } from '../core/models';
+import { FactoryRequest } from '@sf/shared';
 import { Store } from '../core/store.service';
 import { TYPE_SHORT, timeAgo } from '../core/util';
 import { Glyph, Sig } from '../kit/kit';

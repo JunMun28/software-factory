@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { AppEntry } from '../core/models';
+import { AppEntry } from '@sf/shared';
 import { Icon, PopMenu } from '../kit/kit';
 import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';

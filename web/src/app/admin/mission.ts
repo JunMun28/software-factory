@@ -11,7 +11,7 @@ import {
 import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { FactoryRequest, MissionOut } from '../core/models';
+import { FactoryRequest, MissionOut } from '@sf/shared';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import {

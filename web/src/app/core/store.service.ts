@@ -1,7 +1,7 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
 
 import { Api } from './api.service';
-import { AppEntry, FactoryRequest } from './models';
+import { AppEntry, FactoryRequest } from '@sf/shared';
 import { Poll } from './poll.service';
 
 /**

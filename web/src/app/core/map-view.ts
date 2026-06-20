@@ -1,4 +1,4 @@
-import { FactoryRequest, MissionOut, RequestDetail } from './models';
+import { FactoryRequest, MissionOut, RequestDetail } from '@sf/shared';
 
 /** The 6 real stages (api/app/models.py:35). Deploy is folded into `done`. */
 export const MAP_STAGES: { key: string; label: string }[] = [

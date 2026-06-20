@@ -5,7 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { map } from 'rxjs';
 
 import { Api } from '../core/api.service';
-import { ProgressEvent } from '../core/models';
+import { ProgressEvent } from '@sf/shared';
 import { Poll } from '../core/poll.service';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';

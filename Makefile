@@ -35,9 +35,12 @@ web:
 test:
 	cd api && uv run pytest -q
 
-## Frontend unit tests (vitest — domain vocabulary, glyph logic, time handling)
+## Frontend unit tests (vitest — domain vocabulary, glyph logic, time handling).
+## Scoped to the `web` app project: the workspace also holds the @sf/shared
+## library (ADR 0017), whose source-shared, spec-less test target would
+## otherwise make a bare `ng test` non-zero.
 test-web:
-	cd web && npx ng test
+	cd web && npx ng test web
 
 ## Frontend production build (catches template/type errors)
 build:
@@ -47,10 +50,13 @@ build:
 smoke:
 	./scripts/smoke.sh
 
-## Lint both sides (ruff + eslint + prettier check)
+## Lint both sides (ruff + eslint + prettier check). `ng lint` is scoped to the
+## `web` app: the @sf/shared library (ADR 0017) sits outside the web/ workspace
+## root that the angular-eslint builder forces as its cwd, so a bare `ng lint`
+## reports its files as ignored. Lint it explicitly with `ng lint shared`.
 lint:
 	cd api && uv run ruff check .
-	cd web && npx ng lint && npm run format:check
+	cd web && npx ng lint web && npm run format:check
 
 ## Everything: lint + backend tests + web tests + build + smoke. Green = safe.
 verify: lint test test-web build smoke

@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
-import { RequestDetail } from '../core/models';
+import { RequestDetail } from '@sf/shared';
 import { Glyph, TypeChip } from '../kit/kit';
 import { SubShell } from './sub-shell';
 

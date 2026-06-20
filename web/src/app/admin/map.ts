@@ -13,7 +13,7 @@ import { Router } from '@angular/router';
 
 import { Api } from '../core/api.service';
 import { activeRun, factoryColumns, MapCard, MapColumn, sortedExceptions } from '../core/map-view';
-import { MissionOut } from '../core/models';
+import { MissionOut } from '@sf/shared';
 import { Poll } from '../core/poll.service';
 import { Store } from '../core/store.service';
 import { AdminShell } from './admin-shell';

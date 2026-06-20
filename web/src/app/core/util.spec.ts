@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { Evidence, FactoryRequest, MissionOut, RequestDetail } from './models';
+import { Evidence, FactoryRequest, MissionOut, RequestDetail } from '@sf/shared';
 import {
   adminStateLine,
   boardGlyph,

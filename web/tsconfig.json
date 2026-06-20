@@ -11,6 +11,9 @@
     "isolatedModules": true,
     "experimentalDecorators": true,
     "importHelpers": true,
+    "paths": {
+      "@sf/shared": ["../packages/shared/src/public-api.ts"]
+    },
     "target": "ES2022",
     "module": "preserve"
   },
@@ -26,6 +29,12 @@
     },
     {
       "path": "./tsconfig.spec.json"
+    },
+    {
+      "path": "../packages/shared/tsconfig.lib.json"
+    },
+    {
+      "path": "../packages/shared/tsconfig.spec.json"
     }
   ]
 }
