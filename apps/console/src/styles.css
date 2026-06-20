@@ -1,0 +1,23 @@
+/* Console shell global styles (ADR 0017 Phase 2).
+ * Minimal for now; the admin design tokens migrate in the next slice. The
+ * data-theme attribute is set by the pre-paint script in index.html and kept in
+ * sync by the @sf/shared Theme service. */
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg, #ffffff);
+  color: var(--fg, #1a1a1a);
+}
+
+:root[data-theme='dark'] body {
+  background: var(--bg, #14161a);
+  color: var(--fg, #e8eaed);
+}

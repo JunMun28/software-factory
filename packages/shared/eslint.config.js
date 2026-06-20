@@ -1,12 +1,12 @@
 // @ts-check
-// This source-shared library (ADR 0017) lives outside the web/ workspace, so
-// its node_modules (eslint, plugins) resolve from web/. Resolve eslint/config
-// from there rather than from this file's own directory.
+// This source-shared library (ADR 0017) is linted with its own sf-prefixed
+// selector rules layered on top of the repo-root flat config. eslint/config and
+// its plugins resolve from the single root node_modules.
 const path = require('node:path');
 const { defineConfig } = require(
-  require.resolve('eslint/config', { paths: [path.join(__dirname, '../../web')] }),
+  require.resolve('eslint/config', { paths: [path.join(__dirname, '../..')] }),
 );
-const rootConfig = require('../../web/eslint.config.js');
+const rootConfig = require('../../eslint.config.js');
 
 module.exports = defineConfig([
   ...rootConfig,

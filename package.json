@@ -1,5 +1,5 @@
 {
-  "name": "web",
+  "name": "software-factory-web",
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
@@ -8,8 +8,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "lint": "ng lint",
-    "format": "prettier --write src",
-    "format:check": "prettier --check src"
+    "format": "prettier --write apps/intake/src apps/console/src packages/shared/src",
+    "format:check": "prettier --check apps/intake/src apps/console/src packages/shared/src"
   },
   "private": true,
   "packageManager": "npm@11.9.0",

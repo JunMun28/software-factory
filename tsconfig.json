@@ -12,7 +12,7 @@
     "experimentalDecorators": true,
     "importHelpers": true,
     "paths": {
-      "@sf/shared": ["../packages/shared/src/public-api.ts"]
+      "@sf/shared": ["./packages/shared/src/public-api.ts"]
     },
     "target": "ES2022",
     "module": "preserve"
@@ -25,16 +25,22 @@
   "files": [],
   "references": [
     {
-      "path": "./tsconfig.app.json"
+      "path": "./apps/intake/tsconfig.app.json"
     },
     {
-      "path": "./tsconfig.spec.json"
+      "path": "./apps/intake/tsconfig.spec.json"
     },
     {
-      "path": "../packages/shared/tsconfig.lib.json"
+      "path": "./apps/console/tsconfig.app.json"
     },
     {
-      "path": "../packages/shared/tsconfig.spec.json"
+      "path": "./apps/console/tsconfig.spec.json"
+    },
+    {
+      "path": "./packages/shared/tsconfig.lib.json"
+    },
+    {
+      "path": "./packages/shared/tsconfig.spec.json"
     }
   ]
 }

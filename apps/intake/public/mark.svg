@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
+  <g fill="#BD03F7">
+    <circle cx="3.5" cy="3.5" r="1.55"/><circle cx="9" cy="3.5" r="1.55"/><circle cx="14.5" cy="3.5" r="1.55"/>
+    <circle cx="3.5" cy="9" r="1.55"/><circle cx="9" cy="9" r="1.55"/><circle cx="14.5" cy="9" r="1.55"/>
+    <circle cx="3.5" cy="14.5" r="1.55"/><circle cx="9" cy="14.5" r="1.55"/><circle cx="14.5" cy="14.5" r="1.55"/>
+  </g>
+</svg>
