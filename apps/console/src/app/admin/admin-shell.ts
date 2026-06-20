@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { Api, Autofocus, Avatar, Glyph, Icon, Mark, Poll, Theme } from '@sf/shared';
 import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
+import { INTAKE_URL, intakeNewRequestUrl } from '../core/intake-url';
 
 /** The Admin Control Center shell — inverted-L: sidebar + header + dense canvas.
  *  Owns the keyboard layer: ⌘K palette, `?` cheat-sheet, C new-request, G-nav. */
@@ -18,14 +19,14 @@ import { Store } from '../core/store.service';
           <sf-mark [size]="18" /><span class="adm-brand__name">Factory</span>
         </div>
 
-        <button
+        <a
           class="btn primary"
           style="width:100%;justify-content:flex-start;margin-top:12px;margin-bottom:4px"
-          (click)="newRequest()"
+          [href]="newRequestUrl()"
         >
           <sf-icon name="plus" [size]="16" /> New request
           <kbd class="kbd" style="margin-left:auto">C</kbd>
-        </button>
+        </a>
 
         <div class="adm-seclabel">Primary</div>
         <button class="navrow" [class.on]="active() === 'mission'" (click)="go('/admin/mission')">
@@ -272,9 +273,15 @@ export class AdminShell {
   private api = inject(Api);
   private router = inject(Router);
   private store = inject(Store);
+  private intakeUrl = inject(INTAKE_URL);
   session = inject(Session);
   poll = inject(Poll);
   theme = inject(Theme);
+
+  /** Single source of truth for the "New request" deep-link target (ADR 0017).
+   *  The button href, the palette action, and the `C` shortcut all resolve to
+   *  this absolute Intake-app URL — the console never owns the submit/* route. */
+  newRequestUrl = computed(() => intakeNewRequestUrl(this.intakeUrl));
 
   toggleTheme() {
     this.theme.set(this.theme.resolved() === 'dark' ? 'light' : 'dark');
@@ -392,12 +399,13 @@ export class AdminShell {
 
   /**
    * "New request" deep-links out to the standalone Intake app (same SSO session)
-   * once the split is fully wired — ADR 0017. The config-driven deep-link URL and
-   * its unit test land in slice 2C; until then this is a no-op so the button, the
-   * palette action, and the `C` shortcut never bounce to a dead in-app route.
+   * — ADR 0017 / DRE-14. The console no longer owns the submit/* route, so the
+   * palette action and the `C` shortcut send the browser to the configured
+   * Intake origin's new-request route. The sidebar button is a real anchor on
+   * the same `newRequestUrl()` target; all three share that single source.
    */
   newRequest() {
-    // TODO(DRE-14 / slice 2C): navigate to the configured Intake app origin.
+    window.location.assign(this.newRequestUrl());
   }
 
   @HostListener('window:keydown', ['$event'])
