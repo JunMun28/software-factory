@@ -9,7 +9,7 @@ emits its verification report, raises the gate, and waits for an Admin.
 """
 from sqlalchemy.orm import Session
 
-from . import lifecycle
+from . import lifecycle, verification
 from .events import emit
 from .models import PIPELINE_STAGES, STEP_PLANS, Request, utcnow
 from .supervision import pending_steer_notes
@@ -41,14 +41,9 @@ for _s in PIPELINE_STAGES:
 
 def emit_verification(db: Session, req: Request) -> None:
     """The evidence the merge gate renders (spec §5) — fabricated by the sim
-    matching the numbers its review script reports."""
-    emit(db, req, "verification", "Verification report — ready for the merge gate",
-         stage="review",
-         payload={"tests_passed": 8, "tests_total": 8, "diff_added": 412,
-                  "diff_removed": 38, "files_changed": 9,
-                  "reviewer_verdict": "no blocking findings",
-                  "assumptions": [line.text for line in req.spec_lines if line.assume],
-                  "Ref": req.ref})
+    matching the numbers its review script reports. Delegates to the single
+    source of truth (verification.py): ws=None → the fabricated payload."""
+    verification.emit_verification(db, req)
 
 
 def tick(db: Session) -> list[str]:

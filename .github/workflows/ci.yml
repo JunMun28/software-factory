@@ -1,5 +1,9 @@
 name: CI
 
+# Full verify for the repo-root Angular workspace + FastAPI backend (ADR 0017).
+# This single job is parity with local `task verify`: lint + pytest +
+# vitest (intake + console + shared) + production build (BOTH apps) + smoke.
+# Node comes from .nvmrc (24.15.0), Python deps via uv, orchestration via Task.
 on:
   push:
     branches: [main]
@@ -11,44 +15,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Python side: uv installs/runs the FastAPI backend (api/) for pytest + smoke.
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
+        with:
+          # No cache: the action's post-job "prune cache" hangs ~5 min then exits 2
+          # on this repo (the uv project lives in api/, no root lockfile to key on).
+          # uv installs are fast — skip caching so the post step can't fail the job.
+          enable-cache: false
 
+      # Node side: pin to the workspace's .nvmrc (24.15.0) — Angular's CLI rejects
+      # older. Cache keyed on the repo-root lockfile (single root node_modules).
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Backend tests
-        working-directory: api
-        run: uv run pytest -q
+      # Task (taskfile.dev) is the cross-platform orchestrator that replaced the
+      # Makefile (ADR 0017 Phase 3); the job calls the same recipes as local dev.
+      - name: Set up Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: API lint
-        working-directory: api
-        run: uv run ruff check .
-
-      - name: Frontend install
-        working-directory: web
+      # Root install against the single root package-lock.json (replaces the old
+      # web/-scoped npm ci). Angular workspace + all three projects share this.
+      - name: Install web dependencies
         run: npm ci
 
-      - name: Frontend lint
-        working-directory: web
-        run: npx ng lint && npm run format:check
-
-      - name: Frontend unit tests
-        working-directory: web
-        run: npx ng test
-
-      - name: Frontend production build
-        working-directory: web
-        run: npx ng build
-
-      - name: End-to-end lifecycle smoke
-        run: ./scripts/smoke.sh
-
-      # the "production-shaped" deployment must not rot between deploys —
-      # build both images so Dockerfile/nginx/lockfile drift fails CI, not a deploy
-      - name: Docker images build
-        run: docker compose build
+      # One recipe = full parity with local verify: lint (ruff + ng lint x3 +
+      # prettier) + pytest + vitest (intake + console + shared) + build (intake +
+      # console) + smoke. Ensures BOTH apps build and EACH unit suite runs.
+      - name: task verify
+        run: task verify

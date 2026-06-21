@@ -22,8 +22,6 @@ import hashlib
 import logging
 import re
 import shutil
-import subprocess
-import sys
 import threading
 from pathlib import Path
 from typing import Callable
@@ -35,6 +33,8 @@ from .claude_exec import ClaudeResult, run_claude
 from .db import SessionLocal
 from .events import emit
 from .models import Request, utcnow
+from .verification import build_payload, emit_verification
+from .ws_exec import _git, _pytest
 
 WORKSPACES = settings.WORKSPACES
 SAMPLE = settings.SAMPLE
@@ -47,29 +47,6 @@ CONFIG_SURFACE = ("conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "t
 log = logging.getLogger("factory.runner")
 
 Executor = Callable[..., ClaudeResult]
-
-
-def _git(ws: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(ws), *args], capture_output=True, text=True)
-
-
-def _pytest(ws: Path) -> subprocess.CompletedProcess:
-    # sys.executable, not "python": the gate must run in the API's own venv —
-    # the only interpreter guaranteed to carry pytest (a bare PATH lookup may
-    # resolve to a pytest-less python, e.g. in the container)
-    cmd = [sys.executable, "-m", "pytest", "-q", "--no-header"]
-    try:
-        proc = subprocess.run(cmd, cwd=ws, capture_output=True, text=True, timeout=120)
-    except subprocess.TimeoutExpired:
-        # a hanging generated test is a gate failure, not a crashed pipeline
-        return subprocess.CompletedProcess(
-            cmd, returncode=124, stdout="pytest timed out after 120s — a test is hanging", stderr="")
-    if "No module named pytest" in (proc.stderr or ""):
-        # rc=1 without pytest is NOT an honest test failure — it must never
-        # pass the RED gate; surface it as "the gate itself cannot run"
-        return subprocess.CompletedProcess(
-            cmd, returncode=127, stdout="", stderr="pytest is not installed in the runner environment")
-    return proc
 
 
 def _tests_hash(ws: Path) -> str:
@@ -319,9 +296,20 @@ class ClaudeRunner:
             return False
         emit(db, req, "milestone_summary", f"Review report committed — {verdict}",
              payload={"fields": {"Artifacts": "REVIEW.md", "Agent": "Claude Code"}, "Ref": req.ref})
+        vpayload = build_payload(ws, req)
+        if vpayload["tests_total"] == 0 or vpayload["files_changed"] == 0:
+            # the suite proved green at the GREEN gate and the work branch must
+            # diverge from main; if either can't be derived now (the suite
+            # didn't run, or the diff came back empty), the evidence would be a
+            # lie — escalate rather than raise a blind gate
+            self._escalate(db, req, "Verification could not be built — the suite did not run or the diff was empty at review")
+            return False
+        # emit through the single source of truth, passing the payload the guard
+        # above already vetted so the guard and the event never diverge
+        emit_verification(db, req, ws, payload=vpayload)
         lifecycle.raise_merge_gate(db, req)
         db.commit()
-        log.info("%s: review committed, merge gate raised", req.ref)
+        log.info("%s: review committed, verification emitted, merge gate raised", req.ref)
         return True
 
     # ---------- the human merge gate ----------

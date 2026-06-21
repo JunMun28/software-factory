@@ -23,17 +23,31 @@ Domain language: [CONTEXT.md](CONTEXT.md). Decisions: [docs/adr/](docs/adr/).
 
 Run this before merging anything.  Green = safe.
 
+Orchestration is [Task](https://taskfile.dev) (cross-platform — `Taskfile.yml`
+replaced the Makefile in ADR 0017 Phase 3). Bare `task` lists every recipe.
+Recipes assume the pinned Node is on PATH (`.nvmrc` → 24.15.0; `nvm use` /
+`fnm use`).
+
 | Command | What it runs | Expected |
 |---|---|---|
-| `make verify` | lint + pytest + vitest + Angular build + smoke | `✓ VERIFY PASSED` |
+| `task verify` | lint + pytest + vitest + Angular build + smoke | `✓ VERIFY PASSED` |
 | `cd api && uv run pytest -q` | backend tests only | `N passed` |
-| `cd web && npx ng test --watch=false` | frontend unit tests only | `N passed` |
-| `make lint` | ruff + eslint + prettier-check | no errors |
-| `make build` | Angular production build | success |
-| `make smoke` | full lifecycle against a live server | `✓ SMOKE PASSED` |
+| `npx ng test intake` (or `console` / `shared`) | one project's unit tests | `N passed` |
+| `task lint` | ruff + eslint x3 + prettier-check | no errors |
+| `task build` | Angular production build (both apps) | success |
+| `task smoke` | full lifecycle against a live server | `✓ SMOKE PASSED` |
 
-The same `make verify` chain runs in CI on every push
+The same `task verify` chain runs in CI on every push and PR
 (`.github/workflows/ci.yml`).
+
+**Ownership + the @sf/shared gate (ADR 0017, Model 1).** `CODEOWNERS` requires
+the owner's approval on `apps/intake/` and `packages/shared/`. On top of that, a
+PR that touches `packages/shared/**` (`@sf/shared`) additionally runs the Intake
+app's full verify — `task verify-intake` (lint + test + build intake + smoke) via
+`.github/workflows/shared-gate.yml`. This is intentional: a shared-library change
+ripples into the Intake app at build time, so it must prove the Intake app still
+builds and passes before it can merge. A PR that does **not** touch
+`packages/shared/**` does not trigger this extra gate.
 
 ---
 
@@ -195,5 +209,5 @@ future possibility):
    - GREEN + test-isolation gate catches a weakened test surface.
    - Gate failures escalate (never silently strand a request).
    - Cancel always wins over a running pipeline.
-4. **Run `make verify`.**  All four gates must pass before the runtime is
+4. **Run `task verify`.**  All four gates must pass before the runtime is
    considered wired correctly.

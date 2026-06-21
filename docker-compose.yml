@@ -18,8 +18,12 @@ services:
       FACTORY_WORKSPACES: /data/workspaces   # the factory's output survives rebuilds
     volumes:
       - factory-data:/data
-  web:
-    build: ./web
+  # The Intake app is the deployable SPA (ADR 0017 Phase 2). Built from the repo
+  # root so the multi-project Angular workspace + single node_modules are present.
+  intake:
+    build:
+      context: .
+      dockerfile: apps/intake/Dockerfile
     ports:
       - "8080:80"
     depends_on:

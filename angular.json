@@ -1,0 +1,190 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "cli": {
+    "packageManager": "npm",
+    "schematicCollections": ["angular-eslint"]
+  },
+  "newProjectRoot": "apps",
+  "projects": {
+    "intake": {
+      "projectType": "application",
+      "schematics": {},
+      "root": "apps/intake",
+      "sourceRoot": "apps/intake/src",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:application",
+          "options": {
+            "browser": "apps/intake/src/main.ts",
+            "tsConfig": "apps/intake/tsconfig.app.json",
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "apps/intake/public"
+              }
+            ],
+            "styles": ["apps/intake/src/styles.css"]
+          },
+          "configurations": {
+            "production": {
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "500kB",
+                  "maximumError": "1MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "12kB",
+                  "maximumError": "16kB"
+                }
+              ],
+              "outputHashing": "all"
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular/build:dev-server",
+          "options": {
+            "proxyConfig": "apps/intake/proxy.conf.json"
+          },
+          "configurations": {
+            "production": {
+              "buildTarget": "intake:build:production"
+            },
+            "development": {
+              "buildTarget": "intake:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "apps/intake/tsconfig.spec.json"
+          }
+        },
+        "lint": {
+          "builder": "@angular-eslint/builder:lint",
+          "options": {
+            "lintFilePatterns": ["apps/intake/src/**/*.ts", "apps/intake/src/**/*.html"]
+          }
+        }
+      }
+    },
+    "console": {
+      "projectType": "application",
+      "schematics": {},
+      "root": "apps/console",
+      "sourceRoot": "apps/console/src",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:application",
+          "options": {
+            "browser": "apps/console/src/main.ts",
+            "tsConfig": "apps/console/tsconfig.app.json",
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "apps/console/public"
+              }
+            ],
+            "styles": ["apps/console/src/styles.css"]
+          },
+          "configurations": {
+            "production": {
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "500kB",
+                  "maximumError": "1MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "12kB",
+                  "maximumError": "16kB"
+                }
+              ],
+              "outputHashing": "all"
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular/build:dev-server",
+          "options": {
+            "proxyConfig": "apps/console/proxy.conf.json"
+          },
+          "configurations": {
+            "production": {
+              "buildTarget": "console:build:production"
+            },
+            "development": {
+              "buildTarget": "console:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "apps/console/tsconfig.spec.json"
+          }
+        },
+        "lint": {
+          "builder": "@angular-eslint/builder:lint",
+          "options": {
+            "lintFilePatterns": ["apps/console/src/**/*.ts", "apps/console/src/**/*.html"]
+          }
+        }
+      }
+    },
+    "shared": {
+      "projectType": "library",
+      "root": "packages/shared",
+      "sourceRoot": "packages/shared/src",
+      "prefix": "sf",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:ng-packagr",
+          "configurations": {
+            "production": {
+              "tsConfig": "packages/shared/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "packages/shared/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "packages/shared/tsconfig.spec.json"
+          }
+        },
+        "lint": {
+          "builder": "@angular-eslint/builder:lint",
+          "options": {
+            "lintFilePatterns": ["packages/shared/**/*.ts", "packages/shared/**/*.html"],
+            "eslintConfig": "packages/shared/eslint.config.js"
+          }
+        }
+      }
+    }
+  }
+}

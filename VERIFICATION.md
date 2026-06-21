@@ -14,7 +14,7 @@ feature does what it claims. Three layers: **automated** (one command),
 ## 1. Automated — one command
 
 ```bash
-make verify
+task verify
 ```
 
 Runs, in order — all must be green (the same chain runs in CI on every push,
@@ -22,10 +22,10 @@ see `.github/workflows/ci.yml`):
 
 | Step | What it proves |
 |---|---|
-| `make test` — 72 pytest tests (at last update) | Behavioral: lifecycle legality, per-step approve ledger + **idempotent replay** (ADR 0006), send-back→respond loop, keyset cursor + subject axis (ADR 0008), simulator stops at the merge gate, retry clears escalation, stage clock + last-event (ADR 0010), registry CRUD, comments. Claude runner (fake executor): full pipeline to merge, **test-isolation gate catches a cheating implementer** (including a pytest-config deselection cheat), RED gate rejects non-failing tests, a pytest-less venv escalates instead of passing RED, **Retry resumes at the stuck stage with a clean workspace**. Agent-CLI seam: codex (default) sandboxes by mode, claude keeps its tool disallow list, missing binaries fail closed. Feed (ADR 0012): comments ride the event log, subject-feed tail + increment cursor. Architecture hardening (ADR 0013): **Retry re-drives the claude pipeline**, restart orphans are escalated and visible, crashed stages escalate instead of dying, a cancel always wins (no merge-gate resurrection), merge failures escalate instead of fake-deploying, approve replay never double-starts a pipeline, migrate() defaults new NOT NULL columns (old rows never 500), submit replay never drafts twice, `/api/events/cursor` is the tail, health touches the DB, PATCH is a real patch. Hardening: input validation, interview hard cap, edit-locked after submission, illegal-transition 409s, cancelled items never tick, 404s |
-| `make test-web` — 40 vitest tests (at last update) | The client's pure domain logic: UTC re-tagging of SQLite timestamps, time formatting, the Submitter plain-stage vocabulary (including "never leaks Control-center words"), status-by-shape glyph mapping, gate labels, approve confirm-steps, post-approval/in-flight stage helpers |
-| `make build` — Angular production build | All 17 screens compile; template/type errors surface here |
-| `make smoke` — `scripts/smoke.sh` | The full lifecycle against a **real server process** on a throwaway DB: create → interview×3 → submit → spec gate → inbox → approve (+replay) → 8 simulator ticks → merge gate → approve merge → Deployed milestone in the log. On failure the server log is printed (never discarded) |
+| `task test` — 72 pytest tests (at last update) | Behavioral: lifecycle legality, per-step approve ledger + **idempotent replay** (ADR 0006), send-back→respond loop, keyset cursor + subject axis (ADR 0008), simulator stops at the merge gate, retry clears escalation, stage clock + last-event (ADR 0010), registry CRUD, comments. Claude runner (fake executor): full pipeline to merge, **test-isolation gate catches a cheating implementer** (including a pytest-config deselection cheat), RED gate rejects non-failing tests, a pytest-less venv escalates instead of passing RED, **Retry resumes at the stuck stage with a clean workspace**. Agent-CLI seam: codex (default) sandboxes by mode, claude keeps its tool disallow list, missing binaries fail closed. Feed (ADR 0012): comments ride the event log, subject-feed tail + increment cursor. Architecture hardening (ADR 0013): **Retry re-drives the claude pipeline**, restart orphans are escalated and visible, crashed stages escalate instead of dying, a cancel always wins (no merge-gate resurrection), merge failures escalate instead of fake-deploying, approve replay never double-starts a pipeline, migrate() defaults new NOT NULL columns (old rows never 500), submit replay never drafts twice, `/api/events/cursor` is the tail, health touches the DB, PATCH is a real patch. Hardening: input validation, interview hard cap, edit-locked after submission, illegal-transition 409s, cancelled items never tick, 404s |
+| `task test-web` — 40 vitest tests (at last update) | The client's pure domain logic: UTC re-tagging of SQLite timestamps, time formatting, the Submitter plain-stage vocabulary (including "never leaks Control-center words"), status-by-shape glyph mapping, gate labels, approve confirm-steps, post-approval/in-flight stage helpers |
+| `task build` — Angular production build | All 17 screens compile; template/type errors surface here |
+| `task smoke` — `scripts/smoke.sh` | The full lifecycle against a **real server process** on a throwaway DB: create → interview×3 → submit → spec gate → inbox → approve (+replay) → 8 simulator ticks → merge gate → approve merge → Deployed milestone in the log. On failure the server log is printed (never discarded) |
 
 CI additionally runs `docker compose build`, so Dockerfile/nginx/lockfile
 drift fails the pipeline instead of a deploy.
@@ -40,33 +40,33 @@ Claude Code session in this repo):
   returning structured `file:line`-cited findings; every high/medium finding
   is then adversarially re-verified by a skeptic agent before it counts.
   This is the workflow that produced the ADR 0013 findings.
-- **`validate-architecture`** — the validation counterpart: runs `make verify`
+- **`validate-architecture`** — the validation counterpart: runs `task verify`
   (the deterministic gate), then one adversarial agent per ADR 0013 guarantee
   tries to **refute** it against the live code (stranded requests, cancel
   wins, honest deploy, engine pragmas, O(new) polling, isolation-gate config
   surface, one-owner rules) and reports any gaps. Run it after touching
   `api/app/` or `web/src/app/core/`.
 
-`make verify` stays the token-free gate; the workflows are the deeper,
+`task verify` stays the token-free gate; the workflows are the deeper,
 agent-driven layer on top.
 
 ## 2. Run it locally
 
 ```bash
-make dev          # API :8000 (simulator ticks every 8s) + web :4200, Ctrl-C stops both
+task dev          # API :8000 (simulator ticks every 8s) + intake :4201 + console :4202, Ctrl-C stops all
 ```
 
-The dev server proxies `/api` to the backend (`web/proxy.conf.json`), matching the
-production topology. For the production-shaped stack (nginx serving the built SPA,
-proxying `/api`, SQLite on a named volume):
+Each app's dev server proxies `/api` to the backend, matching the production
+topology. For the production-shaped stack (nginx serving the built SPA, proxying
+`/api`, SQLite on a named volume):
 
 ```bash
-make up           # docker compose up --build → http://localhost:8080
+task up           # docker compose up --build → http://localhost:8080
 ```
 
-Open **http://localhost:4200**. The DB seeds itself on first boot with the
-design's demo world (5 apps, ~12 requests in every state). `make reset`
-wipes it back to the seed.
+Open **http://localhost:4201** (intake; console on :4202). The DB seeds itself on
+first boot with the design's demo world (5 apps, ~12 requests in every state).
+`task reset` wipes it back to the seed.
 
 Two identities stand in for the SSO role fork — switch any time with the
 **pill at bottom-right** (Jordan D. = Submitter, Kim P. = Admin), or use the
@@ -119,7 +119,7 @@ two sign-in buttons on `/login`.
 
 ### Flow E — Watch a build & take the merge gate
 
-1. With `make dev` running, approve any spec and watch the **Board**: the card moves
+1. With `task dev` running, approve any spec and watch the **Board**: the card moves
    Architecture → Build → Review on its own (simulator = the Stage 2–6 CI agents).
 2. At **Review** it stops and raises **Approve merge** — board badge, inbox row, and a
    broadcast feed card with **Review & approve**.
@@ -136,7 +136,7 @@ two sign-in buttons on `/login`.
      Review ◇ Done) aligned over every row's strip.
 2. Read any "Needs me" row: amber diamond at the waiting gate + "Nm at the spec/merge
    gate"; the escalated row is red-bordered with "stalled Nm — Retry · Take over · Cancel".
-3. With `make dev` running, approve a spec and watch its row migrate from *Needs me*
+3. With `task dev` running, approve a spec and watch its row migrate from *Needs me*
    to *In flight*: the active segment animates (striped) and the clock resets
    ("1m in Arch"), advancing every ~8s tick until it returns to *Needs me* at the
    merge gate.

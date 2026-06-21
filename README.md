@@ -40,23 +40,30 @@ runtime** (ADR 0011) driven by the Codex CLI (default, for now) or Claude Code:
 
 ## Quickstart
 
+Orchestration is [Task](https://taskfile.dev) (cross-platform; runs natively on
+Windows — Task embeds its own shell, ADR 0017). Install it (`brew install go-task`,
+`winget install Task.Task`, or see taskfile.dev), then activate the pinned Node
+once per shell (`.nvmrc` → 24.15.0; `nvm use` / `fnm use` / volta). Bare `task`
+lists every recipe.
+
 ```bash
-make dev        # API on :8000 + web on :4200 (simulator ticks every 8s)
+task dev        # API on :8000 + intake :4201 + console :4202 (simulator ticks every 8s)
 ```
 
-Open **http://localhost:4200** — sign in as a Submitter, or "as a reviewer" for the
-Control center. The database seeds itself with a demo world; `make reset` re-seeds.
+Open **http://localhost:4201** (intake) — sign in as a Submitter, or "as a reviewer"
+for the Control center on :4202. The database seeds itself with a demo world;
+`task reset` re-seeds.
 
 For the production-shaped stack (nginx + API + persistent volume):
 
 ```bash
-make up         # docker compose up --build → http://localhost:8080
+task up         # docker compose up --build → http://localhost:8080
 ```
 
 ## Verify
 
 ```bash
-make verify     # backend tests + web tests + Angular build + lifecycle smoke
+task verify     # lint + backend tests + web tests + Angular build + lifecycle smoke
 ```
 
 The same chain runs in CI on every push ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
