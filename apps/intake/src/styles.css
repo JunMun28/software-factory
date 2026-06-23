@@ -142,18 +142,18 @@
 }
 
 [data-theme='dark'] {
-  /* neutrals — warm near-black, never #000 */
-  --bg: #131019;
-  --surface: #1b1722;
-  --surface-2: #241f2e;
-  --surface-3: #2e2839;
-  --fg1: #f3f1f7;
-  --fg2: #c9c4d4;
-  --muted: #9b94a8;
-  --faint: #847d92; /* ~4.5:1 on --bg */
-  --border: #322c3e;
-  --border-strong: #473f58;
-  --hairline: #272130;
+  /* neutrals — graphite, near-neutral (a whisper of cool-violet), never #000 */
+  --bg: #101013;
+  --surface: #19191c;
+  --surface-2: #222226;
+  --surface-3: #2d2d32;
+  --fg1: #f0f0f3;
+  --fg2: #c7c7cb;
+  --muted: #959599;
+  --faint: #7b7b7f; /* ~4.5:1 on --bg */
+  --border: #323237;
+  --border-strong: #48484f;
+  --hairline: #1e1e21;
 
   /* accent — keep the vivid ramp for fills/strokes; flip the LIGHT tints to
      dark wells, and brighten link/text-accent so purple reads on dark. */
@@ -169,7 +169,7 @@
   --accent-tx: #d78bf9;
 
   /* avatar fill — brighter so it reads on dark surfaces */
-  --avatar: #8b73b0;
+  --avatar: #837a93;
 
   /* green confirmation border — dark */
   --green-line: #2c5a3f;
@@ -198,13 +198,13 @@
   --cyan: #22d3ee;
   --cyan-bg: rgba(34, 211, 238, 0.1);
   --cyan-line: rgba(34, 211, 238, 0.4);
-  --glass: rgba(26, 22, 38, 0.55);
-  --glass-bd: rgba(150, 130, 200, 0.16);
-  --glass-bd2: rgba(180, 160, 230, 0.28);
+  --glass: rgba(22, 22, 26, 0.6);
+  --glass-bd: rgba(176, 176, 190, 0.14);
+  --glass-bd2: rgba(196, 196, 210, 0.24);
   --glass-hi: rgba(255, 255, 255, 0.045);
-  --mc-grid: rgba(140, 90, 255, 0.05);
-  --mc-grid2: rgba(120, 80, 255, 0.08);
-  --glow-a: rgba(189, 3, 247, 0.45);
+  --mc-grid: rgba(150, 152, 172, 0.05);
+  --mc-grid2: rgba(150, 152, 172, 0.08);
+  --glow-a: rgba(189, 3, 247, 0.4);
   --glow-cy: rgba(34, 211, 238, 0.4);
   --glow-am: rgba(240, 168, 50, 0.45);
   --glow-rd: rgba(240, 101, 90, 0.45);
@@ -2041,6 +2041,94 @@ input.input {
   color: var(--accent-tx);
   background: var(--a50);
 }
+/* attach-field component (ADR 0022) */
+sf-attach-field .attach {
+  margin-top: 8px;
+  width: auto;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  background: none;
+  cursor: default;
+  box-shadow: none;
+}
+sf-attach-field .attach:hover {
+  box-shadow: none;
+}
+.attach__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease);
+}
+.attach__btn:hover {
+  border-color: var(--a500);
+}
+.attach__hint {
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.attach__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.attach__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12px;
+  max-width: 220px;
+}
+.attach__chip--pending {
+  border-style: dashed;
+}
+.attach__chip .attach__thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.attach__chip .attach__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--fg1);
+}
+.attach__x {
+  display: inline-flex;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--faint);
+  padding: 2px;
+  border-radius: 4px;
+}
+.attach__x:hover {
+  color: var(--fg1);
+  background: var(--hover);
+}
+.attach__err {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--danger, #c0392b);
+}
 /* sub-tasks */
 .subtask {
   display: flex;
@@ -2921,6 +3009,66 @@ input.input {
   }
   to {
     transform: none;
+  }
+}
+/* Page entrance — spring pop: transform springs in with a slight overshoot while
+   opacity fades quick. Heavier than .fade-in; for a top-level page column. */
+.pop-in {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pop-in {
+    transform-origin: 50% 26%;
+    animation:
+      popIn 850ms
+        linear(
+          0,
+          0.1102,
+          0.3565,
+          0.6342,
+          0.8743,
+          1.0432,
+          1.1354,
+          1.163,
+          1.1464,
+          1.1068,
+          1.0615,
+          1.0219,
+          0.9939,
+          0.9783,
+          0.9734,
+          0.9759,
+          0.9823,
+          0.9897,
+          0.9962,
+          1.0008,
+          1.0035,
+          1,
+          1.004,
+          1.0029,
+          1.0017,
+          1.0007,
+          0.9999,
+          1
+        )
+        both,
+      popInFade 260ms var(--ease-out) both;
+  }
+}
+@keyframes popIn {
+  from {
+    transform: scale(0.92);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes popInFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 @keyframes spin {
