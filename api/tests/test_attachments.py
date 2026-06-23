@@ -102,8 +102,6 @@ def test_build_workdir_none_when_empty(db):
     assert attachments.build_workdir(r) is None
 
 
-import tempfile as _tf  # noqa: E402, F401
-
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import create_app  # noqa: E402
