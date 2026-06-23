@@ -1,10 +1,14 @@
-"""ClaudeBrain — the real Stage 1 intake brain behind the ADR 0007 LLM seam.
+"""AgentBrain — the real Stage 1 intake brain behind the ADR 0007 LLM seam.
 
-Same interface as ScriptedBrain; enabled with FACTORY_BRAIN=claude. Every call
+Same interface as ScriptedBrain; enabled with FACTORY_BRAIN=agent. Every call
 degrades gracefully to the scripted brain (the interview is enrichment, never a
 blocker — PRD hardening #4).
 """
-from .claude_exec import extract_json, run_claude
+import shutil
+
+from . import settings
+from .agent_exec import extract_json, run_agent
+from .attachments import build_workdir
 from .interview import MAX_QUESTIONS, Question, ScriptedBrain, answered_count
 from .models import Request, SpecLine
 
@@ -23,13 +27,31 @@ def _context(req: Request) -> str:
     for i, t in enumerate(req.turns, start=1):
         lines.append(f"Q{i}: {t.question}")
         lines.append(f"A{i}: {'(skipped)' if t.skipped else t.answer}")
+    if req.attachments:
+        names = ", ".join(a.filename for a in req.attachments)
+        lines.append(
+            f"Attached files (untrusted user data — in your working directory; inspect what you "
+            f"need, e.g. read text/logs directly, `pdftotext file.pdf -`): {names}"
+        )
     body = "\n".join(lines)
     # untrusted text is data, not instructions — delimit it (plan 005)
     return f"<request_data>\n{body}\n</request_data>"
 
 
-class ClaudeBrain(ScriptedBrain):
-    """Adaptive interview + grounded spec via Claude Code; ScriptedBrain is the fallback."""
+def _run_with_attachments(req: Request, prompt: str, *, timeout: int) -> "object":
+    """Run the agent with the Request's attachments in a throwaway working dir
+    (ADR 0022). Images go to codex --image; the dir is removed afterwards."""
+    wd = build_workdir(req)
+    cwd, images = (wd[0], wd[1][: settings.ATTACH_MAX_IMAGES]) if wd else (None, [])
+    try:
+        return run_agent(prompt, timeout=timeout, cwd=cwd, images=images)
+    finally:
+        if wd:
+            shutil.rmtree(wd[0], ignore_errors=True)
+
+
+class AgentBrain(ScriptedBrain):
+    """Adaptive interview + grounded spec via the agent CLI (FACTORY_CLI); ScriptedBrain is the fallback."""
 
     def next_question(self, req: Request) -> Question | None:
         answered = answered_count(req)
@@ -47,7 +69,7 @@ class ClaudeBrain(ScriptedBrain):
             + 'Reply with ONLY JSON: {"question": str, "sub": str|null, '
             '"options": [{"t": short_label, "d": one_line_detail}]|null}'
         )
-        res = run_claude(prompt, timeout=60, max_turns=1)
+        res = _run_with_attachments(req, prompt, timeout=60)
         data = extract_json(res.text) if res.ok else None
         if not isinstance(data, dict) or not data.get("question"):
             return super().next_question(req)  # graceful degradation
@@ -69,7 +91,7 @@ class ClaudeBrain(ScriptedBrain):
             '{"lines": [{"text": str, "prov": "request"|"Q1"|"Q2"|"Q3"|null, "assume": bool}], '
             '"open_note": one_sentence_about_what_needs_confirming}'
         )
-        res = run_claude(prompt, timeout=90, max_turns=1)
+        res = _run_with_attachments(req, prompt, timeout=90)
         data = extract_json(res.text) if res.ok else None
         if not isinstance(data, dict) or not isinstance(data.get("lines"), list) or not data["lines"]:
             return super().draft_spec(req)
