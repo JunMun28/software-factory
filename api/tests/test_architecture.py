@@ -11,19 +11,19 @@ import pytest
 from fastapi.testclient import TestClient
 from helpers import approved_request, submitted_request
 
-from app import claude_runner
-from app.claude_exec import ClaudeResult
-from app.claude_runner import ClaudeRunner, workspace_for
+from app import agent_runner
+from app.agent_exec import AgentResult
+from app.agent_runner import AgentRunner, workspace_for
 from app.db import SessionLocal
 from app.main import create_app
 from app.models import Request
 
 
-class RecordingRunner(ClaudeRunner):
+class RecordingRunner(AgentRunner):
     """Counts start() calls instead of spawning threads — proves dispatch wiring."""
 
     def __init__(self):
-        super().__init__(executor=lambda *a, **k: ClaudeResult(ok=True, text=""))
+        super().__init__(executor=lambda *a, **k: AgentResult(ok=True, text=""))
         self.started: list[int] = []
 
     def start(self, request_id: int) -> None:
@@ -31,9 +31,9 @@ class RecordingRunner(ClaudeRunner):
 
 
 @pytest.fixture()
-def claude_client(monkeypatch):
-    """A client in claude mode with a recording (non-executing) runner."""
-    monkeypatch.setenv("FACTORY_RUNNER", "claude")
+def agent_client(monkeypatch):
+    """A client in agent mode with a recording (non-executing) runner."""
+    monkeypatch.setenv("FACTORY_RUNNER", "agent")
     runner = RecordingRunner()
     app = create_app(auto_tick=0, runner=runner)
     with TestClient(app) as c:
@@ -46,8 +46,8 @@ def _spec_gated_request(client, title="Hardening probe"):
 
 # ---------- Retry re-drives the real pipeline ----------
 
-def test_retry_restarts_claude_pipeline(claude_client):
-    client, runner = claude_client
+def test_retry_restarts_agent_pipeline(agent_client):
+    client, runner = agent_client
     r = _spec_gated_request(client, "Retry re-drive")
     client.post(f"/api/requests/{r['id']}/approve", json={"actor": "Kim P."})
     assert runner.started == [r["id"]]  # approve dispatched the pipeline
@@ -62,8 +62,8 @@ def test_retry_restarts_claude_pipeline(claude_client):
     assert runner.started == [r["id"], r["id"]]  # retry re-drove it — the dead-end is gone
 
 
-def test_approve_replay_never_double_starts(claude_client):
-    client, runner = claude_client
+def test_approve_replay_never_double_starts(agent_client):
+    client, runner = agent_client
     r = _spec_gated_request(client, "Replay single-start")
     client.post(f"/api/requests/{r['id']}/approve", json={"actor": "Kim P."})
     client.post(f"/api/requests/{r['id']}/approve", json={"actor": "Kim P."})  # replay
@@ -73,7 +73,7 @@ def test_approve_replay_never_double_starts(claude_client):
 # ---------- restart orphans are escalated, not invisible ----------
 
 def test_startup_rescan_escalates_orphans(monkeypatch):
-    monkeypatch.setenv("FACTORY_RUNNER", "claude")
+    monkeypatch.setenv("FACTORY_RUNNER", "agent")
     # strand a request the way a container restart does: approved, mid-stage, unflagged
     pre = create_app(auto_tick=0, runner=RecordingRunner())
     with TestClient(pre) as c:
@@ -94,7 +94,7 @@ def test_startup_rescan_escalates_orphans(monkeypatch):
 def crashing_executor(prompt, **kw):
     if "architect" in prompt:
         raise RuntimeError("the CLI ate itself")
-    return ClaudeResult(ok=True, text="")
+    return AgentResult(ok=True, text="")
 
 
 def empty_review_executor(prompt, **kw):
@@ -109,12 +109,12 @@ def empty_review_executor(prompt, **kw):
             f.write("\n\nnope = True\n")
     elif "reviewer" in prompt:
         (ws / "REVIEW.md").write_text("")  # used to IndexError and kill the thread
-    return ClaudeResult(ok=True, text="done")
+    return AgentResult(ok=True, text="done")
 
 
 @pytest.fixture()
 def ws_root(tmp_path, monkeypatch):
-    monkeypatch.setattr(claude_runner, "WORKSPACES", tmp_path / "workspaces")
+    monkeypatch.setattr(agent_runner, "WORKSPACES", tmp_path / "workspaces")
     return tmp_path
 
 
@@ -124,7 +124,7 @@ def _approved(client, title):
 
 def test_crashed_stage_escalates(client, ws_root):
     d = _approved(client, "Crash containment")
-    ClaudeRunner(executor=crashing_executor).run_pipeline(d["id"])
+    AgentRunner(executor=crashing_executor).run_pipeline(d["id"])
     out = client.get(f"/api/requests/{d['id']}").json()
     assert out["needs_human"] is True
     assert "crashed" in out["needs_human_reason"]
@@ -132,7 +132,7 @@ def test_crashed_stage_escalates(client, ws_root):
 
 def test_empty_review_escalates_not_crashes(client, ws_root):
     d = _approved(client, "Empty review handling")
-    ClaudeRunner(executor=empty_review_executor).run_pipeline(d["id"])
+    AgentRunner(executor=empty_review_executor).run_pipeline(d["id"])
     out = client.get(f"/api/requests/{d['id']}").json()
     assert out["needs_human"] is True
     assert "REVIEW.md" in out["needs_human_reason"]
@@ -158,7 +158,7 @@ def test_escalation_dropped_on_cancelled(client, ws_root):
         req = db.get(Request, d["id"])
         req.status = "cancelled"
         db.commit()
-        ClaudeRunner(executor=crashing_executor)._escalate(db, req, "stage failed after cancel")
+        AgentRunner(executor=crashing_executor)._escalate(db, req, "stage failed after cancel")
     out = client.get(f"/api/requests/{d['id']}").json()
     assert out["needs_human"] is False  # the late escalation was dropped
 
@@ -172,7 +172,7 @@ def test_merge_failure_escalates_instead_of_done(client, ws_root):
         req.stage, req.gate = "review", "approve_merge"
         db.commit()
         # no workspace exists (rebuilt container / lost volume)
-        ClaudeRunner(executor=crashing_executor).approve_merge(db, req, "Kim P.")
+        AgentRunner(executor=crashing_executor).approve_merge(db, req, "Kim P.")
     out = client.get(f"/api/requests/{d['id']}").json()
     assert out["status"] != "done"
     assert out["needs_human"] is True
@@ -191,12 +191,12 @@ def config_cheating_executor(prompt, **kw):
     elif "implementer" in prompt:
         # reward hacking one level up: deselect the RED test via pytest config
         (ws / "conftest.py").write_text("collect_ignore = ['tests/test_feature.py']\n")
-    return ClaudeResult(ok=True, text="done")
+    return AgentResult(ok=True, text="done")
 
 
 def test_isolation_gate_catches_config_cheat(client, ws_root):
     d = _approved(client, "Config cheat detection")
-    ClaudeRunner(executor=config_cheating_executor).run_pipeline(d["id"])
+    AgentRunner(executor=config_cheating_executor).run_pipeline(d["id"])
     out = client.get(f"/api/requests/{d['id']}").json()
     assert out["needs_human"] is True
     assert "Test-isolation gate" in out["needs_human_reason"]

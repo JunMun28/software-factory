@@ -1,6 +1,6 @@
 """Thin subprocess wrappers for acting on a workspace — git and pytest.
 
-Shared by the runner's gates (claude_runner) and the merge-gate evidence
+Shared by the runner's gates (agent_runner) and the merge-gate evidence
 builder (verification) so the venv / timeout / missing-pytest handling lives in
 ONE place. Imports no app modules, so either side can import it without a cycle.
 """

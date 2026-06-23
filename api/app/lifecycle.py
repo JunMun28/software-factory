@@ -1,6 +1,6 @@
 """Shared lifecycle transitions (ADR 0013).
 
-The simulator and the ClaudeRunner used to each own a copy of the merge-gate
+The simulator and the AgentRunner used to each own a copy of the merge-gate
 raise and the done transition; the copies had already drifted apart in their
 event text, and the Retry endpoint forked the same way (it only knew the
 simulator's semantics). The state changes live here once — the runners keep
