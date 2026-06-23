@@ -84,7 +84,11 @@ def save(db: Session, r: Request, *, filename: str, data: bytes, source: str) ->
     att = Attachment(request_id=r.id, filename=filename[:255], mime=mime, kind=kind,
                      size=len(data), stored=stored, source=source)
     db.add(att)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
     db.refresh(att)
     return att
 
@@ -107,7 +111,9 @@ def build_workdir(r: Request) -> tuple[str, list[str]] | None:
         src = path_of(att)
         if not src.exists():
             continue
-        name = _SAFE.sub("_", att.filename).strip() or att.stored
+        name = _SAFE.sub("_", att.filename).strip().strip(".")
+        if not name or "/" in name or "\\" in name:
+            name = att.stored
         while name in used:  # dedupe friendly names
             name = f"{uuid.uuid4().hex[:6]}-{name}"
         used.add(name)

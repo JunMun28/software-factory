@@ -86,6 +86,7 @@ export class IntakeDraft {
   }
 
   async loadAttachments(rid: number): Promise<void> {
+    this.requestId = rid;
     const d = await firstValueFrom(this.api.request(rid));
     this.attachments.set(d.attachments ?? []);
   }

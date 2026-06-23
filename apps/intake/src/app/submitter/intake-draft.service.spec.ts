@@ -24,6 +24,7 @@ function mockApi() {
     updateRequest: vi.fn(() => of({ id: 42 } as any)),
     uploadAttachment: vi.fn(() => of({} as Attachment)),
     deleteAttachment: vi.fn(() => of(undefined)),
+    request: vi.fn(() => of({ id: 7, attachments: [] } as any)),
   };
 }
 
@@ -180,5 +181,13 @@ describe('IntakeDraft', () => {
     await draft.addFiles([big], 'describe');
     expect(called).toBe(0);
     expect(draft.lastError()).toContain('too large');
+  });
+
+  it('loadAttachments(rid) sets requestId before fetching', async () => {
+    expect(draft.requestId).toBeNull();
+    await draft.loadAttachments(7);
+    expect(draft.requestId).toBe(7);
+    expect(api.request).toHaveBeenCalledWith(7);
+    expect(draft.attachments()).toEqual([]);
   });
 });

@@ -16,6 +16,7 @@ services:
       FACTORY_DB_URL: sqlite:////data/factory.db
       FACTORY_SEED_DEMO: "0"      # production DBs start EMPTY; set 1 for the demo world
       FACTORY_WORKSPACES: /data/workspaces   # the factory's output survives rebuilds
+      FACTORY_UPLOADS: /data/uploads   # attachment bytes survive rebuilds (ADR 0022)
     volumes:
       - factory-data:/data
   # The Intake app is the deployable SPA (ADR 0017 Phase 2). Built from the repo

@@ -7,7 +7,7 @@ blocker — PRD hardening #4).
 import shutil
 
 from . import settings
-from .agent_exec import extract_json, run_agent
+from .agent_exec import AgentResult, extract_json, run_agent
 from .attachments import build_workdir
 from .interview import MAX_QUESTIONS, Question, ScriptedBrain, answered_count
 from .models import Request, SpecLine
@@ -38,12 +38,15 @@ def _context(req: Request) -> str:
     return f"<request_data>\n{body}\n</request_data>"
 
 
-def _run_with_attachments(req: Request, prompt: str, *, timeout: int) -> "object":
+def _run_with_attachments(req: Request, prompt: str, *, timeout: int) -> AgentResult:
     """Run the agent with the Request's attachments in a throwaway working dir
     (ADR 0022). Images go to codex --image; the dir is removed afterwards."""
-    wd = build_workdir(req)
-    cwd, images = (wd[0], wd[1][: settings.ATTACH_MAX_IMAGES]) if wd else (None, [])
     try:
+        wd = build_workdir(req)
+    except Exception:
+        wd = None  # storage hiccup must never block the interview (enrichment, never a blocker)
+    try:
+        cwd, images = (wd[0], wd[1][: settings.ATTACH_MAX_IMAGES]) if wd else (None, [])
         return run_agent(prompt, timeout=timeout, cwd=cwd, images=images)
     finally:
         if wd:

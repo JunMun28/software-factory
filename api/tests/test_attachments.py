@@ -102,6 +102,29 @@ def test_build_workdir_none_when_empty(db):
     assert attachments.build_workdir(r) is None
 
 
+def test_build_workdir_dotdot_filename_does_not_escape(db):
+    """A crafted '..' filename must not escape the workdir and must not raise."""
+    import shutil as _shutil
+    r = _req(db)
+    att = attachments.save(db, r, filename="trace.log", data=b"x", source="describe")
+    db.refresh(r)
+    # Patch the row's filename to ".." after save (save validates by sniff, not name)
+    att.filename = ".."
+    db.commit()
+    db.refresh(r)
+    wd = attachments.build_workdir(r)
+    assert wd is not None, "build_workdir must not raise"
+    try:
+        wd_path, _images = wd
+        for fname in os.listdir(wd_path):
+            copied = os.path.realpath(os.path.join(wd_path, fname))
+            assert os.path.dirname(copied) == os.path.realpath(wd_path), (
+                f"Copied file {fname!r} escaped the workdir"
+            )
+    finally:
+        _shutil.rmtree(wd_path, ignore_errors=True)
+
+
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import create_app  # noqa: E402
