@@ -6,11 +6,12 @@ FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 WORKDIR /srv
 ENV UV_COMPILE_BYTECODE=1 UV_NO_DEV=1
 
-# git drives the per-request workspaces (ADR 0011).
+# git drives the per-request workspaces (ADR 0011); poppler-utils gives the
+# brain `pdftotext` to self-read PDF attachments in its sandbox (ADR 0022).
 # NOTE: the real-runner mode additionally needs the agent CLI in the container —
 # codex by default, FACTORY_CLI=claude for Claude Code — plus its credentials.
 # See README "Real agent modes"; sim mode works out of the box.
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+RUN apt-get update && apt-get install -y --no-install-recommends git poppler-utils \
   && rm -rf /var/lib/apt/lists/*
 
 COPY api/pyproject.toml api/uv.lock ./
