@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Api } from '@sf/shared';
+import { Api, Attachment } from '@sf/shared';
 import { Session } from '../core/session.service';
 import { IntakeDraft } from './intake-draft.service';
 
@@ -22,6 +22,8 @@ function mockApi() {
   return {
     createRequest: vi.fn(() => of({ id: 42 } as any)),
     updateRequest: vi.fn(() => of({ id: 42 } as any)),
+    uploadAttachment: vi.fn(() => of({} as Attachment)),
+    deleteAttachment: vi.fn(() => of(undefined)),
   };
 }
 
@@ -120,5 +122,63 @@ describe('IntakeDraft', () => {
     expect(draft.impactMetric).toBeNull();
     expect(draft.impactValue).toBe('');
     expect(draft.urgency).toBe('normal');
+  });
+
+  it('stages files when no request exists yet, then uploads on uploadPending', async () => {
+    const uploaded: { rid: number; name: string }[] = [];
+    api.uploadAttachment = ((rid: number, file: File) => {
+      uploaded.push({ rid, name: file.name });
+      return of({
+        id: uploaded.length,
+        filename: file.name,
+        mime: 'text/plain',
+        kind: 'doc',
+        size: file.size,
+        source: 'describe',
+        created_at: '',
+      } as Attachment);
+    }) as any;
+    draft.requestId = null;
+    await draft.addFiles([new File(['x'], 'a.log')], 'describe');
+    expect(draft.pending().length).toBe(1);
+    expect(uploaded.length).toBe(0);
+
+    await draft.uploadPending(42);
+    expect(uploaded).toEqual([{ rid: 42, name: 'a.log' }]);
+    expect(draft.pending().length).toBe(0);
+    expect(draft.attachments().length).toBe(1);
+  });
+
+  it('uploads immediately when a request already exists', async () => {
+    let called = 0;
+    api.uploadAttachment = (() => {
+      called++;
+      return of({
+        id: 1,
+        filename: 'a.log',
+        mime: 'text/plain',
+        kind: 'doc',
+        size: 1,
+        source: 'interview',
+        created_at: '',
+      } as Attachment);
+    }) as any;
+    draft.requestId = 7;
+    await draft.addFiles([new File(['x'], 'a.log')], 'interview');
+    expect(called).toBe(1);
+    expect(draft.attachments().length).toBe(1);
+  });
+
+  it('rejects a file over the size cap without calling the api', async () => {
+    let called = 0;
+    api.uploadAttachment = (() => {
+      called++;
+      return of({} as Attachment);
+    }) as any;
+    draft.requestId = 7;
+    const big = new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'big.png');
+    await draft.addFiles([big], 'describe');
+    expect(called).toBe(0);
+    expect(draft.lastError()).toContain('too large');
   });
 });
