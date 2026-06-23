@@ -1,12 +1,14 @@
-"""The one place an agent CLI is invoked (ADR 0011).
+"""The one place an agent CLI is invoked (ADR 0011, 0021).
 
-Everything agent-shaped goes through `run_claude` so tests can inject a fake
+Everything agent-shaped goes through `run_agent` so tests can inject a fake
 executor and the rest of the app never touches subprocess. Two CLIs sit behind
 the same call, switched per call with FACTORY_CLI:
 
   codex  (default, for now) — `codex exec`; the no-edits contract is enforced
-         by codex's OS sandbox (read-only vs workspace-write)
-  claude — `claude -p`; no-edits enforced by a tool disallow list
+         by codex's OS sandbox (read-only vs workspace-write). It has NO turn
+         cap, so the wall-clock timeout is its only autonomy bound (ADR 0021).
+  claude — `claude -p`; no-edits enforced by a tool disallow list, and
+         --max-turns caps it on top of the timeout.
 """
 import json
 import logging
@@ -24,7 +26,7 @@ CLAUDE_MODEL = settings.CLAUDE_MODEL
 CODEX_BIN = settings.CODEX_BIN
 CODEX_MODEL = settings.CODEX_MODEL
 
-log = logging.getLogger("factory.claude")
+log = logging.getLogger("factory.agent")
 
 
 def brain_mode() -> str:
@@ -41,7 +43,7 @@ def agent_cli() -> str:
 
 
 @dataclass
-class ClaudeResult:
+class AgentResult:
     ok: bool
     text: str
     error: str = ""
@@ -60,7 +62,8 @@ def _claude_cmd(prompt: str, *, allow_edits: bool, max_turns: int) -> list[str]:
     return cmd
 
 
-def _codex_cmd(prompt: str, *, allow_edits: bool, last_message: str) -> list[str]:
+def _codex_cmd(prompt: str, *, allow_edits: bool, last_message: str,
+               images: list[str] = ()) -> list[str]:
     # codex exec has no turn cap — the stage timeout is the autonomy bound
     cmd = [
         CODEX_BIN, "exec",
@@ -71,6 +74,8 @@ def _codex_cmd(prompt: str, *, allow_edits: bool, last_message: str) -> list[str
     ]
     if CODEX_MODEL:
         cmd += ["--model", CODEX_MODEL]
+    for img in images:
+        cmd += ["--image", img]  # ADR 0022: image attachments → native vision
     cmd.append(prompt)
     return cmd
 
@@ -99,57 +104,58 @@ def _communicate(cmd: list[str], cwd: str | None, timeout: int):
     return proc.returncode, out, err
 
 
-def run_claude(prompt: str, *, cwd: str | None = None, allow_edits: bool = False,
-               timeout: int = 300, max_turns: int = 25) -> ClaudeResult:
+def run_agent(prompt: str, *, cwd: str | None = None, allow_edits: bool = False,
+               timeout: int = 300, max_turns: int = 25, images: list[str] = ()) -> AgentResult:
     """Run the agent CLI headless; returns its final text. Bounded autonomy:
-    timeout always; max_turns additionally caps claude (codex has no turn cap)."""
+    timeout always; max_turns additionally caps claude (codex has no turn cap).
+    images attach to codex via --image (ADR 0022); the claude path ignores them."""
     if agent_cli() == "claude":
         return _run_claude_cli(prompt, cwd=cwd, allow_edits=allow_edits,
                                timeout=timeout, max_turns=max_turns)
-    return _run_codex_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout)
+    return _run_codex_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout, images=images)
 
 
 def _run_claude_cli(prompt: str, *, cwd: str | None, allow_edits: bool,
-                    timeout: int, max_turns: int) -> ClaudeResult:
+                    timeout: int, max_turns: int) -> AgentResult:
     cmd = _claude_cmd(prompt, allow_edits=allow_edits, max_turns=max_turns)
     rc, out, err = _communicate(cmd, cwd, timeout)
     if rc is None:
-        return ClaudeResult(ok=False, text="", error="claude CLI not found")
+        return AgentResult(ok=False, text="", error="claude CLI not found")
     if rc == 124:
-        return ClaudeResult(ok=False, text="", error=f"stage exceeded its {timeout}s bound")
+        return AgentResult(ok=False, text="", error=f"stage exceeded its {timeout}s bound")
     if rc != 0:
         log.error("claude exited rc=%s\nstderr: %s\nstdout: %s",
                   rc, (err or "")[-800:], (out or "")[-800:])
-        return ClaudeResult(ok=False, text=out, error=(err or out)[-500:])
+        return AgentResult(ok=False, text=out, error=(err or out)[-500:])
     try:
         payload = json.loads(out)
-        return ClaudeResult(ok=True, text=payload.get("result", ""))
+        return AgentResult(ok=True, text=payload.get("result", ""))
     except (json.JSONDecodeError, AttributeError):
-        return ClaudeResult(ok=True, text=out)
+        return AgentResult(ok=True, text=out)
 
 
 def _run_codex_cli(prompt: str, *, cwd: str | None, allow_edits: bool,
-                   timeout: int) -> ClaudeResult:
+                   timeout: int, images: list[str] = ()) -> AgentResult:
     # codex streams its whole event log to stdout; the agent's final message —
     # the part the brain/runner actually consume — arrives via -o <file>
     fd, last_path = tempfile.mkstemp(prefix="codex-last-", suffix=".md")
     os.close(fd)
     try:
-        cmd = _codex_cmd(prompt, allow_edits=allow_edits, last_message=last_path)
+        cmd = _codex_cmd(prompt, allow_edits=allow_edits, last_message=last_path, images=images)
         rc, out, err = _communicate(cmd, cwd, timeout)
         if rc is None:
-            return ClaudeResult(ok=False, text="", error="codex CLI not found")
+            return AgentResult(ok=False, text="", error="codex CLI not found")
         if rc == 124:
-            return ClaudeResult(ok=False, text="", error=f"stage exceeded its {timeout}s bound")
+            return AgentResult(ok=False, text="", error=f"stage exceeded its {timeout}s bound")
         if rc != 0:
             log.error("codex exited rc=%s\nstderr: %s\nstdout: %s",
                       rc, (err or "")[-800:], (out or "")[-800:])
-            return ClaudeResult(ok=False, text=out, error=(err or out)[-500:])
+            return AgentResult(ok=False, text=out, error=(err or out)[-500:])
         try:
             last = Path(last_path).read_text().strip()
         except OSError:
             last = ""
-        return ClaudeResult(ok=True, text=last or out)
+        return AgentResult(ok=True, text=last or out)
     finally:
         Path(last_path).unlink(missing_ok=True)
 
