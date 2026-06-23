@@ -4,7 +4,7 @@ Values are read once at import time; path defaults are anchored to the api/
 directory so launching from the wrong CWD can never silently create a second
 database or strand the workspaces tree. The two runtime-switchable modes
 (FACTORY_BRAIN, FACTORY_RUNNER) intentionally stay per-call reads in
-claude_exec.py — tests flip them with monkeypatch.setenv mid-process.
+agent_exec.py — tests flip them with monkeypatch.setenv mid-process.
 """
 import os
 from pathlib import Path
@@ -31,3 +31,8 @@ RUN_SLOW_AFTER_SECONDS = float(os.environ.get("RUN_SLOW_AFTER_SECONDS", "0") or 
 # production DB never starts polluted with fictional requests and audit rows
 SEED_DEMO = os.environ.get("FACTORY_SEED_DEMO", "1").lower() not in ("0", "false", "no")
 LOG_LEVEL = os.environ.get("FACTORY_LOG_LEVEL", "INFO")
+# Attachments (ADR 0022) — bytes on the local FS, metadata in the DB.
+UPLOADS = Path(os.environ.get("FACTORY_UPLOADS", str(API_DIR / "uploads")))
+ATTACH_MAX_BYTES = int(os.environ.get("FACTORY_ATTACH_MAX_BYTES", str(10 * 1024 * 1024)))  # 10 MB
+ATTACH_MAX_COUNT = int(os.environ.get("FACTORY_ATTACH_MAX_COUNT", "5"))
+ATTACH_MAX_IMAGES = int(os.environ.get("FACTORY_ATTACH_MAX_IMAGES", "4"))  # passed to codex --image
