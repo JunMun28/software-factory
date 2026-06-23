@@ -147,6 +147,32 @@ import { AdminShell } from './admin-shell';
               </div>
             }
 
+            @if (d()?.attachments?.length) {
+              <div class="att-strip">
+                <div class="att-strip__hd">Attachments ({{ d()!.attachments!.length }})</div>
+                <div class="att-strip__items">
+                  @for (a of d()!.attachments!; track a.id) {
+                    <a
+                      class="att-item"
+                      [href]="api.attachmentRawUrl(a.id)"
+                      target="_blank"
+                      rel="noopener"
+                      [title]="a.filename"
+                    >
+                      @if (a.kind === 'image') {
+                        <img class="att-item__thumb" [src]="api.attachmentRawUrl(a.id)" alt="" />
+                      } @else {
+                        <span class="att-item__doc"
+                          ><sf-icon name="app" [size]="18" color="var(--muted)"
+                        /></span>
+                      }
+                      <span class="att-item__name">{{ a.filename }}</span>
+                    </a>
+                  }
+                </div>
+              </div>
+            }
+
             <!-- trace / map toggle — real tablist (P1 a11y) -->
             <div class="row" style="margin:8px 0 14px;justify-content:space-between">
               <span class="section-eyebrow">{{ view() === 'map' ? 'Delivery map' : 'Trace' }}</span>
@@ -653,7 +679,7 @@ import { AdminShell } from './admin-shell';
   `,
 })
 export class RequestDetailPage {
-  private api = inject(Api);
+  protected api = inject(Api);
   private router = inject(Router);
   private poll = inject(Poll);
   protected session = inject(Session);
