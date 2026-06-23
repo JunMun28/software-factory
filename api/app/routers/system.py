@@ -2,7 +2,7 @@
 
 Routes:
   GET  /api/health          — liveness + DB + brain/runner mode + agent CLI
-  POST /api/simulator/tick  — manual simulator advance (non-claude mode only)
+  POST /api/simulator/tick  — manual simulator advance (non-agent mode only)
 """
 
 import logging
@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .. import simulator
-from ..claude_exec import agent_cli, brain_mode, runner_mode
+from ..agent_exec import agent_cli, brain_mode, runner_mode
 from ..db import get_db
 
 log = logging.getLogger("factory")
@@ -34,6 +34,6 @@ def health(db: Session = Depends(get_db)):
 
 @router.post("/api/simulator/tick")
 def sim_tick(db: Session = Depends(get_db)):
-    if runner_mode() == "claude":
-        return {"moved": [], "note": "runner=claude — the real agents drive the stages"}
+    if runner_mode() == "agent":
+        return {"moved": [], "note": "runner=agent — the real agents drive the stages"}
     return {"moved": simulator.tick(db)}

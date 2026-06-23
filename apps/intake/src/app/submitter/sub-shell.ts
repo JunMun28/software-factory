@@ -1,7 +1,7 @@
 import { Component, inject, input } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { Avatar, Glyph, Mark } from '@sf/shared';
+import { Avatar, Glyph, Icon, Mark, Theme } from '@sf/shared';
 import { Session } from '../core/session.service';
 
 /** Submitter shell: top bar + optional intake stepper (Describe → Clarify → Review).
@@ -9,7 +9,7 @@ import { Session } from '../core/session.service';
  *  switcher and the role/persona switch were removed; "home" is always My requests. */
 @Component({
   selector: 'sub-shell',
-  imports: [Mark, Avatar, Glyph],
+  imports: [Mark, Avatar, Glyph, Icon],
   template: `
     <div class="sub">
       <div class="sub-top">
@@ -21,6 +21,17 @@ import { Session } from '../core/session.service';
             <button [class.on]="active() === 'new'" (click)="go('/submit/new')">New request</button>
             <button [class.on]="active() === 'list'" (click)="go('/requests')">My requests</button>
           </nav>
+          <button
+            class="adm-iconbtn"
+            type="button"
+            (click)="toggleTheme()"
+            [attr.aria-label]="
+              theme.resolved() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+            "
+            [title]="theme.resolved() === 'dark' ? 'Light mode' : 'Dark mode'"
+          >
+            <sf-icon [name]="theme.resolved() === 'dark' ? 'sun' : 'moon'" [size]="16" />
+          </button>
           <span
             class="sub-id"
             style="font-family:var(--body);font-size:13px"
@@ -81,7 +92,12 @@ import { Session } from '../core/session.service';
 })
 export class SubShell {
   session = inject(Session);
+  theme = inject(Theme);
   private router = inject(Router);
+
+  toggleTheme() {
+    this.theme.set(this.theme.resolved() === 'dark' ? 'light' : 'dark');
+  }
 
   home() {
     this.router.navigateByUrl('/requests');

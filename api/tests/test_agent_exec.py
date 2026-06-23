@@ -1,13 +1,13 @@
 """Agent-CLI seam tests (ADR 0011) — argv shape per CLI and missing-binary
 handling. No real CLI is ever spawned: builders are pure, and the dispatch
 tests point at binaries that do not exist."""
-from app import claude_exec
-from app.claude_exec import _claude_cmd, _codex_cmd, run_claude
+from app import agent_exec
+from app.agent_exec import _claude_cmd, _codex_cmd, run_agent
 
 
 def test_default_cli_is_codex(monkeypatch):
     monkeypatch.delenv("FACTORY_CLI", raising=False)
-    assert claude_exec.agent_cli() == "codex"
+    assert agent_exec.agent_cli() == "codex"
 
 
 def test_codex_cmd_sandboxes_instead_of_tool_lists():
@@ -27,15 +27,27 @@ def test_claude_cmd_keeps_tool_disallow_list():
     assert rw[rw.index("--permission-mode") + 1] == "bypassPermissions"
 
 
+def test_codex_cmd_appends_image_flags():
+    from app.agent_exec import _codex_cmd
+
+    cmd = _codex_cmd("hi", allow_edits=False, last_message="/tmp/last.md",
+                     images=["/tmp/a.png", "/tmp/b.jpg"])
+    assert cmd.count("--image") == 2
+    ai = cmd.index("--image")
+    assert cmd[ai + 1] == "/tmp/a.png"
+    assert cmd[-1] == "hi"  # the prompt stays last
+    assert "--sandbox" in cmd and cmd[cmd.index("--sandbox") + 1] == "read-only"
+
+
 def test_missing_codex_binary_fails_closed(monkeypatch):
     monkeypatch.setenv("FACTORY_CLI", "codex")
-    monkeypatch.setattr(claude_exec, "CODEX_BIN", "definitely-not-a-binary-9f2")
-    res = run_claude("hello")
+    monkeypatch.setattr(agent_exec, "CODEX_BIN", "definitely-not-a-binary-9f2")
+    res = run_agent("hello")
     assert res.ok is False and "codex CLI not found" in res.error
 
 
 def test_missing_claude_binary_fails_closed(monkeypatch):
     monkeypatch.setenv("FACTORY_CLI", "claude")
-    monkeypatch.setattr(claude_exec, "CLAUDE_BIN", "definitely-not-a-binary-9f2")
-    res = run_claude("hello")
+    monkeypatch.setattr(agent_exec, "CLAUDE_BIN", "definitely-not-a-binary-9f2")
+    res = run_agent("hello")
     assert res.ok is False and "claude CLI not found" in res.error

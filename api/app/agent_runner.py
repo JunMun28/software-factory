@@ -1,8 +1,9 @@
-"""ClaudeRunner — Stages 2–5 executed for real by Claude Code (ADR 0011).
+"""AgentRunner — Stages 2–5 executed for real by an agent CLI (ADR 0011, 0021).
 
-Enabled with FACTORY_RUNNER=claude. Each approved Request gets a git workspace
-copied from `sample/`; the stage agents run `claude -p` headless inside it and
-the GATES ARE MACHINE-CHECKED, not taken on the agent's word:
+Enabled with FACTORY_RUNNER=agent. Which CLI actually runs is FACTORY_CLI's call
+(codex by default, claude optional) — the runner never names a vendor. Each
+approved Request gets a git workspace copied from `sample/`; the stage agents run
+headless inside it and the GATES ARE MACHINE-CHECKED, not taken on the agent's word:
 
   architecture  → PLAN.md must exist                     (structural validation)
   build · RED   → pytest must FAIL with collected tests  (RED gate)
@@ -29,7 +30,7 @@ from typing import Callable
 from sqlalchemy.orm import Session
 
 from . import lifecycle, settings
-from .claude_exec import ClaudeResult, run_claude
+from .agent_exec import AgentResult, run_agent
 from .db import SessionLocal
 from .events import emit
 from .models import Request, utcnow
@@ -46,7 +47,7 @@ CONFIG_SURFACE = ("conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "t
 
 log = logging.getLogger("factory.runner")
 
-Executor = Callable[..., ClaudeResult]
+Executor = Callable[..., AgentResult]
 
 
 def _tests_hash(ws: Path) -> str:
@@ -78,8 +79,8 @@ def workspace_for(req: Request) -> Path:
     return WORKSPACES / req.ref.lower()
 
 
-class ClaudeRunner:
-    def __init__(self, executor: Executor = run_claude):
+class AgentRunner:
+    def __init__(self, executor: Executor = run_agent):
         self.exec = executor
 
     # ---------- workspace ----------
@@ -117,7 +118,7 @@ class ClaudeRunner:
             lines.append(f"- {sl.text} {tag}")
         return "\n".join(lines) + "\n"
 
-    def _save_transcript(self, ws: Path, stage: str, res: ClaudeResult) -> None:
+    def _save_transcript(self, ws: Path, stage: str, res: AgentResult) -> None:
         """The agent's full output survives in the workspace — the operator's
         answer to 'what did the agent actually do for 300 seconds'."""
         try:
@@ -205,7 +206,7 @@ class ClaudeRunner:
             return False
         self._commit_ws(ws, f"{req.ref}: PLAN.md")
         emit(db, req, "milestone_summary", "Architecture plan committed — PLAN.md validated against SPEC.md",
-             payload={"fields": {"Artifacts": "PLAN.md", "Agent": "Claude Code"}, "Ref": req.ref})
+             payload={"fields": {"Artifacts": "PLAN.md", "Agent": "Factory agent"}, "Ref": req.ref})
         db.commit()
         log.info("%s: architecture gate passed", req.ref)
         return True
@@ -236,7 +237,7 @@ class ClaudeRunner:
         self._commit_ws(ws, f"{req.ref}: RED — failing tests pin the spec")
         summary = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else "tests failing"
         emit(db, req, "milestone_summary", f"RED: failing tests authored — fail for the right reason ({summary})",
-             payload={"fields": {"Gate": "RED · passed", "Agent": "Claude Code"}, "Ref": req.ref})
+             payload={"fields": {"Gate": "RED · passed", "Agent": "Factory agent"}, "Ref": req.ref})
         db.commit()
         log.info("%s: RED gate passed (%s)", req.ref, summary)
         return True
@@ -268,7 +269,7 @@ class ClaudeRunner:
         summary = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else "all green"
         emit(db, req, "milestone_summary",
              f"GREEN: {summary}; implementer touched no test files",
-             payload={"fields": {"Gate": "GREEN + Test-isolation · passed", "Agent": "Claude Code"}, "Ref": req.ref})
+             payload={"fields": {"Gate": "GREEN + Test-isolation · passed", "Agent": "Factory agent"}, "Ref": req.ref})
         db.commit()
         log.info("%s: GREEN + test-isolation gates passed (%s)", req.ref, summary)
         return True
@@ -295,7 +296,7 @@ class ClaudeRunner:
             log.info("%s cancelled during review — merge gate not raised", req.ref)
             return False
         emit(db, req, "milestone_summary", f"Review report committed — {verdict}",
-             payload={"fields": {"Artifacts": "REVIEW.md", "Agent": "Claude Code"}, "Ref": req.ref})
+             payload={"fields": {"Artifacts": "REVIEW.md", "Agent": "Factory agent"}, "Ref": req.ref})
         vpayload = build_payload(ws, req)
         if vpayload["tests_total"] == 0 or vpayload["files_changed"] == 0:
             # the suite proved green at the GREEN gate and the work branch must

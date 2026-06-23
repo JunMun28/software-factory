@@ -8,9 +8,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import api_helpers, settings, simulator, startup
-from .claude_exec import runner_mode
-from .claude_runner import ClaudeRunner
+from .agent_exec import runner_mode
+from .agent_runner import AgentRunner
 from .db import SessionLocal, migrate
+from .routers import attachments as attachments_router
 from .routers import events as events_router
 from .routers import gates, registry, system
 from .routers import mission as mission_router
@@ -20,7 +21,7 @@ from .seed import seed
 log = logging.getLogger("factory")
 
 
-def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = None) -> FastAPI:
+def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = None) -> FastAPI:
     logging.basicConfig(level=settings.LOG_LEVEL)  # no-op if the host app already configured logging
 
     @contextlib.asynccontextmanager
@@ -33,11 +34,11 @@ def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = 
             if settings.SEED_DEMO:
                 seed(db)
             startup.backfill_comment_events(db)
-            if runner_mode() == "claude":
+            if runner_mode() == "agent":
                 startup.escalate_orphans(db)
         task = None
         interval = auto_tick if auto_tick is not None else settings.SIM_INTERVAL
-        if runner_mode() == "claude":
+        if runner_mode() == "agent":
             interval = 0  # the real runner drives itself; the simulator stands down
         workers = os.environ.get("WEB_CONCURRENCY", "1")
         if workers not in ("", "1"):
@@ -70,13 +71,14 @@ def create_app(*, auto_tick: float | None = None, runner: ClaudeRunner | None = 
         allow_headers=["*"],
     )
 
-    claude_pipeline = runner or ClaudeRunner()
-    api_helpers.set_pipeline(claude_pipeline)
+    agent_pipeline = runner or AgentRunner()
+    api_helpers.set_pipeline(agent_pipeline)
 
     app.include_router(system.router)
     app.include_router(registry.router)
     app.include_router(events_router.router)
     app.include_router(requests_router.router)
+    app.include_router(attachments_router.router)
     app.include_router(gates.router)
     app.include_router(mission_router.router)
 

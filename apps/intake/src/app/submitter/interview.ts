@@ -3,12 +3,14 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api, Icon, InterviewState, Mark, RequestDetail, TypeChip } from '@sf/shared';
+import { AttachField } from './attach-field';
+import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';
 
 /** S2 — the adaptive AI interview: open questions answered in chat, options when natural. */
 @Component({
   selector: 'sf-interview',
-  imports: [SubShell, Mark, Icon, TypeChip, FormsModule],
+  imports: [SubShell, Mark, Icon, TypeChip, FormsModule, AttachField],
   template: `
     <sub-shell active="new" [step]="1" [reqId]="id">
       <div style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;height:100%">
@@ -127,6 +129,7 @@ import { SubShell } from './sub-shell';
                 </div>
               </div>
             }
+            <sf-attach-field source="interview" />
             <div class="dcomposer fade-in">
               <button
                 class="dcomposer__add"
@@ -165,6 +168,7 @@ import { SubShell } from './sub-shell';
 export class Interview {
   private api = inject(Api);
   private router = inject(Router);
+  draft = inject(IntakeDraft);
   id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
 
   st = signal<InterviewState | null>(null);
@@ -198,6 +202,7 @@ export class Interview {
   });
 
   constructor() {
+    this.draft.loadAttachments(this.id);
     this.api.request(this.id).subscribe((r) => this.req.set(r));
     this.busy.set(true); // the first question may be generated live — show the thinking row
     this.api.interview(this.id).subscribe({

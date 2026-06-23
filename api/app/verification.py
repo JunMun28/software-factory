@@ -11,7 +11,7 @@ Both pipelines emit the same event through this module:
 The event kind, title, stage, the 8-key payload SHAPE (its key set, the shared
 `assumptions` derivation and `"Ref"`), and the emit itself all live here so the
 contract with supervision.evidence() cannot drift by hand. This module must NOT
-import claude_runner or simulator (they import it); it depends only on events
+import agent_runner or simulator (they import it); it depends only on events
 and models, neither of which imports back.
 """
 import re

@@ -14,7 +14,7 @@ for the quickstart.
 a unit of work through the full SDLC — requirements → architecture → TDD
 implementation → review → deploy — with humans gating the irreversible
 boundaries.  The two deterministic seams (brain, runner) let every feature
-run offline; the same env vars swap in real Claude Code when you want it.
+run offline; the same env vars swap in a real agent CLI when you want it.
 Domain language: [CONTEXT.md](CONTEXT.md). Decisions: [docs/adr/](docs/adr/).
 
 ---
@@ -61,35 +61,35 @@ builds and passes before it can merge. A PR that does **not** touch
 |---|---|
 | Interface location | `api/app/interview.py` — `get_brain()` |
 | Default (offline) | `ScriptedBrain` — deterministic, no LLM calls |
-| Real impl | `ClaudeBrain` in `api/app/claude_brain.py` |
-| Env var | `FACTORY_BRAIN=claude` |
-| Graceful degradation | every Claude call falls back to scripted if the model call fails |
+| Real impl | `AgentBrain` in `api/app/agent_brain.py` |
+| Env var | `FACTORY_BRAIN=agent` |
+| Graceful degradation | every agent call falls back to scripted if the model call fails |
 
 ```bash
-FACTORY_BRAIN=claude uv run uvicorn app.main:app --port 8000
+FACTORY_BRAIN=agent uv run uvicorn app.main:app --port 8000
 ```
 
 ### Runner seam — Stages 2–5 (architecture → build RED/GREEN → review → deploy)
 
 | Property | Value |
 |---|---|
-| Interface location | `api/app/claude_exec.py` — `runner_mode()` |
+| Interface location | `api/app/agent_exec.py` — `runner_mode()` |
 | Default (offline) | `api/app/simulator.py` — tick-driven simulation |
-| Real impl | `ClaudeRunner` in `api/app/claude_runner.py` |
-| Env var | `FACTORY_RUNNER=claude` |
+| Real impl | `AgentRunner` in `api/app/agent_runner.py` |
+| Env var | `FACTORY_RUNNER=agent` |
 | Per-request workspace | `workspaces/<ref>/` copied from `sample/` |
 
 ```bash
-FACTORY_RUNNER=claude uv run uvicorn app.main:app --port 8000
+FACTORY_RUNNER=agent uv run uvicorn app.main:app --port 8000
 ```
 
-Both seams are read per-call from the env via `api/app/claude_exec.py` —
+Both seams are read per-call from the env via `api/app/agent_exec.py` —
 tests flip them with `monkeypatch.setenv` mid-process without restart.
 
 ### Which CLI runs the real modes
 
-The env value `claude` means "the real LLM brain/runner" (naming predates the
-CLI switch). The CLI binary is chosen separately:
+The env value `agent` means "the real LLM brain/runner" (vs `scripted`/`sim`).
+The CLI binary is chosen separately (ADR 0021):
 
 | Env var | Values | Default |
 |---|---|---|
@@ -107,16 +107,18 @@ In codex mode the no-edits contract is enforced by codex's OS sandbox
 
 ### The subprocess boundary
 
-All Claude Code invocations go through a single function:
+All agent-CLI invocations go through a single function:
 
 ```
-api/app/claude_exec.py  →  run_claude(prompt, *, cwd, allow_edits, timeout, max_turns)
+api/app/agent_exec.py  →  run_agent(prompt, *, cwd, allow_edits, timeout, max_turns)
 ```
 
 Bounds enforced there:
-- `--max-turns` (default 25) caps the turn count.
-- `timeout` (default 300 s) kills the entire process group on expiry.
-- `--permission-mode default` (read-only) unless `allow_edits=True`.
+- `timeout` (default 300 s) kills the entire process group on expiry — the
+  **only** autonomy bound under codex, which has no turn cap (ADR 0021).
+- `--max-turns` (default 25) additionally caps the turn count on the claude path.
+- read-only unless `allow_edits=True` — codex via `--sandbox read-only`, claude
+  via `--permission-mode default` + a tool disallow list.
 - A new session per call so the timeout kills all child processes, not just
   the top-level process (the CLI spawns workers that would otherwise hold
   pipes open after the parent dies).
@@ -125,9 +127,9 @@ Bounds enforced there:
 
 | Gate | What is checked | Witness test |
 |---|---|---|
-| **RED** | `pytest` must FAIL with collected tests (no import errors, must fail as assertions) | `api/tests/test_claude_runner.py::test_red_gate_rejects_non_failing_tests` |
-| **GREEN + test-isolation** | Suite passes AND the frozen `tests/` hash is untouched — a cheating implementer that weakens tests is caught, including pytest-config deselection | `api/tests/test_claude_runner.py::test_isolation_gate_catches_cheating_implementer` |
-| **Review** | A review summary file must exist in the per-request workspace — created by the agent at runtime | pipeline structural check in `api/app/claude_runner.py` |
+| **RED** | `pytest` must FAIL with collected tests (no import errors, must fail as assertions) | `api/tests/test_agent_runner.py::test_red_gate_rejects_non_failing_tests` |
+| **GREEN + test-isolation** | Suite passes AND the frozen `tests/` hash is untouched — a cheating implementer that weakens tests is caught, including pytest-config deselection | `api/tests/test_agent_runner.py::test_isolation_gate_catches_cheating_implementer` |
+| **Review** | A review summary file must exist in the per-request workspace — created by the agent at runtime | pipeline structural check in `api/app/agent_runner.py` |
 | **Human merge gate** | A human must call `POST /api/requests/{id}/approve` to merge the work branch to main | only humans can clear `approve_merge`; the simulator stops here |
 
 Any gate failure, timeout, or crashed stage escalates to `needs_human` —
@@ -174,9 +176,9 @@ no silent stranding (ADR 0013).
 | Path | Purpose |
 |---|---|
 | `api/app/interview.py` | Intake brain seam — `get_brain()`, `FACTORY_BRAIN` |
-| `api/app/claude_exec.py` | Single subprocess boundary — `run_claude()`, `runner_mode()` |
-| `api/app/claude_runner.py` | Real Stage 2–5 runner — `ClaudeRunner`, gate logic |
-| `api/app/claude_brain.py` | Real intake brain — `ClaudeBrain` |
+| `api/app/agent_exec.py` | Single subprocess boundary — `run_agent()`, `runner_mode()` |
+| `api/app/agent_runner.py` | Real Stage 2–5 runner — `AgentRunner`, gate logic |
+| `api/app/agent_brain.py` | Real intake brain — `AgentBrain` |
 | `api/app/simulator.py` | Offline stand-in for Stages 2–5 |
 | `api/app/events.py` | Append-only helpers for `progress_event` log |
 | `api/app/db.py` | SQLite WAL setup, session factory |
@@ -198,12 +200,12 @@ To swap in a different LLM or execution engine (ADR 0011 names this as a
 future possibility):
 
 1. **Implement the executor.** Write a class that accepts a prompt and a
-   working directory and returns a result object (modelled on `ClaudeRunner`
-   / `run_claude`).
-2. **Wire the env var.** Add a branch in `api/app/claude_exec.py` (or
+   working directory and returns a result object (modelled on `AgentRunner`
+   / `run_agent`).
+2. **Wire the env var.** Add a branch in `api/app/agent_exec.py` (or
    `api/app/interview.py` for the brain seam) guarded by the env var value.
 3. **Write fake-executor tests.** Follow the pattern in
-   `api/tests/test_claude_runner.py` — inject a `FakeExecutor` that returns
+   `api/tests/test_agent_runner.py` — inject a `FakeExecutor` that returns
    canned results and verify the four gate behaviours:
    - RED gate rejects tests that pass.
    - GREEN + test-isolation gate catches a weakened test surface.

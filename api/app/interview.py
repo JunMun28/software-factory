@@ -175,11 +175,11 @@ brain = ScriptedBrain()
 
 
 def get_brain() -> ScriptedBrain:
-    """ADR 0007 seam: FACTORY_BRAIN=claude swaps in the real model, scripted is the offline default."""
-    from .claude_exec import brain_mode  # local import — claude_brain subclasses ScriptedBrain
+    """ADR 0007 seam: FACTORY_BRAIN=agent swaps in the real model, scripted is the offline default."""
+    from .agent_exec import brain_mode  # local import — agent_brain subclasses ScriptedBrain
 
-    if brain_mode() == "claude":
-        from .claude_brain import ClaudeBrain
+    if brain_mode() == "agent":
+        from .agent_brain import AgentBrain
 
-        return ClaudeBrain()
+        return AgentBrain()
     return brain

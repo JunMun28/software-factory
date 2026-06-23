@@ -1,0 +1,124 @@
+"""Attachment storage + validation (ADR 0022).
+
+Bytes live on the local filesystem under settings.UPLOADS/<request_id>/<stored>;
+the DB row is metadata only. Type is decided by sniffing magic bytes — never by
+the client-supplied extension — and text formats (no signature) are accepted by
+extension only if the bytes decode as UTF-8. build_workdir() materialises a
+throwaway dir of friendly-named copies for the Codex working directory.
+"""
+import re
+import shutil
+import tempfile
+import uuid
+from pathlib import Path
+
+from sqlalchemy.orm import Session
+
+from . import settings
+from .models import Attachment, Request
+
+# magic-byte signatures → (mime, kind). ZIP covers docx/xlsx (Office Open XML).
+_IMAGE_SIGS: list[tuple[bytes, str]] = [
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+]
+_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+# text formats have no signature — allow by extension if the bytes are UTF-8 text.
+_TEXT_EXT = {".txt": "text/plain", ".log": "text/plain", ".md": "text/markdown", ".csv": "text/csv"}
+_ZIP_EXT = {".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+_SAFE = re.compile(r"[^A-Za-z0-9._ -]+")
+
+
+def _ext(filename: str) -> str:
+    return Path(filename).suffix.lower()
+
+
+def sniff(data: bytes, filename: str) -> tuple[str, str] | None:
+    """Return (mime, kind) if the bytes are an allowed type, else None."""
+    head = data[:16]
+    ext = _ext(filename)
+    for sig, mime in _IMAGE_SIGS:
+        if head.startswith(sig):
+            # Extension must also be a recognised image extension: a PNG renamed
+            # .pdf (or any non-image ext) is rejected rather than silently
+            # re-labelled — the mismatch is a red flag (ADR 0022).
+            if ext not in _IMAGE_EXT:
+                return None
+            return mime, "image"
+    if head[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        if ext not in _IMAGE_EXT:
+            return None
+        return "image/webp", "image"
+    if head[:5] == b"%PDF-":
+        return "application/pdf", "doc"
+    if head[:4] == b"PK\x03\x04" and ext in _ZIP_EXT:  # Office files are ZIP archives
+        return _ZIP_EXT[ext], "doc"
+    if ext in _TEXT_EXT:
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+        return _TEXT_EXT[ext], "doc"
+    return None
+
+
+def path_of(att: Attachment) -> Path:
+    return settings.UPLOADS / str(att.request_id) / att.stored
+
+
+def save(db: Session, r: Request, *, filename: str, data: bytes, source: str) -> Attachment:
+    """Validate (size + magic bytes) and persist bytes + row. Raises ValueError on reject."""
+    if len(data) > settings.ATTACH_MAX_BYTES:
+        raise ValueError("file too large")
+    sniffed = sniff(data, filename)
+    if sniffed is None:
+        raise ValueError("unsupported file type")
+    mime, kind = sniffed
+    stored = uuid.uuid4().hex + _ext(filename)
+    dest = settings.UPLOADS / str(r.id) / stored
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    att = Attachment(request_id=r.id, filename=filename[:255], mime=mime, kind=kind,
+                     size=len(data), stored=stored, source=source)
+    db.add(att)
+    try:
+        db.commit()
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
+    db.refresh(att)
+    return att
+
+
+def remove(db: Session, att: Attachment) -> None:
+    path_of(att).unlink(missing_ok=True)
+    db.delete(att)
+    db.commit()
+
+
+def build_workdir(r: Request) -> tuple[str, list[str]] | None:
+    """Copy a Request's attachments into a fresh temp dir under sanitised original
+    names; return (dir, [image paths]) or None if there are none. Caller rmtrees dir."""
+    if not r.attachments:
+        return None
+    wd = tempfile.mkdtemp(prefix=f"sf-att-{r.id}-")
+    images: list[str] = []
+    used: set[str] = set()
+    for att in r.attachments:
+        src = path_of(att)
+        if not src.exists():
+            continue
+        name = _SAFE.sub("_", att.filename).strip().strip(".")
+        if not name or "/" in name or "\\" in name:
+            name = att.stored
+        while name in used:  # dedupe friendly names
+            name = f"{uuid.uuid4().hex[:6]}-{name}"
+        used.add(name)
+        dst = Path(wd) / name
+        shutil.copyfile(src, dst)
+        if att.kind == "image":
+            images.append(str(dst))
+    return wd, images

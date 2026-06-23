@@ -99,6 +99,18 @@ once it has enough or hits the cap. Its answers are added to the Request before 
 Issue is created. Same Stage 1 brain that later writes the spec.
 _Avoid_: interrogation, survey (it's short and adaptive).
 
+**Attachment**:
+A file a Submitter uploads to a **Request** as evidence — an image (e.g. an error-message
+screenshot) or a document (logs, a PDF/Word/Excel). It belongs to the Request as a flat set
+(added on the Describe step or during the Intake interview; not bound to a single interview
+turn). The Stage 1 brain reads attachments as **first-class source material** when drafting the
+spec — the same standing as the typed description and interview answers — and an **Admin** can
+open the original while reviewing the Draft spec, to check the brain read it right. Mutable
+while the Request is a pre-approval draft (the Submitter may add or remove); frozen once the
+Request is submitted into the Factory. Lives in its own store, **not** the append-only
+`progress_event` log.
+_Avoid_: upload (that's the action, not the thing), file (too generic), enclosure.
+
 **Control center**:
 The Admin-facing app — mission control for the whole Factory. It is a **separate app** from the
 Intake form (Intake = front door for Submitters; Control center = where Admins run things),

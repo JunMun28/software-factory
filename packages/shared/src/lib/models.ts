@@ -96,6 +96,16 @@ export interface FactoryRequest {
   last_event: string | null;
 }
 
+export interface Attachment {
+  id: number;
+  filename: string;
+  mime: string;
+  kind: 'image' | 'doc';
+  size: number;
+  source: 'describe' | 'interview';
+  created_at: string;
+}
+
 export interface RequestDetail extends FactoryRequest {
   turns: Turn[];
   spec_lines: SpecLine[];
@@ -106,6 +116,7 @@ export interface RequestDetail extends FactoryRequest {
   run: RunState | null;
   /** Gate evidence — present only while parked at a gate (Plan 1). */
   evidence: Evidence | null;
+  attachments?: Attachment[];
 }
 
 export interface InterviewState {

@@ -142,18 +142,18 @@
 }
 
 [data-theme='dark'] {
-  /* neutrals — warm near-black, never #000 */
-  --bg: #131019;
-  --surface: #1b1722;
-  --surface-2: #241f2e;
-  --surface-3: #2e2839;
-  --fg1: #f3f1f7;
-  --fg2: #c9c4d4;
-  --muted: #9b94a8;
-  --faint: #847d92; /* ~4.5:1 on --bg */
-  --border: #322c3e;
-  --border-strong: #473f58;
-  --hairline: #272130;
+  /* neutrals — graphite, near-neutral (a whisper of cool-violet), never #000 */
+  --bg: #101013;
+  --surface: #19191c;
+  --surface-2: #222226;
+  --surface-3: #2d2d32;
+  --fg1: #f0f0f3;
+  --fg2: #c7c7cb;
+  --muted: #959599;
+  --faint: #7b7b7f; /* ~4.5:1 on --bg */
+  --border: #323237;
+  --border-strong: #48484f;
+  --hairline: #1e1e21;
 
   /* accent — keep the vivid ramp for fills/strokes; flip the LIGHT tints to
      dark wells, and brighten link/text-accent so purple reads on dark. */
@@ -169,7 +169,7 @@
   --accent-tx: #d78bf9;
 
   /* avatar fill — brighter so it reads on dark surfaces */
-  --avatar: #8b73b0;
+  --avatar: #837a93;
 
   /* green confirmation border — dark */
   --green-line: #2c5a3f;
@@ -198,13 +198,13 @@
   --cyan: #22d3ee;
   --cyan-bg: rgba(34, 211, 238, 0.1);
   --cyan-line: rgba(34, 211, 238, 0.4);
-  --glass: rgba(26, 22, 38, 0.55);
-  --glass-bd: rgba(150, 130, 200, 0.16);
-  --glass-bd2: rgba(180, 160, 230, 0.28);
+  --glass: rgba(22, 22, 26, 0.6);
+  --glass-bd: rgba(176, 176, 190, 0.14);
+  --glass-bd2: rgba(196, 196, 210, 0.24);
   --glass-hi: rgba(255, 255, 255, 0.045);
-  --mc-grid: rgba(140, 90, 255, 0.05);
-  --mc-grid2: rgba(120, 80, 255, 0.08);
-  --glow-a: rgba(189, 3, 247, 0.45);
+  --mc-grid: rgba(150, 152, 172, 0.05);
+  --mc-grid2: rgba(150, 152, 172, 0.08);
+  --glow-a: rgba(189, 3, 247, 0.4);
   --glow-cy: rgba(34, 211, 238, 0.4);
   --glow-am: rgba(240, 168, 50, 0.45);
   --glow-rd: rgba(240, 101, 90, 0.45);
@@ -2938,4 +2938,56 @@ input.input {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ── Attachments strip (console request-detail, Task 9) ── */
+.att-strip {
+  margin: 14px 0;
+}
+.att-strip__hd {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.att-strip__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.att-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--fg2);
+  max-width: 240px;
+  transition: border-color var(--dur) var(--ease);
+}
+.att-item:hover {
+  border-color: var(--a500);
+}
+.att-item__thumb {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.att-item__doc {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  background: var(--hover);
+  border-radius: 4px;
+}
+.att-item__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
 }

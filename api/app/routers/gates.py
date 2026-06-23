@@ -13,8 +13,8 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from .. import simulator
+from ..agent_exec import runner_mode
 from ..api_helpers import get_request, pipeline, prospective_repo, to_out
-from ..claude_exec import runner_mode
 from ..db import get_db
 from ..events import emit
 from ..models import PIPELINE_STAGES, AuditEvent, Request, SpecLine, utcnow
@@ -30,7 +30,7 @@ def approve(rid: int, body: Note | None = None, db: Session = Depends(get_db)):
     if r.gate == "approve_merge":
         if r.status in ("cancelled", "done"):  # a stale gate must never merge dead work
             raise HTTPException(409, f"Cannot merge a {r.status} request")
-        if runner_mode() == "claude":
+        if runner_mode() == "agent":
             pipeline().approve_merge(db, r, actor)
         else:
             simulator.approve_merge(db, r, actor)
@@ -69,8 +69,8 @@ def approve(rid: int, body: Note | None = None, db: Session = Depends(get_db)):
     db.add(AuditEvent(request_id=r.id, actor=actor, action="approved",
                       note="approved the spec — repo created, SPEC.md PR opened, Stage 2 fired"))
     db.commit()
-    if runner_mode() == "claude":
-        pipeline().start(r.id)  # Stage 2 fires for real: Claude Code in the Subject workspace
+    if runner_mode() == "agent":
+        pipeline().start(r.id)  # Stage 2 fires for real: the agent CLI in the Subject workspace
     return to_out(r, RequestDetail)
 
 
@@ -149,9 +149,9 @@ def retry(rid: int, body: Note | None = None, db: Session = Depends(get_db)):
          actor=actor, bot=False, payload={"Ref": r.ref, "note": body.note if body else None})
     db.add(AuditEvent(request_id=r.id, actor=actor, action="retried", note=body.note if body else None))
     db.commit()
-    # Retry must actually re-drive the runner: in claude mode nothing else ever
+    # Retry must actually re-drive the runner: in agent mode nothing else ever
     # picks an 'approved' request back up (the simulator stands down) — without
     # this, Retry silently dead-ends and the request is stranded forever (ADR 0013)
-    if runner_mode() == "claude" and r.stage in PIPELINE_STAGES:
+    if runner_mode() == "agent" and r.stage in PIPELINE_STAGES:
         pipeline().start(r.id)
     return to_out(r, RequestDetail)

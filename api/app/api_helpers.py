@@ -4,7 +4,7 @@ These are stateless utilities extracted from the create_app closure in main.py
 so each domain router can import them without circular dependencies.
 
 The pipeline seam (set_pipeline / pipeline) replaces the closure variable
-`claude_pipeline`; create_app calls set_pipeline once at startup, and every
+`agent_pipeline`; create_app calls set_pipeline once at startup, and every
 router that fires the runner calls pipeline() inside the endpoint body
 (never at import time, so there is no startup-ordering hazard).
 """

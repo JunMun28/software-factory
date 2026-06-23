@@ -123,6 +123,9 @@ class Request(Base):
     comments: Mapped[list["Comment"]] = relationship(
         back_populates="request", order_by="Comment.created_at", cascade="all, delete-orphan"
     )
+    attachments: Mapped[list["Attachment"]] = relationship(
+        back_populates="request", order_by="Attachment.created_at", cascade="all, delete-orphan"
+    )
 
     @property
     def app_name(self) -> str:
@@ -195,6 +198,26 @@ class Comment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     request: Mapped[Request] = relationship(back_populates="comments")
+
+
+class Attachment(Base):
+    """A file a Submitter uploads to a Request as evidence (ADR 0022).
+    Bytes live on disk at settings.UPLOADS/<request_id>/<stored>; this row is metadata.
+    """
+
+    __tablename__ = "attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
+    filename: Mapped[str] = mapped_column(String(255))  # original name — display only
+    mime: Mapped[str] = mapped_column(String(100))      # sniffed, not the client's claim
+    kind: Mapped[str] = mapped_column(String(8))        # image | doc
+    size: Mapped[int] = mapped_column(Integer)
+    stored: Mapped[str] = mapped_column(String(72))     # on-disk name: <uuid4hex><ext>
+    source: Mapped[str] = mapped_column(String(10), default="describe")  # describe | interview
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    request: Mapped["Request"] = relationship(back_populates="attachments")
 
 
 class AuditEvent(Base):
