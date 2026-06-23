@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   AppEntry,
+  Attachment,
   CommentItem,
   FactoryRequest,
   InterviewState,
@@ -46,6 +47,18 @@ export class Api {
   }
   updateRequest(id: number, body: object) {
     return this.http.patch<RequestDetail>(`${BASE}/requests/${id}`, body);
+  }
+  uploadAttachment(rid: number, file: File, source: 'describe' | 'interview') {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('source', source);
+    return this.http.post<Attachment>(`${BASE}/requests/${rid}/attachments`, fd);
+  }
+  deleteAttachment(rid: number, aid: number) {
+    return this.http.delete<void>(`${BASE}/requests/${rid}/attachments/${aid}`);
+  }
+  attachmentRawUrl(aid: number) {
+    return `${BASE}/attachments/${aid}/raw`;
   }
   interview(id: number) {
     return this.http.get<InterviewState>(`${BASE}/requests/${id}/interview`);
