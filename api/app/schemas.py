@@ -86,6 +86,17 @@ class EvidenceOut(BaseModel):
     assumptions: list[str] = []
 
 
+class AttachmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    filename: str
+    mime: str
+    kind: str
+    size: int
+    source: str
+    created_at: datetime
+
+
 class RequestOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -132,6 +143,7 @@ class RequestDetail(RequestOut):
     spec_lines: list[SpecLineOut] = []
     comments: list[CommentOut] = []
     audit: list[AuditOut] = []
+    attachments: list[AttachmentOut] = []
     duplicate: dict | None = None
     run: RunStateOut | None = None
     evidence: EvidenceOut | None = None

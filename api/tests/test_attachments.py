@@ -100,3 +100,70 @@ def test_build_workdir_none_when_empty(db):
     r = _req(db)
     db.refresh(r)
     assert attachments.build_workdir(r) is None
+
+
+import tempfile as _tf  # noqa: E402, F401
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.main import create_app  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def client():
+    app = create_app(auto_tick=0)
+    with TestClient(app) as c:
+        yield c
+
+
+def _draft(client) -> dict:
+    body = {"type": "bug", "title": "Export crashes", "description": "boom",
+            "app_id": client.get("/api/apps").json()[0]["id"]}
+    return client.post("/api/requests", json=body).json()
+
+
+def test_upload_list_and_embed(client):
+    r = _draft(client)
+    up = client.post(f"/api/requests/{r['id']}/attachments",
+                     files={"file": ("shot.png", PNG, "image/png")}, data={"source": "describe"})
+    assert up.status_code == 201, up.text
+    assert up.json()["kind"] == "image"
+    lst = client.get(f"/api/requests/{r['id']}/attachments").json()
+    assert len(lst) == 1 and lst[0]["filename"] == "shot.png"
+    detail = client.get(f"/api/requests/{r['id']}").json()
+    assert len(detail["attachments"]) == 1
+
+
+def test_upload_rejects_bad_type(client):
+    r = _draft(client)
+    up = client.post(f"/api/requests/{r['id']}/attachments",
+                     files={"file": ("evil.pdf", PNG, "application/pdf")}, data={"source": "describe"})
+    assert up.status_code == 415
+
+
+def test_upload_enforces_count_cap(client):
+    r = _draft(client)
+    for i in range(settings.ATTACH_MAX_COUNT):
+        client.post(f"/api/requests/{r['id']}/attachments",
+                    files={"file": (f"f{i}.log", b"x", "text/plain")}, data={"source": "describe"})
+    over = client.post(f"/api/requests/{r['id']}/attachments",
+                       files={"file": ("extra.log", b"x", "text/plain")}, data={"source": "describe"})
+    assert over.status_code == 409
+
+
+def test_delete_removes(client):
+    r = _draft(client)
+    up = client.post(f"/api/requests/{r['id']}/attachments",
+                     files={"file": ("a.log", b"x", "text/plain")}, data={"source": "describe"}).json()
+    d = client.delete(f"/api/requests/{r['id']}/attachments/{up['id']}")
+    assert d.status_code == 204
+    assert client.get(f"/api/requests/{r['id']}/attachments").json() == []
+
+
+def test_serve_raw_returns_bytes(client):
+    r = _draft(client)
+    up = client.post(f"/api/requests/{r['id']}/attachments",
+                     files={"file": ("shot.png", PNG, "image/png")}, data={"source": "describe"}).json()
+    raw = client.get(f"/api/attachments/{up['id']}/raw")
+    assert raw.status_code == 200 and raw.content == PNG
+    assert raw.headers["content-type"].startswith("image/png")
