@@ -2,286 +2,296 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
-import { Api, AppEntry, Icon, PopMenu } from '@sf/shared';
+import { Api, AppEntry, Icon } from '@sf/shared';
 import { AttachField } from './attach-field';
 import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';
 
-/** S1 — New Request: type-first progressive disclosure. */
+/** S1 — New Request: ledger layout — label-left rows with hairline dividers,
+ *  no helper subtitles (hints live in placeholders). Chosen from the 2026-07
+ *  form prototype (variant 2 of 10). */
 @Component({
   selector: 'sf-new-request',
-  imports: [SubShell, Icon, FormsModule, PopMenu, AttachField],
+  imports: [SubShell, Icon, FormsModule, AttachField],
   template: `
     <sub-shell active="new" [step]="0" [reqId]="draft.requestId">
-      <div class="sub-col pop-in">
-        <h1 style="font-size:30px">What do you need?</h1>
-        <p style="color:var(--muted);margin:6px 0 22px;font-size:16px">
-          Pick a type to get started — the right questions appear next.
-        </p>
-        <div class="typecards">
-          @for (t of types; track t.t) {
-            <button
-              class="typecard focusable"
-              [class.on]="draft.type === t.t"
-              [attr.aria-pressed]="draft.type === t.t"
-              (click)="draft.type = $any(t.t)"
-            >
-              <sf-icon
-                [name]="t.icon"
-                [size]="24"
-                [color]="draft.type === t.t ? 'var(--a600)' : 'var(--muted)'"
-              />
-              <span class="typecard__t">{{ t.title }}</span>
-              <span class="typecard__h">{{ t.help }}</span>
-            </button>
-          }
-        </div>
-
-        @if (!draft.type) {
-          <div
-            style="margin-top:24px;padding:30px 20px;border:1.5px dashed var(--border-strong);border-radius:10px;text-align:center;color:var(--faint);font-size:14px"
-          >
-            Choose a type above to continue.
+      <div class="sub-col pop-in" style="max-width:820px">
+        <h1 style="font-size:26px;margin-bottom:6px">New request</h1>
+        <div class="lg">
+          <div class="lg__row">
+            <div class="lg__lbl" id="nr-type-lbl">Type</div>
+            <div class="lg__ctl">
+              <div class="seg wrap" role="group" aria-labelledby="nr-type-lbl">
+                @for (t of types; track t[0]) {
+                  <button
+                    [class.on]="draft.type === t[0]"
+                    [attr.aria-pressed]="draft.type === t[0]"
+                    (click)="draft.type = $any(t[0])"
+                  >
+                    {{ t[1] }}
+                  </button>
+                }
+              </div>
+            </div>
           </div>
-        } @else {
-          <div class="fade-in" style="margin-top:26px;display:flex;flex-direction:column;gap:18px">
+
+          @if (draft.type) {
             @if (draft.type === 'bug' || draft.type === 'enh') {
-              <div>
-                <label class="field-label" id="nr-app-lbl" for="nr-app-dd">Which app?</label>
-                <div class="dd-wrap">
-                  <input
-                    id="nr-app-dd"
-                    class="input"
-                    role="combobox"
-                    autocomplete="off"
-                    aria-autocomplete="list"
-                    aria-labelledby="nr-app-lbl"
-                    aria-controls="nr-app-list"
-                    [attr.aria-expanded]="appsMenuOpen() && !customApp()"
-                    maxlength="120"
-                    [placeholder]="customApp() ? 'Type the app name' : 'Search apps, or pick Other'"
-                    [ngModel]="appQuery()"
-                    (ngModelChange)="customApp() ? onCustomInput($event) : onAppInput($event)"
-                    (focus)="!customApp() && openApps()"
-                    (blur)="appsMenuOpen.set(false)"
-                    (keydown.escape)="appsMenuOpen.set(false)"
-                  />
-                  @if (!customApp()) {
-                    <sf-icon class="dd__chev" name="chevDown" [size]="16" color="var(--faint)" />
-                  }
-                  @if (appsMenuOpen() && !customApp()) {
-                    <div class="pop pop--fill" role="listbox" id="nr-app-list">
-                      @for (a of filteredApps(); track a.id) {
+              <div class="lg__row fade-in">
+                <label class="lg__lbl" id="nr-app-lbl" for="nr-app-dd">Application</label>
+                <div class="lg__ctl">
+                  <div class="dd-wrap">
+                    <input
+                      id="nr-app-dd"
+                      class="input"
+                      role="combobox"
+                      autocomplete="off"
+                      aria-autocomplete="list"
+                      aria-labelledby="nr-app-lbl"
+                      aria-controls="nr-app-list"
+                      [attr.aria-expanded]="appsMenuOpen() && !customApp()"
+                      maxlength="120"
+                      [placeholder]="customApp() ? 'Type the app name' : 'Search apps, or pick Other'"
+                      [ngModel]="appQuery()"
+                      (ngModelChange)="customApp() ? onCustomInput($event) : onAppInput($event)"
+                      (focus)="!customApp() && appsMenuOpen.set(true)"
+                      (blur)="appsMenuOpen.set(false)"
+                      (keydown.escape)="appsMenuOpen.set(false)"
+                    />
+                    @if (!customApp()) {
+                      <sf-icon class="dd__chev" name="chevDown" [size]="16" color="var(--faint)" />
+                    }
+                    @if (appsMenuOpen() && !customApp()) {
+                      <div class="pop pop--fill" role="listbox" id="nr-app-list">
+                        @for (a of filteredApps(); track a.id) {
+                          <button
+                            class="pop__opt"
+                            role="option"
+                            [attr.aria-selected]="draft.appId === a.id"
+                            [class.on]="draft.appId === a.id"
+                            (mousedown)="$event.preventDefault(); pickApp(a)"
+                          >
+                            <span class="dd__hash">#</span>{{ a.name }}
+                          </button>
+                        } @empty {
+                          @if (!appQuery().trim()) {
+                            <div class="dd__empty">No apps registered yet.</div>
+                          }
+                        }
                         <button
-                          class="pop__opt"
-                          role="option"
-                          [attr.aria-selected]="draft.appId === a.id"
-                          [class.on]="draft.appId === a.id"
-                          (mousedown)="$event.preventDefault(); pickApp(a)"
+                          class="pop__opt dd__other"
+                          (mousedown)="$event.preventDefault(); chooseOther()"
                         >
-                          <span class="dd__hash">#</span>{{ a.name }}
+                          <sf-icon name="plus" [size]="14" color="var(--accent-tx)" />
+                          @if (appQuery().trim() && !exactApp()) {
+                            Other — add “{{ appQuery().trim() }}” as a new app
+                          } @else {
+                            Other — my app isn’t listed
+                          }
                         </button>
-                      } @empty {
-                        @if (!appQuery().trim()) {
-                          <div class="dd__empty">No apps registered yet.</div>
-                        }
-                      }
-                      <button
-                        class="pop__opt dd__other"
-                        (mousedown)="$event.preventDefault(); chooseOther()"
-                      >
-                        <sf-icon name="plus" [size]="14" color="var(--accent-tx)" />
-                        @if (appQuery().trim() && !exactApp()) {
-                          Other — add “{{ appQuery().trim() }}” as a new app
-                        } @else {
-                          Other — my app isn’t listed
-                        }
+                      </div>
+                    }
+                    @if (customApp()) {
+                      <button type="button" class="dd__back" (click)="backToList()">
+                        <sf-icon name="back" [size]="13" color="var(--muted)" /> Choose from the
+                        list instead
                       </button>
-                    </div>
-                  }
-                  @if (customApp()) {
-                    <button type="button" class="dd__back" (click)="backToList()">
-                      <sf-icon name="back" [size]="13" color="var(--muted)" /> Choose from the list
-                      instead
-                    </button>
-                  }
+                    }
+                  </div>
                 </div>
               </div>
             }
             @if (draft.type === 'new') {
-              <div>
-                <label class="field-label" for="nr-name">What should we call it?</label>
-                <input
-                  id="nr-name"
-                  class="input"
-                  placeholder="e.g. Quarterly headcount dashboard"
-                  [(ngModel)]="draft.newName"
-                />
+              <div class="lg__row fade-in">
+                <label class="lg__lbl" for="nr-name">Name</label>
+                <div class="lg__ctl">
+                  <input
+                    id="nr-name"
+                    class="input"
+                    placeholder="e.g. Quarterly headcount dashboard"
+                    [(ngModel)]="draft.newName"
+                  />
+                </div>
               </div>
             }
-            <div>
-              <label class="field-label" for="nr-desc">{{ descLabel() }}</label>
-              <span class="field-help"
-                >A sentence or two is plenty — we'll ask follow-ups next.</span
-              >
-              <textarea
-                id="nr-desc"
-                class="input area"
-                placeholder="Describe it in your own words…"
-                [(ngModel)]="draft.desc"
-              ></textarea>
+
+            <div class="lg__row fade-in">
+              <label class="lg__lbl" for="nr-desc">Description</label>
+              <div class="lg__ctl">
+                <textarea
+                  id="nr-desc"
+                  class="input area"
+                  placeholder="Describe it in your own words — a sentence or two is plenty."
+                  [(ngModel)]="draft.desc"
+                ></textarea>
+              </div>
             </div>
-            <div>
-              <label class="field-label"
-                >Attachments
-                <span style="font-weight:400;color:var(--faint)">(optional)</span></label
-              >
-              <span class="field-help"
-                >Screenshots, logs, or docs help the AI understand faster.</span
-              >
-              <sf-attach-field source="describe" />
-            </div>
+
             @if (draft.type === 'bug') {
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-                <div>
-                  <label class="field-label" for="nr-where">Where did you see it?</label
-                  ><input
+              <div class="lg__row fade-in">
+                <label class="lg__lbl" for="nr-where">Where seen</label>
+                <div class="lg__ctl">
+                  <input
                     id="nr-where"
                     class="input"
                     placeholder="Page or screen"
                     [(ngModel)]="draft.bugWhere"
                   />
                 </div>
-                <div>
-                  <label class="field-label" id="nr-freq-lbl">How often?</label>
-                  <div class="dd-wrap">
-                    <button
-                      id="nr-freq-dd"
-                      class="input"
-                      style="cursor:pointer;text-align:left"
-                      aria-labelledby="nr-freq-lbl nr-freq-dd"
-                      [attr.aria-expanded]="freqOpen()"
-                      (click)="toggleFreq()"
-                    >
-                      <span [class.ph]="!draft.bugFreq">{{ draft.bugFreq || 'Every time' }}</span>
-                      <sf-icon
-                        name="chevDown"
-                        [size]="16"
-                        style="margin-left:auto"
-                        color="var(--faint)"
-                      />
-                    </button>
-                    <sf-pop-menu [open]="freqOpen()" width="fill" (closed)="freqOpen.set(false)">
-                      @for (f of freqs; track f) {
-                        <button
-                          class="pop__opt"
-                          [class.on]="draft.bugFreq === f"
-                          (click)="draft.bugFreq = f; freqOpen.set(false)"
-                        >
-                          {{ f }}
-                        </button>
-                      }
-                    </sf-pop-menu>
+              </div>
+              <div class="lg__row fade-in">
+                <div class="lg__lbl" id="nr-freq-lbl">Frequency</div>
+                <div class="lg__ctl">
+                  <div class="seg wrap" role="group" aria-labelledby="nr-freq-lbl">
+                    @for (f of freqs; track f) {
+                      <button
+                        [class.on]="draft.bugFreq === f"
+                        [attr.aria-pressed]="draft.bugFreq === f"
+                        (click)="draft.bugFreq = f"
+                      >
+                        {{ f }}
+                      </button>
+                    }
                   </div>
                 </div>
               </div>
-            }
-            @if (draft.type !== 'bug') {
-              <div>
-                <label class="field-label" id="nr-reach-lbl" for="nr-reach"
-                  >Who's affected?
-                  <span style="font-weight:400;color:var(--faint)">(optional)</span></label
-                >
-                <span class="field-help">Helps the reviewer see how much this is worth.</span>
-                <div
-                  class="seg"
-                  role="group"
-                  aria-labelledby="nr-reach-lbl"
-                  style="margin-bottom:8px"
-                >
-                  @for (r of reaches; track r[0]) {
-                    <button
-                      [class.on]="!draft.reachText && draft.reach === r[0]"
-                      [attr.aria-pressed]="!draft.reachText && draft.reach === r[0]"
-                      (click)="pickReach($any(r[0]))"
-                    >
-                      {{ r[1] }}
-                    </button>
-                  }
+            } @else {
+              <div class="lg__row fade-in">
+                <div class="lg__lbl" id="nr-reach-lbl">
+                  Who's affected<span class="lg__opt">Optional</span>
                 </div>
-                <input
-                  id="nr-reach"
-                  class="input"
-                  placeholder="…or describe them, e.g. all shift supervisors in Penang"
-                  [ngModel]="draft.reachText"
-                  (ngModelChange)="typeReach($event)"
-                />
-              </div>
-              <div>
-                <label class="field-label" id="nr-impact-lbl" for="nr-impact"
-                  >What's the impact?
-                  <span style="font-weight:400;color:var(--faint)">(optional)</span></label
-                >
-                <span class="field-help"
-                  >A rough number is enough — it strengthens the case for approval.</span
-                >
-                <div
-                  class="seg"
-                  role="group"
-                  aria-labelledby="nr-impact-lbl"
-                  [style.margin-bottom]="draft.impactMetric ? '8px' : ''"
-                >
-                  @for (m of metrics; track m[0]) {
-                    <button
-                      [class.on]="draft.impactMetric === m[0]"
-                      [attr.aria-pressed]="draft.impactMetric === m[0]"
-                      (click)="pickMetric($any(m[0]))"
-                    >
-                      {{ m[1] }}
-                    </button>
-                  }
-                </div>
-                @if (draft.impactMetric) {
+                <div class="lg__ctl">
+                  <div class="seg wrap" role="group" aria-labelledby="nr-reach-lbl">
+                    @for (r of reaches; track r[0]) {
+                      <button
+                        [class.on]="!draft.reachText && draft.reach === r[0]"
+                        [attr.aria-pressed]="!draft.reachText && draft.reach === r[0]"
+                        (click)="pickReach($any(r[0]))"
+                      >
+                        {{ r[1] }}
+                      </button>
+                    }
+                  </div>
                   <input
-                    id="nr-impact"
-                    class="input fade-in"
-                    [placeholder]="metricPlaceholder()"
-                    [(ngModel)]="draft.impactValue"
+                    id="nr-reach"
+                    class="input"
+                    style="margin-top:8px"
+                    aria-labelledby="nr-reach-lbl"
+                    placeholder="…or describe them, e.g. all shift supervisors in Penang"
+                    [ngModel]="draft.reachText"
+                    (ngModelChange)="typeReach($event)"
                   />
-                }
+                </div>
+              </div>
+              <div class="lg__row fade-in">
+                <div class="lg__lbl" id="nr-impact-lbl">
+                  Impact<span class="lg__opt">Optional</span>
+                </div>
+                <div class="lg__ctl">
+                  <div class="seg wrap" role="group" aria-labelledby="nr-impact-lbl">
+                    @for (m of metrics; track m[0]) {
+                      <button
+                        [class.on]="draft.impactMetric === m[0]"
+                        [attr.aria-pressed]="draft.impactMetric === m[0]"
+                        (click)="pickMetric($any(m[0]))"
+                      >
+                        {{ m[1] }}
+                      </button>
+                    }
+                  </div>
+                  @if (draft.impactMetric) {
+                    <input
+                      id="nr-impact"
+                      class="input fade-in"
+                      style="margin-top:8px;max-width:280px"
+                      aria-labelledby="nr-impact-lbl"
+                      [placeholder]="metricPlaceholder()"
+                      [(ngModel)]="draft.impactValue"
+                    />
+                  }
+                </div>
               </div>
             }
-            <div>
-              <label class="field-label" id="nr-urgency-lbl">How urgent is it?</label>
-              <div class="seg" role="group" aria-labelledby="nr-urgency-lbl">
-                @for (u of urgencies; track u[0]) {
-                  <button
-                    [class.on]="draft.urgency === u[0]"
-                    [attr.aria-pressed]="draft.urgency === u[0]"
-                    (click)="draft.urgency = $any(u[0])"
-                  >
-                    {{ u[1] }}
-                  </button>
-                }
+
+            <div class="lg__row fade-in">
+              <div class="lg__lbl" id="nr-urgency-lbl">Urgency</div>
+              <div class="lg__ctl">
+                <div class="seg" role="group" aria-labelledby="nr-urgency-lbl">
+                  @for (u of urgencies; track u[0]) {
+                    <button
+                      [class.on]="draft.urgency === u[0]"
+                      [attr.aria-pressed]="draft.urgency === u[0]"
+                      (click)="draft.urgency = $any(u[0])"
+                    >
+                      {{ u[1] }}
+                    </button>
+                  }
+                </div>
               </div>
             </div>
-            <div class="row" style="justify-content:flex-end;margin-top:4px">
+
+            <div class="lg__row fade-in">
+              <div class="lg__lbl">Attachments<span class="lg__opt">Optional</span></div>
+              <div class="lg__ctl"><sf-attach-field source="describe" /></div>
+            </div>
+
+            <div class="lg__foot fade-in">
               <button
                 class="btn primary lg"
                 [disabled]="!canContinue() || saving()"
                 (click)="continue_()"
               >
-                {{ saving() ? 'Saving…' : 'Continue to questions' }}
-                <sf-icon name="arrowRight" [size]="16" />
+                {{ saving() ? 'Saving…' : 'Continue' }} <sf-icon name="arrowRight" [size]="16" />
               </button>
             </div>
-          </div>
-        }
+          }
+        </div>
       </div>
     </sub-shell>
   `,
   styles: `
-    .seg {
+    .lg {
+      margin-top: 18px;
+    }
+    .lg__row {
+      display: grid;
+      grid-template-columns: 190px 1fr;
+      gap: 22px;
+      padding: 18px 0;
+      border-bottom: 1px solid var(--hairline);
+    }
+    .lg__lbl {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--fg1);
+      padding-top: 9px;
+      margin: 0;
+    }
+    .lg__opt {
+      display: block;
+      font-weight: 400;
+      color: var(--faint);
+      font-size: 11.5px;
+      margin-top: 2px;
+    }
+    .lg__ctl {
+      min-width: 0;
+    }
+    .lg__foot {
+      display: flex;
+      justify-content: flex-end;
+      padding: 20px 0;
+    }
+    @media (max-width: 640px) {
+      .lg__row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .lg__lbl {
+        padding-top: 0;
+      }
+    }
+    .seg.wrap {
       flex-wrap: wrap;
     }
     .seg button {
@@ -342,7 +352,6 @@ export class NewRequest {
   appsMenuOpen = signal(false);
   appQuery = signal('');
   customApp = signal(false); // "Other" was chosen — the input is a free-text app name
-  freqOpen = signal(false);
   saving = signal(false);
 
   /** apps whose name contains the query (whole list when the query is empty). */
@@ -375,12 +384,11 @@ export class NewRequest {
     ['cost', 'Cost saved / year (k)'],
     ['other', 'Other benefit'],
   ];
-
-  types = [
-    { t: 'bug', icon: 'bug', title: 'Bug fix', help: "Something's broken" },
-    { t: 'enh', icon: 'spark', title: 'Enhancement', help: 'Improve an app you use' },
-    { t: 'new', icon: 'app', title: 'New app', help: 'Start something fresh' },
-    { t: 'other', icon: 'help', title: 'Other', help: 'Not sure — help me figure it out' },
+  types: [string, string][] = [
+    ['bug', 'Bug fix'],
+    ['enh', 'Enhancement'],
+    ['new', 'New app'],
+    ['other', 'Other'],
   ];
 
   constructor() {
@@ -398,15 +406,6 @@ export class NewRequest {
         }
       }
     });
-  }
-
-  openApps() {
-    this.appsMenuOpen.set(true);
-    this.freqOpen.set(false);
-  }
-  toggleFreq() {
-    this.freqOpen.set(!this.freqOpen());
-    this.appsMenuOpen.set(false);
   }
 
   /** list mode: the text is a filter; only an exact match selects a known app. */
@@ -462,14 +461,6 @@ export class NewRequest {
       cost: 'e.g. 250',
       other: 'e.g. fewer audit findings each quarter',
     }[this.draft.impactMetric!];
-  }
-  descLabel() {
-    return {
-      bug: "What's going wrong?",
-      new: 'What should it do?',
-      other: 'What do you need?',
-      enh: 'What should change?',
-    }[this.draft.type!];
   }
   canContinue() {
     if (!this.draft.desc.trim()) return false;
