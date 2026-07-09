@@ -23,6 +23,7 @@ function req(over: Partial<FactoryRequest>): FactoryRequest {
     reach: null,
     impact_metric: null,
     impact_value: null,
+    bug_where: null,
     priority: 'Normal',
     app_id: 1,
     app_name: 'App',

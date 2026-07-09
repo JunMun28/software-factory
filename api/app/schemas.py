@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AppOut(BaseModel):
@@ -108,6 +108,7 @@ class RequestOut(BaseModel):
     reach: str | None
     impact_metric: str | None
     impact_value: str | None
+    bug_where: str | None = None
     priority: str
     app_id: int | None
     app_name: str
@@ -147,6 +148,9 @@ class RequestDetail(RequestOut):
     duplicate: dict | None = None
     run: RunStateOut | None = None
     evidence: EvidenceOut | None = None
+    # Prototype step (new-app only) — the current mock + status, so Review renders it inline.
+    prototype_html: str | None = None
+    prototype_status: str = "none"
 
 
 class MissionGate(BaseModel):
@@ -206,11 +210,80 @@ class InterviewState(BaseModel):
     done: bool
     asked: int
     total: int
+    thinking: bool = False  # the next question is generating in the background — poll until ready
     question: str | None = None
     sub: str | None = None
     options: list | None = None
     final: bool = False
     turns: list[TurnOut] = []
+
+
+class SpecSection(BaseModel):
+    """One section of the structured Review spec — a titled group of bullet points."""
+    title: str
+    items: list[str] = []
+
+
+class ReviewSummary(BaseModel):
+    """The AI-written Review-step spec: a plain-language overview plus structured sections
+    (who it's for, features/scope, how it works, constraints, success measure). `thinking`
+    → still generating; poll until it lands."""
+    overview: str | None = None
+    sections: list[SpecSection] = []
+    thinking: bool = False
+
+
+class PrototypeTurnOut(BaseModel):
+    """One prototype exchange for the chat thread (the html itself rides on PrototypeState).
+    `revision` → this turn produced a document (so the client can offer undo to it)."""
+    order: int
+    instruction: str | None = None
+    annotation: dict | list | None = None
+    mode: str
+    note: str | None = None
+    revision: bool = False
+
+
+class PrototypeState(BaseModel):
+    """The Prototype step's live state: the current document + the chat thread. `thinking`
+    → a revision is generating in the background; poll or open the stream."""
+    html: str | None = None
+    status: str = "none"  # none | draft | edited | skipped
+    thinking: bool = False
+    turns: list[PrototypeTurnOut] = []
+
+
+class PrototypeInstruction(BaseModel):
+    """A chat turn on the Prototype step: an edit instruction, optionally scoped to one or
+    more annotated elements the user pointed at (a list when multi-selected)."""
+    instruction: str = Field(default="", max_length=2000)
+    annotation: dict | list | None = None
+
+    @field_validator("annotation")
+    @classmethod
+    def _bound_annotation(cls, v):
+        """Bound the point-to-edit selection so a direct POST can't bloat the prompt or the stored
+        JSON: at most 20 elements, only known keys, each string field truncated."""
+        def clean(a):
+            if not isinstance(a, dict):
+                return None
+            out: dict = {}
+            for k in ("pid", "selector", "tag", "textSnippet", "outerHTML"):
+                if a.get(k) is not None:
+                    out[k] = str(a[k])[:800]
+            if isinstance(a.get("rect"), dict):
+                out["rect"] = a["rect"]
+            return out or None
+        if isinstance(v, list):
+            return [c for a in v[:20] if (c := clean(a))]
+        if isinstance(v, dict):
+            return clean(v)
+        return None
+
+
+class PrototypeRestore(BaseModel):
+    """Undo/restore: re-apply the document from the revision at `order` as a new latest revision."""
+    order: int
 
 
 class Note(BaseModel):

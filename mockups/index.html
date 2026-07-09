@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Factory map · Mission Command concept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" />
+<style>
+:root{
+  --bg:#0a0810; --bg2:#100c18;
+  --grid:rgba(140,90,255,.05); --grid2:rgba(120,80,255,.08);
+  --panel:rgba(26,22,38,.55);
+  --bd:rgba(150,130,200,.16); --bd2:rgba(180,160,230,.28);
+  --hi:rgba(255,255,255,.045);
+  --fg1:#f4f1fb; --fg2:#cdc6dd; --muted:#9a92ad; --faint:#6c6580;
+  --accent:#bd03f7; --accent2:#7b5cff; --accent3:#22d3ee;
+  --amber:#f0a832; --amber-g:rgba(240,168,50,.45);
+  --red:#f0655a; --red-g:rgba(240,101,90,.45);
+  --green:#46d28a; --green-g:rgba(70,210,138,.4);
+  --info:#5aa9f0; --info-g:rgba(90,169,240,.4);
+  --cyan:#22d3ee; --cyan-g:rgba(34,211,238,.4);
+  --accent-g:rgba(189,3,247,.45);
+  --r:10px; --r-lg:14px;
+  --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  --disp:'Space Grotesk',system-ui,sans-serif;
+  --body:'Space Grotesk',system-ui,sans-serif;
+  --glasshadow:0 24px 60px -22px rgba(0,0,0,.7), inset 0 1px 0 var(--hi);
+}
+.light{
+  --bg:#eef0f7; --bg2:#ffffff;
+  --grid:rgba(110,30,200,.05); --grid2:rgba(110,30,200,.09);
+  --panel:rgba(255,255,255,.72);
+  --bd:rgba(40,20,80,.1); --bd2:rgba(80,40,140,.2);
+  --hi:rgba(255,255,255,.7);
+  --fg1:#16131f; --fg2:#3c3650; --muted:#6b6480; --faint:#928aa6;
+  --amber:#c77800; --amber-g:rgba(199,120,0,.28);
+  --red:#d23b2d; --red-g:rgba(210,59,45,.26);
+  --green:#1f9d63; --green-g:rgba(31,157,99,.26);
+  --info:#2a6fb0; --info-g:rgba(42,111,176,.26);
+  --cyan:#0a8fa3; --cyan-g:rgba(10,143,163,.26);
+  --accent:#a402dc; --accent2:#6b4bff; --accent3:#0a8fa3; --accent-g:rgba(164,2,220,.3);
+  --glasshadow:0 22px 48px -26px rgba(50,30,90,.4), inset 0 1px 0 var(--hi);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--body); color:var(--fg1); background:var(--bg); -webkit-font-smoothing:antialiased; overflow:hidden;}
+.field{position:fixed; inset:0; z-index:0; background:
+  radial-gradient(1100px 620px at 64% -8%, rgba(123,92,255,.16), transparent 60%),
+  radial-gradient(900px 600px at 18% 108%, rgba(189,3,247,.12), transparent 60%),
+  linear-gradient(180deg,var(--bg),var(--bg2));}
+.field::before{content:""; position:absolute; inset:0; opacity:.8;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:46px 46px; mask-image:radial-gradient(120% 120% at 50% 0%,#000 35%,transparent 78%);}
+.field::after{content:""; position:absolute; inset:0;
+  background-image:linear-gradient(var(--grid2) 1px,transparent 1px),linear-gradient(90deg,var(--grid2) 1px,transparent 1px);
+  background-size:230px 230px; mask-image:radial-gradient(120% 120% at 50% 0%,#000 30%,transparent 75%);}
+
+.app{position:relative; z-index:1; height:100vh; display:grid; grid-template-columns:258px 1fr;}
+
+/* ===== sidebar ===== */
+.side{display:flex; flex-direction:column; gap:4px; padding:18px 14px;
+  border-right:1px solid var(--bd); background:linear-gradient(180deg,rgba(255,255,255,.02),transparent), var(--panel);
+  backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);}
+.brand{display:flex; align-items:center; gap:11px; padding:4px 8px 16px;}
+.mark{width:32px; height:32px; position:relative; flex:0 0 auto;
+  background:conic-gradient(from 140deg,var(--accent),var(--accent2),var(--accent3),var(--accent));
+  border-radius:9px; box-shadow:0 0 22px -2px var(--accent-g); transform:rotate(45deg);}
+.mark::after{content:""; position:absolute; inset:6px; background:var(--bg2); border-radius:4px;}
+.mark i{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; transform:rotate(-45deg); color:var(--fg1); font-style:normal; font-weight:700; font-family:var(--mono); font-size:14px; z-index:2;}
+.brand b{font-family:var(--disp); font-weight:700; font-size:19px; letter-spacing:.16em;}
+.brand small{display:block; font-family:var(--mono); font-size:9.5px; letter-spacing:.32em; color:var(--faint); margin-top:1px;}
+
+.new{display:flex; align-items:center; gap:9px; width:100%; margin:0 0 12px; padding:12px 13px; cursor:pointer;
+  font-family:var(--body); font-size:15px; font-weight:600; color:#fff; border:none; border-radius:var(--r);
+  background:linear-gradient(135deg,var(--accent),var(--accent2)); box-shadow:0 0 24px -4px var(--accent-g), inset 0 1px 0 rgba(255,255,255,.25);}
+.new .k{margin-left:auto; font-family:var(--mono); font-size:11.5px; padding:2px 7px; border-radius:5px; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3);}
+
+.sec{font-family:var(--mono); font-size:10.5px; letter-spacing:.22em; color:var(--faint); margin:16px 12px 7px;}
+.nav{display:flex; align-items:center; gap:10px; width:100%; text-align:left; cursor:pointer;
+  background:none; border:none; font-family:var(--body); font-size:14.5px; color:var(--fg2);
+  padding:9px 11px; border-radius:var(--r); position:relative; transition:.18s;}
+.nav i{font-size:18px; color:var(--muted); width:18px; text-align:center;}
+.nav:hover{background:rgba(255,255,255,.04); color:var(--fg1);}
+.nav.on{background:linear-gradient(90deg,rgba(189,3,247,.16),rgba(189,3,247,.02)); color:#fff;}
+.light .nav.on{color:var(--accent); background:linear-gradient(90deg,rgba(164,2,220,.12),transparent);}
+.nav.on::before{content:""; position:absolute; left:0; top:7px; bottom:7px; width:3px; border-radius:3px;
+  background:linear-gradient(var(--accent),var(--accent2)); box-shadow:0 0 12px var(--accent-g);}
+.nav.on i{color:var(--accent3);}
+.nav .badge{margin-left:auto; font-family:var(--mono); font-size:11px; font-weight:700; color:#fff; padding:1px 8px; border-radius:20px;
+  background:var(--red); box-shadow:0 0 12px var(--red-g);}
+.nav .dot{margin-left:auto; width:7px; height:7px; border-radius:50%; background:var(--accent3); box-shadow:0 0 9px var(--cyan-g);}
+.nav.muted{color:var(--faint);} .nav.muted i{color:var(--faint);} .nav.muted .dot{background:var(--faint); box-shadow:none;}
+.spacer{flex:1}
+.hr{height:1px; background:var(--bd); margin:8px 6px;}
+.me{display:flex; align-items:center; gap:10px; padding:7px 9px; border-radius:var(--r);}
+.ava{width:30px; height:30px; border-radius:50%; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:12px; font-weight:600; color:#fff; background:linear-gradient(135deg,var(--accent2),var(--accent));}
+.me b{font-size:14px; font-weight:600;} .me small{display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:.16em; color:var(--faint);}
+
+/* ===== main ===== */
+.main{display:flex; flex-direction:column; min-width:0; min-height:0;}
+.topbar{display:flex; align-items:center; gap:16px; padding:14px 22px; border-bottom:1px solid var(--bd);
+  background:var(--panel); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);}
+.tt h1{font-family:var(--disp); font-size:22px; font-weight:600; letter-spacing:-.01em; margin:0;}
+.tt p{margin:3px 0 0; font-family:var(--mono); font-size:13px; color:var(--muted); display:flex; align-items:center; gap:8px;}
+.live{width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 0 0 var(--green-g); animation:beat 2.4s infinite;}
+@keyframes beat{0%{box-shadow:0 0 0 0 var(--green-g)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.grow{flex:1}
+.seg{display:inline-flex; border:1px solid var(--bd2); border-radius:var(--r); overflow:hidden; background:rgba(255,255,255,.03);}
+.seg button{background:none; border:none; cursor:pointer; font-family:var(--mono); font-size:12px; letter-spacing:.06em; color:var(--muted); padding:8px 14px;}
+.seg button.on{background:linear-gradient(135deg,rgba(189,3,247,.22),rgba(123,92,255,.18)); color:#fff;}
+.light .seg button.on{color:var(--accent);}
+.search{display:flex; align-items:center; gap:9px; width:236px; padding:9px 12px; border:1px solid var(--bd); border-radius:var(--r);
+  background:rgba(255,255,255,.03); color:var(--faint); font-size:14px;}
+.search i{font-size:16px;}
+.chip{display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11.5px; letter-spacing:.05em; color:var(--muted);
+  padding:7px 12px; border:1px solid var(--bd); border-radius:20px; background:rgba(255,255,255,.03);}
+.chip .d{width:6px; height:6px; border-radius:50%; background:var(--amber); box-shadow:0 0 8px var(--amber-g);}
+.iconbtn{display:flex; align-items:center; justify-content:center; width:38px; height:38px; cursor:pointer; color:var(--muted);
+  border:1px solid var(--bd); border-radius:var(--r); background:rgba(255,255,255,.03); font-size:18px;}
+.iconbtn:hover{color:var(--fg1); border-color:var(--bd2);}
+
+.canvas{flex:1; min-height:0; overflow:auto; padding:20px 22px 28px;}
+
+/* ===== telemetry ===== */
+.stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px;}
+.stat{position:relative; padding:15px 16px 14px; border:1px solid var(--bd); border-radius:var(--r-lg);
+  background:linear-gradient(160deg,rgba(255,255,255,.04),transparent 60%), var(--panel); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  box-shadow:var(--glasshadow); overflow:hidden;}
+.stat::before,.stat::after{content:""; position:absolute; width:11px; height:11px; opacity:.6;}
+.stat::before{top:9px; left:9px; border-top:1.5px solid var(--bd2); border-left:1.5px solid var(--bd2);}
+.stat::after{bottom:9px; right:9px; border-bottom:1.5px solid var(--bd2); border-right:1.5px solid var(--bd2);}
+.stat .lab{display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; color:var(--muted);}
+.stat .lab i{font-size:15px;}
+.stat .num{font-family:var(--mono); font-weight:700; font-size:46px; line-height:1; margin:12px 0 6px; letter-spacing:-.02em; color:var(--fg2);}
+.stat .sub{font-family:var(--mono); font-size:12px; color:var(--faint); letter-spacing:.03em;}
+.stat .bars{position:absolute; right:14px; top:46px; display:flex; align-items:flex-end; gap:3px; height:30px;}
+.stat .bars span{width:4px; border-radius:2px; background:currentColor; opacity:.6;}
+.glow-a{color:var(--accent3); border-color:rgba(189,3,247,.3);} .glow-a .num{color:#fff; text-shadow:0 0 22px var(--accent-g);}
+.glow-cy{color:var(--cyan);}
+.glow-am{color:var(--amber); border-color:rgba(240,168,50,.32); box-shadow:var(--glasshadow),0 0 30px -16px var(--amber-g);} .glow-am .num{color:#fff; text-shadow:0 0 22px var(--amber-g);}
+.glow-rd{color:var(--red); border-color:rgba(240,101,90,.36); box-shadow:var(--glasshadow),0 0 34px -14px var(--red-g);} .glow-rd .num{color:#fff; text-shadow:0 0 24px var(--red-g);}
+.run-on{border-color:rgba(34,211,238,.32); box-shadow:var(--glasshadow),0 0 30px -16px var(--cyan-g);} .run-on .num{color:#fff; text-shadow:0 0 22px var(--cyan-g);}
+.light .stat .num{color:var(--fg1); text-shadow:none;}
+.radar{position:absolute; top:16px; right:16px; width:10px; height:10px; border-radius:50%; background:var(--red);}
+.radar::after{content:""; position:absolute; inset:0; border-radius:50%; border:1px solid var(--red); animation:ping 2s infinite;}
+@keyframes ping{0%{transform:scale(1); opacity:.8}100%{transform:scale(3.4); opacity:0}}
+
+/* ===== NOW WORKING band ===== */
+.active{position:relative; display:grid; grid-template-columns:186px 1fr 152px; align-items:center; gap:24px;
+  padding:17px 22px; margin-bottom:22px; border:1px solid rgba(34,211,238,.34); border-radius:var(--r-lg);
+  background:linear-gradient(120deg,rgba(34,211,238,.10),rgba(189,3,247,.06) 55%,transparent 82%), var(--panel);
+  backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); box-shadow:var(--glasshadow),0 0 50px -20px var(--cyan-g); overflow:hidden;}
+.active::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:linear-gradient(var(--cyan),var(--accent)); box-shadow:0 0 16px var(--cyan-g);}
+.active::after{content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
+  background-image:linear-gradient(var(--grid2) 1px,transparent 1px),linear-gradient(90deg,var(--grid2) 1px,transparent 1px); background-size:30px 30px; mask-image:linear-gradient(90deg,#000,transparent 62%);}
+.who{position:relative; z-index:1; display:flex; flex-direction:column; gap:9px;}
+.wlab{display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; color:var(--cyan);}
+.livedot{width:8px; height:8px; border-radius:50%; background:var(--cyan); box-shadow:0 0 0 0 var(--cyan-g); animation:beat 1.7s infinite;}
+.lane{display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--muted);}
+.lane i{font-size:14px; color:var(--accent3);}
+.run{position:relative; z-index:1; min-width:0;}
+.rtop{display:flex; align-items:center; gap:12px; margin-bottom:8px; flex-wrap:wrap;}
+.rtitle{font-family:var(--disp); font-size:19px; font-weight:600; color:var(--fg1); letter-spacing:-.01em;}
+.rmeta{font-family:var(--mono); font-size:12px; color:var(--muted);} .rmeta b{color:var(--fg2);}
+.stagechip{display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.1em; color:var(--cyan); padding:3px 10px; border-radius:6px; background:rgba(34,211,238,.12); border:1px solid var(--cyan-g);}
+.stagechip i{font-size:13px;}
+.step{display:flex; align-items:center; gap:9px; font-family:var(--mono); font-size:12.5px; color:var(--fg2); margin-bottom:11px;}
+.step i{font-size:15px; color:var(--cyan); animation:spin 1.4s linear infinite;}
+.bar{height:7px; border-radius:5px; background:rgba(255,255,255,.08); overflow:hidden; position:relative; max-width:580px;}
+.light .bar{background:rgba(20,16,40,.08);}
+.bar>span{display:block; height:100%; border-radius:5px; background:linear-gradient(90deg,var(--accent),var(--cyan)); box-shadow:0 0 14px var(--cyan-g); position:relative; overflow:hidden;}
+.bar>span::after{content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent); transform:translateX(-100%); animation:sheen 1.8s linear infinite;}
+@keyframes sheen{to{transform:translateX(120%)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.meter{position:relative; z-index:1; display:flex; flex-direction:column; gap:11px; align-items:flex-end; text-align:right;}
+.elapsed b{font-family:var(--mono); font-size:25px; font-weight:700; color:#fff; letter-spacing:.02em; display:block;}
+.light .elapsed b{color:var(--fg1);}
+.elapsed small{font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--faint);}
+.track{display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; color:var(--faint);}
+.track i{font-size:13px;}
+.track .tk{padding:2px 7px; border-radius:5px;}
+.track .tk.done{color:var(--green);}
+.track .tk.cur{color:var(--cyan); background:rgba(34,211,238,.12); border:1px solid var(--cyan-g);}
+
+/* ===== pipeline ===== */
+.phead{display:flex; align-items:center; gap:12px; margin:0 2px 14px;}
+.phead .t{font-family:var(--mono); font-size:11px; letter-spacing:.22em; color:var(--faint);}
+.phead .ln{flex:1; height:1px; background:linear-gradient(90deg,var(--bd),transparent);}
+.rail{display:grid; grid-template-columns:repeat(6,1fr); margin-bottom:14px;}
+.gcell{position:relative; display:flex; flex-direction:column; align-items:center; gap:9px; padding:0 6px;}
+.gauge{position:relative; width:80px; height:80px;}
+.gauge svg{transform:rotate(-90deg);}
+.gauge .gn{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-weight:700; font-size:30px; color:var(--fg1);}
+.gname{font-family:var(--disp); font-size:15px; font-weight:600;}
+.gsub{font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--faint); text-align:center;}
+.gsub.warn{color:var(--amber);} .gsub.ok{color:var(--green);} .gsub.work{color:var(--cyan);}
+.gcell.idle .gname{color:var(--muted);} .gcell.idle .gn{color:var(--faint);}
+.gcell.work .gn{color:var(--cyan);}
+.gcell.work .gauge::after{content:""; position:absolute; inset:-5px; border-radius:50%; box-shadow:0 0 0 0 var(--cyan-g); animation:beat 1.7s infinite;}
+.conduit{position:absolute; top:40px; left:calc(50% + 45px); right:calc(-50% + 45px); height:2px;
+  background:linear-gradient(90deg,transparent,var(--bd2),transparent); overflow:visible;}
+.conduit .spark{position:absolute; top:50%; left:0; width:7px; height:7px; margin:-3.5px 0 0 -3.5px; border-radius:50%;
+  background:var(--accent3); box-shadow:0 0 12px 2px var(--cyan-g); animation:flow 2.6s linear infinite;}
+.conduit .spark.b{animation-delay:1.3s; background:var(--accent); box-shadow:0 0 12px 2px var(--accent-g);}
+.conduit.dim{opacity:.4;} .conduit.dim .spark{display:none;}
+@keyframes flow{0%{left:0; opacity:0}12%{opacity:1}88%{opacity:1}100%{left:100%; opacity:0}}
+
+.cols{display:grid; grid-template-columns:repeat(6,1fr); gap:14px; align-items:start;}
+.col{display:flex; flex-direction:column; gap:11px; padding:6px; border-radius:var(--r-lg); min-height:120px;}
+.col.scan{position:relative; background:linear-gradient(180deg,rgba(34,211,238,.05),transparent 45%);}
+.col.scan::before{content:""; position:absolute; left:4px; right:4px; top:0; height:2px;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent); box-shadow:0 0 12px var(--cyan-g); animation:scan 4s ease-in-out infinite;}
+@keyframes scan{0%,100%{transform:translateY(4px); opacity:.2}50%{transform:translateY(190px); opacity:.9}}
+
+/* request card */
+.card{position:relative; padding:13px 14px 13px 16px; cursor:pointer; border:1px solid var(--bd); border-radius:var(--r);
+  background:linear-gradient(150deg,rgba(255,255,255,.04),transparent 70%), var(--panel); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  box-shadow:0 14px 30px -22px rgba(0,0,0,.8), inset 0 1px 0 var(--hi); transition:.18s;}
+.card:hover{border-color:var(--bd2); transform:translateY(-2px);}
+.card::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:3px 0 0 3px; background:var(--accent2); opacity:.7;}
+.card .top{display:flex; align-items:center; gap:7px; margin-bottom:6px;}
+.card .aname{font-family:var(--disp); font-size:14px; font-weight:600; color:var(--fg1); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.card .req{font-family:var(--mono); font-size:11px; letter-spacing:.03em; color:var(--faint);}
+.card .ttl{font-size:14px; color:var(--fg2); line-height:1.35; margin-bottom:10px;}
+.card .foot{display:flex; align-items:center; gap:8px;}
+.tag{display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.07em; padding:3px 9px; border-radius:6px; text-transform:uppercase;}
+.tag i{font-size:12px;}
+.t-gate{color:var(--amber); background:rgba(240,168,50,.12); border:1px solid var(--amber-g); box-shadow:0 0 14px -4px var(--amber-g);}
+.t-human{color:var(--red); background:rgba(240,101,90,.12); border:1px solid var(--red-g); box-shadow:0 0 14px -4px var(--red-g);}
+.t-back{color:var(--info); background:rgba(90,169,240,.12); border:1px solid var(--info-g);}
+.t-run{color:var(--cyan); background:rgba(34,211,238,.1); border:1px solid var(--cyan-g);}
+.t-work{color:var(--cyan); background:rgba(34,211,238,.14); border:1px solid var(--cyan-g);} .t-work i{display:inline-block; animation:spin 1.4s linear infinite;}
+.t-ship{color:var(--green); background:rgba(70,210,138,.1); border:1px solid var(--green-g);}
+.age{margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--faint);}
+.card.c-human::before{background:var(--red); box-shadow:0 0 16px var(--red-g);}
+.card.c-gate::before{background:var(--amber); box-shadow:0 0 16px var(--amber-g);}
+.card.c-back::before{background:var(--info);}
+.card.c-done{opacity:.84;} .card.c-done::before{background:var(--green); box-shadow:0 0 14px var(--green-g);}
+.card.c-work{border-color:rgba(34,211,238,.42); box-shadow:0 0 32px -10px var(--cyan-g), inset 0 1px 0 var(--hi);}
+.card.c-work::before{background:linear-gradient(var(--cyan),var(--accent)); box-shadow:0 0 16px var(--cyan-g); animation:pulsebar 1.6s ease-in-out infinite;}
+@keyframes pulsebar{0%,100%{opacity:.55}50%{opacity:1}}
+.wbar{height:5px; border-radius:4px; background:rgba(255,255,255,.08); overflow:hidden; margin:0 0 10px; position:relative;}
+.light .wbar{background:rgba(20,16,40,.08);}
+.wbar>span{display:block; height:100%; border-radius:4px; background:linear-gradient(90deg,var(--accent),var(--cyan)); box-shadow:0 0 10px var(--cyan-g); position:relative; overflow:hidden;}
+.wbar>span::after{content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent); transform:translateX(-100%); animation:sheen 1.8s linear infinite;}
+.standby{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:28px 10px; text-align:center;
+  border:1px dashed var(--bd); border-radius:var(--r); color:var(--faint);
+  background:repeating-linear-gradient(45deg,rgba(255,255,255,.012),rgba(255,255,255,.012) 8px,transparent 8px,transparent 16px);}
+.standby i{font-size:22px; opacity:.6;}
+.standby b{font-family:var(--mono); font-size:11px; letter-spacing:.18em; color:var(--muted);}
+.standby span{font-size:12.5px;}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="field"></div>
+<div class="app" id="app">
+
+  <aside class="side">
+    <div class="brand"><span class="mark"><i>F</i></span><span><b>FACTORY</b><small>MISSION&nbsp;CONTROL</small></span></div>
+    <button class="new"><i class="ti ti-plus" style="font-size:17px"></i>New request<span class="k">C</span></button>
+
+    <div class="sec">PRIMARY</div>
+    <button class="nav"><i class="ti ti-radar"></i>Mission control</button>
+    <button class="nav on"><i class="ti ti-circuit-changeover"></i>Factory map</button>
+    <button class="nav"><i class="ti ti-list"></i>All requests</button>
+    <button class="nav"><i class="ti ti-inbox"></i>Needs me<span class="badge">1</span></button>
+    <button class="nav"><i class="ti ti-shield-half"></i>Gates</button>
+
+    <div class="sec">APPS</div>
+    <button class="nav"><i class="ti ti-hash"></i>Northwind Expenses<span class="dot"></span></button>
+    <button class="nav"><i class="ti ti-hash"></i>Vendor Portal<span class="dot"></span></button>
+    <button class="nav"><i class="ti ti-hash"></i>FieldOps<span class="dot"></span></button>
+    <button class="nav muted"><i class="ti ti-hash"></i>Inventory Sync<span class="dot"></span></button>
+    <button class="nav"><i class="ti ti-hash"></i>Billing Portal<span class="dot"></span></button>
+
+    <div class="spacer"></div>
+    <button class="nav"><i class="ti ti-stack-2"></i>App registry</button>
+    <button class="nav"><i class="ti ti-settings"></i>Settings</button>
+    <div class="hr"></div>
+    <div class="me"><span class="ava">KP</span><span><b>Kim P.</b><small>ADMIN</small></span></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="tt">
+        <h1>Factory map</h1>
+        <p><span class="live"></span> 9 in flight &nbsp;·&nbsp; 4 waiting on you &nbsp;·&nbsp; 1 stalled</p>
+      </div>
+      <div class="grow"></div>
+      <div class="seg"><button class="on">ALL</button><button>NEEDS ATTENTION</button></div>
+      <div class="search"><i class="ti ti-search"></i>Search the floor…</div>
+      <span class="chip"><span class="d"></span>AGENTS&nbsp;:&nbsp;SIMULATED</span>
+      <div class="iconbtn" id="flip" title="Toggle theme"><i class="ti ti-moon-stars"></i></div>
+      <div class="iconbtn" title="Command (⌘K)"><i class="ti ti-command"></i></div>
+    </header>
+
+    <div class="canvas">
+      <section class="stats">
+        <div class="stat glow-a">
+          <div class="lab"><i class="ti ti-activity-heartbeat"></i>IN FLIGHT</div>
+          <div class="num">9</div><div class="sub">+2 since 09:00</div>
+          <div class="bars" style="color:var(--accent3)"><span style="height:40%"></span><span style="height:62%"></span><span style="height:48%"></span><span style="height:78%"></span><span style="height:66%"></span><span style="height:100%"></span></div>
+        </div>
+        <div class="stat glow-cy run-on">
+          <div class="lab"><i class="ti ti-cpu"></i>RUNNING</div>
+          <div class="num">1</div><div class="sub">active · single-lane</div>
+        </div>
+        <div class="stat glow-am">
+          <div class="lab"><i class="ti ti-gavel"></i>AWAITING APPROVAL</div>
+          <div class="num">4</div><div class="sub">your decision</div>
+        </div>
+        <div class="stat glow-rd">
+          <span class="radar"></span>
+          <div class="lab"><i class="ti ti-alert-triangle"></i>NEEDS A HUMAN</div>
+          <div class="num">1</div><div class="sub">escalated · stalled</div>
+        </div>
+      </section>
+
+      <!-- NOW WORKING -->
+      <section class="active">
+        <div class="who">
+          <div class="wlab"><span class="livedot"></span>AGENT&nbsp;//&nbsp;NOW WORKING</div>
+          <div class="lane"><i class="ti ti-bolt"></i>SINGLE-LANE · 1&nbsp;/&nbsp;1 ACTIVE</div>
+        </div>
+        <div class="run">
+          <div class="rtop">
+            <span class="rtitle">CSV import for vendors</span>
+            <span class="rmeta">Vendor Portal · <b>REQ-2042</b></span>
+            <span class="stagechip"><i class="ti ti-blueprint"></i>ARCHITECTURE</span>
+          </div>
+          <div class="step"><i class="ti ti-loader-2"></i>Designing data model &amp; service boundaries…</div>
+          <div class="bar"><span style="width:62%"></span></div>
+        </div>
+        <div class="meter">
+          <div class="elapsed"><b>02:14</b><small>ELAPSED · ETA ~1m</small></div>
+          <div class="track"><span class="tk done">Spec</span><i class="ti ti-chevron-right"></i><span class="tk cur">Arch</span><i class="ti ti-chevron-right"></i><span class="tk">Build</span></div>
+        </div>
+      </section>
+
+      <div class="phead"><span class="t">PIPELINE&nbsp;//&nbsp;6&nbsp;STAGES</span><span class="ln"></span><span class="t">FLOW&nbsp;→</span></div>
+      <div class="rail" id="rail"></div>
+
+      <div class="cols">
+        <!-- INTAKE -->
+        <div class="col">
+          <div class="card">
+            <div class="top"><span class="aname">FieldOps</span><span class="req">REQ-2035</span></div>
+            <div class="ttl">Login button misaligned on iPad</div>
+            <div class="foot"><span class="tag t-run"><i class="ti ti-bug"></i>BUG</span><span class="age">4m</span></div>
+          </div>
+          <div class="card">
+            <div class="top"><span class="aname">Headcount Dashboard</span><span class="req">REQ-2031</span></div>
+            <div class="ttl">Quarterly headcount dashboard</div>
+            <div class="foot"><span class="tag t-run"><i class="ti ti-sparkles"></i>NEW</span><span class="age">22m</span></div>
+          </div>
+          <div class="card">
+            <div class="top"><span class="aname">Supplier Onboarding</span><span class="req">REQ-2037</span></div>
+            <div class="ttl">Supplier onboarding flow</div>
+            <div class="foot"><span class="tag t-run"><i class="ti ti-sparkles"></i>NEW</span><span class="age">1h</span></div>
+          </div>
+        </div>
+
+        <!-- SPEC -->
+        <div class="col">
+          <div class="card c-human">
+            <div class="top"><span class="aname">FieldOps</span><span class="req">REQ-2043</span></div>
+            <div class="ttl">Offline sync mode</div>
+            <div class="foot"><span class="tag t-human"><i class="ti ti-flag-3"></i>NEEDS HUMAN</span><span class="age">8m</span></div>
+          </div>
+          <div class="card c-gate">
+            <div class="top"><span class="aname">Northwind Expenses</span><span class="req">REQ-2041</span></div>
+            <div class="ttl">Faster expense export</div>
+            <div class="foot"><span class="tag t-gate"><i class="ti ti-gavel"></i>GATE</span><span class="age">25m</span></div>
+          </div>
+          <div class="card c-gate">
+            <div class="top"><span class="aname">Northwind Expenses</span><span class="req">REQ-2040</span></div>
+            <div class="ttl">Approval email typo</div>
+            <div class="foot"><span class="tag t-gate"><i class="ti ti-gavel"></i>GATE</span><span class="age">31m</span></div>
+          </div>
+          <div class="card c-back">
+            <div class="top"><span class="aname">Northwind Expenses</span><span class="req">REQ-2038</span></div>
+            <div class="ttl">Add CSV import to vendor list</div>
+            <div class="foot"><span class="tag t-back"><i class="ti ti-arrow-back-up"></i>SENT BACK</span><span class="age">2h</span></div>
+          </div>
+        </div>
+
+        <!-- ARCHITECTURE (active) -->
+        <div class="col scan">
+          <div class="card c-work">
+            <div class="top"><span class="aname">Vendor Portal</span><span class="req">REQ-2042</span></div>
+            <div class="ttl">CSV import for vendors</div>
+            <div class="wbar"><span style="width:62%"></span></div>
+            <div class="foot"><span class="tag t-work"><i class="ti ti-loader-2"></i>WORKING</span><span class="age">02:14</span></div>
+          </div>
+        </div>
+
+        <!-- BUILD -->
+        <div class="col">
+          <div class="standby"><i class="ti ti-tools"></i><b>STANDBY</b><span>No active builds<br>agent in Architecture</span></div>
+        </div>
+
+        <!-- REVIEW -->
+        <div class="col">
+          <div class="card c-gate">
+            <div class="top"><span class="aname">Billing Portal</span><span class="req">REQ-2029</span></div>
+            <div class="ttl">Migrate auth to SSO</div>
+            <div class="foot"><span class="tag t-gate"><i class="ti ti-git-merge"></i>MERGE GATE</span><span class="age">14m</span></div>
+          </div>
+        </div>
+
+        <!-- DONE -->
+        <div class="col">
+          <div class="card c-done">
+            <div class="top"><span class="aname">Northwind Expenses</span><span class="req">REQ-2044</span></div>
+            <div class="ttl">Fix typo in approval email</div>
+            <div class="foot"><span class="tag t-ship"><i class="ti ti-check"></i>SHIPPED</span><span class="age">1h</span></div>
+          </div>
+          <div class="card c-done">
+            <div class="top"><span class="aname">Northwind Expenses</span><span class="req">REQ-2017</span></div>
+            <div class="ttl">Monthly expense CSV</div>
+            <div class="foot"><span class="tag t-ship"><i class="ti ti-check"></i>SHIPPED</span><span class="age">3h</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const R=28, C=2*Math.PI*R;
+const stages=[
+  {n:3,name:'Intake',sub:'3 intaking',frac:.45,col:'var(--accent3)',idle:false,conduit:'dim'},
+  {n:4,name:'Spec',sub:'2 at gate',frac:.7,col:'var(--amber)',idle:false,subc:'warn',conduit:'on'},
+  {n:1,name:'Architecture',sub:'1 working',frac:.62,col:'var(--cyan)',idle:false,subc:'work',work:true,conduit:'dim'},
+  {n:0,name:'Build',sub:'standby',frac:0,col:'var(--faint)',idle:true,conduit:'dim'},
+  {n:1,name:'Review',sub:'1 merge gate',frac:.3,col:'var(--amber)',idle:false,subc:'warn',conduit:'dim'},
+  {n:2,name:'Done',sub:'2 shipped',frac:1,col:'var(--green)',idle:false,subc:'ok',conduit:null},
+];
+const rail=document.getElementById('rail');
+stages.forEach((s)=>{
+  const off=C*(1-s.frac);
+  const cell=document.createElement('div');
+  cell.className='gcell'+(s.idle?' idle':'')+(s.work?' work':'');
+  cell.innerHTML=`
+    <div class="gauge">
+      <svg width="80" height="80" viewBox="0 0 80 80">
+        <circle cx="40" cy="40" r="${R}" fill="none" stroke="var(--bd)" stroke-width="3"></circle>
+        <circle cx="40" cy="40" r="${R}" fill="none" stroke="${s.col}" stroke-width="3" stroke-linecap="round"
+          stroke-dasharray="${C}" stroke-dashoffset="${off}" style="filter:drop-shadow(0 0 6px ${s.col})"></circle>
+      </svg>
+      <div class="gn">${s.n}</div>
+    </div>
+    <div class="gname">${s.name}</div>
+    <div class="gsub ${s.subc||''}">${s.sub}</div>
+    ${s.conduit?`<div class="conduit ${s.conduit==='dim'?'dim':''}"><span class="spark"></span><span class="spark b"></span></div>`:''}`;
+  rail.appendChild(cell);
+});
+document.getElementById('flip').addEventListener('click',()=>{
+  document.body.classList.toggle('light');
+  document.querySelector('#flip i').className=document.body.classList.contains('light')?'ti ti-sun':'ti ti-moon-stars';
+});
+</script>
+</body>
+</html>

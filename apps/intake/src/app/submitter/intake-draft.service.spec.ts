@@ -177,7 +177,8 @@ describe('IntakeDraft', () => {
       return of({} as Attachment);
     }) as any;
     draft.requestId = 7;
-    const big = new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'big.png');
+    const big = new File([new Uint8Array(1)], 'big.png');
+    Object.defineProperty(big, 'size', { value: 100 * 1024 * 1024 + 1 });
     await draft.addFiles([big], 'describe');
     expect(called).toBe(0);
     expect(draft.lastError()).toContain('too large');

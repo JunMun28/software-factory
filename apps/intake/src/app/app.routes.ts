@@ -3,11 +3,11 @@ import { Routes } from '@angular/router';
 /**
  * Intake routes (ADR 0017 Phase 2). Submitter-only since the app split — the
  * admin world (mission/list/queue/...) and its guard moved to apps/console.
- * Intake keeps just login + the submit/* intake flow + requests/*.
+ * No login front door: the session defaults to the submitter, so the app opens
+ * straight onto the submit/* intake flow.
  */
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'login' },
-  { path: 'login', loadComponent: () => import('./submitter/login').then((m) => m.Login) },
+  { path: '', pathMatch: 'full', redirectTo: 'submit/new' },
   {
     path: 'submit/new',
     loadComponent: () => import('./submitter/new-request').then((m) => m.NewRequest),
@@ -15,6 +15,10 @@ export const routes: Routes = [
   {
     path: 'submit/:id/interview',
     loadComponent: () => import('./submitter/interview').then((m) => m.Interview),
+  },
+  {
+    path: 'submit/:id/prototype',
+    loadComponent: () => import('./submitter/prototype').then((m) => m.Prototype),
   },
   {
     path: 'submit/:id/review',
@@ -33,5 +37,5 @@ export const routes: Routes = [
     loadComponent: () => import('./submitter/request-detail').then((m) => m.SubRequestDetail),
   },
 
-  { path: '**', redirectTo: 'login' },
+  { path: '**', redirectTo: 'submit/new' },
 ];

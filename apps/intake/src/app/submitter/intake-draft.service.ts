@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-import { Api, Attachment } from '@sf/shared';
+import { Api, Attachment, RequestDetail } from '@sf/shared';
 import { Session } from '../core/session.service';
 
 /** The submitter-flow store — survives step navigation (the design's subStore). */
@@ -27,16 +27,14 @@ export class IntakeDraft {
   extra = '';
 
   readonly MAX_FILES = 5;
-  readonly MAX_BYTES = 10 * 1024 * 1024;
-  private readonly ACCEPT = /\.(png|jpe?g|gif|webp|txt|log|md|csv|pdf|docx|xlsx)$/i;
+  readonly MAX_BYTES = 100 * 1024 * 1024; // any file type, capped by size only
 
   attachments = signal<Attachment[]>([]);
   pending = signal<File[]>([]);
   lastError = signal('');
 
   private validate(f: File): string | null {
-    if (!this.ACCEPT.test(f.name)) return `${f.name}: unsupported type`;
-    if (f.size > this.MAX_BYTES) return `${f.name}: file too large (max 10 MB)`;
+    if (f.size > this.MAX_BYTES) return `${f.name}: file too large (max 100 MB)`;
     return null;
   }
 
@@ -86,9 +84,43 @@ export class IntakeDraft {
   }
 
   async loadAttachments(rid: number): Promise<void> {
-    this.requestId = rid;
     const d = await firstValueFrom(this.api.request(rid));
+    this.hydrateFrom(d);
     this.attachments.set(d.attachments ?? []);
+  }
+
+  /** Re-populate the describe fields from a persisted request so a later step
+   *  (Clarify/Review) can step back to Describe after the in-memory draft was
+   *  lost — e.g. a page reload wipes this root singleton. Always records the
+   *  requestId; only refills the fields when the draft is empty, so it never
+   *  clobbers edits made in the current session. */
+  hydrateFrom(d: RequestDetail): void {
+    this.requestId = d.id;
+    if (this.type != null) return; // draft is live — keep the user's edits
+    this.type = d.type;
+    this.title = d.title;
+    this.desc = d.description;
+    this.urgency = (d.urgency as 'low' | 'normal' | 'high') || 'normal';
+    this.appId = d.app_id;
+    this.appName = d.app_name || d.new_app_name || '';
+    this.newName = d.type === 'new' ? (d.new_app_name ?? '') : '';
+    const CHIPS = ['me', 'team', 'dept', 'wider', 'site', 'network'];
+    if (d.reach && CHIPS.includes(d.reach)) {
+      this.reach = d.reach as typeof this.reach;
+      this.reachText = '';
+    } else {
+      this.reach = null;
+      this.reachText = d.reach ?? '';
+    }
+    this.impactMetric = d.impact_metric;
+    this.impactValue = d.impact_value ?? '';
+    if (d.bug_where) {
+      // save() stores "<where> · happens <freq lowercased>" — split it back apart
+      const [where, freq] = d.bug_where.split(' · happens ');
+      this.bugWhere = where ?? '';
+      const FREQS = ['Every time', 'Most of the time', 'Sometimes', 'Only once so far'];
+      this.bugFreq = freq ? (FREQS.find((f) => f.toLowerCase() === freq) ?? '') : '';
+    }
   }
 
   reset() {

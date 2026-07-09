@@ -60,6 +60,7 @@ export interface FactoryRequest {
   reach: string | null; // me | team | dept | wider | free text
   impact_metric: 'hours' | 'cost' | 'other' | null;
   impact_value: string | null;
+  bug_where: string | null;
   priority: string;
   app_id: number | null;
   app_name: string;
@@ -117,17 +118,66 @@ export interface RequestDetail extends FactoryRequest {
   /** Gate evidence — present only while parked at a gate (Plan 1). */
   evidence: Evidence | null;
   attachments?: Attachment[];
+  /** Prototype step (new-app only) — the current mock + status, so Review renders it inline. */
+  prototype_html?: string | null;
+  prototype_status?: 'none' | 'draft' | 'edited' | 'skipped';
 }
 
 export interface InterviewState {
   done: boolean;
   asked: number;
   total: number;
+  /** the next question is generating in the background — poll until it lands */
+  thinking: boolean;
   question: string | null;
   sub: string | null;
   options: { t: string; d: string }[] | null;
   final: boolean;
   turns: Turn[];
+}
+
+/** One titled section of the structured Review spec. */
+export interface SpecSection {
+  title: string;
+  items: string[];
+}
+
+/** The AI-written Review-step spec: an overview + structured sections. `thinking` → still
+ *  generating; poll until it lands. */
+export interface ReviewSummary {
+  overview: string | null;
+  sections: SpecSection[];
+  thinking: boolean;
+}
+
+/** A point-to-edit marker: the DOM element the user pointed at, to scope the next edit. */
+export interface PrototypeAnnotation {
+  pid: string | null;
+  selector: string | null;
+  tag?: string | null;
+  textSnippet?: string | null;
+  outerHTML?: string | null;
+  rect?: { x: number; y: number; w: number; h: number } | null;
+}
+
+/** One prototype exchange in the chat thread (the html rides on PrototypeState). */
+export interface PrototypeTurn {
+  order: number;
+  instruction: string | null;
+  annotation: PrototypeAnnotation | null;
+  mode: 'pending' | 'rewrite' | 'patch' | 'chat';
+  note: string | null;
+  /** this turn produced a document (offer undo to it) */
+  revision: boolean;
+}
+
+/** The Prototype step's live state: the current self-contained HTML mock + the chat thread. */
+export interface PrototypeState {
+  html: string | null;
+  status: 'none' | 'draft' | 'edited' | 'skipped';
+  /** a revision is generating in the background — poll or open the stream */
+  thinking: boolean;
+  turns: PrototypeTurn[];
 }
 
 export interface ProgressEvent {

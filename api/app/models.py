@@ -106,6 +106,18 @@ class Request(Base):
     # the generated-but-unanswered interview question — persisted so the question the
     # submitter sees is exactly the one recorded with their answer (and the brain runs once)
     pending_question: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # AI-written review spec ({overview, sections, at_turns}); cached and regenerated
+    # when the interview grows. at_turns is the answered-count it was written for (freshness key).
+    summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # when "Add more detail" reopens a finished interview, this overrides the type's question
+    # ceiling with a small allowance from where it resumed (~1-2 follow-ups), so a deep
+    # budget (new app) doesn't restart a long grill. Null until the first reopen.
+    reopen_ceiling: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Prototype step (new-app only) — the current self-contained HTML mock and its status.
+    # Denormalized cache (mirrors `summary`); the append-only PrototypeTurn rows are the log,
+    # and the current prototype = the latest turn with non-null html.
+    prototype_html: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prototype_status: Mapped[str] = mapped_column(String(10), default="none")  # none|draft|edited|skipped
     # when the Work item entered its current stage (or its current gate was raised) —
     # powers the Pipeline view's time-in-stage / "is it stuck?" readout
     stage_entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -116,6 +128,9 @@ class Request(Base):
     app: Mapped[App | None] = relationship(back_populates="requests")
     turns: Mapped[list["InterviewTurn"]] = relationship(
         back_populates="request", order_by="InterviewTurn.order", cascade="all, delete-orphan"
+    )
+    prototype_turns: Mapped[list["PrototypeTurn"]] = relationship(
+        back_populates="request", order_by="PrototypeTurn.order", cascade="all, delete-orphan"
     )
     spec_lines: Mapped[list["SpecLine"]] = relationship(
         back_populates="request", order_by="SpecLine.order", cascade="all, delete-orphan"
@@ -147,6 +162,30 @@ class InterviewTurn(Base):
     skipped: Mapped[bool] = mapped_column(Boolean, default=False)
 
     request: Mapped[Request] = relationship(back_populates="turns")
+
+
+class PrototypeTurn(Base):
+    """One prototype exchange (append-only, ordered) — modeled on InterviewTurn.
+
+    A turn whose `html` is non-null is a *revision* (a full self-contained document produced
+    by a rewrite or an applied patch); a `chat` turn answers a question and adds no revision.
+    `mode` is 'pending' while generation is in flight, then 'rewrite' | 'patch' | 'chat'.
+    The current prototype = the latest turn with non-null html.
+    """
+
+    __tablename__ = "prototype_turns"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    instruction: Mapped[str | None] = mapped_column(Text, nullable=True)  # user chat msg; null for the auto first draft
+    annotation: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {pid, selector, tag, textSnippet, ...}
+    mode: Mapped[str] = mapped_column(String(8), default="pending")  # pending | rewrite | patch | chat
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)  # assistant prose preamble (the streamed part)
+    html: Mapped[str | None] = mapped_column(Text, nullable=True)  # resulting document; null on chat/pending
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    request: Mapped[Request] = relationship(back_populates="prototype_turns")
 
 
 class SpecLine(Base):

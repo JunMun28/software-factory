@@ -226,6 +226,51 @@ export function plainActivity(run: RunState | null): string | null {
   return phrase;
 }
 
+/** The render-time CSP for a prototype iframe: allow the document's (and our injected inspector's)
+ *  inline script/style, but block ALL network so a slipped external URL can't phone home. The
+ *  iframe `sandbox="allow-scripts"` is the backstop; this is defense-in-depth. */
+const PROTOTYPE_CSP =
+  "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'";
+
+/** Normalize a prototype document for `iframe srcdoc`: strip whatever CSP the doc shipped and
+ *  inject our authoritative one (so inline scripts run and network stays blocked), then append
+ *  `extra` markup (e.g. the point-to-edit inspector) before </body>. */
+export function prototypeSrcdoc(html: string, extra = ''): string {
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${PROTOTYPE_CSP}">`;
+  let doc = html.replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi, '');
+  doc = /<head[^>]*>/i.test(doc) ? doc.replace(/<head[^>]*>/i, (m) => m + meta) : meta + doc;
+  if (extra) {
+    doc = doc.includes('</body>') ? doc.replace('</body>', extra + '</body>') : doc + extra;
+  }
+  return doc;
+}
+
+/** One-shot SSE lifecycle for the intake wizard's interview + prototype streams. Opens an
+ *  EventSource to `url`; the server drives a slow generation and emits a single terminal `state`
+ *  event, whose JSON payload is handed to `onState`. Any connection error (or a payload that won't
+ *  parse) calls `onError` so the caller can fall back to polling. Returns a close fn — the caller
+ *  invokes it in its own teardown; the handlers do not self-close, leaving that to the component so
+ *  its `streaming` flag stays in sync. */
+export function streamState<T>(
+  url: string,
+  onState: (data: T) => void,
+  onError: () => void,
+): () => void {
+  const es = new EventSource(url);
+  es.addEventListener('state', (e) => {
+    let data: T;
+    try {
+      data = JSON.parse((e as MessageEvent).data) as T;
+    } catch {
+      onError();
+      return;
+    }
+    onState(data);
+  });
+  es.onerror = onError;
+  return () => es.close();
+}
+
 /** A concise, screen-reader-friendly status line for the submitter's live region.
  *  Pairs the plain stage label with the live activity while a build is in flight,
  *  so SR users hear progress as polling updates the page. Submitter-safe by

@@ -46,3 +46,30 @@ def test_draft_spec_passes_workdir_and_images(db, monkeypatch):
     assert seen["images"] and seen["images"][0].endswith("shot.png")
     assert "shot.png" in seen["prompt"]
     assert lines and lines[0].text == "Fix export."
+
+
+def test_brain_runs_in_clean_empty_cwd_without_attachments(db, monkeypatch):
+    # a request with NO attachments must still run claude in a throwaway empty
+    # dir (never the repo root / cwd=None), so no CLAUDE.md/skills get loaded
+    r = Request(ref="REQ-7778", title="Add export", description="want excel", type="enh")
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+
+    seen = {}
+
+    def fake_run_agent(prompt, **kw):
+        cwd = kw.get("cwd")
+        seen["cwd"] = cwd
+        seen["is_dir"] = bool(cwd) and os.path.isdir(cwd)
+        seen["empty"] = seen["is_dir"] and os.listdir(cwd) == []
+        from app.agent_exec import AgentResult
+        return AgentResult(ok=True, text='{"question":"How often?","sub":null,"options":null}')
+
+    monkeypatch.setattr("app.agent_brain.run_agent", fake_run_agent)
+    from app.agent_brain import AgentBrain
+
+    AgentBrain().next_question(r)
+    assert seen["cwd"] is not None            # not the repo root (was cwd=None)
+    assert seen["is_dir"] and seen["empty"]   # a real, empty scratch dir
+    assert os.path.isdir(seen["cwd"]) is False  # cleaned up after the call

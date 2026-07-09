@@ -44,13 +44,13 @@ def test_sniff_accepts_utf8_text_by_extension():
     assert attachments.sniff(b"NullReferenceError at line 5", "error.log") == ("text/plain", "doc")
 
 
-def test_sniff_rejects_disguised_extension():
-    # a PNG renamed .pdf must be caught by magic bytes, not trusted as pdf
-    assert attachments.sniff(PNG, "evil.pdf") is None
+def test_sniff_downgrades_disguised_extension_to_generic_doc():
+    # a PNG renamed .pdf is caught by magic bytes — accepted, but never as an image
+    assert attachments.sniff(PNG, "evil.pdf") == ("application/octet-stream", "doc")
 
 
-def test_sniff_rejects_unknown_binary():
-    assert attachments.sniff(b"\x7fELF\x02\x01\x01", "a.bin") is None
+def test_sniff_accepts_unknown_binary_as_generic_doc():
+    assert attachments.sniff(b"\x7fELF\x02\x01\x01", "a.bin") == ("application/octet-stream", "doc")
 
 
 def test_save_writes_file_and_row(db):
@@ -155,11 +155,12 @@ def test_upload_list_and_embed(client):
     assert len(detail["attachments"]) == 1
 
 
-def test_upload_rejects_bad_type(client):
+def test_upload_accepts_disguised_extension_as_generic_doc(client):
     r = _draft(client)
     up = client.post(f"/api/requests/{r['id']}/attachments",
                      files={"file": ("evil.pdf", PNG, "application/pdf")}, data={"source": "describe"})
-    assert up.status_code == 415
+    assert up.status_code == 201, up.text
+    assert up.json()["kind"] == "doc" and up.json()["mime"] == "application/octet-stream"
 
 
 def test_upload_enforces_count_cap(client):

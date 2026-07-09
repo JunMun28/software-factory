@@ -47,7 +47,7 @@ import { Session } from '../core/session.service';
       @if (step() !== null) {
         <div class="stepbar">
           <div class="stepper">
-            @for (s of steps; track s.label; let i = $index) {
+            @for (s of steps(); track s.label; let i = $index) {
               <button
                 type="button"
                 class="step"
@@ -67,7 +67,7 @@ import { Session } from '../core/session.service';
                 </span>
                 <span class="step__lbl">{{ s.label }}</span>
               </button>
-              @if (i < steps.length - 1) {
+              @if (i < steps().length - 1) {
                 <span class="step__line" [class.done]="i < step()!"></span>
               }
             }
@@ -107,20 +107,28 @@ export class SubShell {
   step = input<number | null>(null);
   /** request id for step navigation; when set, steps before the current are clickable */
   reqId = input<number | null>(null);
+  /** new-app flow inserts the Prototype step between Clarify and Review */
+  proto = input(false);
 
-  steps = [
+  private allSteps = [
     { label: 'Describe', path: () => '/submit/new' },
     { label: 'Clarify', path: (id: number | null) => `/submit/${id}/interview` },
+    { label: 'Prototype', path: (id: number | null) => `/submit/${id}/prototype` },
     { label: 'Review', path: (id: number | null) => `/submit/${id}/review` },
   ];
 
+  /** the visible wizard steps — Prototype only appears in the new-app flow */
+  steps() {
+    return this.proto() ? this.allSteps : this.allSteps.filter((s) => s.label !== 'Prototype');
+  }
+
   backable() {
-    return this.step()! <= 2;
+    return this.step()! <= this.steps().length - 1;
   }
   go(url: string) {
     this.router.navigateByUrl(url);
   }
   goStep(i: number) {
-    this.router.navigateByUrl(this.steps[i].path(this.reqId()));
+    this.router.navigateByUrl(this.steps()[i].path(this.reqId()));
   }
 }

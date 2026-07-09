@@ -7,21 +7,32 @@ import { AttachField } from './attach-field';
 import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';
 
-/** S1 — New Request: ledger layout — label-left rows with hairline dividers,
- *  no helper subtitles (hints live in placeholders). Chosen from the 2026-07
- *  form prototype (variant 2 of 10). */
+/** S1 — New Request: ledger layout — label-left rows with hairline dividers
+ *  and mono row indices (spec-sheet feel), no helper subtitles (hints live in
+ *  placeholders). Chosen from the 2026-07 form prototype (variant 2 of 10).
+ *  ⌘↵ / Ctrl↵ submits. */
 @Component({
   selector: 'sf-new-request',
   imports: [SubShell, Icon, FormsModule, AttachField],
+  host: {
+    '(document:keydown.meta.enter)': 'kbdSubmit()',
+    '(document:keydown.control.enter)': 'kbdSubmit()',
+  },
   template: `
-    <sub-shell active="new" [step]="0" [reqId]="draft.requestId">
+    <sub-shell active="new" [step]="0" [proto]="draft.type === 'new'" [reqId]="draft.requestId">
       <div class="sub-col pop-in" style="max-width:820px">
-        <h1 style="font-size:26px;margin-bottom:6px">New request</h1>
+        <header class="hero">
+          <span class="eyebrow">New request</span>
+          <h1 class="hero__t">What should we build?</h1>
+          <p class="hero__s">
+            Describe it in plain language. The factory asks the right follow-ups.
+          </p>
+        </header>
         <div class="lg">
           <div class="lg__row">
             <div class="lg__lbl" id="nr-type-lbl">Type</div>
             <div class="lg__ctl">
-              <div class="seg wrap" role="group" aria-labelledby="nr-type-lbl">
+              <div class="seg wrap seg--type" role="group" aria-labelledby="nr-type-lbl">
                 @for (t of types; track t[0]) {
                   <button
                     [class.on]="draft.type === t[0]"
@@ -35,9 +46,13 @@ import { SubShell } from './sub-shell';
             </div>
           </div>
 
+          @if (!draft.type) {
+            <p class="lg__wait">Pick a type. The matching fields appear below.</p>
+          }
+
           @if (draft.type) {
             @if (draft.type === 'bug' || draft.type === 'enh') {
-              <div class="lg__row fade-in">
+              <div class="lg__row rev">
                 <label class="lg__lbl" id="nr-app-lbl" for="nr-app-dd">Application</label>
                 <div class="lg__ctl">
                   <div class="dd-wrap">
@@ -51,7 +66,9 @@ import { SubShell } from './sub-shell';
                       aria-controls="nr-app-list"
                       [attr.aria-expanded]="appsMenuOpen() && !customApp()"
                       maxlength="120"
-                      [placeholder]="customApp() ? 'Type the app name' : 'Search apps, or pick Other'"
+                      [placeholder]="
+                        customApp() ? 'Type the app name' : 'Search apps, or pick Other'
+                      "
                       [ngModel]="appQuery()"
                       (ngModelChange)="customApp() ? onCustomInput($event) : onAppInput($event)"
                       (focus)="!customApp() && appsMenuOpen.set(true)"
@@ -102,7 +119,7 @@ import { SubShell } from './sub-shell';
               </div>
             }
             @if (draft.type === 'new') {
-              <div class="lg__row fade-in">
+              <div class="lg__row rev">
                 <label class="lg__lbl" for="nr-name">Name</label>
                 <div class="lg__ctl">
                   <input
@@ -115,7 +132,7 @@ import { SubShell } from './sub-shell';
               </div>
             }
 
-            <div class="lg__row fade-in">
+            <div class="lg__row rev">
               <label class="lg__lbl" for="nr-desc">Description</label>
               <div class="lg__ctl">
                 <textarea
@@ -128,7 +145,7 @@ import { SubShell } from './sub-shell';
             </div>
 
             @if (draft.type === 'bug') {
-              <div class="lg__row fade-in">
+              <div class="lg__row rev">
                 <label class="lg__lbl" for="nr-where">Where seen</label>
                 <div class="lg__ctl">
                   <input
@@ -139,7 +156,7 @@ import { SubShell } from './sub-shell';
                   />
                 </div>
               </div>
-              <div class="lg__row fade-in">
+              <div class="lg__row rev">
                 <div class="lg__lbl" id="nr-freq-lbl">Frequency</div>
                 <div class="lg__ctl">
                   <div class="seg wrap" role="group" aria-labelledby="nr-freq-lbl">
@@ -156,10 +173,8 @@ import { SubShell } from './sub-shell';
                 </div>
               </div>
             } @else {
-              <div class="lg__row fade-in">
-                <div class="lg__lbl" id="nr-reach-lbl">
-                  Who's affected<span class="lg__opt">Optional</span>
-                </div>
+              <div class="lg__row rev">
+                <div class="lg__lbl" id="nr-reach-lbl">Who's affected</div>
                 <div class="lg__ctl">
                   <div class="seg wrap" role="group" aria-labelledby="nr-reach-lbl">
                     @for (r of reaches; track r[0]) {
@@ -183,10 +198,8 @@ import { SubShell } from './sub-shell';
                   />
                 </div>
               </div>
-              <div class="lg__row fade-in">
-                <div class="lg__lbl" id="nr-impact-lbl">
-                  Impact<span class="lg__opt">Optional</span>
-                </div>
+              <div class="lg__row rev">
+                <div class="lg__lbl" id="nr-impact-lbl">Impact</div>
                 <div class="lg__ctl">
                   <div class="seg wrap" role="group" aria-labelledby="nr-impact-lbl">
                     @for (m of metrics; track m[0]) {
@@ -213,35 +226,21 @@ import { SubShell } from './sub-shell';
               </div>
             }
 
-            <div class="lg__row fade-in">
-              <div class="lg__lbl" id="nr-urgency-lbl">Urgency</div>
-              <div class="lg__ctl">
-                <div class="seg" role="group" aria-labelledby="nr-urgency-lbl">
-                  @for (u of urgencies; track u[0]) {
-                    <button
-                      [class.on]="draft.urgency === u[0]"
-                      [attr.aria-pressed]="draft.urgency === u[0]"
-                      (click)="draft.urgency = $any(u[0])"
-                    >
-                      {{ u[1] }}
-                    </button>
-                  }
-                </div>
-              </div>
-            </div>
-
-            <div class="lg__row fade-in">
+            <div class="lg__row rev">
               <div class="lg__lbl">Attachments<span class="lg__opt">Optional</span></div>
-              <div class="lg__ctl"><sf-attach-field source="describe" /></div>
+              <div class="lg__ctl"><sf-attach-field source="describe" [zone]="true" /></div>
             </div>
 
-            <div class="lg__foot fade-in">
+            <div class="lg__foot rev">
+              @if (missing().length) {
+                <span class="lg__need">Still needed: {{ missing().join(' · ') }}</span>
+              }
               <button
                 class="btn primary lg"
                 [disabled]="!canContinue() || saving()"
                 (click)="continue_()"
               >
-                {{ saving() ? 'Saving…' : 'Continue' }} <sf-icon name="arrowRight" [size]="16" />
+                {{ saving() ? 'Saving…' : 'Continue' }} <span class="kbd">{{ kbdLabel }}</span>
               </button>
             </div>
           }
@@ -250,15 +249,32 @@ import { SubShell } from './sub-shell';
     </sub-shell>
   `,
   styles: `
+    .hero {
+      padding: 8px 0 6px;
+    }
+    .hero__t {
+      font-size: 38px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-top: 12px;
+    }
+    .hero__s {
+      margin: 9px 0 0;
+      font-size: 15px;
+      color: var(--muted);
+      max-width: 52ch;
+    }
     .lg {
-      margin-top: 18px;
+      counter-reset: lgrow;
+      margin-top: 26px;
     }
     .lg__row {
       display: grid;
       grid-template-columns: 190px 1fr;
       gap: 22px;
-      padding: 18px 0;
+      padding: 20px 0;
       border-bottom: 1px solid var(--hairline);
+      counter-increment: lgrow;
     }
     .lg__lbl {
       font-size: 13.5px;
@@ -266,6 +282,19 @@ import { SubShell } from './sub-shell';
       color: var(--fg1);
       padding-top: 9px;
       margin: 0;
+    }
+    .lg__lbl::before {
+      content: counter(lgrow, decimal-leading-zero);
+      display: block;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.09em;
+      color: var(--faint);
+      margin-bottom: 5px;
+      transition: color var(--dur) var(--ease);
+    }
+    .lg__row:focus-within .lg__lbl::before {
+      color: var(--accent-tx);
     }
     .lg__opt {
       display: block;
@@ -277,12 +306,32 @@ import { SubShell } from './sub-shell';
     .lg__ctl {
       min-width: 0;
     }
+    .lg__ctl textarea.input {
+      min-height: 132px;
+      font-size: 15.5px;
+    }
+    .lg__wait {
+      margin: 0;
+      padding: 26px 0;
+      font-size: 13.5px;
+      color: var(--faint);
+    }
     .lg__foot {
       display: flex;
+      align-items: center;
       justify-content: flex-end;
-      padding: 20px 0;
+      gap: 18px;
+      padding: 22px 0;
+    }
+    .lg__need {
+      margin-right: auto;
+      font-size: 12.5px;
+      color: var(--faint);
     }
     @media (max-width: 640px) {
+      .hero__t {
+        font-size: 29px;
+      }
       .lg__row {
         grid-template-columns: 1fr;
         gap: 8px;
@@ -290,9 +339,49 @@ import { SubShell } from './sub-shell';
       .lg__lbl {
         padding-top: 0;
       }
+      .lg__lbl::before {
+        display: inline;
+        margin-right: 8px;
+      }
+    }
+    @keyframes lgrev {
+      from {
+        opacity: 0;
+        transform: translateY(5px);
+      }
+    }
+    .rev {
+      animation: lgrev 0.34s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    }
+    .rev:nth-child(3) {
+      animation-delay: 35ms;
+    }
+    .rev:nth-child(4) {
+      animation-delay: 70ms;
+    }
+    .rev:nth-child(5) {
+      animation-delay: 105ms;
+    }
+    .rev:nth-child(6) {
+      animation-delay: 140ms;
+    }
+    .rev:nth-child(7) {
+      animation-delay: 175ms;
+    }
+    .rev:nth-child(8) {
+      animation-delay: 210ms;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .rev {
+        animation: none;
+      }
     }
     .seg.wrap {
       flex-wrap: wrap;
+    }
+    .seg--type button {
+      padding: 8px 17px;
+      font-size: 13.5px;
     }
     .seg button {
       white-space: nowrap;
@@ -354,6 +443,15 @@ export class NewRequest {
   customApp = signal(false); // "Other" was chosen — the input is a free-text app name
   saving = signal(false);
 
+  /** platform-correct hint for the submit shortcut shown in the Continue button */
+  readonly kbdLabel = /Mac|iP(hone|ad|od)/.test(globalThis.navigator?.platform ?? '')
+    ? '⌘↵'
+    : 'Ctrl↵';
+
+  kbdSubmit() {
+    if (this.canContinue() && !this.saving()) this.continue_();
+  }
+
   /** apps whose name contains the query (whole list when the query is empty). */
   filteredApps = computed(() => {
     const q = this.appQuery().trim().toLowerCase();
@@ -366,11 +464,6 @@ export class NewRequest {
     return q ? (this.apps().find((a) => a.name.toLowerCase() === q) ?? null) : null;
   });
   freqs = ['Every time', 'Most of the time', 'Sometimes', 'Only once so far'];
-  urgencies: [string, string][] = [
-    ['low', 'Low'],
-    ['normal', 'Normal'],
-    ['high', 'High'],
-  ];
   reaches: [string, string][] = [
     ['me', 'Just me'],
     ['team', 'My team'],
@@ -462,15 +555,25 @@ export class NewRequest {
       other: 'e.g. fewer audit findings each quarter',
     }[this.draft.impactMetric!];
   }
+  /** required fields not filled yet — everything except attachments is compulsory */
+  missing(): string[] {
+    const d = this.draft;
+    const m: string[] = [];
+    if ((d.type === 'bug' || d.type === 'enh') && !d.appId && !d.appName.trim())
+      m.push('Application');
+    if (d.type === 'new' && !d.newName.trim()) m.push('Name');
+    if (!d.desc.trim()) m.push('Description');
+    if (d.type === 'bug') {
+      if (!d.bugWhere.trim()) m.push('Where seen');
+      if (!d.bugFreq) m.push('Frequency');
+    } else {
+      if (!d.reach && !d.reachText.trim()) m.push("Who's affected");
+      if (!d.impactMetric || !d.impactValue.trim()) m.push('Impact');
+    }
+    return m;
+  }
   canContinue() {
-    if (!this.draft.desc.trim()) return false;
-    if (
-      (this.draft.type === 'bug' || this.draft.type === 'enh') &&
-      !this.draft.appId &&
-      !this.draft.appName.trim()
-    )
-      return false;
-    return true;
+    return !!this.draft.type && this.missing().length === 0;
   }
   async continue_() {
     this.saving.set(true);

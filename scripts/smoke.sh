@@ -12,7 +12,10 @@ API="http://localhost:$PORT/api"
 SERVER_LOG="$(mktemp -t smoke-server.XXXXXX.log)"
 
 echo "▸ booting API on :$PORT (db: $DB)"
-(cd api && FACTORY_DB_URL="sqlite:///$DB" uv run uvicorn app.main:app --port $PORT >"$SERVER_LOG" 2>&1) &
+# FACTORY_INTERVIEW_PREGEN=sync: generate interview questions inline, so the smoke
+# lifecycle is deterministic (no waiting on a background pre-generation thread)
+(cd api && FACTORY_DB_URL="sqlite:///$DB" FACTORY_INTERVIEW_PREGEN=sync \
+  uv run uvicorn app.main:app --port $PORT >"$SERVER_LOG" 2>&1) &
 SERVER_PID=$!
 # on failure the server's own log is the diagnostic — never throw it away
 trap 'rc=$?; kill $SERVER_PID 2>/dev/null || true;

@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Intake · Submission journey redesign — Approach 2 mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" />
+<style>
+:root{
+  --bg:#FAF8F5; --card:#FFFFFF; --card2:#F5F2ED;
+  --ink:#211C28; --body:#3B3444; --muted:#6E6878; --faint:#9A93A6;
+  --line:#E9E4DC; --line2:#D9D3C9;
+  --accent:#BD03F7; --accent-ink:#8A02B5; --accent-soft:rgba(189,3,247,.07); --accent-line:rgba(189,3,247,.35);
+  --green:#1E7D4F; --green-soft:#E7F3EC; --green-line:#BCDCC9;
+  --amber:#8A5A0A; --amber-strong:#B47408; --amber-soft:#FBF3E1; --amber-line:#EAD9AC;
+  --red:#B3362A; --red-soft:#FBECEA; --red-line:#EFC7C1;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --sans:'Inter',system-ui,sans-serif;
+  --r:10px; --r-lg:16px;
+  --shadow:0 1px 2px rgba(40,30,60,.05), 0 8px 28px -18px rgba(40,30,60,.25);
+}
+.dark{
+  --bg:#16121B; --card:#1F1A26; --card2:#282230;
+  --ink:#F2EEF7; --body:#D6D0DF; --muted:#A29AAE; --faint:#7A7288;
+  --line:#2F2939; --line2:#3D3648;
+  --accent:#D65CFF; --accent-ink:#E393FF; --accent-soft:rgba(214,92,255,.1); --accent-line:rgba(214,92,255,.4);
+  --green:#5FC58F; --green-soft:#1B2B22; --green-line:#2E4A3A;
+  --amber:#E4B45E; --amber-strong:#E4B45E; --amber-soft:#2E2617; --amber-line:#4A3D22;
+  --red:#F08C80; --red-soft:#2E1B18; --red-line:#4A2C27;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 28px -18px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--body); font-family:var(--sans); font-size:16px; line-height:1.65; -webkit-font-smoothing:antialiased; transition:background .25s;}
+.wrap{max-width:1180px; margin:0 auto; padding:40px 28px 120px;}
+h1,h2,h3{color:var(--ink); font-weight:600; margin:0;}
+.pagehead{display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:8px;}
+.pagehead h1{font-size:26px; letter-spacing:-.01em;}
+.pagehead p{margin:6px 0 0; color:var(--muted); max-width:640px;}
+.toggle{border:1px solid var(--line2); background:var(--card); color:var(--body); border-radius:999px; padding:8px 16px; font:inherit; font-size:14px; cursor:pointer; display:flex; gap:8px; align-items:center; flex:none;}
+.note{font-size:13px; color:var(--faint); margin-top:10px;}
+.note code{font-family:var(--mono); font-size:12px;}
+
+.section{margin-top:64px;}
+.anno{display:flex; gap:14px; align-items:baseline; margin-bottom:6px;}
+.anno .step{font-family:var(--mono); font-size:12px; color:var(--accent-ink); background:var(--accent-soft); border:1px solid var(--accent-line); padding:2px 10px; border-radius:999px; white-space:nowrap;}
+.anno h2{font-size:20px;}
+.anno-sub{color:var(--muted); margin:0 0 18px; max-width:820px;}
+.changes{display:flex; flex-wrap:wrap; gap:8px; margin:0 0 18px; padding:0; list-style:none;}
+.changes li{font-size:13px; color:var(--muted); border:1px solid var(--line); background:var(--card); padding:4px 12px; border-radius:999px;}
+.changes li i{color:var(--green); margin-right:4px;}
+
+.screen{background:var(--card); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow); overflow:hidden;}
+.appbar{display:flex; align-items:center; gap:14px; padding:14px 28px; border-bottom:1px solid var(--line);}
+.logo{display:flex; align-items:center; gap:10px; color:var(--ink); font-weight:600; font-size:15px;}
+.logo .dot{width:10px; height:10px; border-radius:3px; background:var(--accent); flex:none;}
+.appbar .sp{flex:1;}
+.appbar a{color:var(--muted); text-decoration:none; font-size:14px;}
+.avatar{width:30px; height:30px; border-radius:50%; background:var(--card2); border:1px solid var(--line2); display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--muted); font-weight:500;}
+.stepper{display:flex; gap:6px; align-items:center; justify-content:center; padding:20px 28px 0; font-size:13.5px; color:var(--faint); flex-wrap:wrap;}
+.stepper .st{display:flex; gap:8px; align-items:center; padding:4px 10px; border-radius:999px;}
+.stepper .st b{width:22px; height:22px; border-radius:50%; border:1.5px solid var(--line2); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:500; color:var(--muted); flex:none;}
+.stepper .st.done b{background:var(--green-soft); border-color:var(--green-line); color:var(--green);}
+.stepper .st.act{color:var(--ink); font-weight:500;}
+.stepper .st.act b{background:var(--accent); border-color:var(--accent); color:#fff;}
+.stepper .ln{width:26px; height:1.5px; background:var(--line2);}
+.body{padding:36px clamp(24px,6vw,72px) 48px; max-width:860px; margin:0 auto;}
+.body.wide{max-width:1040px;}
+.kicker{font-size:14px; color:var(--accent-ink); font-weight:500; letter-spacing:.02em; margin-bottom:6px;}
+.body h3{font-size:26px; letter-spacing:-.01em;}
+.lede{color:var(--muted); margin:8px 0 28px; font-size:16px;}
+
+.typegrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-bottom:30px;}
+.typecard{border:1.5px solid var(--line); border-radius:var(--r); padding:18px; cursor:pointer; background:var(--card); position:relative;}
+.typecard i{font-size:22px; color:var(--muted);}
+.typecard .t{color:var(--ink); font-weight:500; margin:8px 0 2px;}
+.typecard .d{font-size:14px; color:var(--muted); line-height:1.5;}
+.typecard.sel{border-color:var(--accent); background:var(--accent-soft);}
+.typecard.sel i{color:var(--accent-ink);}
+.typecard.sel::after{content:'✓'; position:absolute; top:12px; right:14px; color:var(--accent-ink); font-weight:600;}
+.fld{margin-bottom:24px;}
+.fld label{display:block; color:var(--ink); font-weight:500; font-size:15px; margin-bottom:4px;}
+.fld .hint{font-size:14px; color:var(--muted); margin-bottom:8px;}
+.input, textarea.input{width:100%; border:1.5px solid var(--line2); border-radius:var(--r); background:var(--card); color:var(--ink); font:inherit; font-size:16px; padding:12px 14px;}
+.input:focus{outline:2px solid var(--accent-line); border-color:var(--accent);}
+.combo{position:relative;}
+.combo .input{padding-right:38px;}
+.combo>i{position:absolute; right:12px; top:14px; color:var(--faint);}
+.menu{border:1px solid var(--line2); border-radius:var(--r); margin-top:6px; background:var(--card); box-shadow:var(--shadow); overflow:hidden;}
+.menu .op{padding:10px 14px; font-size:15px; color:var(--body); display:flex; justify-content:space-between; gap:12px;}
+.menu .op small{color:var(--faint); font-size:13px;}
+.menu .op.hov{background:var(--accent-soft); color:var(--ink);}
+.drop{border:1.5px dashed var(--line2); border-radius:var(--r); padding:16px; display:flex; gap:12px; align-items:center; color:var(--muted); font-size:14.5px;}
+.chipfile{display:inline-flex; gap:8px; align-items:center; border:1px solid var(--line); background:var(--card2); border-radius:999px; padding:6px 14px; font-size:13.5px; color:var(--body); margin-top:10px;}
+.chipfile i.x{color:var(--faint); cursor:pointer;}
+.formfoot{display:flex; align-items:center; gap:16px; margin-top:8px;}
+.saved{display:flex; gap:6px; align-items:center; font-size:13.5px; color:var(--muted);}
+.saved i{color:var(--green);}
+.btn{border:none; border-radius:var(--r); padding:13px 26px; font:inherit; font-size:16px; font-weight:500; cursor:pointer;}
+.btn.pri{background:var(--accent); color:#fff;}
+.btn.sec{background:var(--card); color:var(--ink); border:1.5px solid var(--line2);}
+.btn.ghost{background:none; color:var(--muted); text-decoration:underline; text-underline-offset:3px; padding:13px 10px;}
+.formfoot .sp{flex:1;}
+.inline-err{display:flex; gap:8px; align-items:flex-start; background:var(--red-soft); border:1px solid var(--red-line); color:var(--red); border-radius:var(--r); padding:12px 16px; font-size:14.5px; margin-top:16px;}
+
+.split{display:grid; grid-template-columns:minmax(0,1.5fr) minmax(260px,1fr); gap:28px; align-items:start;}
+@media (max-width:860px){.split{grid-template-columns:1fr;}}
+.prog{margin-bottom:18px;}
+.prog .plabel{display:flex; justify-content:space-between; font-size:13.5px; color:var(--muted); margin-bottom:6px;}
+.prog .bar{height:5px; border-radius:99px; background:var(--card2); overflow:hidden;}
+.prog .bar b{display:block; height:100%; width:42%; background:var(--accent); border-radius:99px;}
+.qcard{border:1px solid var(--line); border-radius:var(--r-lg); padding:26px 28px; background:var(--card);}
+.qcard .q{font-size:19px; color:var(--ink); font-weight:500; line-height:1.5;}
+.qcard .qh{font-size:14px; color:var(--muted); margin:6px 0 18px;}
+.opt{display:flex; gap:12px; align-items:flex-start; border:1.5px solid var(--line); border-radius:var(--r); padding:13px 16px; margin-bottom:10px; cursor:pointer;}
+.opt .rad{width:18px; height:18px; border-radius:50%; border:1.5px solid var(--line2); flex:none; margin-top:3px;}
+.opt .ot{color:var(--ink); font-size:15.5px; font-weight:500;}
+.opt .od{font-size:13.5px; color:var(--muted);}
+.opt.sel{border-color:var(--accent); background:var(--accent-soft);}
+.opt.sel .rad{border:5px solid var(--accent); background:#fff;}
+.qfoot{display:flex; align-items:center; gap:14px; margin-top:20px; flex-wrap:wrap;}
+.swap{font-size:14px; color:var(--muted); text-decoration:underline; text-underline-offset:3px;}
+.skipnote{font-size:13.5px; color:var(--faint); margin-top:14px; display:flex; gap:8px; align-items:flex-start;}
+.skipnote i{color:var(--amber-strong); margin-top:2px;}
+.panel{border:1px solid var(--line); border-radius:var(--r-lg); background:var(--card2); padding:22px 24px; position:sticky; top:20px;}
+.panel h4{margin:0 0 4px; font-size:15px; color:var(--ink); font-weight:600;}
+.panel .ph{font-size:13px; color:var(--faint); margin-bottom:16px;}
+.pi{display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-top:1px solid var(--line); font-size:14.5px;}
+.pi:first-of-type{border-top:none;}
+.pi i{margin-top:3px; font-size:15px;}
+.pi.got i{color:var(--green);}
+.pi.assume i{color:var(--amber-strong);}
+.pi.wait{color:var(--faint);}
+.pi.wait i{color:var(--line2);}
+.pi .src{display:block; font-size:12px; color:var(--faint); margin-top:1px;}
+.pi.assume .tag{display:inline-block; font-size:11.5px; color:var(--amber); background:var(--amber-soft); border:1px solid var(--amber-line); border-radius:4px; padding:0 6px; margin-left:6px;}
+
+.errcard{border:1px solid var(--line); border-radius:var(--r-lg); padding:34px; background:var(--card); text-align:center; max-width:520px; margin:0 auto;}
+.errcard i{font-size:30px; color:var(--muted);}
+.errcard h4{font-size:19px; color:var(--ink); margin:12px 0 6px;}
+.errcard p{color:var(--muted); margin:0 0 22px; font-size:15px;}
+
+.spec{border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden;}
+.spec .sh{padding:16px 24px; background:var(--card2); border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;}
+.spec .sh b{color:var(--ink); font-weight:600; font-size:15px;}
+.spec .sh a{font-size:14px; color:var(--muted);}
+.line{display:flex; gap:14px; padding:15px 24px; border-bottom:1px solid var(--line); align-items:flex-start;}
+.line:last-child{border-bottom:none;}
+.line i{margin-top:4px; color:var(--green); font-size:15px;}
+.line .lt{font-size:15.5px; color:var(--body);}
+.prov{display:inline-flex; align-items:center; gap:5px; font-size:12px; border-radius:4px; padding:1px 8px; margin-left:8px; white-space:nowrap; vertical-align:2px;}
+.prov.req{color:var(--muted); background:var(--card2); border:1px solid var(--line);}
+.prov.ans{color:var(--accent-ink); background:var(--accent-soft); border:1px solid var(--accent-line);}
+.line.assume{background:var(--amber-soft);}
+.line.assume i{color:var(--amber-strong);}
+.line.assume .prov{color:var(--amber); background:transparent; border:1px solid var(--amber-line);}
+.abtns{display:flex; gap:8px; margin-top:8px;}
+.abtn{font-size:13.5px; border-radius:8px; padding:5px 14px; cursor:pointer; font-weight:500;}
+.abtn.yes{border:1px solid var(--green-line); background:var(--card); color:var(--green);}
+.abtn.no{border:1px solid var(--line2); background:var(--card); color:var(--body);}
+.subfoot{margin-top:26px; display:flex; align-items:center; gap:18px; flex-wrap:wrap;}
+.honest{font-size:14px; color:var(--muted); display:flex; gap:8px; align-items:center;}
+
+.donebox{text-align:center; padding:26px 0 6px;}
+.donebox .big{width:64px; height:64px; border-radius:50%; background:var(--green-soft); border:1px solid var(--green-line); display:flex; align-items:center; justify-content:center; margin:0 auto 18px;}
+.donebox .big i{font-size:30px; color:var(--green);}
+.donebox h3{font-size:26px;}
+.donebox p{color:var(--muted); max-width:460px; margin:10px auto 26px;}
+.donebox .ref{font-family:var(--mono); font-size:13px; color:var(--muted); background:var(--card2); border:1px solid var(--line); border-radius:6px; padding:2px 10px;}
+
+.reqrow{display:flex; align-items:center; gap:16px; padding:18px 24px; border-bottom:1px solid var(--line);}
+.reqrow:last-child{border-bottom:none;}
+.reqrow .rt{color:var(--ink); font-weight:500; font-size:15.5px;}
+.reqrow .rd{font-size:13.5px; color:var(--faint);}
+.reqrow .sp{flex:1;}
+.pill{font-size:13px; font-weight:500; border-radius:999px; padding:4px 14px; white-space:nowrap;}
+.pill.rev{color:var(--muted); background:var(--card2); border:1px solid var(--line2);}
+.pill.build{color:var(--accent-ink); background:var(--accent-soft); border:1px solid var(--accent-line);}
+.pill.ready{color:var(--green); background:var(--green-soft); border:1px solid var(--green-line);}
+.pill.need{color:var(--amber); background:var(--amber-soft); border:1px solid var(--amber-line);}
+.band{display:flex; gap:12px; align-items:center; background:var(--amber-soft); border:1px solid var(--amber-line); border-radius:var(--r); padding:14px 20px; margin-bottom:20px; color:var(--amber); font-size:15px;}
+.band .btn{padding:8px 18px; font-size:14px;}
+
+.mile{display:flex; gap:0; margin:26px 0 6px; flex-wrap:wrap;}
+.ms{flex:1; min-width:110px; text-align:center; position:relative; padding-top:26px;}
+.ms::before{content:''; position:absolute; top:9px; left:0; right:0; height:2px; background:var(--line2);}
+.ms:first-child::before{left:50%;} .ms:last-child::before{right:50%;}
+.ms::after{content:''; position:absolute; top:3px; left:50%; transform:translateX(-50%); width:14px; height:14px; border-radius:50%; background:var(--card); border:2px solid var(--line2);}
+.ms.done::after{background:var(--green); border-color:var(--green);}
+.ms.act::after{background:var(--accent); border-color:var(--accent); box-shadow:0 0 0 5px var(--accent-soft);}
+.ms .mt{font-size:13.5px; font-weight:500; color:var(--faint);}
+.ms.done .mt,.ms.act .mt{color:var(--ink);}
+.ms .md{font-size:12px; color:var(--faint);}
+footer{margin-top:80px; text-align:center; color:var(--faint); font-size:13px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="pagehead">
+  <div>
+    <h1>Submission journey redesign — visual plan</h1>
+    <p>Approach 2: refined four-step wizard plus a live "what we understood" panel. Light warm canvas, one purple accent, plain language. Annotations above each screen say what changes and which audit findings it fixes.</p>
+  </div>
+  <button class="toggle" onclick="document.body.classList.toggle('dark')"><i class="ti ti-moon"></i> Toggle dark mode</button>
+</div>
+<p class="note">Type shown in Inter as a stand-in for Micron Basis. Technical refs use <code>JetBrains Mono</code>. All body text ≥16px, controls ≥44px tall, everything keyboard-reachable.</p>
+
+<!-- S1 -->
+<div class="section">
+  <div class="anno"><span class="step">Step 1 · /submit/new</span><h2>Describe — a slim, calm start</h2></div>
+  <p class="anno-sub">Three inputs, not six. Reach, impact and urgency are gone from the form — the interview asks them only when they matter. The draft autosaves, so a refresh loses nothing.</p>
+  <ul class="changes">
+    <li><i class="ti ti-check"></i>type-first, then only relevant fields</li>
+    <li><i class="ti ti-check"></i>keyboard-first app picker</li>
+    <li><i class="ti ti-check"></i>draft autosave</li>
+    <li><i class="ti ti-check"></i>errors are visible, never silent</li>
+  </ul>
+  <div class="screen">
+    <div class="appbar"><span class="logo"><span class="dot"></span>Request a build</span><span class="sp"></span><a href="#">My requests</a><span class="avatar">JM</span></div>
+    <div class="stepper">
+      <span class="st act"><b>1</b> Describe</span><span class="ln"></span>
+      <span class="st"><b>2</b> Questions</span><span class="ln"></span>
+      <span class="st"><b>3</b> Check</span><span class="ln"></span>
+      <span class="st"><b>4</b> Done</span>
+    </div>
+    <div class="body">
+      <div class="kicker">Tell us what you need</div>
+      <h3>What kind of request is this?</h3>
+      <p class="lede">A sentence or two is plenty — we'll ask a few follow-up questions next.</p>
+      <div class="typegrid">
+        <div class="typecard sel"><i class="ti ti-bug"></i><div class="t">Bug fix</div><div class="d">Something's broken in an app you use</div></div>
+        <div class="typecard"><i class="ti ti-sparkles"></i><div class="t">Enhancement</div><div class="d">Improve an app that already exists</div></div>
+        <div class="typecard"><i class="ti ti-plus"></i><div class="t">New app</div><div class="d">Build something that doesn't exist yet</div></div>
+      </div>
+      <div class="fld">
+        <label>Which app?</label>
+        <div class="hint">Start typing — then pick one from the list.</div>
+        <div class="combo"><input class="input" value="exp" /><i class="ti ti-chevron-down"></i></div>
+        <div class="menu">
+          <div class="op hov"><span><b style="color:var(--ink)">Exp</b>ense Tracker</span><small>Finance</small></div>
+          <div class="op"><span><b style="color:var(--ink)">Exp</b>ort Scheduler</span><small>Operations</small></div>
+        </div>
+      </div>
+      <div class="fld">
+        <label>What's going wrong?</label>
+        <textarea class="input" rows="3">The monthly expense export comes out empty since last week. My team can't close the books without it.</textarea>
+      </div>
+      <div class="fld">
+        <label>Add a screenshot or file <span style="color:var(--faint); font-weight:400;">(optional)</span></label>
+        <div class="drop"><i class="ti ti-paperclip" style="font-size:20px;"></i> Drop a file here, or <u>browse</u> — screenshots help us see what you see</div>
+        <span class="chipfile"><i class="ti ti-photo"></i> export-error.png · 240 KB <i class="ti ti-x x"></i></span>
+      </div>
+      <div class="formfoot">
+        <span class="saved"><i class="ti ti-check"></i> Draft saved just now</span>
+        <span class="sp"></span>
+        <button class="btn pri">Continue to questions</button>
+      </div>
+      <div class="inline-err"><i class="ti ti-alert-circle" style="margin-top:2px;"></i> Please pick the app from the list so we know exactly which one you mean. <span style="color:var(--faint)">(shown only if Continue is pressed with something missing — the button is never mysteriously disabled)</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- S2 -->
+<div class="section">
+  <div class="anno"><span class="step">Step 2 · /submit/:id/interview</span><h2>Questions — one at a time, with the understanding panel</h2></div>
+  <p class="anno-sub">One way to answer each question: options or text, never both fighting. Progress is honest. Skipping tells you what we'll assume. On the right, "What we understood" grows with every answer — this same panel becomes the spec on the next step.</p>
+  <ul class="changes">
+    <li><i class="ti ti-check"></i>single input surface per question</li>
+    <li><i class="ti ti-check"></i>honest progress count</li>
+    <li><i class="ti ti-check"></i>skip shows its consequence</li>
+    <li><i class="ti ti-check"></i>no re-asking what the form answered</li>
+    <li><i class="ti ti-check"></i>live understanding panel</li>
+  </ul>
+  <div class="screen">
+    <div class="appbar"><span class="logo"><span class="dot"></span>Request a build</span><span class="sp"></span><a href="#">My requests</a><span class="avatar">JM</span></div>
+    <div class="stepper">
+      <span class="st done"><b><i class="ti ti-check"></i></b> Describe</span><span class="ln"></span>
+      <span class="st act"><b>2</b> Questions</span><span class="ln"></span>
+      <span class="st"><b>3</b> Check</span><span class="ln"></span>
+      <span class="st"><b>4</b> Done</span>
+    </div>
+    <div class="body wide">
+      <div class="split">
+        <div>
+          <div class="prog"><div class="plabel"><span>Question 2 of about 4</span><span>Almost halfway</span></div><div class="bar"><b></b></div></div>
+          <div class="qcard">
+            <div class="q">Roughly how many people rely on this export every month?</div>
+            <div class="qh">Pick the closest one — a rough idea is fine.</div>
+            <div class="opt"><span class="rad"></span><div><div class="ot">Just me</div><div class="od">I'm the only one who runs it</div></div></div>
+            <div class="opt sel"><span class="rad"></span><div><div class="ot">My team</div><div class="od">Around 5–15 people</div></div></div>
+            <div class="opt"><span class="rad"></span><div><div class="ot">My whole department</div><div class="od">Dozens of people</div></div></div>
+            <div class="qfoot">
+              <button class="btn pri">Continue</button>
+              <a class="swap" href="#">Type my own answer instead</a>
+            </div>
+            <div class="skipnote"><i class="ti ti-info-circle"></i> <span><u>Skip this question</u> — we'll assume it affects your team only, and you can correct that on the next step.</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h4>What we understood so far</h4>
+          <div class="ph">Grows as you answer — you'll confirm it next</div>
+          <div class="pi got"><i class="ti ti-check"></i><div>Monthly expense export produces an empty file since last week<span class="src">from your description</span></div></div>
+          <div class="pi got"><i class="ti ti-check"></i><div>Blocks month-end book closing<span class="src">from your description</span></div></div>
+          <div class="pi got"><i class="ti ti-check"></i><div>Happens every time, not occasionally<span class="src">from your answer · question 1</span></div></div>
+          <div class="pi assume"><i class="ti ti-alert-triangle"></i><div>Affects your team only<span class="tag">assumed</span><span class="src">skipped — confirm on next step</span></div></div>
+          <div class="pi wait"><i class="ti ti-circle"></i><div>About 2 more questions</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="anno-sub" style="margin-top:28px;"><strong style="color:var(--ink); font-weight:600;">If the questions can't load</strong> — the flow never dead-ends. An apology, a retry, and a way forward are always on screen:</p>
+  <div class="screen" style="max-width:720px;">
+    <div class="body">
+      <div class="errcard">
+        <i class="ti ti-plug-x"></i>
+        <h4>We couldn't load the follow-up questions</h4>
+        <p>Your request is safe. You can try again, or go straight to checking your request — the questions just make it sharper.</p>
+        <button class="btn sec" style="margin-right:10px;"><i class="ti ti-refresh"></i> Try again</button>
+        <button class="btn pri">Skip ahead to check</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- S3 -->
+<div class="section">
+  <div class="anno"><span class="step">Step 3 · /submit/:id/review</span><h2>Check — the real draft spec, before anything is sent</h2></div>
+  <p class="anno-sub">The understanding panel matured into the draft spec. Every line says where it came from; every assumption is flagged and asks for a decision. This is the "did we get this right?" moment the brief is built around — it needs the backend to draft the spec when the interview ends, not after submit.</p>
+  <ul class="changes">
+    <li><i class="ti ti-check"></i>real spec lines with provenance</li>
+    <li><i class="ti ti-check"></i>assumptions ask to be confirmed</li>
+    <li><i class="ti ti-check"></i>attachments visible</li>
+    <li><i class="ti ti-check"></i>failures show a recovery path</li>
+  </ul>
+  <div class="screen">
+    <div class="appbar"><span class="logo"><span class="dot"></span>Request a build</span><span class="sp"></span><a href="#">My requests</a><span class="avatar">JM</span></div>
+    <div class="stepper">
+      <span class="st done"><b><i class="ti ti-check"></i></b> Describe</span><span class="ln"></span>
+      <span class="st done"><b><i class="ti ti-check"></i></b> Questions</span><span class="ln"></span>
+      <span class="st act"><b>3</b> Check</span><span class="ln"></span>
+      <span class="st"><b>4</b> Done</span>
+    </div>
+    <div class="body">
+      <h3>Did we get this right?</h3>
+      <p class="lede">Here's what we heard — and one thing we guessed. Fix anything that looks off before it goes to a reviewer.</p>
+      <div class="spec">
+        <div class="sh"><b>Bug fix · Expense Tracker</b><a href="#"><i class="ti ti-pencil"></i> Edit description</a></div>
+        <div class="line"><i class="ti ti-check"></i><div class="lt">The monthly expense export produces an empty file since last week <span class="prov req">your request</span></div></div>
+        <div class="line"><i class="ti ti-check"></i><div class="lt">This blocks month-end book closing for the finance team <span class="prov req">your request</span></div></div>
+        <div class="line"><i class="ti ti-check"></i><div class="lt">The failure happens every time the export runs <span class="prov ans">your answer · Q1</span></div></div>
+        <div class="line"><i class="ti ti-check"></i><div class="lt">About 5–15 people rely on this export monthly <span class="prov ans">your answer · Q2</span></div></div>
+        <div class="line assume"><i class="ti ti-alert-triangle"></i><div class="lt">We assumed the export format (CSV) should stay exactly as it was <span class="prov">assumed — nobody said this</span>
+          <div class="abtns"><button class="abtn yes"><i class="ti ti-check"></i> That's right</button><button class="abtn no">Not quite — fix it</button></div>
+        </div></div>
+      </div>
+      <div class="fld" style="margin-top:22px;">
+        <label>Attached</label>
+        <span class="chipfile"><i class="ti ti-photo"></i> export-error.png · 240 KB</span>
+      </div>
+      <div class="fld">
+        <label>Anything to add? <span style="color:var(--faint); font-weight:400;">(optional — saved as you type)</span></label>
+        <input class="input" placeholder="Last thoughts before it goes to a reviewer…" />
+      </div>
+      <div class="subfoot">
+        <button class="btn pri">Send to a reviewer</button>
+        <span class="honest"><i class="ti ti-user-check"></i> A person reviews this before anything gets built.</span>
+      </div>
+      <div class="inline-err"><i class="ti ti-alert-circle" style="margin-top:2px;"></i> Something went wrong sending your request — nothing was lost. Please try again. <span style="color:var(--faint)">(error state, shown on failure instead of silence)</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- S4 -->
+<div class="section">
+  <div class="anno"><span class="step">Step 4 · /submit/:id/done</span><h2>Done — honest close, no empty promises</h2></div>
+  <p class="anno-sub">No "we'll email you" (there is no email). It says what actually happens next and where to watch it.</p>
+  <div class="screen" style="max-width:760px;">
+    <div class="body">
+      <div class="donebox">
+        <div class="big"><i class="ti ti-check"></i></div>
+        <h3>It's in. <span class="ref">REQ-142</span></h3>
+        <p>A person will review it next — usually within two working days. You can watch its progress any time in My requests.</p>
+        <button class="btn pri" style="margin-right:10px;">View my requests</button>
+        <button class="btn sec">Start another request</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tracking -->
+<div class="section">
+  <div class="anno"><span class="step">Tracking · /requests</span><h2>My requests — plain words, one calm alert</h2></div>
+  <p class="anno-sub">Statuses a non-technical person understands. One "needs your answer" band total, not one per request. No factory vocabulary anywhere.</p>
+  <div class="screen" style="max-width:860px;">
+    <div class="appbar"><span class="logo"><span class="dot"></span>Request a build</span><span class="sp"></span><a href="#" style="color:var(--ink); font-weight:500;">My requests</a><span class="avatar">JM</span></div>
+    <div class="body">
+      <div class="band"><i class="ti ti-message-question" style="font-size:20px;"></i><span style="flex:1;">One request needs your answer before it can move on.</span><button class="btn pri">Answer now</button></div>
+      <div class="spec">
+        <div class="reqrow"><div><div class="rt">Expense export comes out empty</div><div class="rd">REQ-142 · sent today</div></div><span class="sp"></span><span class="pill rev">Waiting for review</span></div>
+        <div class="reqrow"><div><div class="rt">Headcount dashboard for planning</div><div class="rd">REQ-131 · sent 2 weeks ago</div></div><span class="sp"></span><span class="pill need">Needs your answer</span></div>
+        <div class="reqrow"><div><div class="rt">Faster search in the parts catalog</div><div class="rd">REQ-118 · sent last month</div></div><span class="sp"></span><span class="pill build">Being built</span></div>
+        <div class="reqrow"><div><div class="rt">Shift-handover notes app</div><div class="rd">REQ-96 · sent in April</div></div><span class="sp"></span><span class="pill ready">Ready to use</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="anno"><span class="step">Tracking · /requests/:id</span><h2>Request detail — the story of one request</h2></div>
+  <p class="anno-sub">A milestone story in plain language — what you asked, what was understood, where it is now. Never logs, never code.</p>
+  <div class="screen" style="max-width:860px;">
+    <div class="body">
+      <div class="kicker">REQ-118 · Enhancement · Parts Catalog</div>
+      <h3>Faster search in the parts catalog</h3>
+      <div class="mile">
+        <div class="ms done"><div class="mt">Sent</div><div class="md">May 28</div></div>
+        <div class="ms done"><div class="mt">Understood</div><div class="md">May 28</div></div>
+        <div class="ms done"><div class="mt">Approved</div><div class="md">June 2</div></div>
+        <div class="ms act"><div class="mt">Being built</div><div class="md">now</div></div>
+        <div class="ms"><div class="mt">Ready to use</div><div class="md">—</div></div>
+      </div>
+      <p class="lede" style="margin-top:18px;">A reviewer approved this on June 2. It's being built now — we'll mark it ready here when you can use it.</p>
+      <div class="spec">
+        <div class="sh"><b>What you asked for</b><a href="#">See what we understood</a></div>
+        <div class="line"><i class="ti ti-quote"></i><div class="lt" style="color:var(--muted); font-style:italic;">"Searching the parts catalog takes 30+ seconds and people give up. Can it be instant, like normal search?"</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>Intake submission journey · Approach 2 mockup · toggle dark mode at the top to see both themes</footer>
+</div>
+</body>
+</html>

@@ -10,7 +10,10 @@ import {
   InterviewState,
   MissionOut,
   ProgressEvent,
+  PrototypeAnnotation,
+  PrototypeState,
   RequestDetail,
+  ReviewSummary,
 } from './models';
 
 // same-origin in production (nginx proxies /api); the dev server proxies via proxy.conf.json
@@ -60,11 +63,54 @@ export class Api {
   attachmentRawUrl(aid: number) {
     return `${BASE}/attachments/${aid}/raw`;
   }
-  interview(id: number) {
-    return this.http.get<InterviewState>(`${BASE}/requests/${id}/interview`);
+  interview(id: number, gen = true) {
+    // gen=false reads state without kicking background pre-generation (the streaming
+    // client reads first, then opens the SSE stream to drive the question itself).
+    return this.http.get<InterviewState>(`${BASE}/requests/${id}/interview`, { params: { gen } });
+  }
+  /** SSE endpoint URL — the next question (via the CLI brain) streams in as it generates. */
+  interviewStreamUrl(id: number) {
+    return `${BASE}/requests/${id}/interview/stream`;
   }
   answer(id: number, body: { answer?: string; skip?: boolean }) {
     return this.http.post<InterviewState>(`${BASE}/requests/${id}/interview`, body);
+  }
+  /** "Add more detail" from Review: record a note and reopen the interview for a follow-up. */
+  reopenInterview(id: number, note: string) {
+    return this.http.post<InterviewState>(`${BASE}/requests/${id}/interview/reopen`, { note });
+  }
+  /** The AI-written Review summary. Returns `thinking:true` while it generates — poll. */
+  summary(id: number) {
+    return this.http.get<ReviewSummary>(`${BASE}/requests/${id}/summary`);
+  }
+
+  // ── Prototype step (new-app only) ──
+  /** gen=false reads state without kicking the first draft (the streaming client reads first). */
+  prototype(id: number, gen = true) {
+    return this.http.get<PrototypeState>(`${BASE}/requests/${id}/prototype`, { params: { gen } });
+  }
+  /** SSE endpoint URL — the pending revision's prose preamble streams in as it generates. */
+  prototypeStreamUrl(id: number) {
+    return `${BASE}/requests/${id}/prototype/stream`;
+  }
+  /** A chat turn: an edit instruction, optionally scoped to one or more annotated elements. */
+  instructPrototype(
+    id: number,
+    instruction: string,
+    annotation: PrototypeAnnotation | PrototypeAnnotation[] | null = null,
+  ) {
+    return this.http.post<PrototypeState>(`${BASE}/requests/${id}/prototype`, {
+      instruction,
+      annotation,
+    });
+  }
+  /** Soft-gate skip: advance to Review with no prototype attached. */
+  skipPrototype(id: number) {
+    return this.http.post<PrototypeState>(`${BASE}/requests/${id}/prototype/skip`, {});
+  }
+  /** Undo/restore: re-apply the revision at `order` as a new latest revision. */
+  restorePrototype(id: number, order: number) {
+    return this.http.post<PrototypeState>(`${BASE}/requests/${id}/prototype/restore`, { order });
   }
   submit(id: number, note = '') {
     return this.http.post<RequestDetail>(`${BASE}/requests/${id}/submit`, { note });

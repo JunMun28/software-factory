@@ -6,10 +6,34 @@ whole app runs offline. Swapping in a real LLM later means replacing only this
 module's `brain` instance.
 """
 from dataclasses import dataclass, field
+from html import escape
 
 from .models import Request, SpecLine
 
-MAX_QUESTIONS = 3  # US10: stop after a few — hard ceiling
+# US10: intake stays short, but depth scales with how open-ended the request is.
+# (floor, ceiling) per type: never stop before `floor`, never exceed `ceiling`.
+# Between them the AgentBrain decides when it has enough (grill until it could
+# write a confident spec); the scripted brain is additionally bounded by its
+# short script, so the offline path stays shallow.
+QUESTION_BUDGET: dict[str, tuple[int, int]] = {
+    "bug": (2, 3),   # a report is usually concrete — a couple of clarifiers
+    "enh": (2, 5),   # scale with complexity
+    "new": (3, 10),  # a whole new app — walk the design tree
+    "other": (2, 3),
+}
+DEFAULT_BUDGET = (2, 3)
+
+
+def question_budget(req_type: str) -> tuple[int, int]:
+    """(floor, ceiling) number of interview questions for a request type."""
+    return QUESTION_BUDGET.get(req_type, DEFAULT_BUDGET)
+
+
+def question_ceiling(req: "Request") -> int:
+    """Hard upper bound on interview questions for this request. Once 'Add more detail' reopens
+    a finished interview, a small per-reopen allowance (reopen_ceiling) overrides the type
+    budget so a deep new-app grill doesn't restart from scratch."""
+    return getattr(req, "reopen_ceiling", None) or question_budget(req.type)[1]
 
 # Describe-step reach chip → spec Impact line (submitters state facts; we word the impact).
 # Free-text reach falls through and is quoted as written.
@@ -45,6 +69,63 @@ class Question:
 
 def _q(question, sub=None, options=None, final=False) -> Question:
     return Question(question=question, sub=sub, options=options, final=final)
+
+
+# Request.pending_question marker: the brain ended the interview early (no more
+# questions). Distinguishable from a real question, which always has a "question" key.
+DONE_SENTINEL = {"done": True}
+
+
+def pending_payload(q: Question | None) -> dict:
+    """Serialize a generated question — or the done marker — for Request.pending_question."""
+    if q is None:
+        return DONE_SENTINEL
+    return {"question": q.question, "sub": q.sub, "options": q.options, "final": q.final}
+
+
+def scripted_prototype_html(req: Request) -> str:
+    """A deterministic, self-contained, CSP-safe single-screen mock — the offline prototype
+    floor (and the seed the real harness improves on). Carries data-pid / data-screen-label
+    anchors so the point-to-edit inspector works even offline."""
+    app = escape((req.app_name or "New app").strip())
+    title = escape((req.title or req.app_name or "New app").strip())
+    desc = escape((req.description or "").strip() or "A first look at the experience you described.")
+    return f"""<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'">
+<title>{app}</title>
+<style>
+  :root {{ --bg:#f7f5f2; --ink:#1d1b19; --muted:#6b655d; --line:#e6e1d9; --card:#fff; --accent:#b4531f; }}
+  * {{ box-sizing:border-box; }}
+  body {{ margin:0; font-family:ui-sans-serif,system-ui,sans-serif; background:var(--bg); color:var(--ink); }}
+  .wrap {{ max-width:720px; margin:0 auto; padding:40px 24px; }}
+  header {{ display:flex; align-items:center; gap:10px; margin-bottom:26px; }}
+  .logo {{ font-family:ui-serif,Georgia,serif; font-weight:700; font-size:20px; }}
+  h1 {{ font-family:ui-serif,Georgia,serif; font-size:32px; line-height:1.15; margin:0 0 10px; max-width:16ch; text-wrap:balance; }}
+  p.sub {{ color:var(--muted); font-size:16px; margin:0 0 26px; max-width:52ch; }}
+  .cards {{ display:grid; gap:14px; }}
+  .card {{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; }}
+  .card h2 {{ font-size:15px; margin:0 0 6px; }}
+  .card p {{ margin:0; color:var(--muted); font-size:14px; }}
+  .cta {{ display:inline-flex; background:var(--accent); color:#fff; font-weight:600; padding:11px 20px; border-radius:10px; margin-top:18px; }}
+</style>
+</head>
+<body>
+  <div class="wrap" data-screen-label="Home">
+    <header><span class="logo" data-pid="logo">{app}</span></header>
+    <h1 data-pid="headline">{title}</h1>
+    <p class="sub" data-pid="subhead">{desc}</p>
+    <div class="cards">
+      <div class="card" data-pid="card-primary"><h2>Get started</h2><p>The main thing a person comes here to do.</p></div>
+      <div class="card" data-pid="card-secondary"><h2>Recent activity</h2><p>What's happened lately, at a glance.</p></div>
+    </div>
+    <span class="cta" data-pid="cta">Start</span>
+  </div>
+</body>
+</html>"""
 
 
 SCRIPTS: dict[str, list[Question]] = {
@@ -117,9 +198,42 @@ class ScriptedBrain:
     def next_question(self, req: Request) -> Question | None:
         script = SCRIPTS.get(req.type, SCRIPTS["other"])
         answered = answered_count(req)
-        if answered >= min(MAX_QUESTIONS, len(script)):
+        if answered >= min(question_ceiling(req), len(script)):
             return None
         return script[answered]
+
+    def summarize(self, req: Request) -> dict:
+        """Deterministic review spec (the offline fallback): overview from the request, plus
+        structured sections built from reach/impact/answers. Real models override with a written
+        narrative. Returns {overview, sections:[{title, items}]}."""
+        overview = (req.description or "").strip() or req.title
+        sections: list[dict] = []
+        if req.reach:
+            sections.append({"title": "Who it's for", "items": [REACH_IMPACT.get(req.reach, req.reach)]})
+        answers = [t.answer.strip().rstrip(".") for t in req.turns if t.answer]
+        if answers:
+            sections.append({"title": "Details from the interview", "items": answers[:8]})
+        if req.impact_metric and req.impact_value:
+            wording = IMPACT_WORDING.get(req.impact_metric, IMPACT_WORDING["other"])
+            sections.append({"title": "Success measure", "items": [wording(req.impact_value).rstrip(".")]})
+        return {"overview": overview, "sections": sections}
+
+    def generate_prototype(self, req: Request, instruction: str | None = None,
+                           annotation: dict | None = None, current_html: str | None = None) -> dict:
+        """Deterministic offline prototype (the fallback / floor). The first call rewrites a
+        static single-file mock from the request; a later instruction records a visible edit
+        marker so the document changes and a revision is recorded. Real models override with the
+        baoyu/artifact-design harness. Returns {mode, note, html} — html is None for a chat turn."""
+        if current_html is None:
+            return {"mode": "rewrite", "note": f"Drafted a starting layout for {req.app_name}.",
+                    "html": scripted_prototype_html(req)}
+        instr = (instruction or "").strip()
+        if not instr:
+            return {"mode": "chat", "note": "Tell me what to change and I'll update the mock.", "html": None}
+        marker = f"\n  <!-- edit: {escape(instr[:120])} -->\n"
+        edited = (current_html.replace("</body>", marker + "</body>", 1)
+                  if "</body>" in current_html else current_html + marker)
+        return {"mode": "rewrite", "note": f"Applied: {instr[:80]}", "html": edited}
 
     def draft_spec(self, req: Request) -> tuple[list[SpecLine], str]:
         """Grounded lines: every line carries provenance; gaps become ASSUMPTIONs."""
@@ -175,11 +289,12 @@ brain = ScriptedBrain()
 
 
 def get_brain() -> ScriptedBrain:
-    """ADR 0007 seam: FACTORY_BRAIN=agent swaps in the real model, scripted is the offline default."""
-    from .agent_exec import brain_mode  # local import — agent_brain subclasses ScriptedBrain
+    """ADR 0007 seam: FACTORY_BRAIN=agent swaps in the real model (the claude/codex CLI,
+    picked by FACTORY_CLI); scripted is the offline default."""
+    from .agent_exec import brain_mode  # local import — brains subclass ScriptedBrain
 
-    if brain_mode() == "agent":
-        from .agent_brain import AgentBrain
+    if brain_mode() != "agent":
+        return brain
+    from .agent_brain import AgentBrain
 
-        return AgentBrain()
-    return brain
+    return AgentBrain()

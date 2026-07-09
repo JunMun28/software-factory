@@ -13,6 +13,7 @@ the same call, switched per call with FACTORY_CLI:
 import json
 import logging
 import os
+import re
 import signal
 import subprocess
 import tempfile
@@ -49,21 +50,31 @@ class AgentResult:
     error: str = ""
 
 
-def _claude_cmd(prompt: str, *, allow_edits: bool, max_turns: int) -> list[str]:
+def _claude_cmd(prompt: str, *, allow_edits: bool, max_turns: int, model: str | None = None) -> list[str]:
     cmd = [
         CLAUDE_BIN, "-p", prompt,
         "--output-format", "json",
-        "--model", CLAUDE_MODEL,
+        "--model", model or CLAUDE_MODEL,
         "--max-turns", str(max_turns),
         "--permission-mode", "bypassPermissions" if allow_edits else "default",
     ]
     if not allow_edits:
-        cmd += ["--disallowed-tools", "Edit,Write,NotebookEdit,Bash"]
+        # Read-only path = the intake brain (interview + spec), which runs in a
+        # throwaway empty cwd. --safe-mode drops the host's Claude Code skills /
+        # hooks / CLAUDE.md / MCP: without it the model burned extended-thinking
+        # deliberating "should I invoke a skill?" before ever addressing the
+        # request (~40% of the call's wall-clock, measured), and none of it is
+        # relevant to a scoped intake question. Model, built-in tools and auth
+        # still work. FACTORY_INTERVIEW_EFFORT (off by default) is the speed/quality
+        # dial for the reasoning budget.
+        cmd += ["--safe-mode", "--disallowed-tools", "Edit,Write,NotebookEdit,Bash"]
+        if settings.INTERVIEW_EFFORT:
+            cmd += ["--effort", settings.INTERVIEW_EFFORT]
     return cmd
 
 
 def _codex_cmd(prompt: str, *, allow_edits: bool, last_message: str,
-               images: list[str] = ()) -> list[str]:
+               images: list[str] = (), model: str | None = None) -> list[str]:
     # codex exec has no turn cap — the stage timeout is the autonomy bound
     cmd = [
         CODEX_BIN, "exec",
@@ -72,8 +83,9 @@ def _codex_cmd(prompt: str, *, allow_edits: bool, last_message: str,
         "--sandbox", "workspace-write" if allow_edits else "read-only",
         "--output-last-message", last_message,
     ]
-    if CODEX_MODEL:
-        cmd += ["--model", CODEX_MODEL]
+    codex_model = model or CODEX_MODEL
+    if codex_model:
+        cmd += ["--model", codex_model]
     for img in images:
         cmd += ["--image", img]  # ADR 0022: image attachments → native vision
     cmd.append(prompt)
@@ -105,19 +117,23 @@ def _communicate(cmd: list[str], cwd: str | None, timeout: int):
 
 
 def run_agent(prompt: str, *, cwd: str | None = None, allow_edits: bool = False,
-               timeout: int = 300, max_turns: int = 25, images: list[str] = ()) -> AgentResult:
+               timeout: int = 300, max_turns: int = 25, images: list[str] = (),
+               model: str | None = None) -> AgentResult:
     """Run the agent CLI headless; returns its final text. Bounded autonomy:
     timeout always; max_turns additionally caps claude (codex has no turn cap).
-    images attach to codex via --image (ADR 0022); the claude path ignores them."""
+    images attach to codex via --image (ADR 0022); the claude path ignores them.
+    `model` overrides the CLI's default model for this call (the prototype step runs a
+    higher-taste model than the fast interview one); pass a model id matching the active CLI."""
     if agent_cli() == "claude":
         return _run_claude_cli(prompt, cwd=cwd, allow_edits=allow_edits,
-                               timeout=timeout, max_turns=max_turns)
-    return _run_codex_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout, images=images)
+                               timeout=timeout, max_turns=max_turns, model=model)
+    return _run_codex_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout,
+                          images=images, model=model)
 
 
 def _run_claude_cli(prompt: str, *, cwd: str | None, allow_edits: bool,
-                    timeout: int, max_turns: int) -> AgentResult:
-    cmd = _claude_cmd(prompt, allow_edits=allow_edits, max_turns=max_turns)
+                    timeout: int, max_turns: int, model: str | None = None) -> AgentResult:
+    cmd = _claude_cmd(prompt, allow_edits=allow_edits, max_turns=max_turns, model=model)
     rc, out, err = _communicate(cmd, cwd, timeout)
     if rc is None:
         return AgentResult(ok=False, text="", error="claude CLI not found")
@@ -135,13 +151,13 @@ def _run_claude_cli(prompt: str, *, cwd: str | None, allow_edits: bool,
 
 
 def _run_codex_cli(prompt: str, *, cwd: str | None, allow_edits: bool,
-                   timeout: int, images: list[str] = ()) -> AgentResult:
+                   timeout: int, images: list[str] = (), model: str | None = None) -> AgentResult:
     # codex streams its whole event log to stdout; the agent's final message —
     # the part the brain/runner actually consume — arrives via -o <file>
     fd, last_path = tempfile.mkstemp(prefix="codex-last-", suffix=".md")
     os.close(fd)
     try:
-        cmd = _codex_cmd(prompt, allow_edits=allow_edits, last_message=last_path, images=images)
+        cmd = _codex_cmd(prompt, allow_edits=allow_edits, last_message=last_path, images=images, model=model)
         rc, out, err = _communicate(cmd, cwd, timeout)
         if rc is None:
             return AgentResult(ok=False, text="", error="codex CLI not found")
@@ -178,3 +194,17 @@ def extract_json(text: str) -> dict | list | None:
         except json.JSONDecodeError:
             continue
     return None
+
+
+def extract_html_block(text: str) -> str | None:
+    """Pull the first full HTML document out of a model reply — from a fenced ```html … ```
+    block (the prototype reply contract), or a bare <!doctype/<html>…</html> span as a
+    fallback. Returns None if no plausible document is present."""
+    fence = re.search(r"```(?:html)?[^\n]*\n(.*?)```", text, re.DOTALL | re.IGNORECASE)
+    if fence:
+        doc = fence.group(1).strip()
+        if "</html" in doc.lower() or "<body" in doc.lower():
+            return doc
+    bare = re.search(r"(<!doctype html\b.*?</html\s*>|<html[\s>].*?</html\s*>)",
+                     text, re.DOTALL | re.IGNORECASE)
+    return bare.group(1).strip() if bare else None

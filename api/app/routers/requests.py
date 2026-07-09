@@ -10,56 +10,224 @@ Routes:
   POST  /api/requests/{rid}/submit       — submit after Review step
 """
 
+import asyncio
+import json
+import logging
+import threading
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .. import interview_gen, prototype_gen, settings, summary_gen
 from ..api_helpers import get_request, next_ref, to_out
-from ..db import get_db
+from ..db import SessionLocal, get_db
 from ..events import emit
-from ..interview import MAX_QUESTIONS, Question, answered_count, get_brain
-from ..models import AuditEvent, InterviewTurn, ProgressEvent, Request, utcnow
+from ..interview import (
+    DONE_SENTINEL,
+    Question,
+    answered_count,
+    get_brain,
+    pending_payload,
+    question_ceiling,
+)
+from ..models import AuditEvent, InterviewTurn, ProgressEvent, PrototypeTurn, Request, utcnow
 from ..schemas import (
     EvidenceOut,
     InterviewAnswer,
     InterviewState,
     Note,
+    PrototypeInstruction,
+    PrototypeRestore,
+    PrototypeState,
+    PrototypeTurnOut,
     RequestCreate,
     RequestDetail,
     RequestOut,
     RequestUpdate,
+    ReviewSummary,
     RunStateOut,
     SteerIn,
 )
 from ..supervision import evidence, in_flight, run_state
 
 router = APIRouter()
+log = logging.getLogger("factory.interview")
 
 
 # ---------- interview helpers (module-local, no side-effects beyond DB) ----------
 
-def current_question(db: Session, r: Request):
-    """Generate-once semantics: the pending question is persisted so what the
-    submitter sees is exactly what gets recorded with their answer."""
-    if answered_count(r) >= MAX_QUESTIONS:
+def current_question(r: Request) -> Question | None:
+    """The question awaiting an answer, if one is ready. Pure read — the next
+    question is produced ahead of time by interview_gen (a background thread), so
+    the request path never blocks on the model."""
+    pq = r.pending_question
+    return Question(**pq) if pq and "question" in pq else None
+
+
+def _current_or_generate(db: Session, r: Request) -> Question | None:
+    """The pending question, materializing it synchronously if absent. The UI always
+    GETs (which pre-generates) before answering, so this only fires for out-of-protocol
+    direct POSTs — never the hot path."""
+    q = current_question(r)
+    if q is not None:
+        return q
+    if answered_count(r) >= question_ceiling(r) or r.pending_question == DONE_SENTINEL:
         return None
-    if r.pending_question:
-        return Question(**r.pending_question)
-    q = get_brain().next_question(r)
-    if q:
-        r.pending_question = {"question": q.question, "sub": q.sub, "options": q.options, "final": q.final}
+    r.pending_question = pending_payload(get_brain().next_question(r))
+    db.commit()
+    db.refresh(r)
+    return current_question(r)
+
+
+def interview_state(db: Session, r: Request, *, generate: bool = True) -> InterviewState:
+    """Cheap read of the interview state. If the next question isn't ready yet and
+    `generate` is set, kick off background pre-generation and report `thinking` (SYNC
+    mode generates inline). The SSE worker passes generate=False — it does the
+    generating itself, so it only wants to read/report the current state."""
+    def build(*, done: bool, q: Question | None, thinking: bool) -> InterviewState:
+        st = InterviewState(done=done, asked=answered_count(r), total=question_ceiling(r),
+                            thinking=thinking, turns=[t for t in r.turns])
+        if q:
+            st.question, st.sub, st.options, st.final = q.question, q.sub, q.options, q.final
+        return st
+
+    if answered_count(r) >= question_ceiling(r) or r.pending_question == DONE_SENTINEL:
+        if generate and not interview_gen.SYNC:
+            summary_gen.ensure_summary(r.id)  # warm the Review summary while "done" shows
+        return build(done=True, q=None, thinking=False)
+    q = current_question(r)
+    if q is not None:
+        return build(done=False, q=q, thinking=False)
+    if not generate:
+        return build(done=False, q=None, thinking=True)  # generation runs elsewhere
+    if interview_gen.SYNC:  # deterministic path (tests / smoke): generate inline
+        r.pending_question = pending_payload(get_brain().next_question(r))
         db.commit()
-    return q
+        if r.pending_question == DONE_SENTINEL:
+            return build(done=True, q=None, thinking=False)
+        return build(done=False, q=current_question(r), thinking=False)
+    thinking = interview_gen.ensure_next_question(r.id)  # async: background pre-generation
+    return build(done=False, q=None, thinking=thinking)
 
 
-def interview_state(db: Session, r: Request) -> InterviewState:
-    q = current_question(db, r)
-    st = InterviewState(done=q is None, asked=answered_count(r), total=MAX_QUESTIONS,
-                        turns=[t for t in r.turns])
-    if q:
-        st.question, st.sub, st.options, st.final = q.question, q.sub, q.options, q.final
-    return st
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _resolved(r: Request) -> bool:
+    """The interview is done, or a question is already waiting — nothing to generate."""
+    return (current_question(r) is not None
+            or answered_count(r) >= question_ceiling(r)
+            or r.pending_question == DONE_SENTINEL)
+
+
+def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLoop", *,
+                acquire, release, timeout: int, resolved, resolve, build_state) -> None:
+    """Shared SSE generation worker (interview + prototype). Claim the per-request slot — or, if a
+    generation is already in flight, poll up to `timeout+5`s for its result — then run the (batch)
+    generation on this background thread, persist, and push exactly one terminal `state` event so
+    the single uvicorn event loop is never frozen. Feature-specific behaviour is the injected
+    `resolved(r)` predicate, `resolve(db, r)` generator, and `build_state(db, r)` serializer."""
+    def push(ev: dict) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, ev)
+
+    def emit(db: Session, r: Request) -> None:
+        push({"type": "state", "state": build_state(db, r).model_dump(mode="json")})
+
+    if not acquire(rid):  # another generation in flight — poll for its result
+        for _ in range(timeout + 5):
+            time.sleep(1)
+            with SessionLocal() as db:
+                r = db.get(Request, rid)
+                if r is None:
+                    push({"type": "state", "state": None})
+                    return
+                if resolved(r):
+                    emit(db, r)
+                    return
+        push({"type": "state", "state": None})
+        return
+    try:
+        with SessionLocal() as db:
+            r = db.get(Request, rid)
+            if r is None:
+                push({"type": "state", "state": None})
+                return
+            resolve(db, r)  # generate + persist if not already resolved (idempotent)
+            emit(db, r)
+    except Exception:
+        log.exception("SSE generation failed for request %s", rid)
+        push({"type": "state", "state": None})
+    finally:
+        release(rid)
+
+
+def _sse_response(rid: int, worker) -> StreamingResponse:
+    """Run `worker(rid, queue, loop)` on a daemon thread and stream its terminal state as one SSE
+    event. The batch GET stays the reconnect/replay source of truth."""
+    queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+    threading.Thread(target=worker, args=(rid, queue, loop), daemon=True).start()
+
+    async def gen():
+        ev = await queue.get()
+        yield _sse("state", ev.get("state") or {})
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _resolve_interview(db: Session, r: Request) -> None:
+    """Generate + persist the next interview question (batch) unless it's already resolved."""
+    if _resolved(r):
+        return
+    q = get_brain().next_question(r)
+    db.refresh(r)
+    if r.pending_question is None:  # don't clobber a racing write
+        r.pending_question = pending_payload(q)
+        db.commit()
+
+
+def _interview_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLoop") -> None:
+    _sse_worker(rid, queue, loop, acquire=interview_gen.acquire, release=interview_gen.release,
+                timeout=settings.INTERVIEW_TIMEOUT, resolved=_resolved, resolve=_resolve_interview,
+                build_state=lambda db, r: interview_state(db, r, generate=False))
+
+
+def _prototype_state(db: Session, r: Request, *, thinking: bool) -> PrototypeState:
+    """The Prototype step's live state: the current document + the chat thread."""
+    return PrototypeState(
+        html=r.prototype_html, status=r.prototype_status, thinking=thinking,
+        turns=[PrototypeTurnOut(order=t.order, instruction=t.instruction, annotation=t.annotation,
+                                mode=t.mode, note=t.note, revision=t.html is not None)
+               for t in r.prototype_turns],
+    )
+
+
+def _resolve_prototype(db: Session, r: Request) -> None:
+    """Seed the first draft if owed, then generate + apply the pending revision (batch)."""
+    prototype_gen.seed_first_draft(db, r)
+    turn = prototype_gen.pending_turn(r)
+    if turn is None:  # nothing to generate — already resolved
+        return
+    rev = get_brain().generate_prototype(
+        r, instruction=turn.instruction, annotation=turn.annotation, current_html=r.prototype_html)
+    db.refresh(r)
+    turn = prototype_gen.pending_turn(r)  # re-fetch after refresh; don't clobber a racing write
+    if turn is not None:
+        prototype_gen.apply_revision(db, r, turn, rev)
+
+
+def _prototype_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLoop") -> None:
+    _sse_worker(rid, queue, loop, acquire=prototype_gen.acquire, release=prototype_gen.release,
+                timeout=settings.PROTOTYPE_TIMEOUT,
+                resolved=lambda r: prototype_gen.pending_turn(r) is None,
+                resolve=_resolve_prototype,
+                build_state=lambda db, r: _prototype_state(db, r, thinking=False))
 
 
 # ---------- requests CRUD ----------
@@ -154,24 +322,145 @@ def update_request(rid: int, body: RequestUpdate, db: Session = Depends(get_db))
 # ---------- intake interview ----------
 
 @router.get("/api/requests/{rid}/interview", response_model=InterviewState)
-def get_interview(rid: int, db: Session = Depends(get_db)):
+def get_interview(rid: int, gen: bool = True, db: Session = Depends(get_db)):
+    # gen=false: read state without kicking background pre-generation — the streaming
+    # client reads first, then opens the SSE stream to drive (and stream) the question.
     r = get_request(db, rid)
-    return interview_state(db, r)
+    return interview_state(db, r, generate=gen)
+
+
+@router.get("/api/requests/{rid}/interview/stream")
+async def stream_interview(rid: int):
+    """SSE: drives the next-question generation on a worker thread, then returns the terminal
+    InterviewState. Frees the HTTP handler from the blocking model call."""
+    return _sse_response(rid, _interview_worker)
 
 
 @router.post("/api/requests/{rid}/interview", response_model=InterviewState)
 def answer_interview(rid: int, body: InterviewAnswer, db: Session = Depends(get_db)):
     r = get_request(db, rid)
-    q = current_question(db, r)
+    q = _current_or_generate(db, r)
     if q is None:
-        return interview_state(db, r)
+        return interview_state(db, r)  # nothing pending to answer (interview is done)
     order = len(r.turns)
     db.add(InterviewTurn(request=r, order=order, question=q.question, sub=q.sub, options=q.options,
                          answer=None if body.skip else (body.answer or None), skipped=body.skip))
     r.pending_question = None
     db.commit()
     db.refresh(r)
-    return interview_state(db, r)
+    # returns immediately with `thinking`. In async mode we DON'T kick pre-gen here —
+    # the client drives the next question (SSE stream, or poll which kicks it). SYNC
+    # mode (tests/smoke) generates inline so the next question comes back in the POST.
+    return interview_state(db, r, generate=interview_gen.SYNC)
+
+
+@router.post("/api/requests/{rid}/interview/reopen", response_model=InterviewState)
+def reopen_interview(rid: int, body: Note, db: Session = Depends(get_db)):
+    """'Add more detail' from the Review step: record the submitter's added note as an
+    interview turn and unlock a follow-up round so Fabric can ask one more question (or
+    wrap up), instead of the interview being permanently finished."""
+    r = get_request(db, rid)
+    note = (body.note or "").strip()
+    if not note:
+        return interview_state(db, r, generate=interview_gen.SYNC)
+    db.add(InterviewTurn(request=r, order=len(r.turns), question="Anything else to add?",
+                         answer=note[:2000], skipped=False))
+    db.flush()  # count the added note before sizing the allowance
+    # allow up to ~2 follow-ups from where we resumed (overrides the type budget), not a full grill
+    r.reopen_ceiling = answered_count(r) + 2
+    r.pending_question = None  # force the next question to (re)generate
+    db.commit()
+    db.refresh(r)
+    return interview_state(db, r, generate=interview_gen.SYNC)
+
+
+def _review_summary(data: dict | None, *, thinking: bool = False) -> ReviewSummary:
+    data = data or {}
+    return ReviewSummary(overview=data.get("overview"), sections=data.get("sections") or [],
+                         thinking=thinking)
+
+
+@router.get("/api/requests/{rid}/summary", response_model=ReviewSummary)
+def get_summary(rid: int, db: Session = Depends(get_db)):
+    """The AI-written Review spec. Returns the cached copy when it's current; otherwise generates
+    it (inline in SYNC mode, else on a background thread → `thinking`, poll)."""
+    r = get_request(db, rid)
+    hit = summary_gen.cached(r)
+    if hit:
+        return _review_summary(hit)
+    if interview_gen.SYNC:
+        return _review_summary(summary_gen.generate_sync(r, db))
+    return _review_summary(None, thinking=summary_gen.ensure_summary(rid))
+
+
+# ---------- prototype step (new-app only) ----------
+
+@router.get("/api/requests/{rid}/prototype", response_model=PrototypeState)
+def get_prototype(rid: int, gen: bool = True, db: Session = Depends(get_db)):
+    """The Prototype step state. gen=true seeds + kicks the first draft on first entry (SYNC
+    generates inline). gen=false is a pure read — the streaming client reads, then opens the SSE
+    stream to drive generation itself. Non new-app requests never get a prototype."""
+    r = get_request(db, rid)
+    if r.type != "new":
+        return PrototypeState(html=r.prototype_html, status=r.prototype_status)
+    thinking = prototype_gen.ensure(db, r) if gen else prototype_gen.is_thinking(r)
+    return _prototype_state(db, r, thinking=thinking)
+
+
+@router.get("/api/requests/{rid}/prototype/stream")
+async def stream_prototype(rid: int):
+    """SSE: drives the pending prototype revision on a worker thread, then returns the new state."""
+    return _sse_response(rid, _prototype_worker)
+
+
+@router.post("/api/requests/{rid}/prototype", response_model=PrototypeState)
+def instruct_prototype(rid: int, body: PrototypeInstruction, db: Session = Depends(get_db)):
+    """A chat turn: record the user's edit instruction (optionally scoped to an annotated element)
+    as a pending turn and kick generation. Returns immediately with `thinking`; the client opens
+    the stream to watch the revision form (SYNC generates inline)."""
+    r = get_request(db, rid)
+    if r.type != "new":  # prototype is new-app only — mirror the GET gate on the write paths
+        return _prototype_state(db, r, thinking=False)
+    instr = (body.instruction or "").strip()
+    if not instr:
+        return _prototype_state(db, r, thinking=prototype_gen.is_thinking(r))
+    db.add(PrototypeTurn(request=r, order=len(r.prototype_turns), instruction=instr,
+                         annotation=body.annotation, mode="pending"))
+    db.commit()
+    db.refresh(r)
+    thinking = prototype_gen.queue_or_resolve(db, r)  # SYNC resolves inline; async → client streams
+    return _prototype_state(db, r, thinking=thinking)
+
+
+@router.post("/api/requests/{rid}/prototype/skip", response_model=PrototypeState)
+def skip_prototype(rid: int, db: Session = Depends(get_db)):
+    """Soft-gate skip: advance to Review with no prototype attached (the confirm is client-side)."""
+    r = get_request(db, rid)
+    if r.type != "new":
+        return _prototype_state(db, r, thinking=False)
+    r.prototype_status = "skipped"
+    db.commit()
+    db.refresh(r)
+    return _prototype_state(db, r, thinking=False)
+
+
+@router.post("/api/requests/{rid}/prototype/restore", response_model=PrototypeState)
+def restore_prototype(rid: int, body: PrototypeRestore, db: Session = Depends(get_db)):
+    """Undo/restore: re-apply the document from the revision at `order` as a new latest revision
+    (linear history — restore never rewrites the past, design A6)."""
+    r = get_request(db, rid)
+    if r.type != "new":
+        return _prototype_state(db, r, thinking=False)
+    target = next((t for t in r.prototype_turns if t.order == body.order and t.html is not None), None)
+    if target is None:
+        return _prototype_state(db, r, thinking=prototype_gen.is_thinking(r))
+    db.add(PrototypeTurn(request=r, order=len(r.prototype_turns), instruction=None, mode="rewrite",
+                         note="Reverted to an earlier version.", html=target.html))
+    r.prototype_html = target.html
+    r.prototype_status = "edited"
+    db.commit()
+    db.refresh(r)
+    return _prototype_state(db, r, thinking=False)
 
 
 # ---------- submit (after Review step) ----------

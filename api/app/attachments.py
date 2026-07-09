@@ -1,10 +1,11 @@
-"""Attachment storage + validation (ADR 0022).
+"""Attachment storage + validation (ADR 0022, relaxed 2026-07-04).
 
 Bytes live on the local filesystem under settings.UPLOADS/<request_id>/<stored>;
-the DB row is metadata only. Type is decided by sniffing magic bytes — never by
-the client-supplied extension — and text formats (no signature) are accepted by
-extension only if the bytes decode as UTF-8. build_workdir() materialises a
-throwaway dir of friendly-named copies for the Codex working directory.
+the DB row is metadata only. Any file type is accepted up to the size cap;
+sniffing magic bytes — never the client-supplied extension — decides whether a
+file is treated as an image (embedded for the model) or a generic document.
+build_workdir() materialises a throwaway dir of friendly-named copies for the
+Codex working directory.
 """
 import re
 import shutil
@@ -36,22 +37,21 @@ def _ext(filename: str) -> str:
     return Path(filename).suffix.lower()
 
 
-def sniff(data: bytes, filename: str) -> tuple[str, str] | None:
-    """Return (mime, kind) if the bytes are an allowed type, else None."""
+_GENERIC = ("application/octet-stream", "doc")
+
+
+def sniff(data: bytes, filename: str) -> tuple[str, str]:
+    """Best-effort (mime, kind) from magic bytes; unknown types are accepted as
+    generic documents rather than rejected. The "image" kind (embedded for the
+    model) is only granted when bytes AND extension agree — a PNG renamed .pdf
+    downgrades to a generic doc instead of being trusted (ADR 0022)."""
     head = data[:16]
     ext = _ext(filename)
     for sig, mime in _IMAGE_SIGS:
         if head.startswith(sig):
-            # Extension must also be a recognised image extension: a PNG renamed
-            # .pdf (or any non-image ext) is rejected rather than silently
-            # re-labelled — the mismatch is a red flag (ADR 0022).
-            if ext not in _IMAGE_EXT:
-                return None
-            return mime, "image"
+            return (mime, "image") if ext in _IMAGE_EXT else _GENERIC
     if head[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        if ext not in _IMAGE_EXT:
-            return None
-        return "image/webp", "image"
+        return ("image/webp", "image") if ext in _IMAGE_EXT else _GENERIC
     if head[:5] == b"%PDF-":
         return "application/pdf", "doc"
     if head[:4] == b"PK\x03\x04" and ext in _ZIP_EXT:  # Office files are ZIP archives
@@ -60,9 +60,9 @@ def sniff(data: bytes, filename: str) -> tuple[str, str] | None:
         try:
             data.decode("utf-8")
         except UnicodeDecodeError:
-            return None
+            return _GENERIC
         return _TEXT_EXT[ext], "doc"
-    return None
+    return _GENERIC
 
 
 def path_of(att: Attachment) -> Path:
@@ -70,13 +70,10 @@ def path_of(att: Attachment) -> Path:
 
 
 def save(db: Session, r: Request, *, filename: str, data: bytes, source: str) -> Attachment:
-    """Validate (size + magic bytes) and persist bytes + row. Raises ValueError on reject."""
+    """Validate size and persist bytes + row. Raises ValueError on reject."""
     if len(data) > settings.ATTACH_MAX_BYTES:
         raise ValueError("file too large")
-    sniffed = sniff(data, filename)
-    if sniffed is None:
-        raise ValueError("unsupported file type")
-    mime, kind = sniffed
+    mime, kind = sniff(data, filename)
     stored = uuid.uuid4().hex + _ext(filename)
     dest = settings.UPLOADS / str(r.id) / stored
     dest.parent.mkdir(parents=True, exist_ok=True)

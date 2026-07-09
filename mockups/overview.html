@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Software Factory — Architecture Overview</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23a402dc'/%3E%3Crect x='9' y='9' width='13' height='13' rx='3' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* neutrals — warm near-white canvas */
+    --canvas: #faf9fb;
+    --surface: #ffffff;
+    --surface-2: #f4f3f7;
+    --surface-3: #ecebf1;
+    --ink: #17171c;
+    --ink-2: #3a3a42;
+    --muted: #6c6c78;
+    --faint: #8a8a94;
+    --line: #e7e6ec;
+    --line-strong: #d7d7de;
+    --hairline: #f0eff4;
+
+    /* reserved purple accent (Micron) */
+    --a50: #fbe9fe;
+    --a100: #f6d0fe;
+    --a200: #eea6fc;
+    --accent: #a402dc;
+    --accent-2: #8a01bc;
+    --accent-ink: #6e0196;
+
+    /* status by shape */
+    --amber: #c77800;   --amber-bg: #fbf0df;  --amber-ink: #6e4500;  --amber-line: #ecc98a;
+    --red: #c0392b;     --red-bg: #fbe9e7;    --red-ink: #7e2018;    --red-line: #f0bdb6;
+    --green: #1f7a4d;   --green-bg: #e4f4ea;  --green-ink: #155235;  --green-line: #aedcc1;
+    --blue: #2563a8;    --blue-bg: #e7f0fb;   --blue-ink: #173f6b;   --blue-line: #b7d2ef;
+
+    --display: 'Fraunces', Georgia, serif;
+    --body: 'Hanken Grotesk', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+
+    --shadow-sm: 0 1px 2px rgba(20,16,28,.05);
+    --shadow-md: 0 2px 8px rgba(20,16,28,.05), 0 18px 40px -24px rgba(90,0,120,.16);
+    --shadow-lg: 0 4px 14px rgba(20,16,28,.06), 0 30px 60px -28px rgba(90,0,120,.22);
+    --r: 16px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--body);
+    color: var(--ink);
+    background: var(--canvas);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    line-height: 1.55;
+    overflow-x: hidden;
+  }
+
+  /* atmosphere: faint dot grid + soft purple bloom */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background-image: radial-gradient(circle at 1px 1px, rgba(110,1,150,.05) 1px, transparent 0);
+    background-size: 26px 26px;
+    pointer-events: none; z-index: 0;
+    mask-image: linear-gradient(to bottom, #000, transparent 60%);
+  }
+  body::after {
+    content: "";
+    position: fixed; top: -28vh; right: -18vw;
+    width: 70vw; height: 70vh;
+    background: radial-gradient(closest-side, rgba(164,2,220,.10), rgba(164,2,220,0) 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+
+  a { color: var(--accent-2); text-decoration: none; }
+  a:hover { color: var(--accent-ink); }
+
+  code, .mono { font-family: var(--mono); font-size: .86em; }
+  .kbd {
+    font-family: var(--mono); font-size: .82em;
+    background: var(--surface-2); border: 1px solid var(--line);
+    padding: .08em .42em; border-radius: 6px; color: var(--ink-2);
+    white-space: nowrap;
+  }
+
+  /* ---------- top nav ---------- */
+  header.nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: saturate(1.4) blur(12px);
+    background: rgba(250,249,251,.78);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .nav-in { max-width: 1080px; margin: 0 auto; padding: 13px 28px;
+    display: flex; align-items: center; gap: 18px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -.01em; }
+  .brand .mk {
+    width: 26px; height: 26px; border-radius: 8px; flex: none;
+    background: linear-gradient(150deg, var(--accent), var(--accent-ink));
+    box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.4);
+    position: relative;
+  }
+  .brand .mk::after {
+    content: ""; position: absolute; inset: 7px;
+    border: 1.6px solid rgba(255,255,255,.92); border-radius: 3px;
+    border-right-color: transparent; border-bottom-color: transparent;
+  }
+  .nav nav { margin-left: auto; display: flex; gap: 4px; }
+  .nav nav a {
+    font-size: 13.5px; color: var(--muted); padding: 6px 11px; border-radius: 8px;
+    font-weight: 500; transition: .16s;
+  }
+  .nav nav a:hover { color: var(--ink); background: var(--surface-2); }
+  .pill {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
+    color: var(--accent-ink); background: var(--a50); border: 1px solid var(--a100);
+    padding: 4px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  @media (max-width: 760px) { .nav nav { display: none; } }
+
+  /* ---------- reveal animation ---------- */
+  .rise { opacity: 0; transform: translateY(14px); animation: rise .7s cubic-bezier(.2,.7,.2,1) forwards; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .rise { animation: none; opacity: 1; transform: none; } }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 76px 0 30px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--accent-ink); margin-bottom: 22px;
+  }
+  .eyebrow .dot { color: var(--a200); margin: 0 8px; }
+  h1.title {
+    font-family: var(--display); font-optical-sizing: auto;
+    font-weight: 600; font-size: clamp(40px, 7vw, 76px); line-height: 1.02;
+    letter-spacing: -.025em; margin: 0 0 22px; color: var(--ink);
+  }
+  h1.title em { font-style: italic; font-weight: 500; color: var(--accent-2); }
+  .lede { font-size: clamp(17px, 2.1vw, 21px); color: var(--ink-2); max-width: 60ch; margin: 0 0 30px; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  .stat-row { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--line);
+    border-radius: var(--r); background: var(--surface); box-shadow: var(--shadow-sm); overflow: hidden; }
+  .stat { flex: 1 1 0; min-width: 130px; padding: 18px 22px; border-right: 1px solid var(--hairline); }
+  .stat:last-child { border-right: 0; }
+  .stat .n { font-family: var(--display); font-size: 34px; font-weight: 600; letter-spacing: -.02em; line-height: 1; }
+  .stat .n span { color: var(--accent); }
+  .stat .l { font-size: 13px; color: var(--muted); margin-top: 7px; }
+  @media (max-width: 620px) { .stat { flex-basis: 50%; border-bottom: 1px solid var(--hairline); }
+    .stat:nth-child(2n) { border-right: 0; } }
+
+  /* ---------- section scaffolding ---------- */
+  section { padding: 58px 0 8px; }
+  .sec-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 26px; }
+  .sec-num { font-family: var(--mono); font-size: 13px; color: var(--accent); padding-top: 6px; }
+  .sec-head h2 { font-family: var(--display); font-weight: 600; font-size: clamp(26px, 3.6vw, 36px);
+    letter-spacing: -.02em; margin: 0; }
+  .sec-head p { margin: 6px 0 0; color: var(--muted); font-size: 15px; max-width: 56ch; }
+  .sec-head .grow { flex: 1; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    box-shadow: var(--shadow-sm); }
+
+  /* ---------- pipeline (signature) ---------- */
+  .pipe { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    box-shadow: var(--shadow-md); overflow: hidden; }
+  .stage { position: relative; padding: 20px 18px 22px; border-right: 1px solid var(--hairline); }
+  .stage:last-child { border-right: 0; }
+  .stage .sx { font-family: var(--mono); font-size: 11px; color: var(--faint); letter-spacing: .08em; }
+  .stage .sn { font-family: var(--display); font-size: 19px; font-weight: 600; letter-spacing: -.01em;
+    margin: 9px 0 4px; line-height: 1.12; }
+  .stage .role { font-family: var(--mono); font-size: 11.5px; color: var(--accent-2); }
+  .stage .art { margin-top: 13px; font-size: 12px; color: var(--muted); }
+  .stage .art b { display: block; color: var(--ink-2); font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; color: var(--faint); }
+  .stage .num { position: absolute; top: 16px; right: 16px;
+    font-family: var(--display); font-size: 30px; font-weight: 600; color: var(--surface-3); line-height: 1; }
+  /* gate ribbon under the pipeline */
+  .gate-ribbon { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 14px; }
+  .gchip { font-family: var(--mono); font-size: 10.5px; letter-spacing: .02em; text-align: center;
+    padding: 7px 6px; border-radius: 9px; border: 1px solid; line-height: 1.3; }
+  .gchip small { display: block; font-size: 9px; opacity: .8; letter-spacing: .04em; }
+  .g-human { background: var(--amber-bg); border-color: var(--amber-line); color: var(--amber-ink); }
+  .g-auto { background: var(--green-bg); border-color: var(--green-line); color: var(--green-ink); }
+  .g-none { background: transparent; border-color: transparent; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 16px; font-size: 12.5px; color: var(--muted); }
+  .legend .sw { display: inline-flex; align-items: center; gap: 7px; }
+  .legend .box { width: 13px; height: 13px; border-radius: 4px; border: 1px solid; }
+  @media (max-width: 860px) {
+    .pipe { grid-template-columns: 1fr 1fr; }
+    .stage { border-bottom: 1px solid var(--hairline); }
+    .gate-ribbon { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 480px) { .pipe, .gate-ribbon { grid-template-columns: 1fr; } }
+
+  /* ---------- flow (how it works) ---------- */
+  .flow { display: grid; gap: 14px; }
+  .step { display: grid; grid-template-columns: 44px 1fr; gap: 16px; align-items: start;
+    padding: 18px 20px; }
+  .step .si { font-family: var(--display); font-size: 22px; font-weight: 600; color: var(--accent);
+    width: 40px; height: 40px; display: grid; place-items: center; border-radius: 11px;
+    background: var(--a50); border: 1px solid var(--a100); }
+  .step h4 { margin: 4px 0 5px; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  .step p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .step .who { font-family: var(--mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
+  .who-sub { background: var(--blue-bg); color: var(--blue-ink); border: 1px solid var(--blue-line); }
+  .who-admin { background: var(--amber-bg); color: var(--amber-ink); border: 1px solid var(--amber-line); }
+  .who-bot { background: var(--a50); color: var(--accent-ink); border: 1px solid var(--a100); }
+
+  /* ---------- architecture diagram ---------- */
+  .arch { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .node { padding: 18px; }
+  .node .tag { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--faint); }
+  .node h4 { margin: 8px 0 4px; font-size: 17px; letter-spacing: -.01em; }
+  .node .path { font-family: var(--mono); font-size: 12px; color: var(--accent-2); }
+  .node p { font-size: 13.5px; color: var(--muted); margin: 10px 0 0; }
+  .node .port { display: inline-block; margin-top: 12px; font-family: var(--mono); font-size: 11px;
+    color: var(--green-ink); background: var(--green-bg); border: 1px solid var(--green-line);
+    padding: 2px 8px; border-radius: 999px; }
+  .node.spine { border-color: var(--a200); box-shadow: 0 0 0 3px var(--a50), var(--shadow-md); }
+  .conn { text-align: center; color: var(--a200); font-size: 22px; margin: -4px 0; }
+  .shared { margin-top: 14px; padding: 16px 20px; display: flex; gap: 16px; align-items: center;
+    flex-wrap: wrap; }
+  .shared .lib { font-family: var(--mono); font-weight: 600; color: var(--accent-ink); }
+  .shared span { color: var(--muted); font-size: 13.5px; }
+
+  .mods { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+  .mod { padding: 15px 16px; }
+  .mod .mh { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--accent-ink); margin-bottom: 10px; }
+  .mod ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+  .mod li { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); }
+  .mod li small { display: block; font-family: var(--body); font-size: 11.5px; color: var(--faint);
+    margin-top: 1px; }
+  @media (max-width: 860px) { .arch { grid-template-columns: 1fr; } .conn { transform: rotate(90deg); }
+    .mods { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 520px) { .mods { grid-template-columns: 1fr; } }
+
+  /* ---------- seams ---------- */
+  .seams { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .seam { padding: 22px; }
+  .seam h4 { font-family: var(--display); font-size: 20px; font-weight: 600; margin: 0 0 3px;
+    letter-spacing: -.01em; }
+  .seam .sub { color: var(--muted); font-size: 13.5px; margin-bottom: 16px; }
+  .seam .opt { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--hairline); }
+  .seam .opt:first-of-type { border-top: 0; }
+  .badge { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+  .b-default { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+  .b-real { background: var(--a50); color: var(--accent-ink); border: 1px solid var(--a100); }
+  .seam .opt .d { font-size: 13.5px; color: var(--ink-2); }
+  .seam .opt .d code { color: var(--accent-2); }
+  .seam .env { margin-top: 14px; font-family: var(--mono); font-size: 12px; color: var(--muted);
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 9px 12px; }
+  .seam .env b { color: var(--ink); }
+  @media (max-width: 720px) { .seams { grid-template-columns: 1fr; } }
+
+  /* ---------- gates detail ---------- */
+  .gates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .gate { padding: 17px 19px; display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+  .gate .mark { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+    font-family: var(--mono); font-size: 14px; font-weight: 600; flex: none; }
+  .m-auto { background: var(--green-bg); color: var(--green-ink); border: 1px solid var(--green-line); }
+  .m-human { background: var(--amber-bg); color: var(--amber-ink); border: 1px solid var(--amber-line); }
+  .gate h4 { margin: 1px 0 4px; font-size: 15px; letter-spacing: -.01em; display: flex; gap: 8px; align-items: center; }
+  .gate h4 .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 999px; }
+  .k-auto { background: var(--green-bg); color: var(--green-ink); }
+  .k-human { background: var(--amber-bg); color: var(--amber-ink); }
+  .gate p { margin: 0; font-size: 13px; color: var(--muted); }
+  .escal { margin-top: 14px; padding: 15px 19px; display: flex; gap: 13px; align-items: flex-start;
+    background: var(--red-bg); border: 1px solid var(--red-line); border-radius: var(--r); }
+  .escal .ic { color: var(--red); font-size: 18px; line-height: 1.3; }
+  .escal b { color: var(--red-ink); }
+  .escal p { margin: 3px 0 0; font-size: 13.5px; color: var(--red-ink); opacity: .92; }
+  @media (max-width: 720px) { .gates { grid-template-columns: 1fr; } }
+
+  /* ---------- start / commands ---------- */
+  .term { background: #1a1620; border-radius: var(--r); overflow: hidden; box-shadow: var(--shadow-lg);
+    border: 1px solid #2a2433; }
+  .term .bar { display: flex; align-items: center; gap: 7px; padding: 11px 15px; background: #221c2b;
+    border-bottom: 1px solid #2f2839; }
+  .term .bar i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .term .bar .t { margin-left: 10px; font-family: var(--mono); font-size: 11.5px; color: #9a8fae; }
+  .term pre { margin: 0; padding: 18px 20px; font-family: var(--mono); font-size: 13px; line-height: 1.85;
+    color: #e7e0f0; overflow-x: auto; }
+  .term .c { color: #c9a6ff; }            /* command */
+  .term .cm { color: #6f6385; }           /* comment */
+  .term .o { color: #8fd6a8; }            /* ok / output */
+  .term .e { color: #ffcf8b; }            /* env var */
+
+  .start-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; align-items: start; }
+  .ports { padding: 4px 0; overflow: hidden; }
+  .ports table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .ports th:nth-child(1), .ports td:nth-child(1) { width: 40%; }
+  .ports th:nth-child(2), .ports td:nth-child(2) { width: 30%; }
+  .ports th { text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--faint); font-weight: 500; padding: 13px 16px 9px; }
+  .ports td { padding: 11px 16px; border-top: 1px solid var(--hairline); font-size: 14px;
+    overflow-wrap: anywhere; }
+  .ports td.p { font-family: var(--mono); color: var(--accent-2); font-size: 13px; }
+  .ports td.s { color: var(--muted); font-size: 13px; }
+  .ports tr:hover td { background: var(--surface-2); }
+  .note { font-size: 13px; color: var(--muted); margin-top: 14px; padding-left: 14px;
+    border-left: 2px solid var(--a200); }
+  @media (max-width: 820px) { .start-grid { grid-template-columns: 1fr; } }
+
+  /* ---------- repository tree ---------- */
+  .tree-wrap { overflow: hidden; box-shadow: var(--shadow-md); }
+  .tree-bar { display: flex; align-items: center; gap: 10px; padding: 11px 16px;
+    background: var(--surface-2); border-bottom: 1px solid var(--line);
+    font-family: var(--mono); font-size: 11.5px; color: var(--muted); letter-spacing: .03em; }
+  .tree-bar .dots { display: flex; gap: 6px; }
+  .tree-bar .dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
+  .tree-bar .meta { margin-left: auto; color: var(--faint); }
+  .tree { font-family: var(--mono); font-size: 12.5px; padding: 12px 8px; overflow-x: auto; }
+  .tl { display: flex; align-items: baseline; padding: 2.5px 12px; border-radius: 7px; white-space: nowrap; }
+  .tl:hover { background: var(--surface-2); }
+  .tl .t { white-space: pre; color: var(--line-strong); }
+  .tl .root { color: var(--ink); font-weight: 700; }
+  .tl .dir { color: var(--accent-2); font-weight: 600; }
+  .tl .file { color: var(--ink-2); }
+  .tl .sep { color: var(--line-strong); padding: 0 7px; }
+  .tl .an { margin-left: 18px; color: var(--faint); font-family: var(--body); font-size: 12px; }
+  .tl .an::before { content: '·'; margin-right: 10px; color: var(--line-strong); }
+  .tree-key { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; font-size: 12.5px; color: var(--muted); }
+  .tree-key b { font-family: var(--mono); font-weight: 600; }
+  .tree-key .d { color: var(--accent-2); }
+
+  /* ---------- footer ---------- */
+  footer { margin-top: 70px; border-top: 1px solid var(--line); background: var(--surface); }
+  .foot { max-width: 1080px; margin: 0 auto; padding: 30px 28px 44px;
+    display: flex; flex-wrap: wrap; gap: 24px; align-items: center; }
+  .foot .docs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .foot .docs a { font-family: var(--mono); font-size: 12px; color: var(--ink-2);
+    border: 1px solid var(--line); background: var(--canvas); padding: 6px 11px; border-radius: 8px; }
+  .foot .docs a:hover { border-color: var(--a200); color: var(--accent-ink); background: var(--a50); }
+  .foot .meta { margin-left: auto; font-size: 12.5px; color: var(--faint); }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-in">
+    <div class="brand"><span class="mk"></span> Software&nbsp;Factory</div>
+    <nav>
+      <a href="#pipeline">Pipeline</a>
+      <a href="#how">How it works</a>
+      <a href="#arch">Architecture</a>
+      <a href="#layout">Layout</a>
+      <a href="#seams">Seams</a>
+      <a href="#gates">Gates</a>
+      <a href="#start">Start</a>
+    </nav>
+    <span class="pill">architecture overview</span>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="eyebrow rise">Autonomous <span class="dot">◆</span> Governed <span class="dot">◆</span> Full SDLC</div>
+    <h1 class="title rise" style="animation-delay:.05s">An AI pipeline that ships code —<br><em>with humans on the irreversible boundaries.</em></h1>
+    <p class="lede rise" style="animation-delay:.1s">Software Factory carries one unit of work through the whole software lifecycle as a chain of <b>narrow, single-responsibility agents</b> — requirements → architecture → test-first build → review → deploy. Each agent hands a <b>validated artifact</b> to the next, machine-checked gates catch cheating, and a human approves every step that can't be undone.</p>
+    <div class="stat-row rise" style="animation-delay:.15s">
+      <div class="stat"><div class="n">6</div><div class="l">Stages, agent per step</div></div>
+      <div class="stat"><div class="n">2</div><div class="l">Swappable seams (offline ⇄ real)</div></div>
+      <div class="stat"><div class="n">5</div><div class="l">Machine + human gates</div></div>
+      <div class="stat"><div class="n">3</div><div class="l">Deployables, one backend</div></div>
+      <div class="stat"><div class="n"><span>0</span></div><div class="l">Silent failures (always escalates)</div></div>
+    </div>
+  </section>
+
+  <!-- PIPELINE -->
+  <section id="pipeline">
+    <div class="sec-head">
+      <span class="sec-num">01</span>
+      <div>
+        <h2>The Factory pipeline</h2>
+        <p>Six stages, each a narrow agent that validates its input artifact before doing work. A gate sits between stages — green is machine-checked, amber needs a human.</p>
+      </div>
+    </div>
+
+    <div class="pipe">
+      <div class="stage"><span class="num">1</span><div class="sx">STAGE 01</div><div class="sn">Requirements</div><div class="role">requirements-analyst</div><div class="art"><b>emits</b>SPEC.md</div></div>
+      <div class="stage"><span class="num">2</span><div class="sx">STAGE 02</div><div class="sn">Architecture</div><div class="role">architect</div><div class="art"><b>emits</b>PLAN.md · ADRs</div></div>
+      <div class="stage"><span class="num">3</span><div class="sx">STAGE 03</div><div class="sn">Test authoring</div><div class="role">test-author</div><div class="art"><b>emits</b>failing tests</div></div>
+      <div class="stage"><span class="num">4</span><div class="sx">STAGE 04</div><div class="sn">Implementation</div><div class="role">implementer</div><div class="art"><b>emits</b>passing code</div></div>
+      <div class="stage"><span class="num">5</span><div class="sx">STAGE 05</div><div class="sn">Review</div><div class="role">reviewer</div><div class="art"><b>emits</b>review report</div></div>
+      <div class="stage"><span class="num">6</span><div class="sx">STAGE 06</div><div class="sn">Deploy</div><div class="role">deployer</div><div class="art"><b>emits</b>prod release</div></div>
+    </div>
+
+    <div class="gate-ribbon">
+      <div class="gchip g-human">Approve spec<small>HUMAN · S1</small></div>
+      <div class="gchip g-human">Sign ADRs<small>HUMAN · S2</small></div>
+      <div class="gchip g-auto">RED gate<small>AUTO · S3</small></div>
+      <div class="gchip g-auto">GREEN + isolation<small>AUTO · S4</small></div>
+      <div class="gchip g-human">Approve merge<small>HUMAN · S5</small></div>
+      <div class="gchip g-human">Approve deploy<small>HUMAN · S6</small></div>
+    </div>
+
+    <div class="legend">
+      <span class="sw"><span class="box" style="background:var(--green-bg);border-color:var(--green-line)"></span> Automated gate — a CI / git check decides</span>
+      <span class="sw"><span class="box" style="background:var(--amber-bg);border-color:var(--amber-line)"></span> Human gate — an Admin approves as themselves in GitHub</span>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how">
+    <div class="sec-head">
+      <span class="sec-num">02</span>
+      <div>
+        <h2>How a request flows</h2>
+        <p>From a non-technical request to merged code — the whole journey, and who is in control at each turn.</p>
+      </div>
+    </div>
+
+    <div class="flow card">
+      <div class="step"><span class="si">1</span><div><h4>A Request comes in the front door <span class="who who-sub">Submitter</span></h4><p>Someone files a bug fix, enhancement, or new-app request in the <b>Intake form</b>. A short real-time <b>Intake interview</b> asks ~3–4 follow-ups to fill the gaps — no GitHub needed.</p></div></div>
+      <div class="step"><span class="si">2</span><div><h4>The brain drafts a spec <span class="who who-bot">Brain seam</span></h4><p>The Stage-1 brain turns the enriched request into a <b>Draft spec</b>, stored in the database — not yet a repo file.</p></div></div>
+      <div class="step"><span class="si">3</span><div><h4>An Admin approves the spec <span class="who who-admin">Admin gate</span></h4><p>In the <b>Control center</b>, an Admin reads the draft and approves. That creates / picks the Subject repo, commits <code>SPEC.md</code> to a fresh branch — the <b>Work item</b> is born — and starts Stage&nbsp;2.</p></div></div>
+      <div class="step"><span class="si">4</span><div><h4>Agents build it test-first <span class="who who-bot">Runner seam</span></h4><p>Architecture → failing tests → implementation → review run as commits on the branch. Every agent call is bounded; each stage posts a milestone summary to the append-only progress log.</p></div></div>
+      <div class="step"><span class="si">5</span><div><h4>Gates catch cheating automatically <span class="who who-bot">Automated</span></h4><p>The <b>RED</b> gate proves tests fail for the right reason; <b>GREEN + test-isolation</b> proves the suite passes <em>and</em> the implementer never touched the tests. Reward-hacking can't slip through.</p></div></div>
+      <div class="step"><span class="si">6</span><div><h4>A human merges, then ships <span class="who who-admin">Admin gate</span></h4><p>The Admin approves the <b>Merge gate</b> (PR → main) and the <b>Deploy gate</b> (main → production) as themselves — real GitHub approvals on protected branches. The Factory never bypasses GitHub.</p></div></div>
+    </div>
+  </section>
+
+  <!-- ARCHITECTURE -->
+  <section id="arch">
+    <div class="sec-head">
+      <span class="sec-num">03</span>
+      <div>
+        <h2>Architecture</h2>
+        <p>A monorepo (ADR&nbsp;0017): two Angular apps and a shared library over one FastAPI backend. Single uvicorn worker, SQLite in WAL mode, one append-only event log.</p>
+      </div>
+    </div>
+
+    <div class="arch">
+      <div class="node card">
+        <div class="tag">Submitter app</div>
+        <h4>Intake form</h4>
+        <div class="path">apps/intake</div>
+        <p>The front door. Submit a request, run the interview, watch your own items. Angular 22, standalone + signals.</p>
+        <span class="port">:4201</span>
+      </div>
+      <div class="node card spine">
+        <div class="tag">Engine</div>
+        <h4>FastAPI backend</h4>
+        <div class="path">api/app</div>
+        <p>Request lifecycle, the two seams, gate logic, and the two-axis <code>progress_event</code> log (ADR&nbsp;0008). One process, one writer.</p>
+        <span class="port">:8000</span>
+      </div>
+      <div class="node card">
+        <div class="tag">Admin app</div>
+        <h4>Control center</h4>
+        <div class="path">apps/console</div>
+        <p>Mission control: kanban board, approval queue, per-app feed, needs-me inbox, gate buttons, registry.</p>
+        <span class="port">:4202</span>
+      </div>
+    </div>
+
+    <div class="card shared">
+      <span class="lib">@sf/shared</span>
+      <span>·&nbsp; <code>packages/shared</code> — domain models, API client, poll &amp; theme services, and the Micron Atlas UI kit both apps import.</span>
+    </div>
+
+    <div class="mods">
+      <div class="mod card">
+        <div class="mh">Domain core</div>
+        <ul>
+          <li>models.py<small>Request, Work item, gates, events</small></li>
+          <li>events.py<small>append-only progress log</small></li>
+          <li>db.py<small>SQLite WAL, sessions</small></li>
+        </ul>
+      </div>
+      <div class="mod card">
+        <div class="mh">The two seams</div>
+        <ul>
+          <li>interview.py<small>brain seam · get_brain()</small></li>
+          <li>claude_exec.py<small>subprocess boundary</small></li>
+          <li>simulator.py<small>offline runner (ticks)</small></li>
+          <li>claude_runner.py<small>real runner + gates</small></li>
+        </ul>
+      </div>
+      <div class="mod card">
+        <div class="mh">Orchestration</div>
+        <ul>
+          <li>main.py<small>app + tick loop</small></li>
+          <li>lifecycle.py<small>stage transitions</small></li>
+          <li>startup.py<small>backfills, escalate orphans</small></li>
+          <li>verification.py<small>gate evidence</small></li>
+        </ul>
+      </div>
+      <div class="mod card">
+        <div class="mh">HTTP routers</div>
+        <ul>
+          <li>requests.py<small>CRUD · interview · submit</small></li>
+          <li>gates.py<small>approve · retry · recovery</small></li>
+          <li>mission.py · events.py<small>board · feed · inbox</small></li>
+          <li>registry.py · system.py<small>app registry · health</small></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- LAYOUT -->
+  <section id="layout">
+    <div class="sec-head">
+      <span class="sec-num">04</span>
+      <div>
+        <h2>Repository layout</h2>
+        <p>Where the architecture lives on disk. One backend, two apps, and a shared library — a curated view of the tree (config and lockfiles trimmed).</p>
+      </div>
+    </div>
+
+    <div class="card tree-wrap">
+      <div class="tree-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span>software-factory/</span>
+        <span class="meta">monorepo · ADR 0017</span>
+      </div>
+      <div class="tree">
+        <div class="tl"><span class="root">software-factory/</span></div>
+        <div class="tl"><span class="t">├─ </span><span class="dir">api/</span><span class="an">FastAPI backend — one process, SQLite WAL</span></div>
+        <div class="tl"><span class="t">│  ├─ </span><span class="dir">app/</span></div>
+        <div class="tl"><span class="t">│  │  ├─ </span><span class="file">main.py</span><span class="an">app factory + tick loop</span></div>
+        <div class="tl"><span class="t">│  │  ├─ </span><span class="file">models.py</span><span class="an">domain model — Request, Work item, events</span></div>
+        <div class="tl"><span class="t">│  │  ├─ </span><span class="file">db.py</span><span class="sep">·</span><span class="file">events.py</span><span class="an">SQLite WAL · append-only progress log</span></div>
+        <div class="tl"><span class="t">│  │  ├─ </span><span class="file">interview.py</span><span class="sep">·</span><span class="file">claude_brain.py</span><span class="an">brain seam · real intake brain</span></div>
+        <div class="tl"><span class="t">│  │  ├─ </span><span class="file">claude_exec.py</span><span class="an">single subprocess boundary — bounds every agent call</span></div>
+        <div class="tl"><span class="t">│  │  ├─ </span><span class="file">simulator.py</span><span class="sep">·</span><span class="file">claude_runner.py</span><span class="an">offline runner · real Stage 2–5 runner + gates</span></div>
+        <div class="tl"><span class="t">│  │  ├─ </span><span class="file">lifecycle.py</span><span class="sep">·</span><span class="file">startup.py</span><span class="sep">·</span><span class="file">verification.py</span><span class="an">transitions · backfills · gate evidence</span></div>
+        <div class="tl"><span class="t">│  │  └─ </span><span class="dir">routers/</span><span class="an">HTTP layer</span></div>
+        <div class="tl"><span class="t">│  │     ├─ </span><span class="file">requests.py</span><span class="an">CRUD · interview · submit</span></div>
+        <div class="tl"><span class="t">│  │     ├─ </span><span class="file">gates.py</span><span class="an">approve · retry · recovery actions</span></div>
+        <div class="tl"><span class="t">│  │     ├─ </span><span class="file">mission.py</span><span class="sep">·</span><span class="file">events.py</span><span class="an">board · feed · timeline · inbox</span></div>
+        <div class="tl"><span class="t">│  │     └─ </span><span class="file">registry.py</span><span class="sep">·</span><span class="file">system.py</span><span class="an">app registry · health</span></div>
+        <div class="tl"><span class="t">│  ├─ </span><span class="dir">tests/</span><span class="an">fake-executor gate tests</span></div>
+        <div class="tl"><span class="t">│  └─ </span><span class="file">pyproject.toml</span><span class="an">uv-managed deps</span></div>
+        <div class="tl"><span class="t">├─ </span><span class="dir">apps/</span><span class="an">two Angular 22 apps — standalone + signals</span></div>
+        <div class="tl"><span class="t">│  ├─ </span><span class="dir">intake/</span><span class="an">Submitter front door · :4201</span></div>
+        <div class="tl"><span class="t">│  │  └─ </span><span class="dir">src/app/submitter/</span><span class="an">new-request · interview · review · my-requests</span></div>
+        <div class="tl"><span class="t">│  └─ </span><span class="dir">console/</span><span class="an">Admin Control center · :4202</span></div>
+        <div class="tl"><span class="t">│     └─ </span><span class="dir">src/app/admin/</span><span class="an">mission · queue · feed · inbox · registry</span></div>
+        <div class="tl"><span class="t">├─ </span><span class="dir">packages/</span></div>
+        <div class="tl"><span class="t">│  └─ </span><span class="dir">shared/</span><span class="an">@sf/shared — imported by both apps</span></div>
+        <div class="tl"><span class="t">│     └─ </span><span class="dir">src/lib/</span><span class="an">models · api.service · poll · theme · kit</span></div>
+        <div class="tl"><span class="t">├─ </span><span class="dir">sample/</span><span class="an">template Subject workspace (uv + pytest)</span></div>
+        <div class="tl"><span class="t">├─ </span><span class="dir">scripts/</span><span class="file">smoke.sh</span><span class="an">end-to-end lifecycle smoke test</span></div>
+        <div class="tl"><span class="t">├─ </span><span class="dir">docs/</span><span class="an">adr/ · design/ · prd/ — decisions &amp; specs</span></div>
+        <div class="tl"><span class="t">├─ </span><span class="file">Taskfile.yml</span><span class="an">task dev · verify · up · reset</span></div>
+        <div class="tl"><span class="t">├─ </span><span class="file">AGENTS.md</span><span class="sep">·</span><span class="file">CONTEXT.md</span><span class="an">agent guide · domain glossary</span></div>
+        <div class="tl"><span class="t">└─ </span><span class="file">README.md</span><span class="sep">·</span><span class="file">docker-compose.yml</span><span class="an">quickstart · prod-shaped stack</span></div>
+      </div>
+    </div>
+
+    <div class="tree-key">
+      <span class="sw"><b class="d">name/</b> directory</span>
+      <span class="sw"><b>name.py</b> module</span>
+      <span>annotations describe role, not every file</span>
+    </div>
+  </section>
+
+  <!-- SEAMS -->
+  <section id="seams">
+    <div class="sec-head">
+      <span class="sec-num">05</span>
+      <div>
+        <h2>Two seams: offline by default, real on demand</h2>
+        <p>The whole factory runs offline with deterministic stand-ins. Flip an env var to swap in a real LLM — the domain model never changes. Deterministic seams are disposable; the domain model is not.</p>
+      </div>
+    </div>
+
+    <div class="seams">
+      <div class="seam card">
+        <h4>Brain seam</h4>
+        <div class="sub">Stage 1 — the intake interview &amp; draft spec.</div>
+        <div class="opt"><span class="badge b-default">default</span><div class="d"><b>ScriptedBrain</b> — deterministic, no LLM calls.</div></div>
+        <div class="opt"><span class="badge b-real">real</span><div class="d"><b>ClaudeBrain</b> — <code>claude_brain.py</code>, falls back to scripted if the model call fails.</div></div>
+        <div class="env">flip with <b>FACTORY_BRAIN=claude</b></div>
+      </div>
+      <div class="seam card">
+        <h4>Runner seam</h4>
+        <div class="sub">Stages 2–5 — architecture through review.</div>
+        <div class="opt"><span class="badge b-default">default</span><div class="d"><b>simulator.py</b> — a tick-driven simulation of the CI agents.</div></div>
+        <div class="opt"><span class="badge b-real">real</span><div class="d"><b>ClaudeRunner</b> — runs in a per-request git workspace with live gates.</div></div>
+        <div class="env">flip with <b>FACTORY_RUNNER=claude</b> · pick CLI with <b>FACTORY_CLI=</b> codex (default) | claude</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GATES -->
+  <section id="gates">
+    <div class="sec-head">
+      <span class="sec-num">06</span>
+      <div>
+        <h2>The gates</h2>
+        <p>Rules are guaranteed at the git / orchestration layer — checked against the artifact, not the agent's good behavior. The test-isolation gate is the load-bearing one.</p>
+      </div>
+    </div>
+
+    <div class="gates">
+      <div class="gate card"><div class="mark m-auto">✓</div><div><h4>RED gate <span class="k k-auto">automated</span></h4><p>New tests collect cleanly, fail as assertions (not runtime errors), and leave the existing suite green. "Fail for the right reason."</p></div></div>
+      <div class="gate card"><div class="mark m-auto">✓</div><div><h4>GREEN + test-isolation <span class="k k-auto">automated</span></h4><p>The full suite passes <em>and</em> the frozen <code>tests/</code> hash is untouched — an implementer that weakens its tests to "pass" is caught and escalated.</p></div></div>
+      <div class="gate card"><div class="mark m-auto">✓</div><div><h4>Review gate <span class="k k-auto">automated</span></h4><p>A review summary artifact must exist in the work item's workspace — a structural check the pipeline enforces.</p></div></div>
+      <div class="gate card"><div class="mark m-human">◆</div><div><h4>Merge gate <span class="k k-human">human</span></h4><p>An Admin approves the PR into <code>main</code> as themselves. A protected-branch approval — GitHub blocks self-approval and still requires all CI checks.</p></div></div>
+      <div class="gate card"><div class="mark m-human">◆</div><div><h4>Deploy gate <span class="k k-human">human</span></h4><p>Ship to production by approving a <code>main → production</code> promotion PR. Same protected-branch mechanism as merge.</p></div></div>
+      <div class="gate card"><div class="mark m-human">◆</div><div><h4>Spec approval &amp; Sign ADRs <span class="k k-human">human</span></h4><p>The two early human gates: an Admin approves the draft spec (S1) and signs off the architecture (S2) before a single line is built.</p></div></div>
+    </div>
+
+    <div class="escal">
+      <span class="ic">▲</span>
+      <div><b>No silent stranding.</b><p>Any gate failure, timeout, or crashed stage stops the pipeline and flags the work item <code>needs_human</code> — there is no automatic retry. An Admin then picks a recovery action: <b>Retry</b>, <b>Retry with a note</b>, <b>Send back</b>, <b>Take over</b>, or <b>Cancel</b>. Every stage is re-runnable against the current PR state (resumability).</p></div>
+    </div>
+  </section>
+
+  <!-- START -->
+  <section id="start">
+    <div class="sec-head">
+      <span class="sec-num">07</span>
+      <div>
+        <h2>Start the app</h2>
+        <p>Orchestration is <a href="https://taskfile.dev">Task</a> (cross-platform). Activate the pinned Node once per shell (<span class="kbd">.nvmrc → 24.15.0</span>, <span class="kbd">nvm use</span>), then run a single recipe.</p>
+      </div>
+    </div>
+
+    <div class="start-grid">
+      <div>
+        <div class="term">
+          <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="t">software-factory — task dev</span></div>
+<pre><span class="cm"># everything, offline (simulator ticks every 8s)</span>
+<span class="c">task dev</span>
+  <span class="o">→</span> API        http://localhost:8000
+  <span class="o">→</span> Intake     http://localhost:4201
+  <span class="o">→</span> Console    http://localhost:4202
+
+<span class="cm"># open the front door, sign in as a Submitter,</span>
+<span class="cm"># or "as a reviewer" for the Control center.</span>
+
+<span class="cm"># verify before merging anything</span>
+<span class="c">task verify</span>     <span class="o">✓ VERIFY PASSED</span>
+<span class="cm"># lint + pytest + vitest + ng build + smoke</span>
+
+<span class="cm"># re-seed the demo world / reset the db</span>
+<span class="c">task reset</span>
+
+<span class="cm"># production-shaped stack (nginx + volume)</span>
+<span class="c">task up</span>        <span class="o">→</span> http://localhost:8080
+
+<span class="cm"># ── run the REAL factory ──────────────────</span>
+cd api &amp;&amp; <span class="e">FACTORY_BRAIN</span>=claude <span class="e">FACTORY_RUNNER</span>=claude \
+  uv run uvicorn app.main:app --port 8000</pre>
+        </div>
+        <p class="note">Single uvicorn worker only — the tick loop and pipeline threads assume one process and SQLite has one writer. Don't scale replicas without an ADR.</p>
+      </div>
+
+      <div class="card ports">
+        <table>
+          <thead><tr><th>Surface</th><th>URL</th><th>Who</th></tr></thead>
+          <tbody>
+            <tr><td>Intake form</td><td class="p">:4201</td><td class="s">Submitter</td></tr>
+            <tr><td>Control center</td><td class="p">:4202</td><td class="s">Admin</td></tr>
+            <tr><td>API</td><td class="p">:8000</td><td class="s">backend</td></tr>
+            <tr><td>Docker stack</td><td class="p">:8080</td><td class="s">prod-shaped</td></tr>
+            <tr><td>Health</td><td class="p">/api/health</td><td class="s">brain·runner·cli</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="foot">
+    <div class="docs">
+      <a href="../AGENTS.md">AGENTS.md</a>
+      <a href="../CONTEXT.md">CONTEXT.md</a>
+      <a href="../README.md">README.md</a>
+      <a href="../VERIFICATION.md">VERIFICATION.md</a>
+      <a href="../docs/adr/">docs/adr/</a>
+    </div>
+    <div class="meta">Software Factory — architecture overview · light theme</div>
+  </div>
+</footer>
+
+<script>
+  // staggered reveal for sections as they enter view
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e, i) => {
+      if (e.isIntersecting) {
+        e.target.style.animationDelay = (i * 0.04) + 's';
+        e.target.classList.add('rise');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('section .card, section .pipe, .gate-ribbon, .legend').forEach(el => io.observe(el));
+</script>
+
+</body>
+</html>

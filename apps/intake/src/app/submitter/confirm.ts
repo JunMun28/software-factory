@@ -11,7 +11,7 @@ const STAGES = ['Submitted', 'Spec drafted', 'Approved', 'Building', 'In review'
   selector: 'sf-confirm',
   imports: [SubShell, Glyph, TypeChip],
   template: `
-    <sub-shell active="new" [step]="3">
+    <sub-shell active="new" [proto]="req()?.type === 'new'" [step]="req()?.type === 'new' ? 4 : 3">
       <div
         class="sub-col narrow fade-in"
         style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:18px;padding-top:40px"

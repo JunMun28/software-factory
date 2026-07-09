@@ -20,6 +20,22 @@ CODEX_MODEL = os.environ.get("FACTORY_CODEX_MODEL", "")  # empty → the CLI's c
 WORKSPACES = Path(os.environ.get("FACTORY_WORKSPACES", str(API_DIR / "workspaces")))
 SAMPLE = Path(os.environ.get("FACTORY_SAMPLE", str(REPO_DIR / "sample")))
 STAGE_TIMEOUT = int(os.environ.get("FACTORY_STAGE_TIMEOUT", "300"))
+# Per intake-interview model call. A cold `claude` CLI on a larger model routinely
+# runs 60-90s; too tight a bound makes questions time out and fall back to the
+# shallow scripted script, which defeats the adaptive-depth budget (esp. new apps).
+INTERVIEW_TIMEOUT = int(os.environ.get("FACTORY_INTERVIEW_TIMEOUT", "120"))
+# Reasoning-effort dial for the intake brain's read-only calls (low|medium|high|
+# xhigh|max). Empty → the model's default. Lower = faster but a quality risk on
+# deep interviews, so it ships off; --safe-mode already cuts the bulk of the wait.
+INTERVIEW_EFFORT = os.environ.get("FACTORY_INTERVIEW_EFFORT", "").strip()
+# Prototype step (new-app only). A full hi-fi HTML document is a much bigger generation than a
+# one-line interview question, so it gets its own longer bound. Default to sonnet-5: it clears the
+# taste>=7 bar for the baoyu/artifact-design harness AND token-streams smoothly (so the prose
+# preamble types out live, like the interview) — opus is thinking-heavy and slow, which stalls the
+# live typewriter on this interactive step. Set FACTORY_PROTOTYPE_MODEL=claude-opus-4-8 to trade
+# streaming/latency for max quality. Applies to the claude CLI path; codex keeps CODEX_MODEL.
+PROTOTYPE_TIMEOUT = int(os.environ.get("FACTORY_PROTOTYPE_TIMEOUT", "240"))
+PROTOTYPE_MODEL = os.environ.get("FACTORY_PROTOTYPE_MODEL", "claude-sonnet-5").strip()
 SIM_INTERVAL = float(os.environ.get("SIM_INTERVAL", "0") or 0)
 # run-state health (spec 2026-06-12 §5): an in-flight run whose latest step
 # event is older than this renders "slow". Default 3× the sim tick; fixed
@@ -33,6 +49,6 @@ SEED_DEMO = os.environ.get("FACTORY_SEED_DEMO", "1").lower() not in ("0", "false
 LOG_LEVEL = os.environ.get("FACTORY_LOG_LEVEL", "INFO")
 # Attachments (ADR 0022) — bytes on the local FS, metadata in the DB.
 UPLOADS = Path(os.environ.get("FACTORY_UPLOADS", str(API_DIR / "uploads")))
-ATTACH_MAX_BYTES = int(os.environ.get("FACTORY_ATTACH_MAX_BYTES", str(10 * 1024 * 1024)))  # 10 MB
+ATTACH_MAX_BYTES = int(os.environ.get("FACTORY_ATTACH_MAX_BYTES", str(100 * 1024 * 1024)))  # 100 MB
 ATTACH_MAX_COUNT = int(os.environ.get("FACTORY_ATTACH_MAX_COUNT", "5"))
 ATTACH_MAX_IMAGES = int(os.environ.get("FACTORY_ATTACH_MAX_IMAGES", "4"))  # passed to codex --image

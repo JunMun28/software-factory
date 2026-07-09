@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { Evidence, FactoryRequest, MissionOut, RequestDetail } from '@sf/shared';
 import {
@@ -18,6 +18,8 @@ import {
   missionSummary,
   plainActivity,
   plainStage,
+  prototypeSrcdoc,
+  streamState,
   timeAgo,
   utc,
 } from './util';
@@ -33,6 +35,7 @@ function req(over: Partial<FactoryRequest> = {}): FactoryRequest {
     reach: null,
     impact_metric: null,
     impact_value: null,
+    bug_where: null,
     priority: 'Normal',
     app_id: 1,
     app_name: 'App',
@@ -612,5 +615,125 @@ describe('adminStateLine — the admin request-detail live state', () => {
 
   it('falls back to the stage label otherwise', () => {
     expect(adminStateLine(detail({ status: 'submitted', stage: 'intake' }))).toBe('Intake');
+  });
+});
+
+describe('prototypeSrcdoc', () => {
+  const CSP = 'Content-Security-Policy';
+
+  it('strips the doc CSP and injects an authoritative one into <head>', () => {
+    const doc =
+      '<!doctype html><html><head>' +
+      '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'">' +
+      '<title>x</title></head><body>hi</body></html>';
+    const out = prototypeSrcdoc(doc);
+    // exactly one CSP meta remains — the injected one (the doc's was stripped)
+    expect(out.match(new RegExp(CSP, 'g'))!.length).toBe(1);
+    expect(out).toContain("script-src 'unsafe-inline'"); // inline scripts allowed (mock + inspector)
+    expect(out).toContain("connect-src 'none'"); // network blocked
+    expect(out.indexOf(CSP)).toBeLessThan(out.indexOf('<title>')); // injected at the top of <head>
+  });
+
+  it('handles content-first / unquoted / mixed-case CSP metas', () => {
+    const doc =
+      '<html><head><META CONTENT=foo HTTP-EQUIV=content-security-policy><title>t</title></head><body></body></html>';
+    const out = prototypeSrcdoc(doc);
+    expect(out).not.toContain('CONTENT=foo'); // the shipped CSP meta is gone
+    expect(out.match(new RegExp(CSP, 'gi'))!.length).toBe(1);
+  });
+
+  it('appends extra markup (the inspector) before </body>', () => {
+    const out = prototypeSrcdoc('<html><body><p>x</p></body></html>', '<script>1</script>');
+    expect(out).toContain('<script>1</script></body>');
+  });
+
+  it('injects a CSP even when the doc has no <head>', () => {
+    const out = prototypeSrcdoc('<div>bare</div>');
+    expect(out).toContain(CSP);
+    expect(out.indexOf(CSP)).toBeLessThan(out.indexOf('<div>bare'));
+  });
+});
+
+describe('streamState', () => {
+  type Handler = (e: MessageEvent) => void;
+  const noop = () => undefined;
+
+  // A minimal stand-in for the browser EventSource: records the URL, captures listeners,
+  // and lets the test drive the single `state` event / an error / a manual close. Each new
+  // instance registers itself in `instances`, so the test can reach the one streamState opened.
+  class FakeES {
+    static instances: FakeES[] = [];
+    onerror: (() => void) | null = null;
+    closed = false;
+    private handlers = new Map<string, Handler>();
+    constructor(public url: string) {
+      FakeES.instances.push(this);
+    }
+    addEventListener(type: string, fn: Handler) {
+      this.handlers.set(type, fn);
+    }
+    close() {
+      this.closed = true;
+    }
+    emit(type: string, data: string) {
+      this.handlers.get(type)?.({ data } as unknown as MessageEvent);
+    }
+  }
+  const opened = () => FakeES.instances[FakeES.instances.length - 1];
+
+  const g = globalThis as unknown as { EventSource: typeof EventSource };
+  let orig: typeof EventSource;
+  beforeEach(() => {
+    orig = g.EventSource;
+    g.EventSource = FakeES as unknown as typeof EventSource;
+    FakeES.instances = [];
+  });
+  afterEach(() => {
+    g.EventSource = orig;
+  });
+
+  it('opens the given URL and hands the parsed terminal state to onState', () => {
+    const seen: unknown[] = [];
+    streamState<{ ok: boolean }>(
+      '/api/x/stream',
+      (d) => seen.push(d),
+      () => seen.push('err'),
+    );
+    expect(opened().url).toBe('/api/x/stream');
+    opened().emit('state', JSON.stringify({ ok: true }));
+    expect(seen).toEqual([{ ok: true }]);
+  });
+
+  it('calls onError on a connection error', () => {
+    let errored = false;
+    streamState('/x', noop, () => {
+      errored = true;
+    });
+    opened().onerror!();
+    expect(errored).toBe(true);
+  });
+
+  it('falls back to onError (not onState) on an unparseable payload', () => {
+    let state = false;
+    let err = false;
+    streamState(
+      '/x',
+      () => {
+        state = true;
+      },
+      () => {
+        err = true;
+      },
+    );
+    opened().emit('state', 'not json{');
+    expect(state).toBe(false);
+    expect(err).toBe(true);
+  });
+
+  it('the returned fn closes the underlying EventSource', () => {
+    const close = streamState('/x', noop, noop);
+    expect(opened().closed).toBe(false);
+    close();
+    expect(opened().closed).toBe(true);
   });
 });
