@@ -239,7 +239,6 @@ import { SubShell } from './sub-shell';
     .glow__add:hover {
       background: var(--surface-2);
       color: var(--fg1);
-      border-color: var(--border-strong);
     }
     .glow__add:focus-visible {
       border-color: var(--a400);
