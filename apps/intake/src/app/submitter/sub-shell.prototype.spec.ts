@@ -15,7 +15,16 @@ import { SubShell } from './sub-shell';
 })
 class PrototypeHost {}
 
-const routes: Routes = [{ path: '', component: PrototypeHost }];
+@Component({
+  imports: [SubShell],
+  template: `<sub-shell [step]="1" [proto]="true">content</sub-shell>`,
+})
+class LaterStepHost {}
+
+const routes: Routes = [
+  { path: 'later', component: LaterStepHost },
+  { path: '', component: PrototypeHost },
+];
 
 describe('SubShell rail title prototype', () => {
   let harness: RouterTestingHarness;
@@ -75,6 +84,24 @@ describe('SubShell rail title prototype', () => {
     expect(label!.textContent).toContain('C — Compact pill');
   });
 
+  it('uses an unpadded step number in compact-pill variant C', async () => {
+    await router.navigateByUrl('/?variant=C');
+    harness.detectChanges();
+
+    const title = harness.routeNativeElement!.querySelector('[data-rail-variant="C"]')!;
+    const parts = title.querySelectorAll('span');
+    expect(parts[0].textContent).toBe('1');
+    expect(parts[1].textContent).toBe('Describe');
+  });
+
+  it('keeps bracket variant D free of decorative elements', async () => {
+    await router.navigateByUrl('/?variant=D');
+    harness.detectChanges();
+
+    const title = harness.routeNativeElement!.querySelector('[data-rail-variant="D"]')!;
+    expect(title.querySelectorAll('i')).toHaveLength(0);
+  });
+
   it('moves to variant D when ArrowRight is pressed', async () => {
     await router.navigateByUrl('/?variant=C');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
@@ -92,5 +119,13 @@ describe('SubShell rail title prototype', () => {
     await harness.fixture.whenStable();
 
     expect(router.url).toBe('/?variant=C');
+  });
+
+  it('does not change variants with arrow keys after the first step', async () => {
+    await harness.navigateByUrl('/later?variant=C', LaterStepHost);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await harness.fixture.whenStable();
+
+    expect(router.url).toBe('/later?variant=C');
   });
 });

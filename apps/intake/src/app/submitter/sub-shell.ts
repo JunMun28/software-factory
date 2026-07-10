@@ -93,16 +93,14 @@ function isRailVariant(value: string | null): value is RailVariant {
             }
             @case ('C') {
               <div class="rail-title rail-title--pill" data-rail-variant="C">
-                <span>{{ stepNumber() }}</span>
+                <span>{{ step()! + 1 }}</span>
                 <span>{{ stepLabel() }}</span>
               </div>
             }
             @case ('D') {
               <div class="rail-title rail-title--bracket" data-rail-variant="D">
-                <i class="rail-title__corner rail-title__corner--tl" aria-hidden="true"></i>
                 <span class="rail-title__index">{{ stepNumber() }}</span>
                 <strong>{{ stepLabel() }}</strong>
-                <i class="rail-title__corner rail-title__corner--br" aria-hidden="true"></i>
               </div>
             }
             @case ('E') {
@@ -237,19 +235,21 @@ function isRailVariant(value: string | null): value is RailVariant {
       font-size: 9px;
       letter-spacing: 0.12em;
     }
-    .rail-title__corner {
+    .rail-title--bracket::before,
+    .rail-title--bracket::after {
+      content: '';
       position: absolute;
       width: 12px;
       height: 12px;
       border-color: var(--a500);
     }
-    .rail-title__corner--tl {
+    .rail-title--bracket::before {
       top: 0;
       left: 0;
       border-top: 1px solid;
       border-left: 1px solid;
     }
-    .rail-title__corner--br {
+    .rail-title--bracket::after {
       right: 0;
       bottom: 0;
       border-right: 1px solid;
@@ -449,6 +449,7 @@ export class SubShell implements OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   onDocumentKeydown(event: KeyboardEvent) {
+    if (!this.showPrototypeSwitcher || this.step() !== 0) return;
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     if (this.isEditableTarget(event.target)) return;
 
