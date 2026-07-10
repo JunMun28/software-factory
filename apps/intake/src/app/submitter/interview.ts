@@ -2,18 +2,21 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Input,
+  OnInit,
   computed,
   effect,
   inject,
+  output,
   signal,
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api, Icon, InterviewState, Mark, RequestDetail, streamState, TypeChip } from '@sf/shared';
+import { BasicsCard } from './basics-card';
+import { PlanPanel } from './plan-panel';
 import { IntakeDraft } from './intake-draft.service';
-import { SubShell } from './sub-shell';
 
 /** S2 — the adaptive AI interview: a chat thread with the intake assistant, with an
  *  AskUserQuestion panel docked above the composer, copying claude.ai's
@@ -23,31 +26,34 @@ import { SubShell } from './sub-shell';
  *  Chosen from the 2026-07 Clarify prototype (chat persona + command palette). */
 @Component({
   selector: 'sf-interview',
-  imports: [SubShell, Mark, Icon, TypeChip, FormsModule],
+  imports: [Mark, Icon, TypeChip, FormsModule, BasicsCard, PlanPanel],
   host: {
     '(window:keydown)': 'onKeys($event)',
   },
   template: `
-    <sub-shell active="new" [step]="1" [proto]="req()?.type === 'new'" [reqId]="id">
+    <div class="cl">
       <div class="iv">
-        <div class="iv__head">
-          <span class="iv__av"><sf-mark [size]="16" color="#fff" /></span>
-          <div class="iv__who">
-            <span class="iv__name">Intake assistant</span>
-            <span class="iv__role">Software Factory</span>
-          </div>
-        </div>
-
         <!-- sr-only live region: announces each new question / thinking / done -->
         <div class="sr-only" role="status" aria-live="polite">{{ liveQuestion() }}</div>
 
-        <div class="iv__thread scroll" #thread>
+        <div class="iv__thread scroll" #thread data-lenis-prevent>
           @if (req(); as r) {
             <div class="iv__ctx">
               <sf-type-chip [t]="r.type" />
               <span class="iv__ctxt">{{ r.title }}</span>
             </div>
           }
+
+          <!-- fixed questions, moved off the Describe step -->
+          @if (req(); as r) {
+            <sf-basics-card
+              [id]="id"
+              [rtype]="r.type"
+              (typeChanged)="onTypeChanged($event)"
+              (saved)="planPanel().refresh()"
+            />
+          }
+
           @for (t of turns(); track t.order) {
             <div class="brow">
               <span class="bav"><sf-mark [size]="13" color="#fff" /></span>
@@ -237,47 +243,42 @@ import { SubShell } from './sub-shell';
           }
         </div>
       </div>
-    </sub-shell>
+
+      <!-- the live plan: a structured summary that rewrites itself as answers land -->
+      <sf-plan-panel [id]="id" [answers]="turns().length" />
+    </div>
   `,
   styles: `
-    .iv {
-      max-width: 860px;
+    .cl {
+      max-width: 1200px;
       margin: 0 auto;
+      padding: 20px 26px;
+      height: calc(100dvh - 58px);
+      display: grid;
+      grid-template-columns: minmax(400px, 520px) 1fr;
+      gap: 22px;
+      align-items: stretch;
+    }
+    @media (max-width: 960px) {
+      .cl {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+      .plan {
+        max-height: none;
+      }
+    }
+    .iv {
       height: 100%;
+      min-height: 0;
       display: flex;
       flex-direction: column;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
     }
-    .iv__head {
-      display: flex;
-      align-items: center;
-      gap: 11px;
-      padding: 13px 26px;
-      border-bottom: 1px solid var(--border);
-    }
-    .iv__av {
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      background: var(--a600);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      flex: 0 0 auto;
-    }
-    .iv__who {
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
-    .iv__name {
-      font-weight: 700;
-      font-size: 14.5px;
-      line-height: 1.25;
-    }
-    .iv__role {
-      font-size: 12px;
-      color: var(--muted);
-    }
+
     .iv__thread {
       flex: 1;
       overflow-y: auto;
@@ -619,11 +620,15 @@ import { SubShell } from './sub-shell';
     }
   `,
 })
-export class Interview {
+export class Interview implements OnInit {
   api = inject(Api);
-  private router = inject(Router);
   draft = inject(IntakeDraft);
-  id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
+  /** the request this section clarifies (set by the journey host) */
+  @Input({ required: true }) id!: number;
+  /** the interview finished — the host scrolls to the next section */
+  done = output<void>();
+  /** the basics Type row changed the request type — the host re-shapes the journey */
+  typeChange = output<string>();
 
   st = signal<InterviewState | null>(null);
   req = signal<RequestDetail | null>(null);
@@ -666,6 +671,8 @@ export class Interview {
 
   turns = computed(() => this.st()?.turns.filter((t) => t.answer !== null || t.skipped) ?? []);
 
+  planPanel = viewChild.required(PlanPanel); // template calls .refresh() on basics saves
+
   showKeys = computed(() => {
     const s = this.st();
     return !!s && !s.done && !this.working() && !!s.options && !this.dismissed();
@@ -692,13 +699,18 @@ export class Interview {
     effect(() => {
       const s = this.st();
       if (!s) return;
-      if (!s.done) this.sawQuestion = true;
-      else if (this.sawQuestion && !this.advancing && !this.destroyed) {
+      if (!s.done) {
+        this.sawQuestion = true;
+        this.advancing = false; // a reopened interview may finish (and advance) again
+      } else if (this.sawQuestion && !this.advancing && !this.destroyed) {
         this.advancing = true;
-        this.router.navigate(['/submit', this.id, this.nextStep()]);
+        this.done.emit();
       }
     });
-    this.draft.loadAttachments(this.id);
+  }
+
+  ngOnInit() {
+    void this.draft.loadAttachments(this.id);
     this.api.request(this.id).subscribe((r) => this.req.set(r));
     this.busy.set(true); // show the thinking row until the first question lands
     this.load(true);
@@ -827,6 +839,7 @@ export class Interview {
         this.busy.set(false);
         this.scrollToEnd();
         if (s.thinking) this.openStream(); // stream the next question in as it generates
+        this.planPanel().refresh(); // the answer changes the plan — let it catch up
       },
       error: () => this.busy.set(false),
     });
@@ -850,13 +863,16 @@ export class Interview {
     }
     if (text) this.push({ answer: text });
   }
-  /** The step after the interview: Prototype for a new app, else Review. */
-  nextStep(): 'prototype' | 'review' {
-    return this.req()?.type === 'new' ? 'prototype' : 'review';
+  /** the basics Type row changed the request — refresh req (rows/labels
+   *  re-shape), bubble to the journey host, and let the plan catch up */
+  onTypeChanged(t: string) {
+    this.api.request(this.id).subscribe((r) => this.req.set(r));
+    this.typeChange.emit(t);
+    this.planPanel().refresh();
   }
   toReview() {
-    const extra = this.msg().trim();
-    this.router.navigate(['/submit', this.id, this.nextStep()], { state: { extra } });
+    this.draft.extra = this.msg().trim();
+    this.done.emit();
   }
 
   /** Reopen a finished interview with the submitter's added note (the "Add more detail"
@@ -872,6 +888,7 @@ export class Interview {
         this.busy.set(false);
         this.scrollToEnd();
         if (s.thinking) this.openStream(); // stream the follow-up (or resolve to done → advance)
+        this.planPanel().refresh();
       },
       error: () => this.busy.set(false),
     });

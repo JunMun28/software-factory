@@ -315,6 +315,11 @@ def update_request(rid: int, body: RequestUpdate, db: Session = Depends(get_db))
         data.pop("title", None)  # the title can change but never go blank
     for k, v in data.items():
         setattr(r, k, v)
+    # Any edit invalidates the cached summary: it is keyed on answered turns only,
+    # and between the two brains the summary reads nearly every field (agent:
+    # _context; scripted: reach/impact) — a selective set here would drift.
+    if data:
+        r.summary = None
     db.commit()
     return to_out(r, RequestDetail)
 

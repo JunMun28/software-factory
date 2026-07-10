@@ -9,6 +9,8 @@
 
 /* ---- Micron Basis (licensed brand sans) + JetBrains Mono ---- */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Lenis smooth-scroll base styles (scroll-behavior/overscroll handling) */
+@import 'lenis/dist/lenis.css';
 @font-face {
   font-family: 'Micron Basis';
   src: url('/fonts/MicronBasis-Light.otf') format('opentype');

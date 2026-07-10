@@ -1,586 +1,411 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import {
+  afterNextRender,
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 
-import { Api, AppEntry, Icon } from '@sf/shared';
-import { AttachField } from './attach-field';
+import { Api } from '@sf/shared';
 import { IntakeDraft } from './intake-draft.service';
+import { Interview } from './interview';
+import { Prototype } from './prototype';
+import { Review } from './review';
 import { SubShell } from './sub-shell';
 
-/** S1 — New Request: ledger layout — label-left rows with hairline dividers
- *  and mono row indices (spec-sheet feel), no helper subtitles (hints live in
- *  placeholders). Chosen from the 2026-07 form prototype (variant 2 of 10).
- *  ⌘↵ / Ctrl↵ submits. */
+/** The intake JOURNEY — one page, four sections (Describe hero → Clarify →
+ *  Prototype (new apps) → Review), Lenis-scrolled between them; the left rail's
+ *  tracing beam spans the whole trip. Sections mount once the request exists.
+ *  Old step routes (/submit/:id/interview|prototype|review) deep-link here and
+ *  scroll to their section. ⌘↵ / Ctrl↵ submits the describe hero. */
 @Component({
   selector: 'sf-new-request',
-  imports: [SubShell, Icon, FormsModule, AttachField],
+  imports: [SubShell, FormsModule, Interview, Prototype, Review],
   host: {
     '(document:keydown.meta.enter)': 'kbdSubmit()',
     '(document:keydown.control.enter)': 'kbdSubmit()',
   },
   template: `
-    <sub-shell active="new" [step]="0" [proto]="draft.type === 'new'" [reqId]="draft.requestId">
-      <div class="sub-col pop-in" style="max-width:820px">
-        <header class="hero">
-          <span class="eyebrow">New request</span>
+    <sub-shell active="new" [step]="curStep()" [proto]="isNew()" [reqId]="rid()">
+      <div class="sub-col pop-in" style="max-width:1200px">
+        <section class="hero-screen jsec" id="sec-describe">
           <h1 class="hero__t">What should we build?</h1>
           <p class="hero__s">
             Describe it in plain language. The factory asks the right follow-ups.
           </p>
-        </header>
-        <div class="lg">
-          <div class="lg__row">
-            <div class="lg__lbl" id="nr-type-lbl">Type</div>
-            <div class="lg__ctl">
-              <div class="seg wrap seg--type" role="group" aria-labelledby="nr-type-lbl">
-                @for (t of types; track t[0]) {
-                  <button
-                    [class.on]="draft.type === t[0]"
-                    [attr.aria-pressed]="draft.type === t[0]"
-                    (click)="draft.type = $any(t[0])"
+          <div class="glow">
+            <div class="glow__card">
+              <label class="sr-only" for="nr-desc">Description</label>
+              <textarea
+                #descTa
+                id="nr-desc"
+                placeholder="Describe it in your own words…"
+                [(ngModel)]="draft.desc"
+                (input)="growDesc()"
+              ></textarea>
+              <div class="glow__row">
+                <div class="glow__pills">
+                  @for (p of pills; track p[0]) {
+                    <button type="button" class="glow__pill" (click)="prefill(p[1])">
+                      {{ p[0] }}
+                    </button>
+                  }
+                </div>
+                <button
+                  type="button"
+                  class="glow__send"
+                  [attr.aria-label]="'Continue (' + kbdLabel + ')'"
+                  [title]="'Continue (' + kbdLabel + ')'"
+                  [disabled]="saving()"
+                  (click)="send()"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="17"
+                    height="17"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
                   >
-                    {{ t[1] }}
-                  </button>
-                }
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
+          <span class="hint">{{
+            saving() ? 'Saving…' : 'Press ' + kbdLabel + ' to continue'
+          }}</span>
+        </section>
 
-          @if (!draft.type) {
-            <p class="lg__wait">Pick a type. The matching fields appear below.</p>
+        @if (rid(); as id) {
+          <section class="jsec" id="sec-clarify">
+            <sf-interview [id]="id" (done)="advance()" (typeChange)="isNew.set($event === 'new')" />
+          </section>
+          @if (isNew()) {
+            <section class="jsec" id="sec-prototype">
+              <sf-prototype [id]="id" (done)="scrollToSec('sec-review')" />
+            </section>
           }
-
-          @if (draft.type) {
-            @if (draft.type === 'bug' || draft.type === 'enh') {
-              <div class="lg__row rev">
-                <label class="lg__lbl" id="nr-app-lbl" for="nr-app-dd">Application</label>
-                <div class="lg__ctl">
-                  <div class="dd-wrap">
-                    <input
-                      id="nr-app-dd"
-                      class="input"
-                      role="combobox"
-                      autocomplete="off"
-                      aria-autocomplete="list"
-                      aria-labelledby="nr-app-lbl"
-                      aria-controls="nr-app-list"
-                      [attr.aria-expanded]="appsMenuOpen() && !customApp()"
-                      maxlength="120"
-                      [placeholder]="
-                        customApp() ? 'Type the app name' : 'Search apps, or pick Other'
-                      "
-                      [ngModel]="appQuery()"
-                      (ngModelChange)="customApp() ? onCustomInput($event) : onAppInput($event)"
-                      (focus)="!customApp() && appsMenuOpen.set(true)"
-                      (blur)="appsMenuOpen.set(false)"
-                      (keydown.escape)="appsMenuOpen.set(false)"
-                    />
-                    @if (!customApp()) {
-                      <sf-icon class="dd__chev" name="chevDown" [size]="16" color="var(--faint)" />
-                    }
-                    @if (appsMenuOpen() && !customApp()) {
-                      <div class="pop pop--fill" role="listbox" id="nr-app-list">
-                        @for (a of filteredApps(); track a.id) {
-                          <button
-                            class="pop__opt"
-                            role="option"
-                            [attr.aria-selected]="draft.appId === a.id"
-                            [class.on]="draft.appId === a.id"
-                            (mousedown)="$event.preventDefault(); pickApp(a)"
-                          >
-                            <span class="dd__hash">#</span>{{ a.name }}
-                          </button>
-                        } @empty {
-                          @if (!appQuery().trim()) {
-                            <div class="dd__empty">No apps registered yet.</div>
-                          }
-                        }
-                        <button
-                          class="pop__opt dd__other"
-                          (mousedown)="$event.preventDefault(); chooseOther()"
-                        >
-                          <sf-icon name="plus" [size]="14" color="var(--accent-tx)" />
-                          @if (appQuery().trim() && !exactApp()) {
-                            Other — add “{{ appQuery().trim() }}” as a new app
-                          } @else {
-                            Other — my app isn’t listed
-                          }
-                        </button>
-                      </div>
-                    }
-                    @if (customApp()) {
-                      <button type="button" class="dd__back" (click)="backToList()">
-                        <sf-icon name="back" [size]="13" color="var(--muted)" /> Choose from the
-                        list instead
-                      </button>
-                    }
-                  </div>
-                </div>
-              </div>
-            }
-            @if (draft.type === 'new') {
-              <div class="lg__row rev">
-                <label class="lg__lbl" for="nr-name">Name</label>
-                <div class="lg__ctl">
-                  <input
-                    id="nr-name"
-                    class="input"
-                    placeholder="e.g. Quarterly headcount dashboard"
-                    [(ngModel)]="draft.newName"
-                  />
-                </div>
-              </div>
-            }
-
-            <div class="lg__row rev">
-              <label class="lg__lbl" for="nr-desc">Description</label>
-              <div class="lg__ctl">
-                <textarea
-                  id="nr-desc"
-                  class="input area"
-                  placeholder="Describe it in your own words — a sentence or two is plenty."
-                  [(ngModel)]="draft.desc"
-                ></textarea>
-              </div>
-            </div>
-
-            @if (draft.type === 'bug') {
-              <div class="lg__row rev">
-                <label class="lg__lbl" for="nr-where">Where seen</label>
-                <div class="lg__ctl">
-                  <input
-                    id="nr-where"
-                    class="input"
-                    placeholder="Page or screen"
-                    [(ngModel)]="draft.bugWhere"
-                  />
-                </div>
-              </div>
-              <div class="lg__row rev">
-                <div class="lg__lbl" id="nr-freq-lbl">Frequency</div>
-                <div class="lg__ctl">
-                  <div class="seg wrap" role="group" aria-labelledby="nr-freq-lbl">
-                    @for (f of freqs; track f) {
-                      <button
-                        [class.on]="draft.bugFreq === f"
-                        [attr.aria-pressed]="draft.bugFreq === f"
-                        (click)="draft.bugFreq = f"
-                      >
-                        {{ f }}
-                      </button>
-                    }
-                  </div>
-                </div>
-              </div>
-            } @else {
-              <div class="lg__row rev">
-                <div class="lg__lbl" id="nr-reach-lbl">Who's affected</div>
-                <div class="lg__ctl">
-                  <div class="seg wrap" role="group" aria-labelledby="nr-reach-lbl">
-                    @for (r of reaches; track r[0]) {
-                      <button
-                        [class.on]="!draft.reachText && draft.reach === r[0]"
-                        [attr.aria-pressed]="!draft.reachText && draft.reach === r[0]"
-                        (click)="pickReach($any(r[0]))"
-                      >
-                        {{ r[1] }}
-                      </button>
-                    }
-                  </div>
-                  <input
-                    id="nr-reach"
-                    class="input"
-                    style="margin-top:8px"
-                    aria-labelledby="nr-reach-lbl"
-                    placeholder="…or describe them, e.g. all shift supervisors in Penang"
-                    [ngModel]="draft.reachText"
-                    (ngModelChange)="typeReach($event)"
-                  />
-                </div>
-              </div>
-              <div class="lg__row rev">
-                <div class="lg__lbl" id="nr-impact-lbl">Impact</div>
-                <div class="lg__ctl">
-                  <div class="seg wrap" role="group" aria-labelledby="nr-impact-lbl">
-                    @for (m of metrics; track m[0]) {
-                      <button
-                        [class.on]="draft.impactMetric === m[0]"
-                        [attr.aria-pressed]="draft.impactMetric === m[0]"
-                        (click)="pickMetric($any(m[0]))"
-                      >
-                        {{ m[1] }}
-                      </button>
-                    }
-                  </div>
-                  @if (draft.impactMetric) {
-                    <input
-                      id="nr-impact"
-                      class="input fade-in"
-                      style="margin-top:8px;max-width:280px"
-                      aria-labelledby="nr-impact-lbl"
-                      [placeholder]="metricPlaceholder()"
-                      [(ngModel)]="draft.impactValue"
-                    />
-                  }
-                </div>
-              </div>
-            }
-
-            <div class="lg__row rev">
-              <div class="lg__lbl">Attachments<span class="lg__opt">Optional</span></div>
-              <div class="lg__ctl"><sf-attach-field source="describe" [zone]="true" /></div>
-            </div>
-
-            <div class="lg__foot rev">
-              @if (missing().length) {
-                <span class="lg__need">Still needed: {{ missing().join(' · ') }}</span>
-              }
-              <button
-                class="btn primary lg"
-                [disabled]="!canContinue() || saving()"
-                (click)="continue_()"
-              >
-                {{ saving() ? 'Saving…' : 'Continue' }} <span class="kbd">{{ kbdLabel }}</span>
-              </button>
-            </div>
-          }
-        </div>
+          <section class="jsec" id="sec-review">
+            <sf-review
+              [id]="id"
+              (goto)="scrollToSec($event === 'interview' ? 'sec-clarify' : 'sec-prototype')"
+            />
+          </section>
+        }
       </div>
     </sub-shell>
   `,
   styles: `
-    .hero {
-      padding: 8px 0 6px;
+    @property --ang {
+      syntax: '<angle>';
+      inherits: false;
+      initial-value: 0deg;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .jsec {
+      scroll-margin-top: 12px;
+    }
+    .hero-screen {
+      min-height: calc(100dvh - 160px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 8px 0 26px;
     }
     .hero__t {
-      font-size: 38px;
-      font-weight: 700;
+      font-size: clamp(32px, 4.8vw, 50px);
+      font-weight: 800;
       letter-spacing: -0.02em;
-      margin-top: 12px;
+      line-height: 1.04;
+      margin: 14px 0 6px;
     }
     .hero__s {
-      margin: 9px 0 0;
+      margin: 0 0 28px;
       font-size: 15px;
       color: var(--muted);
-      max-width: 52ch;
+      max-width: 44ch;
     }
-    .lg {
-      counter-reset: lgrow;
-      margin-top: 26px;
+    .glow {
+      width: 100%;
+      max-width: 600px;
+      border-radius: 20px;
+      padding: 2px;
+      background: conic-gradient(
+        from var(--ang, 0deg),
+        #bd03f7,
+        #4b16e0,
+        #22d3ee,
+        #e173fa,
+        #bd03f7
+      );
+      animation: nr-spin 6s linear infinite;
+      box-shadow: 0 0 40px -12px rgba(189, 3, 247, 0.5);
+      transition: box-shadow var(--dur-s) var(--ease);
     }
-    .lg__row {
-      display: grid;
-      grid-template-columns: 190px 1fr;
-      gap: 22px;
-      padding: 20px 0;
-      border-bottom: 1px solid var(--hairline);
-      counter-increment: lgrow;
+    .glow:focus-within {
+      box-shadow: 0 0 56px -10px rgba(189, 3, 247, 0.65);
     }
-    .lg__lbl {
-      font-size: 13.5px;
-      font-weight: 600;
+    @keyframes nr-spin {
+      to {
+        --ang: 360deg;
+      }
+    }
+    .glow__card {
+      background: var(--surface);
+      border-radius: 18px;
+      padding: 16px 16px 10px;
+      text-align: left;
+    }
+    .glow__card textarea {
+      width: 100%;
+      border: none;
+      background: none;
+      resize: none;
+      overflow: hidden;
+      outline: none;
+      padding: 6px;
+      min-height: 104px;
+      font-family: inherit;
+      font-size: 16px;
+      line-height: 1.55;
       color: var(--fg1);
-      padding-top: 9px;
-      margin: 0;
     }
-    .lg__lbl::before {
-      content: counter(lgrow, decimal-leading-zero);
-      display: block;
-      font-family: var(--mono);
-      font-size: 10.5px;
-      letter-spacing: 0.09em;
-      color: var(--faint);
-      margin-bottom: 5px;
-      transition: color var(--dur) var(--ease);
-    }
-    .lg__row:focus-within .lg__lbl::before {
-      color: var(--accent-tx);
-    }
-    .lg__opt {
-      display: block;
-      font-weight: 400;
-      color: var(--faint);
-      font-size: 11.5px;
-      margin-top: 2px;
-    }
-    .lg__ctl {
-      min-width: 0;
-    }
-    .lg__ctl textarea.input {
-      min-height: 132px;
-      font-size: 15.5px;
-    }
-    .lg__wait {
-      margin: 0;
-      padding: 26px 0;
-      font-size: 13.5px;
+    .glow__card textarea::placeholder {
       color: var(--faint);
     }
-    .lg__foot {
+    .glow__row {
       display: flex;
       align-items: center;
-      justify-content: flex-end;
-      gap: 18px;
-      padding: 22px 0;
+      justify-content: space-between;
+      gap: 10px;
+      padding-top: 8px;
+      border-top: 1px solid var(--hairline);
     }
-    .lg__need {
-      margin-right: auto;
+    .glow__pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .glow__pill {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 11px;
+      border-radius: var(--r-pill);
+      border: 1px solid var(--border-strong);
+      background: var(--surface-2);
+      color: var(--fg2);
+      cursor: pointer;
+      transition:
+        border-color var(--dur) var(--ease),
+        color var(--dur) var(--ease);
+    }
+    .glow__pill:hover {
+      border-color: var(--accent-tint-bd);
+      color: var(--accent-tx);
+    }
+    .glow__send {
+      flex: 0 0 auto;
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition:
+        background var(--dur) var(--ease),
+        transform var(--dur-i) var(--ease);
+    }
+    .glow__send:hover {
+      background: var(--accent-hover);
+    }
+    .glow__send:active {
+      transform: scale(0.92);
+    }
+    .glow__send:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
+    .hint {
+      margin-top: 24px;
       font-size: 12.5px;
       color: var(--faint);
-    }
-    @media (max-width: 640px) {
-      .hero__t {
-        font-size: 29px;
-      }
-      .lg__row {
-        grid-template-columns: 1fr;
-        gap: 8px;
-      }
-      .lg__lbl {
-        padding-top: 0;
-      }
-      .lg__lbl::before {
-        display: inline;
-        margin-right: 8px;
-      }
-    }
-    @keyframes lgrev {
-      from {
-        opacity: 0;
-        transform: translateY(5px);
-      }
-    }
-    .rev {
-      animation: lgrev 0.34s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-    }
-    .rev:nth-child(3) {
-      animation-delay: 35ms;
-    }
-    .rev:nth-child(4) {
-      animation-delay: 70ms;
-    }
-    .rev:nth-child(5) {
-      animation-delay: 105ms;
-    }
-    .rev:nth-child(6) {
-      animation-delay: 140ms;
-    }
-    .rev:nth-child(7) {
-      animation-delay: 175ms;
-    }
-    .rev:nth-child(8) {
-      animation-delay: 210ms;
+      font-family: var(--mono);
     }
     @media (prefers-reduced-motion: reduce) {
-      .rev {
+      .glow {
         animation: none;
       }
-    }
-    .seg.wrap {
-      flex-wrap: wrap;
-    }
-    .seg--type button {
-      padding: 8px 17px;
-      font-size: 13.5px;
-    }
-    .seg button {
-      white-space: nowrap;
-    }
-    .dd-wrap {
-      position: relative;
-    }
-    .dd-wrap > input.input {
-      padding-right: 36px;
-    }
-    .dd__chev {
-      position: absolute;
-      right: 12px;
-      top: 13px;
-      pointer-events: none;
-    }
-    .dd__other {
-      color: var(--accent-tx);
-      font-weight: 500;
-    }
-    .dd__back {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      margin-top: 8px;
-      padding: 2px 0;
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 13px;
-      color: var(--muted);
-      transition: color var(--dur) var(--ease);
-    }
-    .dd__back:hover {
-      color: var(--fg2);
-    }
-    .dd__hash {
-      color: var(--faint);
-    }
-    .pop__opt.on .dd__hash {
-      color: var(--a400);
-    }
-    .dd__empty {
-      padding: 12px;
-      font-size: 13px;
-      color: var(--muted);
     }
   `,
 })
 export class NewRequest {
   draft = inject(IntakeDraft);
   private api = inject(Api);
-  private router = inject(Router);
 
-  apps = signal<AppEntry[]>([]);
-  appsMenuOpen = signal(false);
-  appQuery = signal('');
-  customApp = signal(false); // "Other" was chosen — the input is a free-text app name
   saving = signal(false);
+  /** the created request — sections below the hero mount once this is set */
+  rid = signal<number | null>(null);
+  /** new-app journeys include the Prototype section */
+  isNew = signal(true);
+  /** rail highlight: which section is in view (scroll-spy) */
+  curStep = signal(0);
+  private sectionIo: IntersectionObserver | null = null;
 
-  /** platform-correct hint for the submit shortcut shown in the Continue button */
+  /** platform-correct hint for the submit shortcut */
   readonly kbdLabel = /Mac|iP(hone|ad|od)/.test(globalThis.navigator?.platform ?? '')
     ? '⌘↵'
     : 'Ctrl↵';
 
-  kbdSubmit() {
-    if (this.canContinue() && !this.saving()) this.continue_();
-  }
+  /** prompt-starter pills under the describe field: [label, prefill text] */
+  pills: [string, string][] = [
+    ['Dashboard', 'A dashboard that '],
+    ['Report', 'A report that '],
+    ['Bug fix', 'Fix a bug where '],
+    ['Team tool', 'A tool for my team to '],
+  ];
 
-  /** apps whose name contains the query (whole list when the query is empty). */
-  filteredApps = computed(() => {
-    const q = this.appQuery().trim().toLowerCase();
-    const list = this.apps();
-    return q ? list.filter((a) => a.name.toLowerCase().includes(q)) : list;
-  });
-  /** the registered app whose name the query matches exactly (case-insensitive). */
-  exactApp = computed(() => {
-    const q = this.appQuery().trim().toLowerCase();
-    return q ? (this.apps().find((a) => a.name.toLowerCase() === q) ?? null) : null;
-  });
-  freqs = ['Every time', 'Most of the time', 'Sometimes', 'Only once so far'];
-  reaches: [string, string][] = [
-    ['me', 'Just me'],
-    ['team', 'My team'],
-    ['dept', 'My department'],
-    ['wider', 'Multiple departments'],
-    ['site', 'Site'],
-    ['network', 'Network'],
-  ];
-  metrics: [string, string][] = [
-    ['hours', 'Man-hours saved / year'],
-    ['cost', 'Cost saved / year (k)'],
-    ['other', 'Other benefit'],
-  ];
-  types: [string, string][] = [
-    ['bug', 'Bug fix'],
-    ['enh', 'Enhancement'],
-    ['new', 'New app'],
-    ['other', 'Other'],
-  ];
+  private descTa = viewChild.required<ElementRef<HTMLTextAreaElement>>('descTa');
+  private shell = viewChild.required(SubShell);
 
   constructor() {
-    // restore the prior choice on step return: a name with no appId was an "Other" entry
-    this.appQuery.set(this.draft.appName);
-    this.customApp.set(!!this.draft.appName && this.draft.appId == null);
-    this.api.apps().subscribe((a) => {
-      this.apps.set(a.filter((x) => !x.muted));
-      // a draft restored with a picked app but no text yet — show its name
-      if (!this.appQuery() && this.draft.appId != null) {
-        const m = this.apps().find((x) => x.id === this.draft.appId);
-        if (m) {
-          this.appQuery.set(m.name);
-          this.draft.appName = m.name;
+    inject(DestroyRef).onDestroy(() => this.sectionIo?.disconnect());
+    // a restored draft may already hold a long description — size the field to it
+    afterNextRender(() => this.growDesc());
+    // deep link (/submit/:id/<section>): hydrate the draft, mount the sections,
+    // and land on the requested one
+    const snap = inject(ActivatedRoute).snapshot;
+    const id = Number(snap.paramMap.get('id'));
+    const section = (snap.url[snap.url.length - 1]?.path ?? '') as string;
+    if (id) {
+      this.api.request(id).subscribe((r) => {
+        this.draft.hydrateFrom(r);
+        this.isNew.set(r.type === 'new');
+        this.rid.set(id);
+        if (['interview', 'prototype', 'review'].includes(section)) {
+          this.whenSection(section === 'interview' ? 'sec-clarify' : `sec-${section}`, (el) => {
+            this.shell().setScrollFloor(el);
+            this.shell().scrollToEl(el);
+          });
         }
-      }
-    });
+        this.whenSection('sec-review', () => this.watchSections());
+      });
+    }
   }
 
-  /** list mode: the text is a filter; only an exact match selects a known app. */
-  onAppInput(text: string) {
-    this.appQuery.set(text);
-    const ex = this.exactApp();
-    this.draft.appId = ex ? ex.id : null;
-    this.draft.appName = ex ? ex.name : '';
-    this.appsMenuOpen.set(true);
-  }
-  /** custom mode: the text IS the new app name, saved as new_app_name. */
-  onCustomInput(text: string) {
-    this.appQuery.set(text);
-    this.draft.appName = text;
-    this.draft.appId = null;
-  }
-  pickApp(a: AppEntry) {
-    this.customApp.set(false);
-    this.draft.appId = a.id;
-    this.draft.appName = a.name;
-    this.appQuery.set(a.name);
-    this.appsMenuOpen.set(false);
-  }
-  /** "Other" — switch to free-text entry, carrying over anything already typed. */
-  chooseOther() {
-    this.customApp.set(true);
-    this.draft.appId = null;
-    this.draft.appName = this.appQuery().trim();
-    this.appsMenuOpen.set(false);
-  }
-  /** back to picking from the registered list. */
-  backToList() {
-    this.customApp.set(false);
-    this.draft.appId = null;
-    this.draft.appName = '';
-    this.appQuery.set('');
-    this.appsMenuOpen.set(true);
-  }
-  pickReach(r: 'me' | 'team' | 'dept' | 'wider' | 'site' | 'network') {
-    this.draft.reach = this.draft.reach === r && !this.draft.reachText ? null : r;
-    this.draft.reachText = '';
-  }
-  typeReach(text: string) {
-    this.draft.reachText = text;
-    if (text.trim()) this.draft.reach = null;
-  }
-  pickMetric(m: 'hours' | 'cost' | 'other') {
-    this.draft.impactMetric = this.draft.impactMetric === m ? null : m;
-  }
-  metricPlaceholder() {
-    return {
-      hours: 'e.g. 1200',
-      cost: 'e.g. 250',
-      other: 'e.g. fewer audit findings each quarter',
-    }[this.draft.impactMetric!];
-  }
-  /** required fields not filled yet — everything except attachments is compulsory */
-  missing(): string[] {
-    const d = this.draft;
-    const m: string[] = [];
-    if ((d.type === 'bug' || d.type === 'enh') && !d.appId && !d.appName.trim())
-      m.push('Application');
-    if (d.type === 'new' && !d.newName.trim()) m.push('Name');
-    if (!d.desc.trim()) m.push('Description');
-    if (d.type === 'bug') {
-      if (!d.bugWhere.trim()) m.push('Where seen');
-      if (!d.bugFreq) m.push('Frequency');
-    } else {
-      if (!d.reach && !d.reachText.trim()) m.push("Who's affected");
-      if (!d.impactMetric || !d.impactValue.trim()) m.push('Impact');
+  /** run cb once a dynamically-mounted section exists in the DOM (the sections
+   *  render on the change-detection pass after rid() is set — retry briefly
+   *  instead of guessing a wall-clock delay) */
+  private whenSection(sid: string, cb: (el: HTMLElement) => void, tries = 40) {
+    const el = document.getElementById(sid);
+    if (el) {
+      cb(el);
+      return;
     }
-    return m;
+    if (tries > 0) setTimeout(() => this.whenSection(sid, cb, tries - 1), 25);
   }
-  canContinue() {
-    return !!this.draft.type && this.missing().length === 0;
+
+  /** rail scroll-spy — the current step follows the section occupying the viewport */
+  private watchSections() {
+    this.sectionIo?.disconnect();
+    const order = ['sec-describe', 'sec-clarify', 'sec-prototype', 'sec-review'];
+    this.sectionIo = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          const i = order.indexOf((e.target as HTMLElement).id);
+          if (i < 0) continue;
+          // step index skips Prototype for non-new journeys
+          this.curStep.set(!this.isNew() && i === 3 ? 2 : i);
+        }
+      },
+      { rootMargin: '-45% 0px -45% 0px' },
+    );
+    for (const sid of order) {
+      const el = document.getElementById(sid);
+      if (el) this.sectionIo.observe(el);
+    }
   }
-  async continue_() {
+
+  /** the interview finished — glide to the next section */
+  advance() {
+    this.scrollToSec(this.isNew() ? 'sec-prototype' : 'sec-review');
+  }
+  /** glide to a section and make it the new scroll floor — the page can no
+   *  longer be scrolled above it (explicit back-navigation re-lowers it) */
+  scrollToSec(sid: string) {
+    const el = document.getElementById(sid);
+    if (!el) return;
+    this.shell().setScrollFloor(el);
+    this.shell().scrollToEl(el);
+  }
+
+  /** keep the describe field sized to its content (it has no scrollbar) */
+  growDesc() {
+    const ta = this.descTa().nativeElement;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }
+  /** seed the describe field with a sentence starter (only when empty) */
+  prefill(text: string) {
+    if (!this.draft.desc.trim()) {
+      this.draft.desc = text;
+    }
+    const ta = this.descTa().nativeElement;
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    this.growDesc();
+  }
+
+  kbdSubmit() {
+    // the shortcut belongs to the describe hero only — once the journey has
+    // started, ⌘↵ inside a section must not re-save + yank the scroll back
+    if (this.rid() !== null) return;
+    this.send();
+  }
+  send() {
+    if (!this.draft.desc.trim() || this.saving()) {
+      this.descTa().nativeElement.focus();
+      return;
+    }
+    this.continue_();
+  }
+  private async continue_() {
+    // the request needs a type at creation; new-app is the factory's main flow.
+    // The Clarify basics card lets the submitter change it (PATCH).
+    if (!this.draft.type) this.draft.type = 'new';
     this.saving.set(true);
     try {
       const id = await this.draft.save();
       await this.draft.uploadPending(id);
-      this.router.navigateByUrl(`/submit/${id}/interview`);
+      this.isNew.set(this.draft.type === 'new');
+      this.rid.set(id); // mounts the sections below…
+      this.whenSection('sec-clarify', () => {
+        this.scrollToSec('sec-clarify'); // …then Lenis glides down to Clarify
+        this.watchSections();
+      });
     } finally {
       this.saving.set(false);
     }
