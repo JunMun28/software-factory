@@ -75,6 +75,27 @@ describe('IntakeDraft', () => {
     expect(body.impact_value).toBeNull();
   });
 
+  it('persists screenshot-only bug evidence alongside frequency', async () => {
+    draft.type = 'bug';
+    draft.bugFreq = 'Every time';
+    draft.attachments.set([
+      {
+        id: 9,
+        filename: 'broken-screen.png',
+        mime: 'image/png',
+        kind: 'image',
+        size: 128,
+        source: 'interview',
+        created_at: '',
+      },
+    ]);
+
+    await draft.save();
+
+    const body = (api.createRequest.mock.calls as any[][])[0][0];
+    expect(body.bug_where).toBe('Screenshot attached · happens every time');
+  });
+
   it('free-text reach wins over chip value', async () => {
     draft.type = 'enh';
     draft.reach = 'team';

@@ -117,7 +117,7 @@ export class IntakeDraft {
     if (d.bug_where) {
       // save() stores "<where> · happens <freq lowercased>" — split it back apart
       const [where, freq] = d.bug_where.split(' · happens ');
-      this.bugWhere = where ?? '';
+      this.bugWhere = where === 'Screenshot attached' ? '' : (where ?? '');
       const FREQS = ['Every time', 'Most of the time', 'Sometimes', 'Only once so far'];
       this.bugFreq = freq ? (FREQS.find((f) => f.toLowerCase() === freq) ?? '') : '';
     }
@@ -140,7 +140,10 @@ export class IntakeDraft {
   /** Persist-first: create the Request on first Continue, PATCH on later edits. */
   async save(): Promise<number> {
     const u = this.session.user();
-    const where = [this.bugWhere, this.bugFreq && `happens ${this.bugFreq.toLowerCase()}`]
+    const bugEvidence =
+      this.bugWhere.trim() ||
+      (this.attachments().some((a) => a.kind === 'image') ? 'Screenshot attached' : '');
+    const where = [bugEvidence, this.bugFreq && `happens ${this.bugFreq.toLowerCase()}`]
       .filter(Boolean)
       .join(' · ');
     const isAppReq = this.type === 'bug' || this.type === 'enh';

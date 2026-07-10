@@ -6,11 +6,20 @@ import { IntakeDraft } from './intake-draft.service';
 
 /** all basics answered for this request type (identity + the two facts) */
 export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
-  // new apps skip identity — the title comes from the description
-  const identity = type === 'new' ? true : d.appId !== null || !!d.appName.trim();
-  if (type === 'bug') return identity && !!d.bugWhere.trim() && !!d.bugFreq;
+  // New apps and uncategorised requests take their title from the description.
+  const identity =
+    type === 'new' || type === 'other' ? true : d.appId !== null || !!d.appName.trim();
+  if (type === 'bug') return identity && bugEvidenceAnswered(d) && !!d.bugFreq;
   return (
     identity && (!!d.reach || !!d.reachText.trim()) && !!d.impactMetric && !!d.impactValue.trim()
+  );
+}
+
+export function bugEvidenceAnswered(d: IntakeDraft): boolean {
+  return (
+    !!d.bugWhere.trim() ||
+    d.attachments().some((a) => a.kind === 'image' || a.mime.startsWith('image/')) ||
+    d.pending().some((f) => f.type.startsWith('image/'))
   );
 }
 
@@ -24,11 +33,11 @@ export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
   template: `
     <div class="basics">
       <div class="basics__h">
-        <span class="basics__t">The basics</span>
+        <span class="basics__t">{{ cardTitle() }}</span>
         <span class="basics__n">{{ done() }} of {{ total() }}</span>
       </div>
       <div class="brow2">
-        <span class="brow2__q">Type</span>
+        <span class="brow2__q">Request</span>
         <span class="bseg">
           @for (t of types; track t[0]) {
             <button [class.on]="draft.type === t[0]" (click)="pickType(t[0])">
@@ -40,7 +49,7 @@ export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
       @if (rtype() === 'bug' || rtype() === 'enh') {
         <div class="brow2">
           <span class="brow2__q" [class.ok]="draft.appId !== null || draft.appName.trim()">
-            Application
+            App
           </span>
           <span class="dd-wrap">
             <input
@@ -52,7 +61,7 @@ export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
               aria-controls="nr-app-list"
               [attr.aria-expanded]="appsMenuOpen() && !customApp()"
               maxlength="120"
-              [placeholder]="customApp() ? 'Type the app name' : 'Search apps, or pick Other'"
+              [placeholder]="customApp() ? 'Type the app name' : appPlaceholder()"
               [ngModel]="appQuery()"
               (ngModelChange)="customApp() ? onCustomInput($event) : onAppInput($event)"
               (focus)="!customApp() && appsMenuOpen.set(true)"
@@ -81,9 +90,9 @@ export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
                   (mousedown)="$event.preventDefault(); chooseOther()"
                 >
                   @if (appQuery().trim() && !exactApp()) {
-                    Other — add “{{ appQuery().trim() }}” as a new app
+                    Add “{{ appQuery().trim() }}” as a new app
                   } @else {
-                    Other — my app isn’t listed
+                    My app isn’t listed
                   }
                 </button>
               </div>
@@ -93,26 +102,65 @@ export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
       }
       @if (rtype() === 'bug') {
         <div class="brow2">
-          <span class="brow2__q" [class.ok]="draft.bugWhere.trim()">Where seen</span>
-          <input
-            class="input basics__in"
-            placeholder="Page or screen"
-            [(ngModel)]="draft.bugWhere"
-            (blur)="save()"
-          />
+          <span class="brow2__q" [class.ok]="bugEvidenceAnswered()">Evidence</span>
+          <span class="evidence" (paste)="onEvidencePaste($event)">
+            <input
+              class="input basics__in evidence__link"
+              inputmode="url"
+              autocomplete="url"
+              placeholder="Paste a page link"
+              [(ngModel)]="draft.bugWhere"
+              (blur)="save()"
+            />
+            <button
+              type="button"
+              class="evidence__add"
+              (click)="screenshotInput.click()"
+            >
+              Add screenshot
+            </button>
+            <input
+              #screenshotInput
+              type="file"
+              accept="image/*"
+              hidden
+              (change)="onScreenshotPick($event)"
+            />
+            @if (screenshots().length) {
+              <span class="evidence__files">
+                @for (shot of screenshots(); track shot.id) {
+                  <span class="evidence__file">
+                    {{ shot.filename }}
+                    <button
+                      type="button"
+                      aria-label="Remove {{ shot.filename }}"
+                      (click)="removeScreenshot(shot.id)"
+                    >
+                      ×
+                    </button>
+                  </span>
+                }
+              </span>
+            }
+            @if (draft.lastError()) {
+              <span class="evidence__error" role="alert">{{ draft.lastError() }}</span>
+            }
+          </span>
         </div>
         <div class="brow2">
-          <span class="brow2__q" [class.ok]="!!draft.bugFreq">Frequency</span>
+          <span class="brow2__q" [class.ok]="!!draft.bugFreq">How often?</span>
           <span class="bseg">
             @for (f of freqs; track f) {
-              <button [class.on]="draft.bugFreq === f" (click)="pickFreq(f)">{{ f }}</button>
+              <button [class.on]="draft.bugFreq === f[0]" (click)="pickFreq(f[0])">
+                {{ f[1] }}
+              </button>
             }
           </span>
         </div>
       } @else {
         <div class="brow2">
           <span class="brow2__q" [class.ok]="!!draft.reach || draft.reachText.trim()">
-            Who's affected
+            {{ audienceLabel() }}
           </span>
           <span class="bcontrols">
             <span class="bseg">
@@ -127,7 +175,7 @@ export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
             </span>
             <input
               class="input basics__in basics__in--compact"
-              placeholder="Or specify"
+              placeholder="Or describe the group"
               [ngModel]="draft.reachText"
               (ngModelChange)="onReachInput($event)"
               (blur)="save()"
@@ -136,7 +184,7 @@ export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
         </div>
         <div class="brow2">
           <span class="brow2__q" [class.ok]="!!draft.impactMetric && !!draft.impactValue.trim()">
-            Impact
+            {{ benefitLabel() }}
           </span>
           <span class="bcontrols">
             <input
@@ -236,6 +284,61 @@ export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
       border-color: var(--accent);
       color: #fff;
     }
+    .evidence {
+      display: flex;
+      flex: 1;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .evidence__link {
+      flex: 1 1 220px;
+      min-width: 160px;
+    }
+    .evidence__add {
+      min-height: 32px;
+      padding: 5px 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--r);
+      background: var(--surface);
+      color: var(--fg2);
+      font: 500 12px var(--body);
+      cursor: pointer;
+    }
+    .evidence__add:hover {
+      border-color: var(--accent-tint-bd);
+      color: var(--accent-tx);
+    }
+    .evidence__files {
+      display: flex;
+      flex: 1 0 100%;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .evidence__file {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 11.5px;
+    }
+    .evidence__file button {
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .evidence__error {
+      flex: 1 0 100%;
+      color: var(--red);
+      font-size: 11.5px;
+    }
     .basics__in {
       min-height: 32px;
       padding: 5px 10px;
@@ -277,30 +380,36 @@ export class BasicsCard implements OnInit {
   private api = inject(Api);
 
   types: [string, string][] = [
-    ['bug', 'Bug fix'],
-    ['enh', 'Enhancement'],
-    ['new', 'New app'],
-    ['other', 'Other'],
+    ['bug', 'Fix a problem'],
+    ['enh', 'Improve an app'],
+    ['new', 'Build a new app'],
+    ['other', 'Something else'],
   ];
-  freqs = ['Every time', 'Most of the time', 'Sometimes', 'Only once so far'];
+  freqs: [string, string][] = [
+    ['Every time', 'Every time'],
+    ['Most of the time', 'Usually'],
+    ['Sometimes', 'Sometimes'],
+    ['Only once so far', 'It happened once'],
+  ];
   reaches: [string, string][] = [
-    ['me', 'Just me'],
+    ['me', 'Only me'],
     ['team', 'My team'],
     ['dept', 'My department'],
-    ['wider', 'Multiple departments'],
-    ['site', 'Site'],
-    ['network', 'Network'],
+    ['wider', 'Several departments'],
+    ['site', 'One site'],
+    ['network', 'Across sites'],
   ];
   metrics: [string, string][] = [
-    ['hours', 'Man-hours saved / year'],
-    ['cost', 'Cost saved / year (k)'],
-    ['other', 'Other benefit'],
+    ['hours', 'Hours saved / year'],
+    ['cost', 'Cost saved / year ($k)'],
+    ['other', 'Another benefit'],
   ];
 
   apps = signal<AppEntry[]>([]);
   appsMenuOpen = signal(false);
   appQuery = signal('');
   customApp = signal(false); // "Other" was chosen — the input is a free-text app name
+  screenshots = computed(() => this.draft.attachments().filter((a) => a.kind === 'image'));
   filteredApps = computed(() => {
     const q = this.appQuery().trim().toLowerCase();
     const list = this.apps();
@@ -313,13 +422,14 @@ export class BasicsCard implements OnInit {
 
   /** recompute done() when a non-signal draft field changes */
   private rev = signal(0);
-  total = computed(() => (this.rtype() === 'new' ? 2 : 3));
+  total = computed(() => (this.rtype() === 'new' || this.rtype() === 'other' ? 2 : 3));
   done = computed(() => {
     this.rev();
     const d = this.draft;
     const t = this.rtype();
-    const identity = t === 'new' ? 0 : d.appId !== null || d.appName.trim() ? 1 : 0;
-    if (t === 'bug') return identity + (d.bugWhere.trim() ? 1 : 0) + (d.bugFreq ? 1 : 0);
+    const identity =
+      t === 'new' || t === 'other' ? 0 : d.appId !== null || d.appName.trim() ? 1 : 0;
+    if (t === 'bug') return identity + (bugEvidenceAnswered(d) ? 1 : 0) + (d.bugFreq ? 1 : 0);
     return (
       identity +
       (d.reach || d.reachText.trim() ? 1 : 0) +
@@ -360,6 +470,31 @@ export class BasicsCard implements OnInit {
   private seedFromDraft() {
     this.appQuery.set(this.draft.appName);
     this.customApp.set(!!this.draft.appName && this.draft.appId === null);
+  }
+
+  cardTitle() {
+    return {
+      bug: 'Help us understand the problem',
+      enh: 'Tell us about the improvement',
+      new: 'Tell us who this is for',
+      other: 'Add a little context',
+    }[this.rtype() ?? 'new'];
+  }
+  appPlaceholder() {
+    return this.rtype() === 'bug' ? 'Search for the app with the problem' : 'Search for the app to improve';
+  }
+  audienceLabel() {
+    return {
+      enh: 'Who benefits?',
+      new: 'Who will use it?',
+      other: 'Who is this for?',
+    }[this.rtype() ?? 'new'];
+  }
+  benefitLabel() {
+    return this.rtype() === 'other' ? 'Expected outcome' : 'Expected benefit';
+  }
+  bugEvidenceAnswered() {
+    return bugEvidenceAnswered(this.draft);
   }
 
   /** list mode: the text is a filter; only an exact match selects a known app. */
@@ -418,13 +553,42 @@ export class BasicsCard implements OnInit {
     this.draft.impactValue = text;
     this.rev.update((n) => n + 1);
   }
+  async onScreenshotPick(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    await this.uploadScreenshots(files);
+  }
+  async onEvidencePaste(e: ClipboardEvent) {
+    const files = Array.from(e.clipboardData?.files ?? []);
+    if (!files.length) return;
+    e.preventDefault();
+    await this.uploadScreenshots(files);
+  }
+  private async uploadScreenshots(files: File[]) {
+    const images = files.filter(
+      (file) => file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(file.name),
+    );
+    if (!images.length) {
+      this.draft.lastError.set('Choose an image file for the screenshot.');
+      return;
+    }
+    await this.draft.addFiles(images, 'interview');
+    this.rev.update((n) => n + 1);
+    await this.save(true);
+  }
+  async removeScreenshot(id: number) {
+    await this.draft.removeAttachment(id);
+    this.rev.update((n) => n + 1);
+    await this.save(true);
+  }
   pickFreq(f: string) {
     this.draft.bugFreq = this.draft.bugFreq === f ? '' : f;
     this.save();
   }
   metricPlaceholder() {
     if (!this.draft.impactMetric) return 'Enter estimate';
-    return { hours: 'e.g. 1200', cost: 'e.g. 250', other: 'e.g. fewer audit findings' }[
+    return { hours: 'Estimated hours', cost: 'Estimated $k', other: 'Describe the benefit' }[
       this.draft.impactMetric
     ];
   }

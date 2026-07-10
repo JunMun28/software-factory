@@ -37,13 +37,11 @@ import { IntakeDraft } from './intake-draft.service';
              in the background — the submitter settles the basics meanwhile -->
         <div class="intro">
           <span class="intro__badge blurin"
-            ><i class="intro__pulse"></i>Analyzing your request…</span
+            ><i class="intro__pulse"></i>Preparing your questions…</span
           >
-          <h1 class="intro__t blurin blurin--2">
-            While the factory reads, a few quick facts only you know.
-          </h1>
+          <h1 class="intro__t blurin blurin--2">A few details will help us get this right.</h1>
           <p class="intro__s blurin blurin--2">
-            They anchor the plan — the interview starts right after.
+            Add what you know. You can fill in the rest during the interview.
           </p>
           @if (req(); as r) {
             <div class="intro__card blurin blurin--3">
@@ -58,7 +56,7 @@ import { IntakeDraft } from './intake-draft.service';
               </button>
               @if (nudge()) {
                 <p class="intro__nudge" role="alert">
-                  A couple of facts are still blank — they're what the plan is built on.
+                  Add the missing details before you continue.
                 </p>
               }
             </div>
@@ -848,29 +846,51 @@ export class Interview implements OnInit {
     const out: [string, string][] = [];
     if (r)
       out.push([
-        'Type',
-        { bug: 'Bug fix', enh: 'Enhancement', new: 'New app', other: 'Other' }[r.type] ?? r.type,
+        'Request',
+        {
+          bug: 'Fix a problem',
+          enh: 'Improve an app',
+          new: 'Build a new app',
+          other: 'Something else',
+        }[r.type] ?? r.type,
       ]);
     if ((r?.type === 'bug' || r?.type === 'enh') && d.appName) out.push(['App', d.appName]);
     if (r?.type === 'bug') {
-      if (d.bugWhere.trim()) out.push(['Where', d.bugWhere.trim()]);
-      if (d.bugFreq) out.push(['Frequency', d.bugFreq]);
+      const evidence = [
+        d.bugWhere.trim(),
+        d.attachments().some((a) => a.kind === 'image') ? 'Screenshot attached' : '',
+      ].filter(Boolean);
+      if (evidence.length) out.push(['Evidence', evidence.join(' + ')]);
+      if (d.bugFreq)
+        out.push([
+          'How often?',
+          {
+            'Every time': 'Every time',
+            'Most of the time': 'Usually',
+            Sometimes: 'Sometimes',
+            'Only once so far': 'It happened once',
+          }[d.bugFreq] ?? d.bugFreq,
+        ]);
     } else {
       const reachLabels: Record<string, string> = {
-        me: 'Just me',
+        me: 'Only me',
         team: 'My team',
         dept: 'My department',
-        wider: 'Multiple departments',
-        site: 'Site',
-        network: 'Network',
+        wider: 'Several departments',
+        site: 'One site',
+        network: 'Across sites',
       };
       const reach = d.reachText.trim() || (d.reach ? reachLabels[d.reach] : '');
-      if (reach) out.push(["Who's affected", reach]);
+      if (reach)
+        out.push([
+          r?.type === 'enh' ? 'Who benefits?' : r?.type === 'other' ? 'Who is this for?' : 'Who will use it?',
+          reach,
+        ]);
       if (d.impactMetric && d.impactValue.trim()) {
         const v = d.impactValue.trim();
         out.push([
-          'Impact',
-          { hours: `${v} man-hours/yr`, cost: `${v}k saved/yr`, other: v }[d.impactMetric],
+          r?.type === 'other' ? 'Expected outcome' : 'Expected benefit',
+          { hours: `${v} hours saved/year`, cost: `$${v}k saved/year`, other: v }[d.impactMetric],
         ]);
       }
     }

@@ -70,10 +70,11 @@ import { SubShell } from './sub-shell';
                   >
                   @if (r.type !== 'bug') {
                     <span
-                      ><i>Who's affected</i>{{ reachLabel(r.reach) || 'Just the requester' }}</span
+                      ><i>{{ r.type === 'enh' ? 'Who benefits?' : r.type === 'other' ? 'Who is this for?' : 'Who will use it?' }}</i
+                      >{{ reachLabel(r.reach) || 'Only the requester' }}</span
                     >
                     @if (impactLabel(r); as impact) {
-                      <span><i>Impact</i>{{ impact }}</span>
+                      <span><i>{{ r.type === 'other' ? 'Expected outcome' : 'Expected benefit' }}</i>{{ impact }}</span>
                     }
                   }
                   <button class="rv__edit" (click)="go('/submit/new')">Edit details</button>
@@ -431,20 +432,20 @@ export class Review implements OnInit {
   reachLabel(reach: RequestDetail['reach']) {
     if (!reach) return null;
     const canned: Record<string, string> = {
-      me: 'Just me (1 person)',
+      me: 'Only me (1 person)',
       team: 'My team (under 10 people)',
       dept: 'My department (tens of people)',
-      wider: 'Multiple departments (100+ people)',
-      site: 'Whole site (hundreds of people)',
-      network: 'Multiple sites across the network (1000+ people)',
+      wider: 'Several departments (100+ people)',
+      site: 'One site (hundreds of people)',
+      network: 'Across sites (1000+ people)',
     };
     return canned[reach] ?? reach;
   }
   impactLabel(r: RequestDetail) {
     if (!r.impact_metric || !r.impact_value) return null;
     return {
-      hours: `${r.impact_value} man-hours saved / year`,
-      cost: `${r.impact_value}k saved / year`,
+      hours: `${r.impact_value} hours saved per year`,
+      cost: `$${r.impact_value}k saved per year`,
       other: r.impact_value,
     }[r.impact_metric];
   }
