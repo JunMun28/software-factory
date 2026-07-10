@@ -20,11 +20,21 @@ import { Api, ReviewSummary } from '@sf/shared';
         </span>
       </div>
       <div class="plan__body scroll" data-lenis-prevent>
+        @if (facts().length) {
+          <div class="plan__facts">
+            @for (f of facts(); track f[0]) {
+              <span class="pfact"
+                ><i>{{ f[0] }}</i
+                >{{ f[1] }}</span
+              >
+            }
+          </div>
+        }
         @if (plan(); as p) {
           @if (p.overview) {
             <p class="plan__ov">{{ p.overview }}</p>
           }
-          @for (sec of p.sections; track sec.title) {
+          @for (sec of sections(); track sec.title) {
             <div class="psec">
               <div class="psec__t">{{ sec.title }}</div>
               <ul>
@@ -113,6 +123,29 @@ import { Api, ReviewSummary } from '@sf/shared';
       overflow-y: auto;
       padding: 16px 20px 20px;
     }
+    .plan__facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 0 0 14px;
+    }
+    .pfact {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--fg1);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 11px;
+    }
+    .pfact i {
+      font-style: normal;
+      font-weight: 500;
+      color: var(--faint);
+    }
     .plan__ov {
       font-size: 14.5px;
       line-height: 1.65;
@@ -197,10 +230,17 @@ export class PlanPanel implements OnInit {
   id = input.required<number>();
   /** answered-turn count for the status pill */
   answers = input(0);
+  /** the quick-question answers, pinned atop the plan as [label, value] facts */
+  facts = input<[string, string][]>([]);
 
   private api = inject(Api);
   plan = signal<ReviewSummary | null>(null);
   thinking = computed(() => !!this.plan()?.thinking);
+  /** the brain's open questions drive the interview itself — showing them in
+   *  the plan reads as homework for the submitter, so they stay hidden */
+  sections = computed(() =>
+    (this.plan()?.sections ?? []).filter((sec) => !/open question/i.test(sec.title)),
+  );
   private timer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 

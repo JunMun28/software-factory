@@ -259,11 +259,7 @@ export class SubShell implements OnDestroy {
   private scrollHost = viewChild<ElementRef<HTMLDivElement>>('scrollHost');
   private beamFill = viewChild<ElementRef<HTMLDivElement>>('beamFill');
   private lenis: Lenis | null = null;
-  private readonly onHostScroll = () => {
-    const host = this.scrollHost()?.nativeElement;
-    if (host) this.clampToFloor(host);
-    this.updateBeam();
-  };
+  private readonly onHostScroll = () => this.updateBeam();
 
   constructor() {
     afterNextRender(() => this.initScroll());
@@ -289,30 +285,6 @@ export class SubShell implements OnDestroy {
     this.scrollHost()?.nativeElement.removeEventListener('scroll', this.onHostScroll);
     this.lenis?.destroy();
     this.lenis = null;
-  }
-
-  /** forward-only scrolling: the page cannot be scrolled above this element
-   *  (the journey host raises it as the submitter advances; explicit back-
-   *  navigation lowers it). Null = no floor. */
-  private floorEl: HTMLElement | null = null;
-  setScrollFloor(el: HTMLElement | null) {
-    this.floorEl = el;
-    this.lenis?.resize(); // sections mount dynamically — refresh Lenis's limit
-  }
-  private clampToFloor(host: HTMLElement) {
-    if (!this.floorEl) return;
-    const floor =
-      this.floorEl.getBoundingClientRect().top -
-      host.getBoundingClientRect().top +
-      host.scrollTop -
-      12;
-    if (host.scrollTop < floor - 1) {
-      // write BOTH scroll authorities: the native position (what the user sees)
-      // and Lenis's internal target — otherwise its rAF loop keeps easing back
-      // toward the pre-clamp value and the two fight
-      host.scrollTop = floor;
-      this.lenis?.scrollTo(floor, { immediate: true });
-    }
   }
 
   private updateBeam() {

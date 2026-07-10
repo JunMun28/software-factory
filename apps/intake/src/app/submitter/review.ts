@@ -1,6 +1,6 @@
-import { Component, DestroyRef, Input, OnInit, inject, output, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import {
   Api,
@@ -13,123 +13,131 @@ import {
 } from '@sf/shared';
 import { IntakeDraft } from './intake-draft.service';
 import { ProtoFullscreen } from './proto-fullscreen';
+import { SubShell } from './sub-shell';
 
 /** Review — the AI-written spec of the request before submit, shown wide and two-column: the
  *  structured spec on the left, the prototype (with a full-screen view) on the right. Two ways
  *  forward: "Add more detail" reopens the chat, or "Submit request" sends it to a reviewer. */
 @Component({
   selector: 'sf-review',
-  imports: [Icon, Mark, TypeChip, ProtoFullscreen],
+  imports: [SubShell, Icon, Mark, TypeChip, ProtoFullscreen],
   template: `
-    <div class="rv-wrap fade-in">
-      <h1 class="rv-h1">Review your request</h1>
-      <p class="rv-sub">Here's the spec we'll send to the reviewer. Add more, or submit it.</p>
+    <sub-shell
+      active="new"
+      [step]="req()?.type === 'new' ? 3 : 2"
+      [proto]="req()?.type === 'new'"
+      [reqId]="id"
+    >
+      <div class="rv-wrap fade-in">
+        <h1 class="rv-h1">Review your request</h1>
+        <p class="rv-sub">Here's the spec we'll send to the reviewer. Add more, or submit it.</p>
 
-      @if (req(); as r) {
-        <div class="rv-grid" [class.rv-grid--solo]="r.type !== 'new'">
-          <!-- LEFT: the structured spec -->
-          <div class="rv-main">
-            <div class="card rv" style="overflow:hidden">
-              <div class="rv__head">
-                <span class="rv__av"><sf-mark [size]="14" color="#fff" /></span>
-                <span class="rv__title">Request spec</span>
-              </div>
-
-              @if (summary()?.overview; as ov) {
-                <div class="rv__body">
-                  <p class="rv__overview">{{ ov }}</p>
-                  @for (sec of summary()!.sections; track sec.title) {
-                    <div class="rv__sec">
-                      <div class="rv__sec-title">{{ sec.title }}</div>
-                      <ul class="rv__list">
-                        @for (it of sec.items; track $index) {
-                          <li>{{ it }}</li>
-                        }
-                      </ul>
-                    </div>
-                  }
+        @if (req(); as r) {
+          <div class="rv-grid" [class.rv-grid--solo]="r.type !== 'new'">
+            <!-- LEFT: the structured spec -->
+            <div class="rv-main">
+              <div class="card rv" style="overflow:hidden">
+                <div class="rv__head">
+                  <span class="rv__av"><sf-mark [size]="14" color="#fff" /></span>
+                  <span class="rv__title">Request spec</span>
                 </div>
-              } @else {
-                <div class="rv__body rv__loading" aria-hidden="true">
-                  <span class="rv__bar" style="width:92%"></span>
-                  <span class="rv__bar" style="width:80%"></span>
-                  <span class="rv__bar" style="width:96%"></span>
-                  <span class="rv__bar" style="width:70%"></span>
-                  <span class="rv__bar" style="width:60%"></span>
-                  <span class="rv__thinking">Writing the spec…</span>
-                </div>
-              }
 
-              <div class="rv__facts">
-                <span><i>Type</i><sf-type-chip [t]="r.type" /></span>
-                <span
-                  ><i>{{ r.type === 'new' ? 'App name' : 'App' }}</i
-                  >{{ r.app_name }}</span
-                >
-                @if (r.type !== 'bug') {
-                  <span
-                    ><i>Who's affected</i>{{ reachLabel(r.reach) || 'Just the requester' }}</span
-                  >
-                  @if (impactLabel(r); as impact) {
-                    <span><i>Impact</i>{{ impact }}</span>
-                  }
+                @if (summary()?.overview; as ov) {
+                  <div class="rv__body">
+                    <p class="rv__overview">{{ ov }}</p>
+                    @for (sec of summary()!.sections; track sec.title) {
+                      <div class="rv__sec">
+                        <div class="rv__sec-title">{{ sec.title }}</div>
+                        <ul class="rv__list">
+                          @for (it of sec.items; track $index) {
+                            <li>{{ it }}</li>
+                          }
+                        </ul>
+                      </div>
+                    }
+                  </div>
+                } @else {
+                  <div class="rv__body rv__loading" aria-hidden="true">
+                    <span class="rv__bar" style="width:92%"></span>
+                    <span class="rv__bar" style="width:80%"></span>
+                    <span class="rv__bar" style="width:96%"></span>
+                    <span class="rv__bar" style="width:70%"></span>
+                    <span class="rv__bar" style="width:60%"></span>
+                    <span class="rv__thinking">Writing the spec…</span>
+                  </div>
                 }
-                <button class="rv__edit" (click)="go('/submit/new')">Edit details</button>
+
+                <div class="rv__facts">
+                  <span><i>Type</i><sf-type-chip [t]="r.type" /></span>
+                  <span
+                    ><i>{{ r.type === 'new' ? 'App name' : 'App' }}</i
+                    >{{ r.app_name }}</span
+                  >
+                  @if (r.type !== 'bug') {
+                    <span
+                      ><i>Who's affected</i>{{ reachLabel(r.reach) || 'Just the requester' }}</span
+                    >
+                    @if (impactLabel(r); as impact) {
+                      <span><i>Impact</i>{{ impact }}</span>
+                    }
+                  }
+                  <button class="rv__edit" (click)="go('/submit/new')">Edit details</button>
+                </div>
               </div>
             </div>
+
+            <!-- RIGHT: the prototype (new-app only) -->
+            @if (r.type === 'new') {
+              <aside class="rv-side">
+                @if (protoDoc(); as doc) {
+                  <div class="card pv" style="overflow:hidden">
+                    <div class="pv__head">
+                      <span class="pv__title">Prototype</span>
+                      <span class="pv__sp"></span>
+                      <button class="pv__btn" (click)="openFull()" title="View full screen">
+                        <sf-icon name="maximize" [size]="14" /> Full screen
+                      </button>
+                      <button class="pv__edit" (click)="editProto()">Edit</button>
+                    </div>
+                    <div class="pv__frame">
+                      <iframe
+                        [srcdoc]="doc"
+                        sandbox="allow-scripts"
+                        title="Prototype preview"
+                        loading="lazy"
+                      ></iframe>
+                    </div>
+                  </div>
+                } @else {
+                  <button class="pv-add" (click)="editProto()">
+                    <span style="color:var(--accent)">＋</span> Add a prototype
+                  </button>
+                }
+              </aside>
+            }
           </div>
+        }
 
-          <!-- RIGHT: the prototype (new-app only) -->
-          @if (r.type === 'new') {
-            <aside class="rv-side">
-              @if (protoDoc(); as doc) {
-                <div class="card pv" style="overflow:hidden">
-                  <div class="pv__head">
-                    <span class="pv__title">Prototype</span>
-                    <span class="pv__sp"></span>
-                    <button class="pv__btn" (click)="openFull()" title="View full screen">
-                      <sf-icon name="maximize" [size]="14" /> Full screen
-                    </button>
-                    <button class="pv__edit" (click)="editProto()">Edit</button>
-                  </div>
-                  <div class="pv__frame">
-                    <iframe
-                      [srcdoc]="doc"
-                      sandbox="allow-scripts"
-                      title="Prototype preview"
-                      loading="lazy"
-                    ></iframe>
-                  </div>
-                </div>
-              } @else {
-                <button class="pv-add" (click)="editProto()">
-                  <span style="color:var(--accent)">＋</span> Add a prototype
-                </button>
-              }
-            </aside>
-          }
+        <div class="rv-actions">
+          <button class="btn ghost" (click)="addMore()">
+            <span style="color:var(--accent)">↩</span> Add more detail
+          </button>
+          <button class="btn primary lg" [disabled]="submitting()" (click)="submit()">
+            {{ submitting() ? 'Submitting…' : 'Submit request' }}
+            <sf-icon name="arrowRight" [size]="16" />
+          </button>
         </div>
-      }
-
-      <div class="rv-actions">
-        <button class="btn ghost" (click)="addMore()">
-          <span style="color:var(--accent)">↩</span> Add more detail
-        </button>
-        <button class="btn primary lg" [disabled]="submitting()" (click)="submit()">
-          {{ submitting() ? 'Submitting…' : 'Submit request' }}
-          <sf-icon name="arrowRight" [size]="16" />
-        </button>
       </div>
-    </div>
 
-    <!-- full-screen prototype overlay (shared component) -->
-    @if (fullscreen() && protoDoc(); as doc) {
-      <sf-proto-fullscreen
-        [doc]="doc"
-        [title]="(req()?.app_name || 'Prototype') + ' · prototype'"
-        (closed)="closeFull()"
-      />
-    }
+      <!-- full-screen prototype overlay (shared component) -->
+      @if (fullscreen() && protoDoc(); as doc) {
+        <sf-proto-fullscreen
+          [doc]="doc"
+          [title]="(req()?.app_name || 'Prototype') + ' · prototype'"
+          (closed)="closeFull()"
+        />
+      }
+    </sub-shell>
   `,
   styles: `
     .rv-wrap {
@@ -363,10 +371,7 @@ export class Review implements OnInit {
   private router = inject(Router);
   private draft = inject(IntakeDraft);
   private sanitizer = inject(DomSanitizer);
-  /** the request under review (set by the journey host) */
-  @Input({ required: true }) id!: number;
-  /** the host scrolls back to an earlier section */
-  goto = output<'interview' | 'prototype'>();
+  id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
   private get extra() {
     return this.draft.extra;
   }
@@ -409,7 +414,7 @@ export class Review implements OnInit {
 
   /** back to the Prototype step to keep shaping the mock */
   editProto() {
-    this.goto.emit('prototype');
+    this.router.navigateByUrl(`/submit/${this.id}/prototype`);
   }
 
   /** Fetch the AI spec; poll every ~1.5s while it's still generating. */
@@ -453,7 +458,7 @@ export class Review implements OnInit {
   }
   /** back to the chat to add more — the interview reopens for a follow-up */
   addMore() {
-    this.goto.emit('interview');
+    this.router.navigateByUrl(`/submit/${this.id}/interview`);
   }
 
   submit() {

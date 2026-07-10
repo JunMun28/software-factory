@@ -1,0 +1,75 @@
+{"kind":"deck","id":"pr/xlqfml","name":"Deck"}
+{"kind":"layout","layoutId":"7c364359-6773-4a7f-a469-fbe69fa4e6d8","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"8cbbee4a-b074-4f4d-b9bd-8e19717abead","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/oag3ch","slide":1,"title":"Slide 1","textShapes":0}
+{"kind":"image","id":"im/kre1w7mp","slide":1,"name":"","alt":"Rendered slide 1: The New SDLC With Vibe Coding","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/oag3ch","slide":1,"text":""}
+{"kind":"slide","id":"sl/q20ie9","slide":2,"title":"Slide 2","textShapes":0}
+{"kind":"image","id":"im/1kre1w7m","slide":2,"name":"","alt":"Rendered slide 2: The center of gravity moved from syntax to intent","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/q20ie9","slide":2,"text":""}
+{"kind":"slide","id":"sl/utwpl8","slide":3,"title":"Slide 3","textShapes":0}
+{"kind":"image","id":"im/9s36hcrm","slide":3,"name":"","alt":"Rendered slide 3: Adoption crossed from novelty into daily workflow","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/utwpl8","slide":3,"text":""}
+{"kind":"slide","id":"sl/kjadee","slide":4,"title":"Slide 4","textShapes":0}
+{"kind":"image","id":"im/xczed8v6","slide":4,"name":"","alt":"Rendered slide 4: An agent is a loop, not just a chat box","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/kjadee","slide":4,"text":""}
+{"kind":"slide","id":"sl/d946g9","slide":5,"title":"Slide 5","textShapes":0}
+{"kind":"image","id":"im/svu9knih","slide":5,"name":"","alt":"Rendered slide 5: Vibe coding is one point on a maturity spectrum","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/d946g9","slide":5,"text":""}
+{"kind":"slide","id":"sl/1wacg4","slide":6,"title":"Slide 6","textShapes":0}
+{"kind":"image","id":"im/2t83itgf","slide":6,"name":"","alt":"Rendered slide 6: Verification is what separates agentic engineering from vibes","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/1wacg4","slide":6,"text":""}
+{"kind":"slide","id":"sl/6kstai","slide":7,"title":"Slide 7","textShapes":0}
+{"kind":"image","id":"im/18jqh0fe","slide":7,"name":"","alt":"Rendered slide 7: Prompting matters, but context architecture matters more","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/6kstai","slide":7,"text":""}
+{"kind":"slide","id":"sl/7fncte","slide":8,"title":"Slide 8","textShapes":0}
+{"kind":"image","id":"im/k3q5o7qp","slide":8,"name":"","alt":"Rendered slide 8: The context boundary becomes an architecture decision","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/7fncte","slide":8,"text":""}
+{"kind":"slide","id":"sl/lgxdcb","slide":9,"title":"Slide 9","textShapes":0}
+{"kind":"image","id":"im/32lszqtc","slide":9,"name":"","alt":"Rendered slide 9: Implementation compresses unevenly; judgment-heavy phases do not","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/lgxdcb","slide":9,"text":""}
+{"kind":"slide","id":"sl/6wpep0","slide":10,"title":"Slide 10","textShapes":0}
+{"kind":"image","id":"im/j2t83itg","slide":10,"name":"","alt":"Rendered slide 10: The front of the SDLC becomes a conversation with constraints","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/6wpep0","slide":10,"text":""}
+{"kind":"slide","id":"sl/vneemj","slide":11,"title":"Slide 11","textShapes":0}
+{"kind":"image","id":"im/wb2hwfyx","slide":11,"name":"","alt":"Rendered slide 11: Agents can make broad changes, but verification drag is real","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/vneemj","slide":11,"text":""}
+{"kind":"slide","id":"sl/h5j658","slide":12,"title":"Slide 12","textShapes":0}
+{"kind":"image","id":"im/5kb6xkf6","slide":12,"name":"","alt":"Rendered slide 12: Quality becomes a flywheel, not a final phase","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/h5j658","slide":12,"text":""}
+{"kind":"slide","id":"sl/q1h9sn","slide":13,"title":"Slide 13","textShapes":0}
+{"kind":"image","id":"im/zidonyd0","slide":13,"name":"","alt":"Rendered slide 13: Later SDLC phases get AI help, but not blind autonomy","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/q1h9sn","slide":13,"text":""}
+{"kind":"slide","id":"sl/x38le1","slide":14,"title":"Slide 14","textShapes":0}
+{"kind":"image","id":"im/ylc7u54z","slide":14,"name":"","alt":"Rendered slide 14: The developer output shifts from code to a code-producing system","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/x38le1","slide":14,"text":""}
+{"kind":"slide","id":"sl/84k8ph","slide":15,"title":"Slide 15","textShapes":0}
+{"kind":"image","id":"im/2t83itgf","slide":15,"name":"","alt":"Rendered slide 15: Agent = model plus harness","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/84k8ph","slide":15,"text":""}
+{"kind":"slide","id":"sl/1mxc2y","slide":16,"title":"Slide 16","textShapes":0}
+{"kind":"image","id":"im/d8bat47y","slide":16,"name":"","alt":"Rendered slide 16: Each SDLC phase configures or observes the harness","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/1mxc2y","slide":16,"text":""}
+{"kind":"slide","id":"sl/jojt4w","slide":17,"title":"Slide 17","textShapes":0}
+{"kind":"image","id":"im/zqtcj6to","slide":17,"name":"","alt":"Rendered slide 17: Developers move between conductor and orchestrator modes","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/jojt4w","slide":17,"text":""}
+{"kind":"slide","id":"sl/i90jne","slide":18,"title":"Slide 18","textShapes":0}
+{"kind":"image","id":"im/svu9knih","slide":18,"name":"","alt":"Rendered slide 18: The paper separates agents by where they operate","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/i90jne","slide":18,"text":""}
+{"kind":"slide","id":"sl/raknhj","slide":19,"title":"Slide 19","textShapes":0}
+{"kind":"image","id":"im/xc3ylc7u","slide":19,"name":"","alt":"Rendered slide 19: Vibes look cheap until operations and maintenance arrive","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/raknhj","slide":19,"text":""}
+{"kind":"slide","id":"sl/v88hlc","slide":20,"title":"Slide 20","textShapes":0}
+{"kind":"image","id":"im/6tovahoz","slide":20,"name":"","alt":"Rendered slide 20: Start by making one workflow repeatable and measurable","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/v88hlc","slide":20,"text":""}
+{"kind":"slide","id":"sl/d913al","slide":21,"title":"Slide 21","textShapes":0}
+{"kind":"image","id":"im/hk3q5o7q","slide":21,"name":"","alt":"Rendered slide 21: The new SDLC fails when generation outruns control","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/d913al","slide":21,"text":""}
+{"kind":"slide","id":"sl/9lxzxf","slide":22,"title":"Slide 22","textShapes":0}
+{"kind":"image","id":"im/sfil0rqd","slide":22,"name":"","alt":"Rendered slide 22: Software Factory already embodies the paper's agentic direction","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/9lxzxf","slide":22,"text":""}
+{"kind":"slide","id":"sl/w0k4nj","slide":23,"title":"Slide 23","textShapes":0}
+{"kind":"image","id":"im/ra5gbq1o","slide":23,"name":"","alt":"Rendered slide 23: The project turns the paper's ideas into operating controls","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/w0k4nj","slide":23,"text":""}
+{"kind":"slide","id":"sl/irf796","slide":24,"title":"Slide 24","textShapes":0}
+{"kind":"image","id":"im/qh0fepkz","slide":24,"name":"","alt":"Rendered slide 24: A governed operating system for AI software delivery","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/irf796","slide":24,"text":""}

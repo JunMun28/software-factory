@@ -1,0 +1,1041 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/6ap14d",
+    "id": "6ap14d",
+    "slide": 6,
+    "layoutId": "9a508e48-83d5-4687-a400-f3d8243da135",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "4d0c3b6f-5c52-492d-9743-444a00c8cc85",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#101820",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "+mn-lt"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "9a508e48-83d5-4687-a400-f3d8243da135",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "4d0c3b6f-5c52-492d-9743-444a00c8cc85",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "4d0c3b6f-5c52-492d-9743-444a00c8cc85",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/c7u54zid",
+      "id": "1",
+      "bbox": [
+        28,
+        28,
+        1224,
+        664
+      ],
+      "geometry": "rect",
+      "lineColor": "#2B3643",
+      "lineWidth": 1
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/jm1cfa9w",
+      "id": "2",
+      "bbox": [
+        58,
+        46,
+        430,
+        18
+      ],
+      "geometry": "rect",
+      "text": "THE DIVIDING LINE",
+      "textPreview": "THE DIVIDING LINE",
+      "resolvedFontSize": 13,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 13,
+        "typeface": "+mn-lt",
+        "color": "#F2C36B",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "THE DIVIDING LINE"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "THE DIVIDING LINE",
+          "resolvedTextStyle": {
+            "fontSize": 13,
+            "color": "#F2C36B",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "THE DIVIDING LINE",
+              "fontSize": 13,
+              "color": "#F2C36B",
+              "bold": true,
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/u18jqh0f",
+      "id": "3",
+      "bbox": [
+        930,
+        46,
+        290,
+        18
+      ],
+      "geometry": "rect",
+      "text": "The New SDLC With Vibe Coding",
+      "textPreview": "The New SDLC With Vibe Coding",
+      "resolvedFontSize": 13,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 13,
+        "typeface": "+mn-lt",
+        "color": "#91A1B2",
+        "alignment": "right",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "The New SDLC With Vibe Coding"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "The New SDLC With Vibe Coding",
+          "resolvedTextStyle": {
+            "fontSize": 13,
+            "color": "#91A1B2",
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "The New SDLC With Vibe Coding",
+              "fontSize": 13,
+              "color": "#91A1B2",
+              "alignment": "right"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/1032lszq",
+      "id": "4",
+      "bbox": [
+        58,
+        88,
+        1040,
+        104
+      ],
+      "geometry": "rect",
+      "text": "Verification separates agentic engineering from vibes",
+      "textPreview": "Verification separates agentic engineering from vibes",
+      "resolvedFontSize": 43,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 43,
+        "typeface": "+mn-lt",
+        "color": "#F4F8FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Verification separates agentic engineering from"
+          },
+          {
+            "index": 2,
+            "text": "vibes"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Verification separates agentic engineering from vibes",
+          "resolvedTextStyle": {
+            "fontSize": 43,
+            "color": "#F4F8FB",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Verification separates agentic engineering from vibes",
+              "fontSize": 43,
+              "color": "#F4F8FB",
+              "bold": true,
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cfa9w3m9",
+      "id": "5",
+      "bbox": [
+        58,
+        198,
+        1080,
+        58
+      ],
+      "geometry": "rect",
+      "text": "Without deterministic tests and nondeterministic evals, the process is still vibe coding.",
+      "textPreview": "Without deterministic tests and nondeterministic evals, the process is still vibe coding.",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 20,
+        "typeface": "+mn-lt",
+        "color": "#C2CEDA",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Without deterministic tests and nondeterministic evals, the process is still vibe coding."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Without deterministic tests and nondeterministic evals, the process is still vibe coding.",
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "color": "#C2CEDA",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Without deterministic tests and nondeterministic evals, the process is still vibe coding.",
+              "fontSize": 20,
+              "color": "#C2CEDA",
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/judg7ads",
+      "id": "6",
+      "bbox": [
+        58,
+        682,
+        620,
+        16
+      ],
+      "geometry": "rect",
+      "text": "Source: user-provided PDF and Software Factory repo docs",
+      "textPreview": "Source: user-provided PDF and Software Factory repo docs",
+      "resolvedFontSize": 11,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 11,
+        "typeface": "+mn-lt",
+        "color": "#91A1B2",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Source: user-provided PDF and Software Factory repo docs"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Source: user-provided PDF and Software Factory repo docs",
+          "resolvedTextStyle": {
+            "fontSize": 11,
+            "color": "#91A1B2",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Source: user-provided PDF and Software Factory repo docs",
+              "fontSize": 11,
+              "color": "#91A1B2",
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/u9knih4b",
+      "id": "7",
+      "bbox": [
+        1160,
+        682,
+        60,
+        16
+      ],
+      "geometry": "rect",
+      "text": "06 / 24",
+      "textPreview": "06 / 24",
+      "resolvedFontSize": 11,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 11,
+        "typeface": "+mn-lt",
+        "color": "#91A1B2",
+        "alignment": "right",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "06 / 24"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "06 / 24",
+          "resolvedTextStyle": {
+            "fontSize": 11,
+            "color": "#91A1B2",
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "06 / 24",
+              "fontSize": 11,
+              "color": "#91A1B2",
+              "alignment": "right"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/54zidony",
+      "id": "8",
+      "bbox": [
+        58,
+        298,
+        500,
+        220
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#1D2732",
+      "lineColor": "#3A4654",
+      "lineWidth": 1
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cj6tovah",
+      "id": "9",
+      "bbox": [
+        76,
+        316,
+        464,
+        34
+      ],
+      "geometry": "rect",
+      "text": "Tests",
+      "textPreview": "Tests",
+      "resolvedFontSize": 22,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 22,
+        "typeface": "+mn-lt",
+        "color": "#F4F8FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Tests"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Tests",
+          "resolvedTextStyle": {
+            "fontSize": 22,
+            "color": "#F4F8FB",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Tests",
+              "fontSize": 22,
+              "color": "#F4F8FB",
+              "bold": true,
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ex0nuxc3",
+      "id": "10",
+      "bbox": [
+        76,
+        360,
+        464,
+        144
+      ],
+      "geometry": "rect",
+      "text": "For deterministic code paths: APIs, transforms, business rules, permissions, migrations, and contracts.",
+      "textPreview": "For deterministic code paths: APIs, transforms, business rules, permissions, migrations, and contracts.",
+      "resolvedFontSize": 17,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 17,
+        "typeface": "+mn-lt",
+        "color": "#C2CEDA",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "For deterministic code paths: APIs, transforms, business"
+          },
+          {
+            "index": 2,
+            "text": "rules, permissions, migrations, and contracts."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "For deterministic code paths: APIs, transforms, business rules, permissions, migrations, and contracts.",
+          "resolvedTextStyle": {
+            "fontSize": 17,
+            "color": "#C2CEDA",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "For deterministic code paths: APIs, transforms, business rules, permissions, migrations, and contracts.",
+              "fontSize": 17,
+              "color": "#C2CEDA",
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/3itgfmlk",
+      "id": "11",
+      "bbox": [
+        86,
+        475,
+        440,
+        24
+      ],
+      "geometry": "rect",
+      "text": "unit   integration   smoke   regression",
+      "textPreview": "unit   integration   smoke   regression",
+      "resolvedFontSize": 14,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 14,
+        "typeface": "+mn-lt",
+        "color": "#F2C36B",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "unit   integration   smoke   regression"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "unit   integration   smoke   regression",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "color": "#F2C36B",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "unit   integration   smoke   regression",
+              "fontSize": 14,
+              "color": "#F2C36B",
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/w3m94fu1",
+      "id": "12",
+      "bbox": [
+        610,
+        364,
+        60,
+        80
+      ],
+      "geometry": "rect",
+      "text": "+",
+      "textPreview": "+",
+      "resolvedFontSize": 58,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 58,
+        "typeface": "+mn-lt",
+        "color": "#F2C36B",
+        "bold": true,
+        "alignment": "center",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "+"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "+",
+          "resolvedTextStyle": {
+            "fontSize": 58,
+            "color": "#F2C36B",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "+",
+              "fontSize": 58,
+              "color": "#F2C36B",
+              "bold": true,
+              "alignment": "center"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/loj2t83i",
+      "id": "13",
+      "bbox": [
+        720,
+        298,
+        500,
+        220
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#1D2732",
+      "lineColor": "#3A4654",
+      "lineWidth": 1
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/e9cvixcz",
+      "id": "14",
+      "bbox": [
+        738,
+        316,
+        464,
+        34
+      ],
+      "geometry": "rect",
+      "text": "Evals",
+      "textPreview": "Evals",
+      "resolvedFontSize": 22,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 22,
+        "typeface": "+mn-lt",
+        "color": "#F4F8FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Evals"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Evals",
+          "resolvedTextStyle": {
+            "fontSize": 22,
+            "color": "#F4F8FB",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Evals",
+              "fontSize": 22,
+              "color": "#F4F8FB",
+              "bold": true,
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 15,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/3q5o7qpg",
+      "id": "15",
+      "bbox": [
+        738,
+        360,
+        464,
+        144
+      ],
+      "geometry": "rect",
+      "text": "For agent behavior: plan quality, tool choice, trajectory, response quality, refusal behavior, and edge cases.",
+      "textPreview": "For agent behavior: plan quality, tool choice, trajectory, response quality, refusal behavior, and edge cases.",
+      "resolvedFontSize": 17,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 17,
+        "typeface": "+mn-lt",
+        "color": "#C2CEDA",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "For agent behavior: plan quality, tool choice, trajectory,"
+          },
+          {
+            "index": 2,
+            "text": "response quality, refusal behavior, and edge cases."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "For agent behavior: plan quality, tool choice, trajectory, response quality, refusal behavior, and edge cases.",
+          "resolvedTextStyle": {
+            "fontSize": 17,
+            "color": "#C2CEDA",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "For agent behavior: plan quality, tool choice, trajectory, response quality, refusal behavior, and edge cases.",
+              "fontSize": 17,
+              "color": "#C2CEDA",
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/wb2hwfyx",
+      "id": "16",
+      "bbox": [
+        748,
+        475,
+        440,
+        24
+      ],
+      "geometry": "rect",
+      "text": "rubrics   goldens   trajectories   review sets",
+      "textPreview": "rubrics   goldens   trajectories   review sets",
+      "resolvedFontSize": 14,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 14,
+        "typeface": "+mn-lt",
+        "color": "#F2C36B",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "rubrics   goldens   trajectories   review sets"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "rubrics   goldens   trajectories   review sets",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "color": "#F2C36B",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "rubrics   goldens   trajectories   review sets",
+              "fontSize": 14,
+              "color": "#F2C36B",
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lwval87e",
+      "id": "17",
+      "bbox": [
+        58,
+        560,
+        1162,
+        48
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#162D25",
+      "lineColor": "#5ED39A",
+      "lineWidth": 1
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ahoza1gv",
+      "id": "18",
+      "bbox": [
+        80,
+        574,
+        1100,
+        22
+      ],
+      "geometry": "rect",
+      "text": "Agentic engineering starts when both sides are explicit and repeatable.",
+      "textPreview": "Agentic engineering starts when both sides are explicit and repeatable.",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 20,
+        "typeface": "+mn-lt",
+        "color": "#DFF7E9",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Agentic engineering starts when both sides are explicit and repeatable."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Agentic engineering starts when both sides are explicit and repeatable.",
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "color": "#DFF7E9",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Agentic engineering starts when both sides are explicit and repeatable.",
+              "fontSize": 20,
+              "color": "#DFF7E9",
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

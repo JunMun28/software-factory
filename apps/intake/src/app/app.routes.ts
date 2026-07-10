@@ -14,18 +14,15 @@ export const routes: Routes = [
   },
   {
     path: 'submit/:id/interview',
-    // the intake journey is one page since 2026-07 — step links scroll to their section
-    loadComponent: () => import('./submitter/new-request').then((m) => m.NewRequest),
+    loadComponent: () => import('./submitter/interview').then((m) => m.Interview),
   },
   {
     path: 'submit/:id/prototype',
-    // the intake journey is one page since 2026-07 — step links scroll to their section
-    loadComponent: () => import('./submitter/new-request').then((m) => m.NewRequest),
+    loadComponent: () => import('./submitter/prototype').then((m) => m.Prototype),
   },
   {
     path: 'submit/:id/review',
-    // the intake journey is one page since 2026-07 — step links scroll to their section
-    loadComponent: () => import('./submitter/new-request').then((m) => m.NewRequest),
+    loadComponent: () => import('./submitter/review').then((m) => m.Review),
   },
   {
     path: 'submit/:id/done',

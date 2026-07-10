@@ -4,6 +4,16 @@ import { FormsModule } from '@angular/forms';
 import { Api, AppEntry } from '@sf/shared';
 import { IntakeDraft } from './intake-draft.service';
 
+/** all basics answered for this request type (identity + the two facts) */
+export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
+  // new apps skip identity — the title comes from the description
+  const identity = type === 'new' ? true : d.appId !== null || !!d.appName.trim();
+  if (type === 'bug') return identity && !!d.bugWhere.trim() && !!d.bugFreq;
+  return (
+    identity && (!!d.reach || !!d.reachText.trim()) && !!d.impactMetric && !!d.impactValue.trim()
+  );
+}
+
 /** The Clarify step's BASICS card — the fixed questions moved off the Describe
  *  step: Type, Name/Application, Who's affected + Impact (or Where seen +
  *  Frequency for bugs). Edits PATCH the request through the shared IntakeDraft;
@@ -15,7 +25,7 @@ import { IntakeDraft } from './intake-draft.service';
     <div class="basics">
       <div class="basics__h">
         <span class="basics__t">The basics</span>
-        <span class="basics__n">{{ done() }} of 3</span>
+        <span class="basics__n">{{ done() }} of {{ total() }}</span>
       </div>
       <div class="brow2">
         <span class="brow2__q">Type</span>
@@ -27,17 +37,6 @@ import { IntakeDraft } from './intake-draft.service';
           }
         </span>
       </div>
-      @if (rtype() === 'new') {
-        <div class="brow2">
-          <span class="brow2__q" [class.ok]="draft.newName.trim()">Name</span>
-          <input
-            class="input basics__in"
-            placeholder="e.g. Quarterly headcount dashboard"
-            [(ngModel)]="draft.newName"
-            (blur)="save()"
-          />
-        </div>
-      }
       @if (rtype() === 'bug' || rtype() === 'enh') {
         <div class="brow2">
           <span class="brow2__q" [class.ok]="draft.appId !== null || draft.appName.trim()">
@@ -155,8 +154,8 @@ import { IntakeDraft } from './intake-draft.service';
   `,
   styles: `
     .basics {
-      border: 1px solid var(--accent-tint-bd);
-      background: var(--accent-tint);
+      border: 1px solid var(--border);
+      background: var(--surface-2);
       border-radius: 12px;
       padding: 12px 14px;
       margin-bottom: 4px;
@@ -295,12 +294,12 @@ export class BasicsCard implements OnInit {
 
   /** recompute done() when a non-signal draft field changes */
   private rev = signal(0);
+  total = computed(() => (this.rtype() === 'new' ? 2 : 3));
   done = computed(() => {
     this.rev();
     const d = this.draft;
     const t = this.rtype();
-    const identity =
-      t === 'new' ? (d.newName.trim() ? 1 : 0) : d.appId !== null || d.appName.trim() ? 1 : 0;
+    const identity = t === 'new' ? 0 : d.appId !== null || d.appName.trim() ? 1 : 0;
     if (t === 'bug') return identity + (d.bugWhere.trim() ? 1 : 0) + (d.bugFreq ? 1 : 0);
     return (
       identity +

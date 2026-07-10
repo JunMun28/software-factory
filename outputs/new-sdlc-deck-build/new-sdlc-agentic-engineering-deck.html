@@ -1,0 +1,421 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #0a0c10; font-family: Inter, Avenir Next, Helvetica Neue, Arial, sans-serif; color: #eef3f8; }
+.deck { width: 1280px; }
+.slide { position: relative; width: 1280px; height: 720px; overflow: hidden; padding: 44px 58px 40px; background: #111820; page-break-after: always; }
+.slide::before { content: ""; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(77, 141, 255, .08), transparent 42%), radial-gradient(circle at 92% 9%, rgba(244, 184, 64, .16), transparent 28%); pointer-events: none; }
+.slide::after { content: ""; position: absolute; inset: 28px; border: 1px solid rgba(255,255,255,.08); pointer-events: none; }
+.topline, footer { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; color: #8fa0b3; font-size: 13px; letter-spacing: 0; }
+.topline span:first-child { color: #f2c36b; font-weight: 700; text-transform: uppercase; }
+header { position: relative; z-index: 1; width: 1060px; margin-top: 28px; }
+h1 { margin: 0; max-width: 1010px; font-size: 45px; line-height: 1.04; letter-spacing: 0; color: #f7fbff; }
+header p { margin: 15px 0 0; max-width: 1030px; font-size: 20px; line-height: 1.36; color: #b9c6d4; }
+main { position: relative; z-index: 1; height: 445px; margin-top: 28px; }
+footer { position: absolute; z-index: 2; left: 58px; right: 58px; bottom: 28px; font-size: 12px; }
+h3 { margin: 0 0 16px; color: #ffffff; font-size: 23px; letter-spacing: 0; }
+p, li { color: #c8d2de; font-size: 18px; line-height: 1.42; }
+ul { margin: 0; padding-left: 22px; }
+li { margin: 10px 0; }
+section, .cardish { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.11); border-radius: 8px; box-shadow: 0 16px 48px rgba(0,0,0,.18); }
+.layout-cover header { margin-top: 70px; width: 760px; }
+.layout-cover h1 { font-size: 62px; line-height: .98; }
+.layout-cover header p { font-size: 25px; max-width: 720px; }
+.cover-map { position: absolute; right: 82px; top: 144px; width: 330px; display: grid; gap: 12px; }
+.lane { height: 50px; padding: 15px 18px; border-left: 5px solid #4d8dff; background: rgba(255,255,255,.07); color: #dce8f5; font-size: 18px; border-radius: 6px; }
+.lane.active { border-left-color: #f2c36b; color: #fff; background: rgba(242,195,107,.16); }
+.cover-callout { position: absolute; left: 58px; bottom: 98px; width: 700px; padding: 18px 22px; border-radius: 8px; background: rgba(242,195,107,.11); border: 1px solid rgba(242,195,107,.28); font-size: 21px; line-height: 1.35; color: #f9ead0; }
+.cover-callout span { display: block; font-size: 13px; text-transform: uppercase; color: #f2c36b; font-weight: 800; margin-bottom: 6px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; height: 348px; }
+.two section { padding: 28px; }
+.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 18px; }
+.metrics div { min-height: 210px; padding: 28px; border-radius: 8px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); }
+.metrics strong { display: block; color: #f2c36b; font-size: 72px; line-height: .9; margin-bottom: 22px; }
+.metrics span { color: #d8e1ea; font-size: 21px; line-height: 1.25; }
+.large-note { margin-top: 34px; font-size: 24px; color: #fff; }
+.agent-loop { position: relative; height: 380px; }
+.loop-center, .context-core, .fly-center, .harness-core { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; place-items: center; text-align: center; border-radius: 999px; background: #f2c36b; color: #111820; font-weight: 900; line-height: 1.22; }
+.loop-center { width: 160px; height: 160px; font-size: 24px; }
+.loop-node { position: absolute; width: 260px; min-height: 98px; padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,.13); background: rgba(255,255,255,.06); }
+.loop-node b, .loop-node span { display: block; }
+.loop-node b { color: #fff; font-size: 22px; margin-bottom: 7px; }
+.loop-node span { color: #b9c6d4; font-size: 16px; }
+.n1 { left: 60px; top: 12px; } .n2 { right: 95px; top: 12px; } .n3 { right: 30px; bottom: 30px; } .n4 { left: 480px; bottom: 0; } .n5 { left: 35px; bottom: 54px; }
+.spectrum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; height: 350px; }
+.maturity { padding: 24px; }
+.maturity h3 { font-size: 25px; }
+.maturity p { margin: 12px 0; padding: 10px 12px; background: rgba(255,255,255,.055); border-radius: 6px; font-size: 17px; }
+.m2 { border-color: rgba(94, 211, 154, .45); }
+.verify-line { display: grid; grid-template-columns: 1fr 80px 1fr; gap: 22px; align-items: stretch; }
+.verify-line section { padding: 28px; min-height: 280px; }
+.divider { display: grid; place-items: center; color: #f2c36b; font-size: 58px; font-weight: 900; }
+.pill-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.pill-row span { padding: 8px 11px; border-radius: 999px; border: 1px solid rgba(242,195,107,.35); color: #f6d998; font-size: 15px; }
+.bottom-rule { margin-top: 22px; padding: 18px 22px; border-left: 5px solid #5ed39a; background: rgba(94,211,154,.1); color: #dff7e9; font-size: 22px; border-radius: 6px; }
+.context-grid { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; width: 820px; }
+.context-grid section { height: 130px; padding: 23px; }
+.context-grid b, .context-grid span { display: block; }
+.context-grid b { color: #fff; font-size: 23px; margin-bottom: 10px; }
+.context-grid span { color: #bdcad8; font-size: 17px; }
+.context-core { right: 76px; left: auto; top: 174px; transform: none; width: 230px; height: 230px; font-size: 28px; }
+.three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; height: 340px; }
+.three section { padding: 24px; }
+.sdlc { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; align-items: end; height: 290px; }
+.phase { border-radius: 8px 8px 0 0; padding: 16px 12px; border: 1px solid rgba(255,255,255,.12); background: rgba(77,141,255,.14); min-height: 140px; display: flex; flex-direction: column; justify-content: flex-end; }
+.phase b { color: #fff; font-size: 18px; margin-bottom: 9px; }
+.phase span { color: #c7d5e3; font-size: 15px; }
+.p2 { min-height: 248px; background: rgba(94,211,154,.15); } .p3 { min-height: 214px; } .p4 { min-height: 262px; background: rgba(242,195,107,.16); } .p5 { min-height: 210px; } .p0, .p1 { min-height: 238px; }
+.compression { margin-top: 24px; padding: 18px 22px; background: rgba(255,255,255,.06); border-radius: 6px; color: #fff; font-size: 23px; }
+.process section, .trade section, .roles section, .economics section { padding: 28px; }
+.trade { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.trade section:first-child { border-color: rgba(94,211,154,.42); }
+.trade section:last-child { border-color: rgba(255,117,117,.40); }
+.equation { margin-top: 23px; text-align: center; font-size: 27px; font-weight: 800; color: #f2c36b; }
+.flywheel { position: relative; height: 365px; }
+.fly { position: absolute; width: 215px; min-height: 94px; padding: 18px; border-radius: 8px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.13); }
+.fly b, .fly span { display: block; }
+.fly b { font-size: 21px; color: #fff; } .fly span { margin-top: 6px; font-size: 15px; color: #bdcad8; }
+.f0 { left: 90px; top: 20px; } .f1 { left: 480px; top: 0; } .f2 { right: 90px; top: 100px; } .f3 { left: 585px; bottom: 0; } .f4 { left: 150px; bottom: 42px; }
+.fly-center { width: 160px; height: 160px; font-size: 25px; }
+.cards3, .playbook { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+.cards3 section, .playbook section { min-height: 300px; padding: 27px; }
+.cards3 p, .playbook p { font-size: 18px; }
+.flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+.flow section { min-height: 310px; padding: 22px; display: flex; flex-direction: column; justify-content: flex-end; }
+.flow span { color: #f2c36b; font-size: 16px; font-weight: 900; }
+.flow h3 { font-size: 21px; }
+.flow p { font-size: 16px; }
+.harness { position: relative; height: 365px; }
+.harness-core { width: 150px; height: 150px; font-size: 30px; }
+.hr { position: absolute; width: 245px; min-height: 90px; padding: 18px; }
+.hr b, .hr span { display: block; }
+.hr b { color: #fff; font-size: 20px; } .hr span { color: #c2cfdd; font-size: 15px; margin-top: 6px; }
+.h0 { left: 80px; top: 0; } .h1 { left: 450px; top: 0; } .h2 { right: 80px; top: 0; } .h3 { right: 80px; bottom: 0; } .h4 { left: 450px; bottom: 0; } .h5 { left: 80px; bottom: 0; }
+table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 8px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); }
+th { color: #f2c36b; text-align: left; font-size: 16px; padding: 13px 16px; border-bottom: 1px solid rgba(255,255,255,.14); }
+td { color: #d2dde8; font-size: 16px; line-height: 1.3; padding: 13px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.matrix td:first-child, .repo-map td:first-child { color: #fff; font-weight: 800; }
+.roles p { margin-top: 0; }
+.landscape { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.landscape section { min-height: 315px; padding: 22px; }
+.landscape h3 { font-size: 21px; }
+.landscape p { color: #fff; font-size: 17px; }
+.landscape span { display: block; margin-top: 24px; color: #b9c6d4; font-size: 16px; }
+.cost-line { margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.cost-line span { padding: 15px; border-radius: 6px; text-align: center; background: rgba(242,195,107,.12); color: #f6dda4; font-weight: 800; }
+.risk-grid, .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.risk-grid section, .controls section { min-height: 132px; padding: 18px; }
+.risk-grid h3, .controls h3 { font-size: 20px; margin-bottom: 8px; }
+.risk-grid p, .controls p { font-size: 15px; margin: 0; }
+.repo-map th, .repo-map td { font-size: 15px; }
+.vision-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.vision-grid section { min-height: 170px; padding: 20px; }
+.vision-grid h3 { font-size: 20px; }
+.vision-grid p { font-size: 15px; }
+.project-link { margin-top: 18px; padding: 18px; border-radius: 8px; background: rgba(242,195,107,.12); border: 1px solid rgba(242,195,107,.28); display: grid; grid-template-columns: 120px 1fr; gap: 10px 16px; align-items: center; }
+.project-link b { color: #f2c36b; font-size: 16px; }
+.project-link code { grid-column: 2; }
+code { color: #f7fbff; background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.10); padding: 8px 10px; border-radius: 6px; font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; overflow-wrap: anywhere; }
+</style></head><body><div class="deck">
+  <article class="slide slide-1 layout-cover">
+    <div class="topline"><span>Document briefing</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>The New SDLC With Vibe Coding</h1>
+      <p>From ad-hoc prompting to agentic engineering</p>
+    </header>
+    <main>
+      <div class="cover-map">
+        <div class="lane active">Intent</div>
+        <div class="lane">Context</div>
+        <div class="lane">Agents</div>
+        <div class="lane">Tests</div>
+        <div class="lane">Evals</div>
+        <div class="lane">Gates</div>
+      </div>
+      <div class="cover-callout">
+        <span>Deck goal</span>
+        Explain the paper deeply, then map it onto this repo's Software Factory vision.
+      </div>
+    </main>
+    <footer><span>Source document: Addy Osmani, Shubham Saboo, Sokratis Kartakis, May 2026</span><span>01 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-2 layout-twoColumn">
+    <div class="topline"><span>Executive thesis</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>The center of gravity moved from syntax to intent</h1>
+      <p>AI now writes large chunks of code. The scarce work is specifying direction, feeding context, verifying behavior, and deciding what is safe to ship.</p>
+    </header>
+    <main><div class="two"><section>
+      <h3>What changes</h3>
+      <ul>
+        <li>Developers express goals, constraints, examples, and acceptance bars.</li>
+        <li>Agents translate that intent into code, tests, diffs, plans, and reviews.</li>
+        <li>Teams build reusable harnesses instead of treating every prompt as a one-off.</li>
+      </ul>
+    </section><section>
+      <h3>What does not disappear</h3>
+      <ul>
+        <li>Requirements and architecture still need human judgment.</li>
+        <li>Verification becomes more important, not less.</li>
+        <li>Engineering culture is amplified: strong teams scale, weak habits scale too.</li>
+      </ul>
+    </section></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>02 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-3 layout-metrics">
+    <div class="topline"><span>Why now</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Adoption crossed from novelty into daily workflow</h1>
+      <p>The paper frames early 2026 as the moment AI coding agents became normal enough that the SDLC itself had to be rethought.</p>
+    </header>
+    <main><div class="metrics"><div><strong>85%</strong><span>professional developers regularly using AI coding agents</span></div><div><strong>51%</strong><span>using them daily</span></div><div><strong>41%</strong><span>new code estimated as AI generated</span></div></div><p class="large-note">The raw numbers are less important than the implication: generation is no longer the bottleneck.</p></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>03 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-4 layout-loop">
+    <div class="topline"><span>AI agent refresher</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>An agent is a loop, not just a chat box</h1>
+      <p>The document breaks agents into a model, tools, memory, orchestration, and deployment context.</p>
+    </header>
+    <main><div class="agent-loop"><div class="loop-node n1"><b>Model</b><span>reasoning and generation</span></div><div class="loop-node n2"><b>Tools</b><span>read files, run tests, search, call APIs</span></div><div class="loop-node n3"><b>Memory</b><span>persistent preferences and project facts</span></div><div class="loop-node n4"><b>Orchestration</b><span>planning, retries, routing, delegation</span></div><div class="loop-node n5"><b>Deployment</b><span>where the agent runs and what it can touch</span></div><div class="loop-center">observe<br/>plan<br/>act<br/>verify</div></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>04 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-5 layout-spectrum">
+    <div class="topline"><span>Terminology</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Vibe coding is one point on a maturity spectrum</h1>
+      <p>The paper's key distinction is not whether AI is used. It is how much structure and verification surrounds it.</p>
+    </header>
+    <main><div class="spectrum"><section class="maturity m0"><h3>Vibe coding</h3><p>Loose intent</p><p>Manual eyeballing</p><p>Prototype scope</p><p>High hidden risk</p></section><section class="maturity m1"><h3>Structured AI-assisted</h3><p>Explicit tasks</p><p>Tests and review</p><p>Team workflow</p><p>Moderate risk</p></section><section class="maturity m2"><h3>Agentic engineering</h3><p>Specs as inputs</p><p>Tests plus evals</p><p>Production scope</p><p>Managed risk</p></section></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>05 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-6 layout-verification">
+    <div class="topline"><span>The dividing line</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Verification is what separates agentic engineering from vibes</h1>
+      <p>The paper is blunt here: without tests for deterministic behavior and evals for nondeterministic behavior, the process is still vibe coding.</p>
+    </header>
+    <main><div class="verify-line"><section>
+      <h3>Tests</h3>
+      <p>Best for deterministic code paths: APIs, data transforms, business rules, permissions, migrations, contracts.</p>
+      <div class="pill-row"><span>unit</span><span>integration</span><span>smoke</span><span>regression</span></div>
+    </section><div class="divider">+</div><section>
+      <h3>Evals</h3>
+      <p>Best for agent behavior: plan quality, tool choice, trajectory, response quality, refusal behavior, edge-case handling.</p>
+      <div class="pill-row"><span>rubrics</span><span>goldens</span><span>trajectories</span><span>review sets</span></div>
+    </section></div><div class="bottom-rule">Agentic engineering begins when both sides are explicit and repeatable.</div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>06 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-7 layout-contextWheel">
+    <div class="topline"><span>Context engineering</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Prompting matters, but context architecture matters more</h1>
+      <p>The paper argues that output quality depends heavily on what the agent knows, when it knows it, and how stale or overloaded that context becomes.</p>
+    </header>
+    <main><div class="context-grid"><section><b>Instructions</b><span>rules and role</span></section><section><b>Knowledge</b><span>docs and references</span></section><section><b>Memory</b><span>durable facts</span></section><section><b>Examples</b><span>few-shot patterns</span></section><section><b>Tools</b><span>actions and APIs</span></section><section><b>Guardrails</b><span>bounds and policy</span></section></div><div class="context-core">Context<br/>engineering</div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>07 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-8 layout-staticDynamic">
+    <div class="topline"><span>Static vs dynamic context</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>The context boundary becomes an architecture decision</h1>
+      <p>Teams must decide what stays always-on, what is retrieved on demand, and what should be packaged as reusable procedural knowledge.</p>
+    </header>
+    <main><div class="three"><section>
+      <h3>Static context</h3>
+      <ul>
+        <li>AGENTS.md, CLAUDE.md, GEMINI.md</li>
+        <li>System instructions and team norms</li>
+        <li>Long-lived persona and safety defaults</li>
+      </ul>
+    </section><section>
+      <h3>Dynamic context</h3>
+      <ul>
+        <li>Tool results and command output</li>
+        <li>Retrieved docs and current source files</li>
+        <li>Windowed conversation history</li>
+      </ul>
+    </section><section>
+      <h3>Agent Skills</h3>
+      <ul>
+        <li>Portable procedures</li>
+        <li>Progressive disclosure</li>
+        <li>Less context rot across agents</li>
+      </ul>
+    </section></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>08 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-9 layout-sdlc">
+    <div class="topline"><span>New SDLC shape</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Implementation compresses unevenly; judgment-heavy phases do not</h1>
+      <p>AI speeds coding more than it speeds deciding. That changes the rhythm of the lifecycle.</p>
+    </header>
+    <main><div class="sdlc"><div class="phase p0"><b>Requirements</b><span>human-paced</span></div><div class="phase p1"><b>Architecture</b><span>human tradeoffs</span></div><div class="phase p2"><b>Implementation</b><span>compressed</span></div><div class="phase p3"><b>Testing and evals</b><span>expanded</span></div><div class="phase p4"><b>Review and deploy</b><span>gated</span></div><div class="phase p5"><b>Maintenance</b><span>continuous</span></div></div><div class="compression">Implementation narrows; verification and supervision widen.</div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>09 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-10 layout-splitProcess">
+    <div class="topline"><span>Requirements and architecture</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>The front of the SDLC becomes a conversation with constraints</h1>
+      <p>AI can elicit edge cases, draft user stories, propose schemas, and prototype flows. Humans still own the tradeoffs.</p>
+    </header>
+    <main><div class="two process"><section><h3>Requirements with AI</h3><ul><li>Interview users and stakeholders</li><li>Generate stories and edge cases</li><li>Draft acceptance criteria</li><li>Prototype early UX and data flows</li></ul></section><section><h3>Architecture with AI</h3><ul><li>Explore options and consequences</li><li>Document decisions before code</li><li>Turn patterns into repeatable rules</li><li>Keep nonfunctional requirements explicit</li></ul></section></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>10 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-11 layout-tradeoff">
+    <div class="topline"><span>Implementation</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Agents can make broad changes, but verification drag is real</h1>
+      <p>The document cites productivity gains in some studies while also highlighting cases where experienced developers slowed down because review, debugging, and validation expanded.</p>
+    </header>
+    <main><div class="trade"><section><h3>Where agents help</h3><ul><li>Multi-file edits</li><li>Boilerplate removal</li><li>Migration assistance</li><li>Fast first drafts</li></ul></section><section><h3>Where drag appears</h3><ul><li>Debugging generated code</li><li>Reviewing unfamiliar diffs</li><li>Integration edge cases</li><li>Trust calibration</li></ul></section></div><div class="equation">Net productivity = generation speed - verification/rework cost</div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>11 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-12 layout-flywheel">
+    <div class="topline"><span>Testing and QA</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Quality becomes a flywheel, not a final phase</h1>
+      <p>The paper's QA model combines output evaluation with trajectory evaluation, then feeds fixes back into prompts, tools, tests, and monitoring.</p>
+    </header>
+    <main><div class="flywheel"><div class="fly f0"><b>Benchmark</b><span>define success cases</span></div><div class="fly f1"><b>Diagnose</b><span>cluster failures</span></div><div class="fly f2"><b>Optimize</b><span>adjust prompt/tools/harness</span></div><div class="fly f3"><b>Regress</b><span>lock in fixed cases</span></div><div class="fly f4"><b>Monitor</b><span>watch production behavior</span></div><div class="fly-center">quality<br/>loop</div></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>12 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-13 layout-threeCards">
+    <div class="topline"><span>Review, deploy, maintenance</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Later SDLC phases get AI help, but not blind autonomy</h1>
+      <p>AI reviewers can catch patterns and explain diffs; deployment needs AI-aware observability; maintenance benefits from codebase navigation and refactor support.</p>
+    </header>
+    <main><div class="cards3"><section><h3>Review</h3><p>First-pass critique, policy checks, test gap discovery, risk summaries for humans.</p></section><section><h3>Deploy</h3><p>Feature flags, rollout checks, runtime telemetry, rollback triggers, release notes.</p></section><section><h3>Maintain</h3><p>Legacy explanation, migration plans, dependency upgrades, test modernization.</p></section></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>13 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-14 layout-factoryFlow">
+    <div class="topline"><span>Factory model</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>The developer output shifts from code to a code-producing system</h1>
+      <p>The paper's factory metaphor is practical: specs, context, agents, tests, gates, and feedback loops form the assembly line.</p>
+    </header>
+    <main><div class="flow"><section><span>01</span><h3>Spec and context</h3><p>intent, constraints, examples</p></section><section><span>02</span><h3>Agent harness</h3><p>model, tools, sandbox</p></section><section><span>03</span><h3>Code and tests</h3><p>diffs, assertions, docs</p></section><section><span>04</span><h3>Gates</h3><p>evals, review, security</p></section><section><span>05</span><h3>Feedback</h3><p>logs, failures, improvements</p></section></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>14 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-15 layout-harness">
+    <div class="topline"><span>Harness engineering</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Agent = model plus harness</h1>
+      <p>The paper warns that many failures are harness failures: missing context, weak tools, bad sandboxing, no observability, or unclear permissions.</p>
+    </header>
+    <main><div class="harness"><div class="harness-core">Model</div><section class="hr h0"><b>Instructions</b><span>task frame and policy</span></section><section class="hr h1"><b>Tools</b><span>repo, shell, browser, APIs</span></section><section class="hr h2"><b>Sandbox</b><span>permissions and isolation</span></section><section class="hr h3"><b>Orchestration</b><span>routing, retries, delegation</span></section><section class="hr h4"><b>Guardrails</b><span>hooks, budgets, escalation</span></section><section class="hr h5"><b>Observability</b><span>logs, traces, eval results</span></section></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>15 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-16 layout-matrix">
+    <div class="topline"><span>Harness across the lifecycle</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Each SDLC phase configures or observes the harness</h1>
+      <p>This reframes engineering work: you do not just ask the agent to code; you prepare the system that makes useful code likely.</p>
+    </header>
+    <main><table class="matrix"><thead><tr><th>Phase</th><th>Harness role</th><th>Typical assets</th></tr></thead><tbody><tr><td>Requirements</td><td>clarify intent</td><td>schemas, examples, acceptance criteria</td></tr><tr><td>Planning</td><td>decompose work</td><td>milestones, dependencies, risk list</td></tr><tr><td>Implementation</td><td>run agent safely</td><td>tools, sandbox, edit permissions</td></tr><tr><td>Testing</td><td>close feedback loop</td><td>tests, evals, failure clusters</td></tr><tr><td>Review</td><td>make judgment visible</td><td>summaries, diffs, policy checks</td></tr><tr><td>Deploy</td><td>watch the system</td><td>observability, rollbacks, incidents</td></tr></tbody></table></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>16 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-17 layout-roles">
+    <div class="topline"><span>Role shift</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Developers move between conductor and orchestrator modes</h1>
+      <p>The paper names two common postures: hands-on pairing in the IDE and async delegation to background agents.</p>
+    </header>
+    <main><div class="two roles"><section>
+      <h3>Conductor</h3>
+      <p>Works in real time with an IDE or terminal agent.</p>
+      <ul><li>steers line by line</li><li>checks assumptions quickly</li><li>keeps local context tight</li></ul>
+    </section><section>
+      <h3>Orchestrator</h3>
+      <p>Splits work across async agents and reviews outputs.</p>
+      <ul><li>writes crisp specs</li><li>decomposes tasks</li><li>evaluates and merges safely</li></ul>
+    </section></div><div class="bottom-rule">The last 20 percent is where integration, taste, and domain judgment show up.</div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>17 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-18 layout-landscape">
+    <div class="topline"><span>Agent landscape</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>The paper separates agents by where they operate</h1>
+      <p>This helps teams choose the right tool rather than treating every AI coding product as equivalent.</p>
+    </header>
+    <main><div class="landscape"><section><h3>Editor agents</h3><p>Copilot, Cursor, Windsurf, JetBrains AI</p><span>inline edits and pair programming</span></section><section><h3>Terminal agents</h3><p>Codex CLI, Claude Code, Cline, Open Code</p><span>repo-scale tasks and shell workflows</span></section><section><h3>Background agents</h3><p>Jules, Copilot agent mode, Cursor background</p><span>async delegation and PR creation</span></section><section><h3>Production agents</h3><p>agent as shipped product</p><span>memory, permissions, evals, observability</span></section></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>18 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-19 layout-economics">
+    <div class="topline"><span>Economics</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Vibes look cheap until operations and maintenance arrive</h1>
+      <p>The document frames context engineering as a financial lever: upfront structure can lower marginal cost, token waste, and remediation later.</p>
+    </header>
+    <main><div class="two economics"><section><h3>Vibe coding</h3><ul><li>Low setup cost</li><li>Fast demos</li><li>High token burn over time</li><li>Maintenance and security tax</li></ul></section><section><h3>Agentic engineering</h3><ul><li>Higher upfront CapEx</li><li>Reusable specs and skills</li><li>Lower marginal change cost</li><li>Better routing and governance</li></ul></section></div><div class="cost-line"><span>setup cost</span><span>operating cost</span><span>risk cost</span></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>19 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-20 layout-playbook">
+    <div class="topline"><span>Adoption playbook</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Start by making one workflow repeatable and measurable</h1>
+      <p>The paper's advice is deliberately practical: build context as code, set an eval bar, and distinguish prototypes from production.</p>
+    </header>
+    <main><div class="playbook"><section><h3>Individuals</h3><p>Create AGENTS.md; write skills; pick one repetitive workflow; add tests before agent code; review every shipping line.</p></section><section><h3>Leaders</h3><p>Treat context as code; reward eval quality; reshape review; fund harness assets; separate demo speed from production readiness.</p></section><section><h3>Organizations</h3><p>Invest in substrate; adopt interop protocols; build hybrid teams; hire for judgment, decomposition, and evaluation.</p></section></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>20 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-21 layout-riskGrid">
+    <div class="topline"><span>Risks to manage</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>The new SDLC fails when generation outruns control</h1>
+      <p>The paper's warnings are not anti-AI. They are anti-unbounded-autonomy.</p>
+    </header>
+    <main><div class="risk-grid"><section><h3>Context rot</h3><p>old rules and stale examples pollute outputs</p></section><section><h3>Test theater</h3><p>tests exist but do not prove the risk</p></section><section><h3>Silent tool failure</h3><p>agent proceeds after a bad command or bad retrieval</p></section><section><h3>Permission drift</h3><p>write/deploy powers expand without review</p></section><section><h3>Review overload</h3><p>humans rubber-stamp massive unfamiliar diffs</p></section><section><h3>Cost opacity</h3><p>token spend and retries hide in the background</p></section></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>21 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-22 layout-repoMap">
+    <div class="topline"><span>Mapping to this project</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>Software Factory already embodies the paper's agentic direction</h1>
+      <p>This repo is not just a demo app. It is a governed AI SDLC pipeline with explicit seams, artifacts, gates, and human approval boundaries.</p>
+    </header>
+    <main><table class="repo-map"><thead><tr><th>Paper SDLC idea</th><th>Software Factory surface</th><th>Concrete repo mechanism</th></tr></thead><tbody><tr><td>Requirements</td><td>intake brain seam</td><td>FACTORY_BRAIN=claude or ScriptedBrain</td></tr><tr><td>Architecture</td><td>stage output</td><td>plans and decisions before build</td></tr><tr><td>Implementation</td><td>runner seam</td><td>FACTORY_RUNNER=claude or simulator</td></tr><tr><td>Verification</td><td>machine gates</td><td>RED, GREEN plus isolation, review file</td></tr><tr><td>Deployment</td><td>human merge gate</td><td>POST approve before irreversible merge</td></tr><tr><td>Observability</td><td>progress_event</td><td>append-only two-axis event log</td></tr></tbody></table></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>22 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-23 layout-controls">
+    <div class="topline"><span>Software Factory technical fit</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>The project turns the paper's ideas into operating controls</h1>
+      <p>The strongest alignment is not the UI. It is the governance model: deterministic fallback, bounded runner execution, test isolation, and explicit escalation.</p>
+    </header>
+    <main><div class="controls"><section><h3>Brain seam</h3><p>scripted offline by default; real model behind env var</p></section><section><h3>Runner seam</h3><p>simulator by default; real Codex/Claude execution when enabled</p></section><section><h3>Subprocess boundary</h3><p>timeouts, max turns, sandboxed edit permissions</p></section><section><h3>Machine gates</h3><p>RED must fail correctly; GREEN must pass without test weakening</p></section><section><h3>Human gate</h3><p>merge only after explicit approval</p></section><section><h3>Mission control</h3><p>operator view for requests, gates, events, and interventions</p></section></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>23 / 24</span></footer>
+  </article>
+
+  <article class="slide slide-24 layout-vision">
+    <div class="topline"><span>Overall vision</span><span>The New SDLC With Vibe Coding</span></div>
+    <header>
+      <h1>A governed operating system for AI software delivery</h1>
+      <p>The paper says generation is no longer enough. Software Factory's vision is to make direction, verification, and supervision first-class product surfaces.</p>
+    </header>
+    <main><div class="vision-grid"><section><h3>For builders</h3><p>turn a request into a supervised SDLC run</p></section><section><h3>For teams</h3><p>standardize context, gates, and review expectations</p></section><section><h3>For leaders</h3><p>see work health, risk, cost, and human approval points</p></section><section><h3>For the platform</h3><p>swap brains and runners without changing the domain model</p></section></div><div class="project-link"><b>Project</b><code>/Users/wongjunmun/development/ai-development/software-factory</code><b>Useful commands</b><code>make verify</code><code>FACTORY_RUNNER=claude uv run uvicorn app.main:app --port 8000</code></div></main>
+    <footer><span>Source: user-provided PDF and Software Factory repo docs</span><span>24 / 24</span></footer>
+  </article></div></body></html>

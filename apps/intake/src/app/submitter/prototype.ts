@@ -2,16 +2,15 @@ import {
   Component,
   DestroyRef,
   ElementRef,
-  Input,
   OnInit,
   computed,
   inject,
   linkedSignal,
-  output,
   signal,
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 import {
@@ -25,147 +24,152 @@ import {
 } from '@sf/shared';
 import { INSPECTOR } from './proto-inspector';
 import { ProtoFullscreen } from './proto-fullscreen';
+import { SubShell } from './sub-shell';
 
 /** S3 (new-app only) — the Prototype step: a chat thread on the left co-designs a self-contained
  *  HTML mock rendered in a sandboxed iframe on the right. Point-to-edit (Select mode) lets the user
  *  click one or more elements to scope a change; the mock can be opened full screen for review. */
 @Component({
   selector: 'sf-prototype',
-  imports: [Mark, Icon, FormsModule, ProtoFullscreen],
+  imports: [SubShell, Mark, Icon, FormsModule, ProtoFullscreen],
   host: { '(window:keydown)': 'onKey($event)' },
   template: `
-    <div class="pt">
-      <div class="pt__intro">
-        <h1>Shape the experience</h1>
-        <p>Chat to build a quick mock of what you have in mind. Point at anything to change it.</p>
-      </div>
+    <sub-shell active="new" [step]="2" [proto]="true" [reqId]="id">
+      <div class="pt">
+        <div class="pt__intro">
+          <h1>Shape the experience</h1>
+          <p>
+            Chat to build a quick mock of what you have in mind. Point at anything to change it.
+          </p>
+        </div>
 
-      <div class="pt__panes">
-        <!-- CHAT -->
-        <section class="panel pt__chat">
-          <div class="chat__head">
-            <span class="chat__av"><sf-mark [size]="14" color="#fff" /></span>
-            <div class="chat__who"><b>Intake assistant</b><span>Software Factory</span></div>
-          </div>
-          <div class="chat__thread scroll" #thread data-lenis-prevent>
-            @for (t of turns(); track t.order) {
-              @if (t.instruction) {
-                <div class="brow brow--me">
-                  <div class="bub bub--me">{{ t.instruction }}</div>
-                </div>
+        <div class="pt__panes">
+          <!-- CHAT -->
+          <section class="panel pt__chat">
+            <div class="chat__head">
+              <span class="chat__av"><sf-mark [size]="14" color="#fff" /></span>
+              <div class="chat__who"><b>Intake assistant</b><span>Software Factory</span></div>
+            </div>
+            <div class="chat__thread scroll" #thread data-lenis-prevent>
+              @for (t of turns(); track t.order) {
+                @if (t.instruction) {
+                  <div class="brow brow--me">
+                    <div class="bub bub--me">{{ t.instruction }}</div>
+                  </div>
+                }
+                @if (t.note) {
+                  <div class="brow">
+                    <span class="bav"><sf-mark [size]="12" color="#fff" /></span>
+                    <div class="bub bub--ai">{{ t.note }}</div>
+                  </div>
+                }
               }
-              @if (t.note) {
-                <div class="brow">
+              @if (working()) {
+                <div class="brow fade-in">
                   <span class="bav"><sf-mark [size]="12" color="#fff" /></span>
-                  <div class="bub bub--ai">{{ t.note }}</div>
+                  <div class="bub bub--ai typing" aria-hidden="true">
+                    <span></span><span></span><span></span> designing…
+                  </div>
                 </div>
               }
-            }
-            @if (working()) {
-              <div class="brow fade-in">
-                <span class="bav"><sf-mark [size]="12" color="#fff" /></span>
-                <div class="bub bub--ai typing" aria-hidden="true">
-                  <span></span><span></span><span></span> designing…
+            </div>
+            <div class="chat__composer">
+              @if (annotations().length) {
+                <div class="chips">
+                  @for (a of annotations(); track a.pid; let i = $index) {
+                    <span class="chip">
+                      <sf-icon name="target" [size]="11" />{{ chipLabel(a) }}
+                      <button type="button" (click)="removeAnnot(i)" aria-label="Remove">✕</button>
+                    </span>
+                  }
                 </div>
+              }
+              <div class="cbox">
+                <textarea
+                  class="cbox__in"
+                  rows="1"
+                  [ngModel]="msg()"
+                  (ngModelChange)="msg.set($event)"
+                  (keydown.enter)="onEnter($event)"
+                  [disabled]="working()"
+                  [placeholder]="composerPlaceholder()"
+                ></textarea>
+                <button
+                  class="send"
+                  (click)="send()"
+                  [disabled]="working() || !msg().trim()"
+                  aria-label="Send"
+                >
+                  ↑
+                </button>
               </div>
-            }
-          </div>
-          <div class="chat__composer">
-            @if (annotations().length) {
-              <div class="chips">
-                @for (a of annotations(); track a.pid; let i = $index) {
-                  <span class="chip">
-                    <sf-icon name="target" [size]="11" />{{ chipLabel(a) }}
-                    <button type="button" (click)="removeAnnot(i)" aria-label="Remove">✕</button>
-                  </span>
-                }
+              <div class="crow">
+                <button class="ghost" (click)="undo()" [disabled]="!canUndo() || working()">
+                  ↺ Undo last change
+                </button>
+                <button class="ghost" (click)="skip()">Skip prototype</button>
               </div>
-            }
-            <div class="cbox">
-              <textarea
-                class="cbox__in"
-                rows="1"
-                [ngModel]="msg()"
-                (ngModelChange)="msg.set($event)"
-                (keydown.enter)="onEnter($event)"
-                [disabled]="working()"
-                [placeholder]="composerPlaceholder()"
-              ></textarea>
+            </div>
+          </section>
+
+          <!-- PREVIEW -->
+          <section class="panel pt__preview">
+            <div class="pv__bar">
               <button
-                class="send"
-                (click)="send()"
-                [disabled]="working() || !msg().trim()"
-                aria-label="Send"
+                class="sel-btn"
+                [class.on]="inspecting()"
+                (click)="toggleInspect()"
+                [disabled]="!srcdoc()"
+                title="Select an element to edit (S)"
               >
-                ↑
+                <sf-icon name="target" [size]="14" />
+                {{ inspecting() ? 'Selecting…' : 'Select to edit' }}
+              </button>
+              <span class="pv__sp"></span>
+              <button class="tool" (click)="openFull()" [disabled]="!srcdoc()" title="Full screen">
+                <sf-icon name="maximize" [size]="14" /> Full screen
+              </button>
+              <button class="tool" (click)="undo()" [disabled]="!canUndo() || working()">
+                ↺ Undo
+              </button>
+              <button class="btn primary sm" (click)="toReview()">
+                Continue to Review <sf-icon name="arrowRight" [size]="14" />
               </button>
             </div>
-            <div class="crow">
-              <button class="ghost" (click)="undo()" [disabled]="!canUndo() || working()">
-                ↺ Undo last change
-              </button>
-              <button class="ghost" (click)="skip()">Skip prototype</button>
-            </div>
-          </div>
-        </section>
-
-        <!-- PREVIEW -->
-        <section class="panel pt__preview">
-          <div class="pv__bar">
-            <button
-              class="sel-btn"
-              [class.on]="inspecting()"
-              (click)="toggleInspect()"
-              [disabled]="!srcdoc()"
-              title="Select an element to edit (S)"
-            >
-              <sf-icon name="target" [size]="14" />
-              {{ inspecting() ? 'Selecting…' : 'Select to edit' }}
-            </button>
-            <span class="pv__sp"></span>
-            <button class="tool" (click)="openFull()" [disabled]="!srcdoc()" title="Full screen">
-              <sf-icon name="maximize" [size]="14" /> Full screen
-            </button>
-            <button class="tool" (click)="undo()" [disabled]="!canUndo() || working()">
-              ↺ Undo
-            </button>
-            <button class="btn primary sm" (click)="toReview()">
-              Continue to Review <sf-icon name="arrowRight" [size]="14" />
-            </button>
-          </div>
-          <div class="pv__body">
-            @if (srcdoc(); as doc) {
-              <iframe
-                #frame
-                [srcdoc]="doc"
-                sandbox="allow-scripts"
-                title="Prototype preview"
-                (load)="onFrameLoad()"
-              ></iframe>
-              @if (inspecting()) {
-                <div class="pv__hint">
-                  Click an element to edit it · Cmd/Ctrl-click for several · Esc to stop
+            <div class="pv__body">
+              @if (srcdoc(); as doc) {
+                <iframe
+                  #frame
+                  [srcdoc]="doc"
+                  sandbox="allow-scripts"
+                  title="Prototype preview"
+                  (load)="onFrameLoad()"
+                ></iframe>
+                @if (inspecting()) {
+                  <div class="pv__hint">
+                    Click an element to edit it · Cmd/Ctrl-click for several · Esc to stop
+                  </div>
+                }
+              } @else {
+                <div class="pv__empty">
+                  @if (working()) {
+                    <span class="pv__spin"></span>
+                    <span>Designing your first prototype…</span>
+                  } @else {
+                    <span>No prototype yet — say what you'd like below.</span>
+                  }
                 </div>
               }
-            } @else {
-              <div class="pv__empty">
-                @if (working()) {
-                  <span class="pv__spin"></span>
-                  <span>Designing your first prototype…</span>
-                } @else {
-                  <span>No prototype yet — say what you'd like below.</span>
-                }
-              </div>
-            }
-          </div>
-        </section>
+            </div>
+          </section>
+        </div>
       </div>
-    </div>
 
-    <!-- full-screen prototype overlay (shared component) -->
-    @if (fullscreen() && srcdoc(); as doc) {
-      <sf-proto-fullscreen [doc]="doc" (closed)="closeFull()" />
-    }
+      <!-- full-screen prototype overlay (shared component) -->
+      @if (fullscreen() && srcdoc(); as doc) {
+        <sf-proto-fullscreen [doc]="doc" (closed)="closeFull()" />
+      }
+    </sub-shell>
   `,
   styles: `
     .pt {
@@ -522,10 +526,8 @@ import { ProtoFullscreen } from './proto-fullscreen';
 export class Prototype implements OnInit {
   api = inject(Api);
   private sanitizer = inject(DomSanitizer);
-  /** the request being prototyped (set by the journey host) */
-  @Input({ required: true }) id!: number;
-  /** prototyping finished/skipped — the host scrolls to Review */
-  done = output<void>();
+  id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
+  private router = inject(Router);
 
   st = signal<PrototypeState | null>(null);
   streaming = signal(false);
@@ -692,7 +694,7 @@ export class Prototype implements OnInit {
   }
 
   toReview() {
-    this.done.emit();
+    this.router.navigateByUrl(`/submit/${this.id}/review`);
   }
 
   // ── full screen ──

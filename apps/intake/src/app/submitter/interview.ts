@@ -2,20 +2,20 @@ import {
   Component,
   DestroyRef,
   ElementRef,
-  Input,
   OnInit,
   computed,
   effect,
   inject,
-  output,
   signal,
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api, Icon, InterviewState, Mark, RequestDetail, streamState, TypeChip } from '@sf/shared';
-import { BasicsCard } from './basics-card';
+import { BasicsCard, basicsAnswered } from './basics-card';
 import { PlanPanel } from './plan-panel';
+import { SubShell } from './sub-shell';
 import { IntakeDraft } from './intake-draft.service';
 
 /** S2 — the adaptive AI interview: a chat thread with the intake assistant, with an
@@ -26,229 +26,369 @@ import { IntakeDraft } from './intake-draft.service';
  *  Chosen from the 2026-07 Clarify prototype (chat persona + command palette). */
 @Component({
   selector: 'sf-interview',
-  imports: [Mark, Icon, TypeChip, FormsModule, BasicsCard, PlanPanel],
+  imports: [SubShell, Mark, Icon, TypeChip, FormsModule, BasicsCard, PlanPanel],
   host: {
     '(window:keydown)': 'onKeys($event)',
   },
   template: `
-    <div class="cl">
-      <div class="iv">
-        <!-- sr-only live region: announces each new question / thinking / done -->
-        <div class="sr-only" role="status" aria-live="polite">{{ liveQuestion() }}</div>
-
-        <div class="iv__thread scroll" #thread data-lenis-prevent>
-          @if (req(); as r) {
-            <div class="iv__ctx">
-              <sf-type-chip [t]="r.type" />
-              <span class="iv__ctxt">{{ r.title }}</span>
-            </div>
-          }
-
-          <!-- fixed questions, moved off the Describe step -->
-          @if (req(); as r) {
-            <sf-basics-card
-              [id]="id"
-              [rtype]="r.type"
-              (typeChanged)="onTypeChanged($event)"
-              (saved)="planPanel().refresh()"
-            />
-          }
-
-          @for (t of turns(); track t.order) {
-            <div class="brow">
-              <span class="bav"><sf-mark [size]="13" color="#fff" /></span>
-              <div class="bub bub--ai">{{ t.question }}</div>
-            </div>
-            <div class="brow brow--me">
-              <div class="bub bub--me" [class.bub--skip]="t.skipped">
-                {{ t.skipped ? 'Skipped' : t.answer }}
-              </div>
-            </div>
-          }
-          @if (st(); as s) {
-            <!-- the question always lives in the thread; when it has options the docked
-                 panel below carries only the answer choices (no duplicated question) -->
-            @if (!s.done && s.question && !working()) {
-              <div class="brow fade-in">
-                <span class="bav"><sf-mark [size]="13" color="#fff" /></span>
-                <div class="bub bub--ai">
-                  {{ s.question }}
-                </div>
-              </div>
-            }
-            @if (s.done && !working()) {
-              <div class="brow fade-in">
-                <span class="bav"><sf-mark [size]="13" color="#fff" /></span>
-                <div class="bub bub--ai">
-                  Thanks — that's everything I need for now.
-                  <span class="bsub">Add anything else below, or review the summary.</span>
-                </div>
-              </div>
-            }
-          }
-          @if (working()) {
-            <div class="brow fade-in">
-              <span class="bav"><sf-mark [size]="13" color="#fff" /></span>
-              <div class="bub bub--ai typing" aria-hidden="true">
-                <span></span><span></span><span></span> thinking…
-              </div>
-            </div>
-          }
-        </div>
-
-        <div class="iv__foot">
-          @if (st(); as s) {
-            @if (!s.done && !working() && !dismissed() && s.options; as opts) {
-              <!-- the AskUserQuestion panel, docked above the composer (claude.ai).
-                   The question sits in the thread above; this panel is choices only. -->
-              <div class="dock fade-in" role="group" aria-label="Answer options">
-                @for (o of opts; track o.t; let i = $index) {
-                  <button
-                    class="dock__opt dock__opt--top"
-                    [class.on]="hi() === i"
-                    (mouseenter)="hi.set(i)"
-                    (click)="answer(o.t)"
-                  >
-                    <span class="dock__k">{{ i + 1 }}</span>
-                    <span class="dock__body">
-                      <span class="dock__t">{{ o.t }}</span>
-                      @if (o.d) {
-                        <span class="dock__d">{{ o.d }}</span>
-                      }
-                    </span>
-                    @if (hi() === i) {
-                      <span class="dock__ret" aria-hidden="true">↩</span>
-                    }
-                  </button>
-                }
-                <div class="dock__opt dock__row">
-                  <span class="dock__k dock__k--pen" aria-hidden="true">
-                    <svg
-                      viewBox="0 0 24 24"
-                      width="11"
-                      height="11"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                    </svg>
-                  </span>
-                  <textarea
-                    class="dock__else"
-                    rows="1"
-                    [ngModel]="elseText()"
-                    (ngModelChange)="elseText.set($event)"
-                    (keydown.enter)="onEnter($event, 'else')"
-                    placeholder="Something else…"
-                    aria-label="Type your own answer"
-                  ></textarea>
-                  @if (elseText().trim()) {
-                    <button class="dock__go" (click)="submitElse()" aria-label="Send answer">
-                      ↩
-                    </button>
-                  }
-                  <button class="dock__skip" (click)="skip()">Skip</button>
-                </div>
-              </div>
-            }
-          }
-          <!-- claude.ai-style composer: + attach inside the box, chips above the input -->
-          <div
-            class="comp"
-            [class.comp--over]="dragOver()"
-            (dragover)="$event.preventDefault(); dragOver.set(true)"
-            (dragleave)="dragOver.set(false)"
-            (drop)="onDrop($event)"
-            (paste)="onPaste($event)"
+    <sub-shell active="new" [step]="1" [proto]="req()?.type === 'new'" [reqId]="id">
+      @if (phase() === 'basics') {
+        <!-- arrival beat: the brain is genuinely pre-generating its first question
+             in the background — the submitter settles the basics meanwhile -->
+        <div class="intro">
+          <span class="intro__badge blurin"
+            ><i class="intro__pulse"></i>Analyzing your request…</span
           >
-            @if (draft.attachments().length || draft.pending().length) {
-              <div class="attach__chips comp__files">
-                @for (a of draft.attachments(); track a.id) {
-                  <span class="attach__chip">
-                    @if (a.kind === 'image') {
-                      <img class="attach__thumb" [src]="api.attachmentRawUrl(a.id)" alt="" />
-                    } @else {
-                      <sf-icon name="app" [size]="14" color="var(--muted)" />
-                    }
-                    <span class="attach__name">{{ a.filename }}</span>
-                    <button
-                      type="button"
-                      class="attach__x"
-                      (click)="draft.removeAttachment(a.id)"
-                      aria-label="Remove"
-                    >
-                      <sf-icon name="x" [size]="12" />
-                    </button>
-                  </span>
-                }
-                @for (f of draft.pending(); track $index) {
-                  <span class="attach__chip attach__chip--pending">
-                    <sf-icon name="clock" [size]="13" color="var(--faint)" />
-                    <span class="attach__name">{{ f.name }}</span>
-                    <button
-                      type="button"
-                      class="attach__x"
-                      (click)="draft.removePending($index)"
-                      aria-label="Remove"
-                    >
-                      <sf-icon name="x" [size]="12" />
-                    </button>
-                  </span>
-                }
-              </div>
-            }
-            <div class="comp__row">
-              <button
-                class="comp__add"
-                type="button"
-                aria-label="Attach files"
-                title="Attach files — any type, up to 100 MB each"
-                (click)="picker.click()"
-              >
-                <sf-icon name="plus" [size]="16" />
+          <h1 class="intro__t blurin blurin--2">
+            While the factory reads, a few quick facts only you know.
+          </h1>
+          <p class="intro__s blurin blurin--2">
+            They anchor the plan — the interview starts right after.
+          </p>
+          @if (req(); as r) {
+            <div class="intro__card blurin blurin--3">
+              <sf-basics-card
+                [id]="id"
+                [rtype]="r.type"
+                (typeChanged)="onTypeChanged()"
+                (saved)="onBasicsSaved()"
+              />
+              <button class="btn primary intro__go" (click)="startInterview()">
+                Start the interview
               </button>
-              <textarea
-                class="comp__in"
-                rows="1"
-                [ngModel]="msg()"
-                (ngModelChange)="msg.set($event)"
-                [placeholder]="composerPlaceholder()"
-                (keydown.enter)="onEnter($event, 'composer')"
-              ></textarea>
-              @if (msg().trim()) {
-                <button class="comp__send" (click)="enter()" aria-label="Send">
-                  <sf-icon name="chevUp" [size]="17" color="#fff" />
-                </button>
-              } @else if (st()?.done) {
-                <button class="btn primary sm" style="flex:0 0 auto" (click)="toReview()">
-                  {{ req()?.type === 'new' ? 'Design prototype' : 'Review summary' }}
-                  <sf-icon name="arrowRight" [size]="14" />
-                </button>
-              } @else if (st() && (!st()!.options || dismissed())) {
-                <button class="dock__skip" style="flex:0 0 auto" (click)="skip()">Skip</button>
+              @if (nudge()) {
+                <p class="intro__nudge" role="alert">
+                  A couple of facts are still blank — they're what the plan is built on.
+                </p>
               }
             </div>
-            <input #picker type="file" multiple hidden (change)="onPick($event)" />
-          </div>
-          @if (draft.lastError()) {
-            <p class="attach__err">{{ draft.lastError() }}</p>
-          }
-          @if (showKeys()) {
-            <div class="iv__keys" aria-hidden="true">
-              ↑↓ to navigate · Enter to select · or type below
-            </div>
           }
         </div>
-      </div>
+      } @else {
+        <div class="cl">
+          <div class="iv">
+            <!-- sr-only live region: announces each new question / thinking / done -->
+            <div class="sr-only" role="status" aria-live="polite">{{ liveQuestion() }}</div>
 
-      <!-- the live plan: a structured summary that rewrites itself as answers land -->
-      <sf-plan-panel [id]="id" [answers]="turns().length" />
-    </div>
+            <div class="iv__thread scroll" #thread data-lenis-prevent>
+              @if (req(); as r) {
+                <div class="iv__ctx">
+                  <sf-type-chip [t]="r.type" />
+                  <span class="iv__ctxt">{{ r.title }}</span>
+                </div>
+              }
+
+              @for (t of turns(); track t.order) {
+                <div class="brow">
+                  <span class="bav"><sf-mark [size]="13" color="#fff" /></span>
+                  <div class="bub bub--ai">{{ t.question }}</div>
+                </div>
+                <div class="brow brow--me">
+                  <div class="bub bub--me" [class.bub--skip]="t.skipped">
+                    {{ t.skipped ? 'Skipped' : t.answer }}
+                  </div>
+                </div>
+              }
+              @if (st(); as s) {
+                <!-- the question always lives in the thread; when it has options the docked
+                 panel below carries only the answer choices (no duplicated question) -->
+                @if (!s.done && s.question && !working()) {
+                  <div class="brow fade-in">
+                    <span class="bav"><sf-mark [size]="13" color="#fff" /></span>
+                    <div class="bub bub--ai">
+                      {{ s.question }}
+                    </div>
+                  </div>
+                }
+                @if (s.done && !working()) {
+                  <div class="brow fade-in">
+                    <span class="bav"><sf-mark [size]="13" color="#fff" /></span>
+                    <div class="bub bub--ai">
+                      Thanks — that's everything I need for now.
+                      <span class="bsub">Add anything else below, or review the summary.</span>
+                    </div>
+                  </div>
+                }
+              }
+              @if (working()) {
+                <div class="brow fade-in">
+                  <span class="bav"><sf-mark [size]="13" color="#fff" /></span>
+                  <div class="bub bub--ai typing" aria-hidden="true">
+                    <span></span><span></span><span></span> thinking…
+                  </div>
+                </div>
+              }
+            </div>
+
+            <div class="iv__foot">
+              @if (st(); as s) {
+                @if (!s.done && !working() && !dismissed() && s.options; as opts) {
+                  <!-- the AskUserQuestion panel, docked above the composer (claude.ai).
+                   The question sits in the thread above; this panel is choices only. -->
+                  <div class="dock fade-in" role="group" aria-label="Answer options">
+                    @for (o of opts; track o.t; let i = $index) {
+                      <button
+                        class="dock__opt dock__opt--top"
+                        [class.on]="hi() === i"
+                        (mouseenter)="hi.set(i)"
+                        (click)="answer(o.t)"
+                      >
+                        <span class="dock__k">{{ i + 1 }}</span>
+                        <span class="dock__body">
+                          <span class="dock__t">{{ o.t }}</span>
+                          @if (o.d) {
+                            <span class="dock__d">{{ o.d }}</span>
+                          }
+                        </span>
+                        @if (hi() === i) {
+                          <span class="dock__ret" aria-hidden="true">↩</span>
+                        }
+                      </button>
+                    }
+                    <div class="dock__opt dock__row">
+                      <span class="dock__k dock__k--pen" aria-hidden="true">
+                        <svg
+                          viewBox="0 0 24 24"
+                          width="11"
+                          height="11"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </span>
+                      <textarea
+                        class="dock__else"
+                        rows="1"
+                        [ngModel]="elseText()"
+                        (ngModelChange)="elseText.set($event)"
+                        (keydown.enter)="onEnter($event, 'else')"
+                        placeholder="Something else…"
+                        aria-label="Type your own answer"
+                      ></textarea>
+                      @if (elseText().trim()) {
+                        <button class="dock__go" (click)="submitElse()" aria-label="Send answer">
+                          ↩
+                        </button>
+                      }
+                      <button class="dock__skip" (click)="skip()">Skip</button>
+                    </div>
+                  </div>
+                }
+              }
+              <!-- claude.ai-style composer: + attach inside the box, chips above the input -->
+              <div
+                class="comp"
+                [class.comp--over]="dragOver()"
+                (dragover)="$event.preventDefault(); dragOver.set(true)"
+                (dragleave)="dragOver.set(false)"
+                (drop)="onDrop($event)"
+                (paste)="onPaste($event)"
+              >
+                @if (draft.attachments().length || draft.pending().length) {
+                  <div class="attach__chips comp__files">
+                    @for (a of draft.attachments(); track a.id) {
+                      <span class="attach__chip">
+                        @if (a.kind === 'image') {
+                          <img class="attach__thumb" [src]="api.attachmentRawUrl(a.id)" alt="" />
+                        } @else {
+                          <sf-icon name="app" [size]="14" color="var(--muted)" />
+                        }
+                        <span class="attach__name">{{ a.filename }}</span>
+                        <button
+                          type="button"
+                          class="attach__x"
+                          (click)="draft.removeAttachment(a.id)"
+                          aria-label="Remove"
+                        >
+                          <sf-icon name="x" [size]="12" />
+                        </button>
+                      </span>
+                    }
+                    @for (f of draft.pending(); track $index) {
+                      <span class="attach__chip attach__chip--pending">
+                        <sf-icon name="clock" [size]="13" color="var(--faint)" />
+                        <span class="attach__name">{{ f.name }}</span>
+                        <button
+                          type="button"
+                          class="attach__x"
+                          (click)="draft.removePending($index)"
+                          aria-label="Remove"
+                        >
+                          <sf-icon name="x" [size]="12" />
+                        </button>
+                      </span>
+                    }
+                  </div>
+                }
+                <div class="comp__row">
+                  <button
+                    class="comp__add"
+                    type="button"
+                    aria-label="Attach files"
+                    title="Attach files — any type, up to 100 MB each"
+                    (click)="picker.click()"
+                  >
+                    <sf-icon name="plus" [size]="16" />
+                  </button>
+                  <textarea
+                    class="comp__in"
+                    rows="1"
+                    [ngModel]="msg()"
+                    (ngModelChange)="msg.set($event)"
+                    [placeholder]="composerPlaceholder()"
+                    (keydown.enter)="onEnter($event, 'composer')"
+                  ></textarea>
+                  @if (msg().trim()) {
+                    <button class="comp__send" (click)="enter()" aria-label="Send">
+                      <sf-icon name="chevUp" [size]="17" color="#fff" />
+                    </button>
+                  } @else if (st()?.done) {
+                    <button class="btn primary sm" style="flex:0 0 auto" (click)="toReview()">
+                      {{ req()?.type === 'new' ? 'Design prototype' : 'Review summary' }}
+                      <sf-icon name="arrowRight" [size]="14" />
+                    </button>
+                  } @else if (st() && (!st()!.options || dismissed())) {
+                    <button class="dock__skip" style="flex:0 0 auto" (click)="skip()">Skip</button>
+                  }
+                </div>
+                <input #picker type="file" multiple hidden (change)="onPick($event)" />
+              </div>
+              @if (draft.lastError()) {
+                <p class="attach__err">{{ draft.lastError() }}</p>
+              }
+              @if (showKeys()) {
+                <div class="iv__keys" aria-hidden="true">
+                  ↑↓ to navigate · Enter to select · or type below
+                </div>
+              }
+            </div>
+          </div>
+
+          <!-- the live plan: a structured summary that rewrites itself as answers land -->
+          <sf-plan-panel [id]="id" [answers]="turns().length" [facts]="facts()" />
+        </div>
+      }
+    </sub-shell>
   `,
   styles: `
+    .intro {
+      max-width: 640px;
+      margin: 0 auto;
+      min-height: calc(100dvh - 170px);
+      padding: 20px 26px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+    .intro__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-tx);
+      background: var(--accent-tint);
+      border: 1px solid var(--accent-tint-bd);
+      border-radius: 999px;
+      padding: 5px 13px;
+    }
+    .intro__pulse {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--a500);
+      animation: iv-pulse 1.4s infinite;
+    }
+    @keyframes iv-pulse {
+      50% {
+        opacity: 0.25;
+      }
+    }
+    .intro__t {
+      font-size: clamp(24px, 3.4vw, 34px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin: 18px 0 6px;
+    }
+    .intro__s {
+      margin: 0 0 26px;
+      font-size: 14.5px;
+      color: var(--muted);
+      max-width: 46ch;
+    }
+    .intro__card {
+      width: 100%;
+      text-align: left;
+    }
+    .intro__go {
+      width: 100%;
+      justify-content: center;
+      margin-top: 14px;
+    }
+    .intro__nudge {
+      margin: 10px 0 0;
+      font-size: 12.5px;
+      color: var(--amber-tx);
+      background: var(--amber-bg);
+      border: 1px solid var(--amber-line);
+      border-radius: var(--r);
+      padding: 7px 12px;
+    }
+    /* blur-in: the analyzing line lands first, then the ask, then the card */
+    .blurin {
+      animation: iv-blurin 0.5s var(--ease-out) both;
+    }
+    .blurin--2 {
+      animation-delay: 0.45s;
+    }
+    .blurin--3 {
+      animation-delay: 0.95s;
+    }
+    @keyframes iv-blurin {
+      from {
+        opacity: 0;
+        filter: blur(8px);
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        filter: blur(0);
+        transform: none;
+      }
+    }
+    /* the full workspace animates in once the basics are settled */
+    .cl > .iv {
+      animation: iv-in 0.5s var(--ease-out) both;
+    }
+    .cl > sf-plan-panel {
+      animation: iv-in 0.5s var(--ease-out) 0.12s both;
+      min-height: 0;
+      display: block;
+      height: 100%;
+    }
+    @keyframes iv-in {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .intro__pulse,
+      .blurin,
+      .cl > .iv,
+      .cl > sf-plan-panel {
+        animation: none;
+      }
+    }
     .cl {
       max-width: 1200px;
       margin: 0 auto;
@@ -623,12 +763,8 @@ import { IntakeDraft } from './intake-draft.service';
 export class Interview implements OnInit {
   api = inject(Api);
   draft = inject(IntakeDraft);
-  /** the request this section clarifies (set by the journey host) */
-  @Input({ required: true }) id!: number;
-  /** the interview finished — the host scrolls to the next section */
-  done = output<void>();
-  /** the basics Type row changed the request type — the host re-shapes the journey */
-  typeChange = output<string>();
+  id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
+  private router = inject(Router);
 
   st = signal<InterviewState | null>(null);
   req = signal<RequestDetail | null>(null);
@@ -671,7 +807,76 @@ export class Interview implements OnInit {
 
   turns = computed(() => this.st()?.turns.filter((t) => t.answer !== null || t.skipped) ?? []);
 
-  planPanel = viewChild.required(PlanPanel); // template calls .refresh() on basics saves
+  planPanel = viewChild(PlanPanel); // absent during the basics intro phase
+
+  /** Clarify arrives in two beats: first ONLY the basics (centered, while the
+   *  first question pre-generates), then the chat + plan animate in. Landing on
+   *  an interview that already progressed skips the intro. */
+  phase = signal<'basics' | 'full'>('basics');
+  private introDecided = false;
+  private maybeReveal() {
+    if (this.phase() === 'full') return;
+    const progressed = this.turns().length > 0 || !!this.st()?.done;
+    if (progressed) {
+      this.phase.set('full'); // returning to a live interview skips the intro
+      return;
+    }
+    // completed basics on ARRIVAL skip the intro; completing them during the
+    // intro does not — the submitter starts the interview with the button
+    if (!this.introDecided && this.req()) {
+      this.introDecided = true;
+      if (basicsAnswered(this.draft, this.req()!.type)) this.phase.set('full');
+    }
+  }
+  nudge = signal(false);
+  startInterview() {
+    // ngModel keeps the draft current on every keystroke, so this reads fresh
+    if (basicsAnswered(this.draft, this.req()?.type ?? this.draft.type)) {
+      this.basicsBump.update((n) => n + 1); // facts strip snapshots the answers
+      this.phase.set('full');
+    } else {
+      this.nudge.set(true);
+    }
+  }
+  /** re-evaluate canStart()/facts() when the (non-signal) draft changes */
+  private basicsBump = signal(0);
+
+  /** the quick answers, pinned atop the plan */
+  facts = computed<[string, string][]>(() => {
+    this.basicsBump();
+    const r = this.req();
+    const d = this.draft;
+    const out: [string, string][] = [];
+    if (r)
+      out.push([
+        'Type',
+        { bug: 'Bug fix', enh: 'Enhancement', new: 'New app', other: 'Other' }[r.type] ?? r.type,
+      ]);
+    if ((r?.type === 'bug' || r?.type === 'enh') && d.appName) out.push(['App', d.appName]);
+    if (r?.type === 'bug') {
+      if (d.bugWhere.trim()) out.push(['Where', d.bugWhere.trim()]);
+      if (d.bugFreq) out.push(['Frequency', d.bugFreq]);
+    } else {
+      const reachLabels: Record<string, string> = {
+        me: 'Just me',
+        team: 'My team',
+        dept: 'My department',
+        wider: 'Multiple departments',
+        site: 'Site',
+        network: 'Network',
+      };
+      const reach = d.reachText.trim() || (d.reach ? reachLabels[d.reach] : '');
+      if (reach) out.push(["Who's affected", reach]);
+      if (d.impactMetric && d.impactValue.trim()) {
+        const v = d.impactValue.trim();
+        out.push([
+          'Impact',
+          { hours: `${v} man-hours/yr`, cost: `${v}k saved/yr`, other: v }[d.impactMetric],
+        ]);
+      }
+    }
+    return out;
+  });
 
   showKeys = computed(() => {
     const s = this.st();
@@ -694,6 +899,12 @@ export class Interview implements OnInit {
       if (this.pollTimer) clearTimeout(this.pollTimer);
       this.closeStream();
     });
+    // decide the arrival phase once the request/interview state land
+    effect(() => {
+      this.req();
+      this.st();
+      this.maybeReveal();
+    });
     // Once the interview is live, its finish auto-advances to the next step (Prototype for a
     // new app, else Review) — no manual click.
     effect(() => {
@@ -704,7 +915,7 @@ export class Interview implements OnInit {
         this.advancing = false; // a reopened interview may finish (and advance) again
       } else if (this.sawQuestion && !this.advancing && !this.destroyed) {
         this.advancing = true;
-        this.done.emit();
+        this.router.navigate(['/submit', this.id, this.nextStep()]);
       }
     });
   }
@@ -839,7 +1050,7 @@ export class Interview implements OnInit {
         this.busy.set(false);
         this.scrollToEnd();
         if (s.thinking) this.openStream(); // stream the next question in as it generates
-        this.planPanel().refresh(); // the answer changes the plan — let it catch up
+        this.planPanel()?.refresh(); // the answer changes the plan — let it catch up
       },
       error: () => this.busy.set(false),
     });
@@ -863,16 +1074,23 @@ export class Interview implements OnInit {
     }
     if (text) this.push({ answer: text });
   }
-  /** the basics Type row changed the request — refresh req (rows/labels
-   *  re-shape), bubble to the journey host, and let the plan catch up */
-  onTypeChanged(t: string) {
+  /** the basics Type row changed the request — refresh req (rows, stepper,
+   *  labels re-shape) and let the plan catch up */
+  onTypeChanged() {
     this.api.request(this.id).subscribe((r) => this.req.set(r));
-    this.typeChange.emit(t);
-    this.planPanel().refresh();
+    this.planPanel()?.refresh();
+  }
+  onBasicsSaved() {
+    this.basicsBump.update((n) => n + 1);
+    this.planPanel()?.refresh();
+  }
+  /** The step after the interview: Prototype for a new app, else Review. */
+  nextStep(): 'prototype' | 'review' {
+    return this.req()?.type === 'new' ? 'prototype' : 'review';
   }
   toReview() {
     this.draft.extra = this.msg().trim();
-    this.done.emit();
+    this.router.navigate(['/submit', this.id, this.nextStep()]);
   }
 
   /** Reopen a finished interview with the submitter's added note (the "Add more detail"
@@ -888,7 +1106,7 @@ export class Interview implements OnInit {
         this.busy.set(false);
         this.scrollToEnd();
         if (s.thinking) this.openStream(); // stream the follow-up (or resolve to done → advance)
-        this.planPanel().refresh();
+        this.planPanel()?.refresh();
       },
       error: () => this.busy.set(false),
     });
@@ -898,6 +1116,7 @@ export class Interview implements OnInit {
    *  highlight, Enter selects it when the composer is empty — typed text
    *  always wins, and typing is never hijacked by shortcut keys. */
   onKeys(e: KeyboardEvent) {
+    if (this.phase() !== 'full') return;
     const s = this.st();
     if (!s || s.done || this.working() || !s.options || this.dismissed()) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;

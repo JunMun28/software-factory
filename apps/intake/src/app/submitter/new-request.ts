@@ -1,44 +1,72 @@
-import {
-  afterNextRender,
-  Component,
-  DestroyRef,
-  ElementRef,
-  inject,
-  signal,
-  viewChild,
-} from '@angular/core';
+import { afterNextRender, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { Router } from '@angular/router';
 
-import { Api } from '@sf/shared';
+import { Icon } from '@sf/shared';
 import { IntakeDraft } from './intake-draft.service';
-import { Interview } from './interview';
-import { Prototype } from './prototype';
-import { Review } from './review';
 import { SubShell } from './sub-shell';
 
-/** The intake JOURNEY — one page, four sections (Describe hero → Clarify →
- *  Prototype (new apps) → Review), Lenis-scrolled between them; the left rail's
- *  tracing beam spans the whole trip. Sections mount once the request exists.
- *  Old step routes (/submit/:id/interview|prototype|review) deep-link here and
- *  scroll to their section. ⌘↵ / Ctrl↵ submits the describe hero. */
+/** S1 — New Request: a pure describe hero — an AI-chat-style composer as the
+ *  vertically-centered focal point (animated conic-gradient border, attach
+ *  button with drag-drop/paste, send arrow). Files stage on the draft and
+ *  upload on Continue. Everything else (type, name/application, reach, impact)
+ *  lives in the Clarify step's basics card. The request is created as a New
+ *  app by default; picking another type in Clarify PATCHes it.
+ *  ⌘↵ / Ctrl↵ submits. */
 @Component({
   selector: 'sf-new-request',
-  imports: [SubShell, FormsModule, Interview, Prototype, Review],
+  imports: [SubShell, FormsModule, Icon],
   host: {
     '(document:keydown.meta.enter)': 'kbdSubmit()',
     '(document:keydown.control.enter)': 'kbdSubmit()',
+    // the whole page is a drop target — files attach to the describe composer
+    '(document:dragover)': 'onDragOver($event)',
+    '(document:dragleave)': 'onDragLeave($event)',
+    '(document:drop)': 'onDrop($event)',
+    '(document:paste)': 'onPaste($event)',
   },
   template: `
-    <sub-shell active="new" [step]="curStep()" [proto]="isNew()" [reqId]="rid()">
-      <div class="sub-col pop-in" style="max-width:1200px">
-        <section class="hero-screen jsec" id="sec-describe">
+    <sub-shell active="new" [step]="0" [proto]="true" [reqId]="draft.requestId">
+      <div class="sub-col pop-in" style="max-width:820px">
+        <section class="hero-screen">
           <h1 class="hero__t">What should we build?</h1>
           <p class="hero__s">
             Describe it in plain language. The factory asks the right follow-ups.
           </p>
-          <div class="glow">
+          <div class="glow" [class.glow--over]="dragOver()">
             <div class="glow__card">
+              @if (draft.attachments().length || draft.pending().length) {
+                <div class="attach__chips glow__files">
+                  @for (a of draft.attachments(); track a.id) {
+                    <span class="attach__chip">
+                      <sf-icon name="file" [size]="14" color="var(--muted)" />
+                      <span class="attach__name">{{ a.filename }}</span>
+                      <button
+                        type="button"
+                        class="attach__x"
+                        (click)="draft.removeAttachment(a.id)"
+                        aria-label="Remove"
+                      >
+                        <sf-icon name="x" [size]="12" />
+                      </button>
+                    </span>
+                  }
+                  @for (f of draft.pending(); track $index) {
+                    <span class="attach__chip attach__chip--pending">
+                      <sf-icon name="file" [size]="13" color="var(--faint)" />
+                      <span class="attach__name">{{ f.name }}</span>
+                      <button
+                        type="button"
+                        class="attach__x"
+                        (click)="draft.removePending($index)"
+                        aria-label="Remove"
+                      >
+                        <sf-icon name="x" [size]="12" />
+                      </button>
+                    </span>
+                  }
+                </div>
+              }
               <label class="sr-only" for="nr-desc">Description</label>
               <textarea
                 #descTa
@@ -48,13 +76,15 @@ import { SubShell } from './sub-shell';
                 (input)="growDesc()"
               ></textarea>
               <div class="glow__row">
-                <div class="glow__pills">
-                  @for (p of pills; track p[0]) {
-                    <button type="button" class="glow__pill" (click)="prefill(p[1])">
-                      {{ p[0] }}
-                    </button>
-                  }
-                </div>
+                <button
+                  type="button"
+                  class="glow__add"
+                  aria-label="Attach files"
+                  title="Attach files — any type, up to 100 MB each"
+                  (click)="picker.click()"
+                >
+                  <sf-icon name="plus" [size]="17" />
+                </button>
                 <button
                   type="button"
                   class="glow__send"
@@ -73,33 +103,20 @@ import { SubShell } from './sub-shell';
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   >
-                    <path d="M5 12h14M13 6l6 6-6 6" />
+                    <path d="M12 19V5M5 12l7-7 7 7" />
                   </svg>
                 </button>
               </div>
+              <input #picker type="file" multiple hidden (change)="onPick($event)" />
             </div>
           </div>
+          @if (draft.lastError()) {
+            <p class="attach__err">{{ draft.lastError() }}</p>
+          }
           <span class="hint">{{
             saving() ? 'Saving…' : 'Press ' + kbdLabel + ' to continue'
           }}</span>
         </section>
-
-        @if (rid(); as id) {
-          <section class="jsec" id="sec-clarify">
-            <sf-interview [id]="id" (done)="advance()" (typeChange)="isNew.set($event === 'new')" />
-          </section>
-          @if (isNew()) {
-            <section class="jsec" id="sec-prototype">
-              <sf-prototype [id]="id" (done)="scrollToSec('sec-review')" />
-            </section>
-          }
-          <section class="jsec" id="sec-review">
-            <sf-review
-              [id]="id"
-              (goto)="scrollToSec($event === 'interview' ? 'sec-clarify' : 'sec-prototype')"
-            />
-          </section>
-        }
       </div>
     </sub-shell>
   `,
@@ -119,9 +136,6 @@ import { SubShell } from './sub-shell';
       clip: rect(0 0 0 0);
       white-space: nowrap;
       border: 0;
-    }
-    .jsec {
-      scroll-margin-top: 12px;
     }
     .hero-screen {
       min-height: calc(100dvh - 160px);
@@ -201,27 +215,30 @@ import { SubShell } from './sub-shell';
       padding-top: 8px;
       border-top: 1px solid var(--hairline);
     }
-    .glow__pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
+    .glow--over {
+      box-shadow: 0 0 56px -6px rgba(189, 3, 247, 0.7);
     }
-    .glow__pill {
-      font-size: 12px;
-      font-weight: 500;
-      padding: 5px 11px;
-      border-radius: var(--r-pill);
+    .glow__files {
+      margin: 2px 4px 10px;
+    }
+    .glow__add {
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
       border: 1px solid var(--border-strong);
-      background: var(--surface-2);
-      color: var(--fg2);
+      background: none;
+      color: var(--muted);
+      display: grid;
+      place-items: center;
       cursor: pointer;
       transition:
-        border-color var(--dur) var(--ease),
+        background var(--dur) var(--ease),
         color var(--dur) var(--ease);
     }
-    .glow__pill:hover {
-      border-color: var(--accent-tint-bd);
-      color: var(--accent-tx);
+    .glow__add:hover {
+      background: var(--surface-2);
+      color: var(--fg1);
     }
     .glow__send {
       flex: 0 0 auto;
@@ -263,126 +280,62 @@ import { SubShell } from './sub-shell';
 })
 export class NewRequest {
   draft = inject(IntakeDraft);
-  private api = inject(Api);
+  private router = inject(Router);
 
   saving = signal(false);
-  /** the created request — sections below the hero mount once this is set */
-  rid = signal<number | null>(null);
-  /** new-app journeys include the Prototype section */
-  isNew = signal(true);
-  /** rail highlight: which section is in view (scroll-spy) */
-  curStep = signal(0);
-  private sectionIo: IntersectionObserver | null = null;
 
   /** platform-correct hint for the submit shortcut */
   readonly kbdLabel = /Mac|iP(hone|ad|od)/.test(globalThis.navigator?.platform ?? '')
-    ? '⌘↵'
-    : 'Ctrl↵';
+    ? '\u2318\u21b5'
+    : 'Ctrl\u21b5';
 
-  /** prompt-starter pills under the describe field: [label, prefill text] */
-  pills: [string, string][] = [
-    ['Dashboard', 'A dashboard that '],
-    ['Report', 'A report that '],
-    ['Bug fix', 'Fix a bug where '],
-    ['Team tool', 'A tool for my team to '],
-  ];
+  dragOver = signal(false);
 
   private descTa = viewChild.required<ElementRef<HTMLTextAreaElement>>('descTa');
-  private shell = viewChild.required(SubShell);
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => this.sectionIo?.disconnect());
     // a restored draft may already hold a long description — size the field to it
     afterNextRender(() => this.growDesc());
-    // deep link (/submit/:id/<section>): hydrate the draft, mount the sections,
-    // and land on the requested one
-    const snap = inject(ActivatedRoute).snapshot;
-    const id = Number(snap.paramMap.get('id'));
-    const section = (snap.url[snap.url.length - 1]?.path ?? '') as string;
-    if (id) {
-      this.api.request(id).subscribe((r) => {
-        this.draft.hydrateFrom(r);
-        this.isNew.set(r.type === 'new');
-        this.rid.set(id);
-        if (['interview', 'prototype', 'review'].includes(section)) {
-          this.whenSection(section === 'interview' ? 'sec-clarify' : `sec-${section}`, (el) => {
-            this.shell().setScrollFloor(el);
-            this.shell().scrollToEl(el);
-          });
-        }
-        this.whenSection('sec-review', () => this.watchSections());
-      });
-    }
   }
 
-  /** run cb once a dynamically-mounted section exists in the DOM (the sections
-   *  render on the change-detection pass after rid() is set — retry briefly
-   *  instead of guessing a wall-clock delay) */
-  private whenSection(sid: string, cb: (el: HTMLElement) => void, tries = 40) {
-    const el = document.getElementById(sid);
-    if (el) {
-      cb(el);
-      return;
-    }
-    if (tries > 0) setTimeout(() => this.whenSection(sid, cb, tries - 1), 25);
-  }
-
-  /** rail scroll-spy — the current step follows the section occupying the viewport */
-  private watchSections() {
-    this.sectionIo?.disconnect();
-    const order = ['sec-describe', 'sec-clarify', 'sec-prototype', 'sec-review'];
-    this.sectionIo = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (!e.isIntersecting) continue;
-          const i = order.indexOf((e.target as HTMLElement).id);
-          if (i < 0) continue;
-          // step index skips Prototype for non-new journeys
-          this.curStep.set(!this.isNew() && i === 3 ? 2 : i);
-        }
-      },
-      { rootMargin: '-45% 0px -45% 0px' },
-    );
-    for (const sid of order) {
-      const el = document.getElementById(sid);
-      if (el) this.sectionIo.observe(el);
-    }
-  }
-
-  /** the interview finished — glide to the next section */
-  advance() {
-    this.scrollToSec(this.isNew() ? 'sec-prototype' : 'sec-review');
-  }
-  /** glide to a section and make it the new scroll floor — the page can no
-   *  longer be scrolled above it (explicit back-navigation re-lowers it) */
-  scrollToSec(sid: string) {
-    const el = document.getElementById(sid);
-    if (!el) return;
-    this.shell().setScrollFloor(el);
-    this.shell().scrollToEl(el);
-  }
-
-  /** keep the describe field sized to its content (it has no scrollbar) */
+  /** keep the describe field sized to its content (it has no scrollbar);
+   *  empty → no inline height at all, so CSS min-height rules and a stale
+   *  measurement (e.g. mid-HMR) can never wedge the field open */
   growDesc() {
     const ta = this.descTa().nativeElement;
+    if (!ta.value) {
+      ta.style.height = '';
+      return;
+    }
     ta.style.height = 'auto';
     ta.style.height = `${ta.scrollHeight}px`;
   }
-  /** seed the describe field with a sentence starter (only when empty) */
-  prefill(text: string) {
-    if (!this.draft.desc.trim()) {
-      this.draft.desc = text;
-    }
-    const ta = this.descTa().nativeElement;
-    ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
-    this.growDesc();
+  onPick(e: Event) {
+    const input = e.target as HTMLInputElement;
+    if (input.files?.length) void this.draft.addFiles(Array.from(input.files), 'describe');
+    input.value = '';
+  }
+  onDragOver(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault(); // required so the browser allows the drop
+    this.dragOver.set(true);
+  }
+  onDragLeave(e: DragEvent) {
+    // only clear when the drag leaves the window, not when crossing elements
+    if (!e.relatedTarget) this.dragOver.set(false);
+  }
+  onDrop(e: DragEvent) {
+    e.preventDefault(); // never let the browser navigate to the dropped file
+    this.dragOver.set(false);
+    if (e.dataTransfer?.files.length)
+      void this.draft.addFiles(Array.from(e.dataTransfer.files), 'describe');
+  }
+  onPaste(e: ClipboardEvent) {
+    const files = Array.from(e.clipboardData?.files ?? []);
+    if (files.length) void this.draft.addFiles(files, 'describe');
   }
 
   kbdSubmit() {
-    // the shortcut belongs to the describe hero only — once the journey has
-    // started, ⌘↵ inside a section must not re-save + yank the scroll back
-    if (this.rid() !== null) return;
     this.send();
   }
   send() {
@@ -390,7 +343,7 @@ export class NewRequest {
       this.descTa().nativeElement.focus();
       return;
     }
-    this.continue_();
+    void this.continue_();
   }
   private async continue_() {
     // the request needs a type at creation; new-app is the factory's main flow.
@@ -400,12 +353,7 @@ export class NewRequest {
     try {
       const id = await this.draft.save();
       await this.draft.uploadPending(id);
-      this.isNew.set(this.draft.type === 'new');
-      this.rid.set(id); // mounts the sections below…
-      this.whenSection('sec-clarify', () => {
-        this.scrollToSec('sec-clarify'); // …then Lenis glides down to Clarify
-        this.watchSections();
-      });
+      this.router.navigateByUrl(`/submit/${id}/interview`);
     } finally {
       this.saving.set(false);
     }

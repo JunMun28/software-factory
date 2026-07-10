@@ -1,0 +1,66 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "SIM_INTERVAL=8",
+        "FACTORY_BRAIN=agent",
+        "FACTORY_CLI=claude",
+        "FACTORY_CLAUDE_MODEL=claude-sonnet-5",
+        "FACTORY_INTERVIEW_EFFORT=medium",
+        "FACTORY_LLM_BASE_URL=http://localhost:4000/anthropic",
+        "FACTORY_LLM_KEY=sk-factory-local",
+        "FACTORY_INTERVIEW_API_MODEL=claude-sonnet-5",
+        "uv",
+        "run",
+        "--directory",
+        "api",
+        "uvicorn",
+        "app.main:app",
+        "--port",
+        "8000",
+        "--reload"
+      ],
+      "port": 8000,
+      "autoPort": false
+    },
+    {
+      "name": "intake",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "ng",
+        "serve",
+        "intake",
+        "--port",
+        "4201"
+      ],
+      "port": 4201
+    },
+    {
+      "name": "mockup",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4456",
+        "--directory",
+        "mockups"
+      ],
+      "port": 4456
+    },
+    {
+      "name": "console",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "ng",
+        "serve",
+        "console",
+        "--port",
+        "4202"
+      ],
+      "port": 4202
+    }
+  ]
+}

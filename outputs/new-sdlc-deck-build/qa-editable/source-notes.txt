@@ -1,0 +1,4 @@
+Editable deck rebuilt with native PPTX objects using @oai/artifact-tool.
+No full-slide bitmap images are used in the final editable deck.
+Sources: user-provided PDF; Software Factory README.md, CONTEXT.md, AGENTS.md, ADR 0015, ADR 0016, design docs.
+Final PPTX: /Users/wongjunmun/development/ai-development/software-factory/outputs/new-sdlc-agentic-engineering-software-factory-editable.pptx

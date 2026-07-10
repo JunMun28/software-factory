@@ -240,8 +240,10 @@ button {
   font-family: inherit;
 }
 ::selection {
+  /* --a200 is a light purple in BOTH themes, so the text must stay dark —
+     var(--fg1) flips to near-white in dark and drops the contrast */
   background: var(--a200);
-  color: var(--fg1);
+  color: var(--a900);
 }
 
 h1,
