@@ -179,6 +179,9 @@ import { SubShell } from './sub-shell';
     .glow:focus-within {
       box-shadow: 0 0 56px -10px rgba(189, 3, 247, 0.65);
     }
+    .glow:hover:not(:focus-within) {
+      box-shadow: 0 0 48px -11px rgba(189, 3, 247, 0.58);
+    }
     @keyframes nr-spin {
       to {
         --ang: 360deg;
