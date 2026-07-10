@@ -14,11 +14,10 @@ import { Avatar, Icon, Mark, Theme } from '@sf/shared';
 import { Session } from '../core/session.service';
 
 /** Submitter shell: top bar + intake progress as a fixed LEFT RAIL — only the
- *  current step is labelled ("1 · Describe"); a scroll-linked tracing beam runs
- *  down from it (gradient fill + glowing head), and mini dots keep 1-of-N
+ *  current step is labelled ("1 · Describe"), and mini dots keep 1-of-N
  *  orientation + back-navigation. Page scrolling is smoothed with Lenis
  *  (disabled under prefers-reduced-motion). Chosen from the 2026-07 stepper lab
- *  (variant 4 "Left rail" + tracing beam). Intake is submitter-only since the
+ *  (variant 4 "Left rail"). Intake is submitter-only since the
  *  app split (ADR 0017 Phase 2). */
 @Component({
   selector: 'sub-shell',
@@ -76,9 +75,6 @@ import { Session } from '../core/session.service';
                 (click)="i < step()! && backable() && goStep(i)"
               ></button>
             }
-          </div>
-          <div class="rail__track">
-            <div class="rail__fill" #beamFill><i class="rail__head"></i></div>
           </div>
         </aside>
         <div class="railchip" aria-label="Progress">
@@ -169,35 +165,6 @@ import { Session } from '../core/session.service';
       outline: none;
       box-shadow: 0 0 0 3px rgba(189, 3, 247, 0.38);
     }
-    .rail__track {
-      position: relative;
-      flex: 1;
-      width: 2px;
-      margin-left: 12px;
-      background: var(--hairline);
-      border-radius: 2px;
-    }
-    .rail__fill {
-      width: 100%;
-      height: 0%;
-      background: linear-gradient(180deg, var(--a500), var(--a400) 55%, #22d3ee);
-      border-radius: 2px;
-      position: relative;
-    }
-    .rail__head {
-      position: absolute;
-      left: 50%;
-      bottom: 0;
-      transform: translate(-50%, 50%);
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--a300);
-      box-shadow:
-        0 0 10px 2px rgba(189, 3, 247, 0.65),
-        0 0 26px 6px rgba(189, 3, 247, 0.3);
-    }
-
     /* compact chip replaces the rail on narrow screens */
     .railchip {
       display: none;
@@ -257,21 +224,16 @@ export class SubShell implements OnDestroy {
   proto = input(false);
 
   private scrollHost = viewChild<ElementRef<HTMLDivElement>>('scrollHost');
-  private beamFill = viewChild<ElementRef<HTMLDivElement>>('beamFill');
   private lenis: Lenis | null = null;
-  private readonly onHostScroll = () => this.updateBeam();
 
   constructor() {
     afterNextRender(() => this.initScroll());
   }
 
-  /** Lenis smooths the shell body (skipped under prefers-reduced-motion); the
-   *  tracing beam listens to native scroll, which fires either way. */
+  /** Lenis smooths the shell body (skipped under prefers-reduced-motion). */
   private initScroll() {
     const host = this.scrollHost()?.nativeElement;
     if (!host) return;
-    host.addEventListener('scroll', this.onHostScroll, { passive: true });
-    this.updateBeam();
     if (!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       this.lenis = new Lenis({
         wrapper: host,
@@ -282,18 +244,8 @@ export class SubShell implements OnDestroy {
   }
 
   ngOnDestroy() {
-    this.scrollHost()?.nativeElement.removeEventListener('scroll', this.onHostScroll);
     this.lenis?.destroy();
     this.lenis = null;
-  }
-
-  private updateBeam() {
-    const host = this.scrollHost()?.nativeElement;
-    const fill = this.beamFill()?.nativeElement;
-    if (!host || !fill) return;
-    const limit = host.scrollHeight - host.clientHeight;
-    const p = limit > 0 ? Math.min(1, Math.max(0, host.scrollTop / limit)) : 0;
-    fill.style.height = `${(p * 100).toFixed(2)}%`;
   }
 
   /** smooth-scroll an element into view inside the shell body (Lenis-eased;
