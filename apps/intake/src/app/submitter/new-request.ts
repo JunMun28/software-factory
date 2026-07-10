@@ -31,7 +31,7 @@ import { SubShell } from './sub-shell';
         <section class="hero-screen">
           <h1 class="hero__t">What should we build?</h1>
           <p class="hero__s">
-            Describe it in plain language. The factory asks the right follow-ups.
+            Put your idea into words. We’ll help turn it into a clear plan.
           </p>
           <div class="glow" [class.glow--over]="dragOver()">
             <div class="glow__card">

@@ -54,7 +54,7 @@ import { IntakeDraft } from './intake-draft.service';
                 (saved)="onBasicsSaved()"
               />
               <button class="btn primary intro__go" (click)="startInterview()">
-                Start the interview
+                Submit
               </button>
               @if (nudge()) {
                 <p class="intro__nudge" role="alert">
@@ -294,11 +294,10 @@ import { IntakeDraft } from './intake-draft.service';
       font-size: 11px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: var(--accent-tx);
-      background: var(--accent-tint);
-      border: 1px solid var(--accent-tint-bd);
-      border-radius: 999px;
-      padding: 5px 13px;
+      color: var(--muted);
+      background: transparent;
+      border: 0;
+      padding: 0;
     }
     .intro__pulse {
       width: 7px;

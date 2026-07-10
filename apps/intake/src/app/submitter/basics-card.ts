@@ -114,41 +114,47 @@ export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
           <span class="brow2__q" [class.ok]="!!draft.reach || draft.reachText.trim()">
             Who's affected
           </span>
-          <span class="bseg">
-            @for (rc of reaches; track rc[0]) {
-              <button
-                [class.on]="!draft.reachText && draft.reach === rc[0]"
-                (click)="pickReach(rc[0])"
-              >
-                {{ rc[1] }}
-              </button>
-            }
+          <span class="bcontrols">
+            <span class="bseg">
+              @for (rc of reaches; track rc[0]) {
+                <button
+                  [class.on]="!draft.reachText && draft.reach === rc[0]"
+                  (click)="pickReach(rc[0])"
+                >
+                  {{ rc[1] }}
+                </button>
+              }
+            </span>
+            <input
+              class="input basics__in basics__in--compact"
+              placeholder="Or specify"
+              [ngModel]="draft.reachText"
+              (ngModelChange)="onReachInput($event)"
+              (blur)="save()"
+            />
           </span>
         </div>
         <div class="brow2">
           <span class="brow2__q" [class.ok]="!!draft.impactMetric && !!draft.impactValue.trim()">
             Impact
           </span>
-          <span class="bseg">
-            @for (m of metrics; track m[0]) {
-              <button [class.on]="draft.impactMetric === m[0]" (click)="pickMetric(m[0])">
-                {{ m[1] }}
-              </button>
-            }
-          </span>
-        </div>
-        @if (draft.impactMetric) {
-          <div class="brow2">
-            <span class="brow2__q"></span>
+          <span class="bcontrols">
             <input
-              class="input basics__in"
-              style="max-width: 220px"
+              class="input basics__in basics__in--compact"
               [placeholder]="metricPlaceholder()"
-              [(ngModel)]="draft.impactValue"
+              [ngModel]="draft.impactValue"
+              (ngModelChange)="onImpactInput($event)"
               (blur)="save()"
             />
-          </div>
-        }
+            <span class="bseg">
+              @for (m of metrics; track m[0]) {
+                <button [class.on]="draft.impactMetric === m[0]" (click)="pickMetric(m[0])">
+                  {{ m[1] }}
+                </button>
+              }
+            </span>
+          </span>
+        </div>
       }
     </div>
   `,
@@ -200,6 +206,14 @@ export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
       flex-wrap: wrap;
       gap: 4px;
     }
+    .bcontrols {
+      display: flex;
+      flex: 1;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
     .bseg button {
       padding: 4px 10px;
       font-size: 12px;
@@ -226,6 +240,11 @@ export function basicsAnswered(d: IntakeDraft, type: string | null): boolean {
       min-height: 32px;
       padding: 5px 10px;
       font-size: 13px;
+    }
+    .basics__in--compact {
+      flex: 0 1 170px;
+      min-width: 120px;
+      max-width: 180px;
     }
     .dd-wrap {
       position: relative;
@@ -385,18 +404,28 @@ export class BasicsCard implements OnInit {
     this.draft.reachText = '';
     this.save();
   }
+  onReachInput(text: string) {
+    this.draft.reachText = text;
+    this.draft.reach = null;
+    this.rev.update((n) => n + 1);
+  }
   pickMetric(m: string) {
     this.draft.impactMetric = this.draft.impactMetric === m ? null : (m as never);
     this.rev.update((n) => n + 1);
     if (this.draft.impactMetric === null || this.draft.impactValue.trim()) this.save();
+  }
+  onImpactInput(text: string) {
+    this.draft.impactValue = text;
+    this.rev.update((n) => n + 1);
   }
   pickFreq(f: string) {
     this.draft.bugFreq = this.draft.bugFreq === f ? '' : f;
     this.save();
   }
   metricPlaceholder() {
+    if (!this.draft.impactMetric) return 'Enter estimate';
     return { hours: 'e.g. 1200', cost: 'e.g. 250', other: 'e.g. fewer audit findings' }[
-      this.draft.impactMetric ?? 'hours'
+      this.draft.impactMetric
     ];
   }
 
