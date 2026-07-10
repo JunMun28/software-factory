@@ -68,6 +68,14 @@ import { Session } from '../core/session.service';
     .sub-brand:hover {
       opacity: 0.78;
     }
+    .adm-iconbtn {
+      border-color: transparent;
+      background: transparent;
+    }
+    .adm-iconbtn:hover {
+      border-color: transparent;
+      background: var(--surface-2);
+    }
   `,
 })
 export class SubShell implements OnDestroy {

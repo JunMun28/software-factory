@@ -213,7 +213,6 @@ import { SubShell } from './sub-shell';
       justify-content: space-between;
       gap: 10px;
       padding-top: 8px;
-      border-top: 1px solid var(--hairline);
     }
     .glow--over {
       box-shadow: 0 0 56px -6px rgba(189, 3, 247, 0.7);
@@ -226,7 +225,7 @@ import { SubShell } from './sub-shell';
       width: 34px;
       height: 34px;
       border-radius: 10px;
-      border: 1px solid var(--border-strong);
+      border: 1px solid transparent;
       background: none;
       color: var(--muted);
       display: grid;
@@ -234,11 +233,18 @@ import { SubShell } from './sub-shell';
       cursor: pointer;
       transition:
         background var(--dur) var(--ease),
-        color var(--dur) var(--ease);
+        color var(--dur) var(--ease),
+        border-color var(--dur) var(--ease);
     }
     .glow__add:hover {
       background: var(--surface-2);
       color: var(--fg1);
+      border-color: var(--border-strong);
+    }
+    .glow__add:focus-visible {
+      border-color: var(--a400);
+      outline: 2px solid var(--a200);
+      outline-offset: 2px;
     }
     .glow__send {
       flex: 0 0 auto;
