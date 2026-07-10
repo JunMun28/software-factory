@@ -1,5 +1,11 @@
 # Left-Rail Title Prototype
 
+## Final Decision
+
+The prototype answered the question by rejecting the stepper itself. Do not promote any A-E title treatment. Remove the desktop rail, journey dots, mobile progress chip, prototype switcher, variant query-parameter handling, and prototype keyboard controls from `SubShell`.
+
+Keep the top navigation, projected step content, Lenis scrolling, and navigation controls owned by the individual step pages. Remove the throwaway prototype tests after the cleanup is verified.
+
 ## Question
 
 What should replace the Intake journey's left-rail `Describe` title now that the tracing beam is no longer wanted?
@@ -29,6 +35,8 @@ The switcher is visibly separate from the product UI and only appears in develop
 ## Review and Cleanup
 
 Review all five options on `/submit/new` in the running Intake app. Once one treatment wins, record the choice, delete the four losing treatments and prototype switcher, and implement the selected rail treatment as production code.
+
+**Recorded outcome:** no treatment won. The whole stepper should be removed.
 
 ## Verification
 
