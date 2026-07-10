@@ -34,7 +34,7 @@ import { SubShell } from './sub-shell';
   imports: [SubShell, Mark, Icon, FormsModule, ProtoFullscreen],
   host: { '(window:keydown)': 'onKey($event)' },
   template: `
-    <sub-shell active="new" [step]="2" [proto]="true" [reqId]="id">
+    <sub-shell active="new">
       <div class="pt">
         <div class="pt__intro">
           <h1>Shape the experience</h1>

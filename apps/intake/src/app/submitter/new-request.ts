@@ -26,7 +26,7 @@ import { SubShell } from './sub-shell';
     '(document:paste)': 'onPaste($event)',
   },
   template: `
-    <sub-shell active="new" [step]="0" [proto]="true" [reqId]="draft.requestId">
+    <sub-shell active="new">
       <div class="sub-col pop-in" style="max-width:820px">
         <section class="hero-screen">
           <h1 class="hero__t">What should we build?</h1>

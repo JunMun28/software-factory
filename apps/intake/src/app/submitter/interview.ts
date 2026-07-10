@@ -31,7 +31,7 @@ import { IntakeDraft } from './intake-draft.service';
     '(window:keydown)': 'onKeys($event)',
   },
   template: `
-    <sub-shell active="new" [step]="1" [proto]="req()?.type === 'new'" [reqId]="id">
+    <sub-shell active="new">
       @if (phase() === 'basics') {
         <!-- arrival beat: the brain is genuinely pre-generating its first question
              in the background — the submitter settles the basics meanwhile -->

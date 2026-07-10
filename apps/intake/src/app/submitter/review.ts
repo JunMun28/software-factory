@@ -22,12 +22,7 @@ import { SubShell } from './sub-shell';
   selector: 'sf-review',
   imports: [SubShell, Icon, Mark, TypeChip, ProtoFullscreen],
   template: `
-    <sub-shell
-      active="new"
-      [step]="req()?.type === 'new' ? 3 : 2"
-      [proto]="req()?.type === 'new'"
-      [reqId]="id"
-    >
+    <sub-shell active="new">
       <div class="rv-wrap fade-in">
         <h1 class="rv-h1">Review your request</h1>
         <p class="rv-sub">Here's the spec we'll send to the reviewer. Add more, or submit it.</p>
