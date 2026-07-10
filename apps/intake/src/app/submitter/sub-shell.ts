@@ -135,11 +135,11 @@ function isRailVariant(value: string | null): value is RailVariant {
         <div class="sub-body-inner"><ng-content /></div>
       </div>
       @if (showPrototypeSwitcher && step() === 0) {
-        <div class="proto-switcher" aria-label="Rail title prototype switcher">
+        <div class="proto-switcher" role="group" aria-label="Rail title prototype switcher">
           <button type="button" aria-label="Previous rail title variant" (click)="cycleVariant(-1)">
             ←
           </button>
-          <span class="proto-switcher__label">
+          <span class="proto-switcher__label" aria-live="polite">
             {{ variantDetails().key }} — {{ variantDetails().name }}
           </span>
           <button type="button" aria-label="Next rail title variant" (click)="cycleVariant(1)">
