@@ -161,7 +161,7 @@ import { SubShell } from './sub-shell';
     }
     .glow {
       width: 100%;
-      max-width: 600px;
+      max-width: 640px;
       border-radius: 20px;
       padding: 2px;
       background: conic-gradient(
