@@ -620,12 +620,12 @@ input.input {
 .sub-nav button.on {
   color: #fff;
   font-weight: 600;
-  background: var(--hero-grad);
+  background: linear-gradient(135deg, var(--a700), var(--a400));
   box-shadow: 0 5px 16px -8px rgba(189, 3, 247, 0.7);
 }
 .sub-nav button.on:hover {
   color: #fff;
-  background: linear-gradient(135deg, var(--a700), var(--a400));
+  background: linear-gradient(135deg, var(--a600), var(--a300));
 }
 
 /* world switcher — flips the reviewer between the Factory and the request world.
