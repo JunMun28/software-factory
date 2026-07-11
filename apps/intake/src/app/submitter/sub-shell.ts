@@ -21,7 +21,7 @@ import { Session } from '../core/session.service';
   template: `
     <div class="sub">
       <div class="sub-top">
-        <button class="sub-brand" type="button" (click)="home()" title="My requests">
+        <button class="sub-brand" type="button" (click)="home()" title="New request">
           <sf-mark [size]="20" /> Software Factory
         </button>
         <div class="row" style="gap:16px">
@@ -72,6 +72,12 @@ import { Session } from '../core/session.service';
       border-color: transparent;
       background: transparent;
     }
+    /* the identity chip is the first thing to go on narrow screens */
+    @media (max-width: 560px) {
+      .sub-id {
+        display: none;
+      }
+    }
     .adm-iconbtn:hover {
       border-color: transparent;
       background: var(--surface-2);
@@ -88,7 +94,7 @@ export class SubShell implements OnDestroy {
   }
 
   home() {
-    this.router.navigateByUrl('/requests');
+    this.router.navigateByUrl('/submit/new');
   }
 
   active = input<'new' | 'list' | ''>('');
