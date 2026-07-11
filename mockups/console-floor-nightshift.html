@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Floor · Lab C — Night Shift</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;600;700&family=Saira:wght@400;500;600&family=Overpass+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --field:#d6d9dc; --panel:#e7e9eb; --panel2:#dfe2e4;
+  --fg:#1d2126; --fg2:#3a4046; --mute:#4c545c; --faint:#5d656e;
+  --line:rgba(29,33,38,.16); --line2:rgba(29,33,38,.32);
+  --amber:#8a5300; --amber-hi:#8a5300; --amber-wash:rgba(138,83,0,.09);
+  --ok:#22623c; --bad:#9c2f22; --bad-wash:rgba(156,47,34,.07);
+  --led:rgba(29,33,38,.14);
+  --disp:'Big Shoulders Display',Impact,sans-serif;
+  --ui:'Saira',system-ui,sans-serif;
+  --mono:'Overpass Mono',ui-monospace,Menlo,monospace;
+}
+html.dark{
+  --field:#12161b; --panel:#191e25; --panel2:#151a20;
+  --fg:#e6e9ec; --fg2:#c3c9cf; --mute:#9aa3ad; --faint:#828c96;
+  --line:rgba(230,233,236,.1); --line2:rgba(230,233,236,.22);
+  --amber:#ffb454; --amber-hi:#ffc97e; --amber-wash:rgba(255,180,84,.08);
+  --ok:#6fd398; --bad:#f27d68; --bad-wash:rgba(242,125,104,.08);
+  --led:rgba(230,233,236,.12);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:var(--ui); background:var(--field); color:var(--fg); font-size:14.5px; line-height:1.5; -webkit-font-smoothing:antialiased; transition:background-color .3s,color .3s}
+.wrap{max-width:1150px; margin:0 auto; padding:0 clamp(16px,4vw,48px) 96px}
+
+/* console top rail */
+.bar{display:flex; align-items:center; gap:22px; padding:15px 0; border-bottom:2px solid var(--line2)}
+.mark{font-family:var(--disp); font-weight:700; font-size:21px; letter-spacing:.05em; text-transform:uppercase; color:var(--fg); text-decoration:none}
+.mark span{color:var(--amber)}
+.bar nav{display:flex; gap:16px; font-family:var(--disp); font-size:15px; font-weight:600; letter-spacing:.08em; text-transform:uppercase}
+.bar nav a{color:var(--mute); text-decoration:none; padding-bottom:2px; border-bottom:2px solid transparent}
+.bar nav a.on{color:var(--fg); border-color:var(--amber)}
+.sp{flex:1}
+.cmdk{font-family:var(--mono); font-size:12px; color:var(--mute); border:1px solid var(--line2); padding:4px 10px}
+.op{width:28px; height:28px; background:var(--panel); border:1px solid var(--line2); color:var(--fg2); display:grid; place-items:center; font-family:var(--mono); font-size:11px; font-weight:600}
+
+/* status strip */
+.mast{display:flex; flex-wrap:wrap; align-items:center; gap:10px 30px; padding:13px 0; border-bottom:1px solid var(--line); font-family:var(--mono); font-size:12.5px; color:var(--mute); font-variant-numeric:tabular-nums}
+.mast .ok-t{color:var(--ok); font-weight:600}
+.mast .ok-t::before{content:"● "; animation:pulse 2.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+.mast b{color:var(--fg); font-weight:600}
+
+/* section headings */
+h1.hd{font-family:var(--disp); font-weight:700; font-size:clamp(36px,5vw,58px); letter-spacing:.02em; text-transform:uppercase; margin:56px 0 6px; line-height:1}
+h1.hd em{font-style:normal; color:var(--amber)}
+p.sub{margin:0 0 22px; color:var(--mute); font-size:13.5px}
+
+/* panels */
+.panel{background:var(--panel); border:1px solid var(--line); margin-bottom:14px; position:relative}
+.panel .rim{display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:12px 18px; border-bottom:1px solid var(--line); background:var(--panel2)}
+.badge{font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--amber); background:var(--amber-wash); border:1px solid var(--amber); padding:3px 9px}
+.panel.fail .badge{color:var(--bad); background:var(--bad-wash); border-color:var(--bad)}
+.rim .meta{font-size:12.5px; color:var(--mute); font-family:var(--mono)}
+.panel h2{font-family:var(--disp); font-size:27px; font-weight:600; letter-spacing:.02em; margin:14px 18px 12px; text-transform:uppercase}
+.readout{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; padding:0 18px 16px}
+.r{border:1px solid var(--line); padding:10px 13px; background:var(--panel2)}
+.r .k{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); margin-bottom:3px}
+.r .v{font-family:var(--mono); font-size:14px; color:var(--fg2); font-variant-numeric:tabular-nums}
+.r .v .ok-t{color:var(--ok)} .r .v .bad-t{color:var(--bad)}
+.effect{padding:0 18px 14px; font-size:13px; color:var(--mute)}
+.effect b{color:var(--fg2)}
+.acts{display:flex; flex-wrap:wrap; gap:10px; padding:0 18px 18px}
+.btn{font-family:var(--disp); font-size:15px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; padding:8px 18px; cursor:pointer; background:transparent; border:1px solid var(--line2); color:var(--fg); transition:background .15s}
+.btn:hover{background:var(--amber-wash)}
+.btn.primary{background:var(--amber); border-color:var(--amber); color:#181206}
+html:not(.dark) .btn.primary{color:#fff}
+.btn.danger{border-color:var(--bad); color:var(--bad)}
+kbd{font-family:var(--mono); font-size:11px; opacity:.75; margin-left:7px; letter-spacing:0}
+.conflict{font-size:12.5px; color:var(--mute); padding:0 18px 16px; font-family:var(--mono)}
+.conflict b{color:var(--fg2)}
+
+/* the line — LED gauges */
+.lane{display:grid; grid-template-columns:280px 1fr 200px; gap:26px; align-items:center; padding:20px 18px; border:1px solid var(--line); background:var(--panel); margin-bottom:10px}
+.lane h2{font-family:var(--disp); font-size:21px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; margin:0 0 1px}
+.lane .app{font-family:var(--mono); font-size:11.5px; color:var(--mute); letter-spacing:.1em; text-transform:uppercase}
+.gauge .leds{display:flex; gap:4px; height:16px}
+.gauge .leds i{flex:1; background:var(--led)}
+.gauge .leds i.on{background:var(--amber); box-shadow:0 0 10px var(--amber-wash)}
+.gauge .leds i.half{background:linear-gradient(90deg,var(--amber) 50%,var(--led) 50%)}
+.gauge .leds i.now{animation:led 1.6s steps(2) infinite}
+@keyframes led{50%{opacity:.45}}
+.lane.quiet .gauge .leds i.on,.lane.quiet .gauge .leds i.half{background:var(--faint); box-shadow:none; animation:none}
+.gauge .lbl{display:flex; justify-content:space-between; font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:6px; letter-spacing:.08em; text-transform:uppercase}
+.lane .tele{font-family:var(--mono); font-size:12.5px; text-align:right; color:var(--mute); line-height:1.8; font-variant-numeric:tabular-nums}
+.lane .tele .sig{color:var(--ok); font-weight:600}
+.lane.quiet .tele .sig{color:var(--bad)}
+.steer{grid-column:1/-1; display:flex; flex-wrap:wrap; gap:9px; align-items:center; border-top:1px dashed var(--line); padding-top:14px}
+.steer input{flex:1; min-width:220px; font-family:var(--mono); font-size:12.5px; padding:8px 12px; border:1px solid var(--line2); background:var(--panel2); color:var(--fg); outline:none}
+.steer input:focus{border-color:var(--amber)}
+.steer input::placeholder{color:var(--faint)}
+.steer button{font-family:var(--disp); font-size:14px; letter-spacing:.08em; text-transform:uppercase; border:1px solid var(--line2); background:transparent; color:var(--fg2); padding:7px 16px; cursor:pointer}
+.steer .note{font-size:12px; color:var(--mute); font-family:var(--mono)}
+.steer .note b{color:var(--ok)}
+
+/* log */
+.log{font-family:var(--mono); font-size:13px; border:1px solid var(--line); background:var(--panel)}
+.log .row{display:flex; flex-wrap:wrap; gap:6px 16px; padding:11px 18px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums}
+.log .row:last-child{border-bottom:0}
+.log .oc{width:96px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; font-size:11.5px}
+.oc.ship{color:var(--ok)} .oc.back{color:var(--amber)} .oc.cxl{color:var(--faint)}
+.log .t{font-family:var(--ui); color:var(--fg2)}
+.log .who{margin-left:auto; color:var(--mute); font-size:12px}
+
+/* lab switcher */
+.lab{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); display:flex; gap:4px; align-items:center; background:var(--panel); border:1px solid var(--line2); padding:5px 8px; z-index:9; font-size:12px; box-shadow:0 12px 34px -14px rgba(0,0,0,.5)}
+.lab a,.lab button{font-family:var(--mono); font-weight:600; color:var(--mute); text-decoration:none; border:0; background:transparent; padding:5px 10px; cursor:pointer; font-size:12px}
+.lab a.on{background:var(--fg); color:var(--field)}
+.lab .div{width:1px; height:16px; background:var(--line2)}
+
+.rv{opacity:0; transform:translateY(10px); animation:rv .5s cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes rv{to{opacity:1; transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important} .rv{opacity:1; transform:none}}
+
+@media (max-width:780px){
+  .bar nav{display:none}
+  .lane{grid-template-columns:1fr; gap:12px}
+  .lane .tele{text-align:left}
+  .log .who{margin-left:0}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="bar rv">
+    <a class="mark" href="#">Factory<span>&nbsp;Floor</span></a>
+    <nav><a class="on" href="#">Floor</a><a href="#">Library</a><a href="#">Studio</a></nav>
+    <div class="sp"></div>
+    <span class="cmdk">⌘K</span>
+    <span class="op" title="Jun Mun">JM</span>
+  </header>
+
+  <div class="mast rv" style="animation-delay:.05s">
+    <span class="ok-t">LIVE AGENT</span>
+    <span>SYNC 4s</span>
+    <span>FRI 11 JUL 2026 · 14:31</span>
+    <span class="sp"></span>
+    <span>SHIPPED/WK <b>7</b></span>
+    <span>CYCLE <b>3H42M</b></span>
+    <span>WAIT-ON-HUMAN <b>18M</b></span>
+  </div>
+
+  <!-- needs you -->
+  <section class="rv" style="animation-delay:.1s">
+    <h1 class="hd">Needs <em>you</em> · 2</h1>
+    <p class="sub">Everything else is running. Signals below are the only saturated things on this floor.</p>
+
+    <article class="panel rv" style="animation-delay:.16s">
+      <div class="rim"><span class="badge">Merge gate</span><span class="meta">PAYROLL · REQ S.LIM · T-22M</span></div>
+      <h2>Export payroll summary as CSV</h2>
+      <div class="readout">
+        <div class="r"><div class="k">Diff</div><div class="v">+214 −38 · 6F</div></div>
+        <div class="r"><div class="k">Tests</div><div class="v"><span class="ok-t">42 PASS</span> · 0 FAIL</div></div>
+        <div class="r"><div class="k">Checks</div><div class="v"><span class="ok-t">LINT ✓ BUILD ✓</span></div></div>
+        <div class="r"><div class="k">Plan kept</div><div class="v">4 / 4</div></div>
+      </div>
+      <p class="effect">APPROVE → <b>merges PR #87 into main and deploys Payroll.</b></p>
+      <div class="acts">
+        <button class="btn primary">Approve<kbd>A</kbd></button>
+        <button class="btn">Send back<kbd>S</kbd></button>
+        <button class="btn" style="border-style:dashed">Open PR ↗</button>
+      </div>
+    </article>
+
+    <article class="panel fail rv" style="animation-delay:.22s">
+      <div class="rim"><span class="badge">Stalled</span><span class="meta">INSIGHTS · BUILD 3/7 · NO SIGNAL 24M</span></div>
+      <h2>Customer churn dashboard</h2>
+      <div class="readout">
+        <div class="r" style="grid-column:1/-1"><div class="k">Last signal 14:07</div><div class="v">“Installing chart dependencies”</div></div>
+      </div>
+      <div class="acts">
+        <button class="btn primary">Retry stage</button>
+        <button class="btn">Send back to…</button>
+        <button class="btn">Take over</button>
+        <button class="btn danger">Cancel</button>
+      </div>
+      <p class="conflict">RACE RULE: first decision wins. <b>“RETRIED BY A.RAHMAN 14:31”</b> replaces this panel if you’re second.</p>
+    </article>
+  </section>
+
+  <!-- the line -->
+  <section class="rv" style="animation-delay:.28s">
+    <h1 class="hd">The line · 3</h1>
+    <p class="sub">Spec → plan → build → review → merge → ship. Amber marks position; grey means quiet.</p>
+
+    <div class="lane rv" style="animation-delay:.32s">
+      <div><h2>Invoice reminder emails</h2><span class="app">Billing</span></div>
+      <div class="gauge">
+        <div class="leds"><i class="on"></i><i class="half now"></i><i></i><i></i><i></i><i></i></div>
+        <div class="lbl"><span>SPC</span><span>PLN</span><span>BLD</span><span>RVW</span><span>MRG</span><span>SHP</span></div>
+      </div>
+      <div class="tele"><span class="sig">● STEADY</span> · 40S<br/>PLAN 2/4</div>
+    </div>
+
+    <div class="lane rv" style="animation-delay:.36s">
+      <div><h2>SSO for the admin portal</h2><span class="app">Identity</span></div>
+      <div class="gauge">
+        <div class="leds"><i class="on"></i><i class="on"></i><i class="half now"></i><i></i><i></i><i></i></div>
+        <div class="lbl"><span>SPC</span><span>PLN</span><span>BLD</span><span>RVW</span><span>MRG</span><span>SHP</span></div>
+      </div>
+      <div class="tele"><span class="sig">● STEADY</span> · 12S<br/>BUILD 5/9</div>
+      <div class="steer">
+        <input placeholder="STEER > e.g. reuse the existing OAuth client" />
+        <button>Send</button>
+        <span class="note">“prefer session cookies”: <b>HEARD ✓ STEP 4</b></span>
+      </div>
+    </div>
+
+    <div class="lane quiet rv" style="animation-delay:.4s">
+      <div><h2>Customer churn dashboard</h2><span class="app">Insights</span></div>
+      <div class="gauge">
+        <div class="leds"><i class="on"></i><i class="on"></i><i class="half"></i><i></i><i></i><i></i></div>
+        <div class="lbl"><span>SPC</span><span>PLN</span><span>BLD</span><span>RVW</span><span>MRG</span><span>SHP</span></div>
+      </div>
+      <div class="tele"><span class="sig">▲ QUIET</span> · 24M<br/>BUILD 3/7 — see triage above</div>
+    </div>
+  </section>
+
+  <!-- recently -->
+  <section class="rv" style="animation-delay:.44s">
+    <h1 class="hd">Recently</h1>
+    <p class="sub">Every outcome signed: who decided, and when.</p>
+    <div class="log">
+      <div class="row"><span class="oc ship">Shipped</span><span class="t">Rate-limit public API keys</span><span class="who">KIM PARK · 2H</span></div>
+      <div class="row"><span class="oc back">Sent back</span><span class="t">Dark mode for weekly reports</span><span class="who">AISHA RAHMAN · 5H</span></div>
+      <div class="row"><span class="oc ship">Shipped</span><span class="t">Audit-log export</span><span class="who">KIM PARK · 1D</span></div>
+      <div class="row"><span class="oc cxl">Cancelled</span><span class="t">Legacy CSV importer rewrite</span><span class="who">JUN MUN · TUE</span></div>
+    </div>
+  </section>
+</div>
+
+<div class="lab">
+  <a href="console-floor-atelier.html">A · Atelier</a>
+  <a href="console-floor-instrument.html">B · Instrument</a>
+  <a class="on" href="console-floor-nightshift.html">C · Night&nbsp;Shift</a>
+  <a href="console-floor-family.html">D · Family</a>
+  <span class="div"></span>
+  <button id="theme" title="toggle theme">◐</button>
+</div>
+
+<script>
+const t=document.getElementById('theme'), h=document.documentElement;
+if(localStorage.getItem('lab-theme')==='light') h.classList.remove('dark');
+t.onclick=()=>{h.classList.toggle('dark'); localStorage.setItem('lab-theme', h.classList.contains('dark')?'dark':'light');};
+</script>
+</body>
+</html>

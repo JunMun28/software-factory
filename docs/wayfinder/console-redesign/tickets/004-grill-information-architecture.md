@@ -2,8 +2,9 @@
 id: 004
 title: "Grilling: information architecture from zero"
 labels: [wayfinder:grilling]
-status: open
-assignee:
+status: closed
+assignee: junmun (session 132e3c43)
+resolved: 2026-07-11
 blocked-by: [003]
 ---
 
@@ -23,3 +24,25 @@ each divergence.
 Resolve via /grilling with sketch-level artifacts where words are ambiguous.
 The answer is the surface map + navigation model that per-surface spec tickets
 will hang off.
+
+## Resolution
+
+Decided by delegation ("you decide everything and write spec"), 2026-07-11.
+Full detail: [docs/superpowers/specs/2026-07-11-console-redesign-design.md](../../../superpowers/specs/2026-07-11-console-redesign-design.md) sections 4-7.
+
+Eight June surfaces collapse to **four**: **The Floor** (`/`, attention-first
+editorial home: masthead numbers, "Needs you" evidence/triage cards, the
+"Assembly Line" of in-flight run lanes, "Recently"), **Dossier**
+(`/requests/:id`, semantic timeline with decided-by + raw evidence drawer),
+**Library** (`/library`, the only list, filterable), **Studio** (`/studio`,
+registry + operator profile + persisted notification prefs).
+
+Killed with reasons: Mission control (becomes The Floor), Factory map (cut;
+its stage-progress idea survives as the Assembly Line strip), Gates queue +
+Needs me (redundant with a truthful Floor; email deep-links land on the
+Dossier), per-app Feed (comments move to the Dossier timeline; filtering to
+Library), Settings-as-preview (becomes real in Studio).
+
+Navigation: no sidebar — slim hairline top bar + command palette; keyboard
+grammar (palette, G chords, gate J/K/Enter/A/S) survives on merit. Legacy
+`/admin/*` routes redirect.

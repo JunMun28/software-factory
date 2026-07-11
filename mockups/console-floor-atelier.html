@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Floor · Lab A — Atelier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Archivo:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --paper:#faf6ef; --paper2:#f3ede2; --card:#fffdf8;
+  --ink:#211d16; --ink2:#4a4437; --mute:#665f4d; --faint:#847d69;
+  --line:rgba(60,50,30,.14); --line2:rgba(60,50,30,.26);
+  --amber:#a05400; --amber-ink:#8c4a00; --amber-wash:rgba(160,84,0,.07);
+  --green:#3d6b34; --red:#a83a2a; --red-wash:rgba(168,58,42,.06);
+  --shadow:0 18px 40px -28px rgba(60,45,20,.35);
+  --disp:'Fraunces',Georgia,serif;
+  --ui:'Archivo',system-ui,sans-serif;
+  --mono:'Spline Sans Mono',ui-monospace,Menlo,monospace;
+  --track:rgba(60,50,30,.12);
+}
+html.dark{
+  --paper:#171410; --paper2:#1e1a14; --card:#201c15;
+  --ink:#efe8da; --ink2:#c8c0ae; --mute:#a59d88; --faint:#8a8370;
+  --line:rgba(235,225,200,.13); --line2:rgba(235,225,200,.25);
+  --amber:#f0a340; --amber-ink:#ffc069; --amber-wash:rgba(240,163,64,.08);
+  --green:#8fc17f; --red:#e0705c; --red-wash:rgba(224,112,92,.08);
+  --shadow:0 20px 44px -26px rgba(0,0,0,.7);
+  --track:rgba(235,225,200,.14);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:var(--ui); color:var(--ink); background:var(--paper);
+  -webkit-font-smoothing:antialiased; font-size:15px; line-height:1.5;
+  background-image:radial-gradient(1200px 500px at 50% -10%, var(--paper2), transparent 70%);
+  transition:background-color .35s ease, color .35s ease;
+}
+body::after{content:""; position:fixed; inset:0; pointer-events:none; opacity:.5; mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");}
+html.dark body::after{mix-blend-mode:screen; opacity:.35}
+
+.wrap{max-width:1180px; margin:0 auto; padding:0 clamp(18px,4vw,56px) 96px}
+
+/* ---------- top hairline bar ---------- */
+.bar{display:flex; align-items:center; gap:26px; padding:20px 0 16px; border-bottom:1px solid var(--line);}
+.wordmark{font-family:var(--disp); font-weight:600; font-size:17px; letter-spacing:.01em; text-decoration:none; color:var(--ink);}
+.wordmark em{font-style:italic; font-weight:400; color:var(--amber)}
+.bar nav{display:flex; gap:20px; font-size:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;}
+.bar nav a{color:var(--mute); text-decoration:none; padding:2px 0; border-bottom:2px solid transparent}
+.bar nav a.on{color:var(--ink); border-color:var(--amber)}
+.bar .sp{flex:1}
+.cmdk{font-family:var(--mono); font-size:12px; color:var(--mute); border:1px solid var(--line); border-radius:999px; padding:5px 12px; background:transparent}
+.op{width:30px; height:30px; border-radius:999px; background:var(--amber-wash); color:var(--amber-ink); border:1px solid var(--line2); display:grid; place-items:center; font-size:11px; font-weight:700; letter-spacing:.04em}
+
+/* ---------- masthead ---------- */
+.mast{display:flex; flex-wrap:wrap; align-items:baseline; gap:10px 28px; padding:18px 0 0; color:var(--mute); font-size:13px;}
+.mast .date{font-family:var(--disp); font-style:italic; font-size:14px}
+.mast .live{display:inline-flex; align-items:center; gap:7px}
+.mast .live i{width:7px; height:7px; border-radius:99px; background:var(--green); display:inline-block; animation:breathe 2.6s ease-in-out infinite}
+.mast .sp{flex:1}
+.stats{display:flex; gap:26px; font-variant-numeric:tabular-nums}
+.stats b{font-family:var(--mono); font-weight:600; color:var(--ink); font-size:14px; margin-right:6px}
+@keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
+
+/* ---------- act headings ---------- */
+.act{margin-top:64px}
+.act > h1{font-family:var(--disp); font-weight:400; font-size:clamp(34px,4.6vw,54px); line-height:1.05; margin:0 0 8px; letter-spacing:-.01em;}
+.act > h1 .n{font-size:.42em; vertical-align:.85em; color:var(--faint); font-family:var(--mono); font-weight:400; letter-spacing:.14em; margin-right:14px}
+.act > p.sub{margin:0 0 28px; color:var(--mute); font-size:14px; max-width:56ch}
+.act > h1 em{font-style:italic; color:var(--amber)}
+
+/* ---------- needs-you cards ---------- */
+.card{background:var(--card); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow); padding:26px clamp(18px,3vw,34px); margin-bottom:18px; position:relative;}
+.chiprow{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; font-size:12px}
+.kind{font-family:var(--mono); font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--amber-ink); background:var(--amber-wash); padding:4px 10px; border-radius:999px}
+.card.fail .kind{color:var(--red); background:var(--red-wash)}
+.chiprow .meta{color:var(--mute)}
+.card h2{font-family:var(--disp); font-weight:500; font-size:clamp(20px,2.4vw,27px); margin:0 0 14px; line-height:1.2}
+.evidence{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:16px}
+.ev{background:var(--card); padding:12px 16px}
+.ev .k{font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); font-weight:700; margin-bottom:4px}
+.ev .v{font-family:var(--mono); font-size:13.5px; color:var(--ink2)}
+.ev .v .ok{color:var(--green)} .ev .v .warn{color:var(--red)}
+.effect{font-size:13.5px; color:var(--ink2); font-style:italic; font-family:var(--disp); margin-bottom:18px}
+.effect::before{content:"→ "; color:var(--amber); font-style:normal}
+.actions{display:flex; flex-wrap:wrap; gap:10px}
+button.act-b{font-family:var(--ui); font-weight:600; font-size:13.5px; border-radius:999px; padding:9px 20px; cursor:pointer; border:1px solid var(--line2); background:transparent; color:var(--ink); transition:transform .12s ease, background .2s}
+button.act-b:hover{transform:translateY(-1px)}
+button.primary{background:var(--ink); color:var(--paper); border-color:var(--ink)}
+button.primary:hover{background:var(--amber); border-color:var(--amber); color:#fff}
+kbd{font-family:var(--mono); font-size:10px; border:1px solid var(--line2); border-bottom-width:2px; border-radius:4px; padding:1px 5px; color:var(--mute); margin-left:8px; vertical-align:1px}
+.conflict{font-size:12.5px; color:var(--mute); font-style:italic; margin-top:14px}
+.conflict b{color:var(--ink2)}
+
+/* ---------- the line ---------- */
+.lane{padding:26px 0 22px; border-bottom:1px solid var(--line); cursor:pointer}
+.lane:first-of-type{border-top:1px solid var(--line)}
+.lane .head{display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 16px; margin-bottom:16px}
+.lane .head h3{font-family:var(--disp); font-weight:500; font-size:19px; margin:0}
+.lane .head .app{font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--mute)}
+.lane .head .sp{flex:1}
+.lane .head .sig{font-family:var(--mono); font-size:12px; color:var(--mute); font-variant-numeric:tabular-nums}
+.lane .head .sig .shape{color:var(--green); margin-right:5px}
+.lane.quiet .head .sig .shape{color:var(--red)}
+.track{position:relative; height:34px}
+.rail{position:absolute; left:0; right:0; top:15px; height:2px; background:var(--track); border-radius:2px}
+.rail .fill{position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,transparent,var(--amber)); border-radius:2px; opacity:.85}
+.lane.quiet .rail .fill{background:linear-gradient(90deg,transparent,var(--mute)); opacity:.4}
+.bead{position:absolute; top:9px; width:14px; height:14px; border-radius:99px; background:var(--amber); box-shadow:0 0 0 5px var(--amber-wash); transform:translateX(-50%)}
+.bead::after{content:""; position:absolute; inset:-5px; border-radius:99px; border:1px solid var(--amber); opacity:0; animation:ping 2.8s ease-out infinite}
+.lane.quiet .bead{background:var(--mute); box-shadow:none} .lane.quiet .bead::after{display:none}
+@keyframes ping{0%{transform:scale(.6); opacity:.7}70%{transform:scale(1.7); opacity:0}100%{opacity:0}}
+.stops{position:absolute; inset:0; display:flex; justify-content:space-between}
+.stops i{width:6px; height:6px; border-radius:99px; background:var(--track); margin-top:13px; position:relative}
+.stops i.past{background:var(--ink2)}
+.stops i span{position:absolute; top:16px; left:50%; transform:translateX(-50%); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); white-space:nowrap; font-weight:600}
+.lane .foot{display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:26px; font-size:12.5px; color:var(--mute); font-variant-numeric:tabular-nums}
+.lane .foot .st{font-family:var(--mono)}
+.steer{display:flex; gap:8px; margin-top:14px; max-width:520px}
+.steer input{flex:1; font-family:var(--ui); font-size:13px; padding:8px 14px; border-radius:999px; border:1px solid var(--line2); background:transparent; color:var(--ink); outline:none}
+.steer input::placeholder{color:var(--faint); font-style:italic}
+.steer button{border-radius:999px; border:1px solid var(--line2); background:transparent; padding:8px 16px; font-size:12.5px; font-weight:600; color:var(--ink2); cursor:pointer}
+.steer-note{font-size:12px; color:var(--mute); margin-top:8px}
+.steer-note .heard{color:var(--green); font-weight:600}
+
+/* ---------- recently ---------- */
+.recent{list-style:none; margin:0; padding:0}
+.recent li{display:flex; flex-wrap:wrap; gap:6px 14px; align-items:baseline; padding:13px 0; border-bottom:1px solid var(--line); font-size:14px}
+.recent .oc{font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; width:86px}
+.recent .oc.ship{color:var(--green)} .recent .oc.back{color:var(--amber-ink)} .recent .oc.cxl{color:var(--mute)}
+.recent .t{font-family:var(--disp); font-size:15px}
+.recent .sp{flex:1}
+.recent .who{color:var(--mute); font-size:12.5px; font-variant-numeric:tabular-nums}
+
+/* ---------- lab switcher ---------- */
+.lab{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); display:flex; gap:4px; align-items:center; background:var(--card); border:1px solid var(--line2); border-radius:999px; padding:5px 8px; box-shadow:var(--shadow); z-index:9; font-size:12px}
+.lab a,.lab button{font-family:var(--mono); font-weight:600; color:var(--mute); text-decoration:none; border:0; background:transparent; padding:5px 10px; border-radius:999px; cursor:pointer; font-size:12px}
+.lab a.on{background:var(--ink); color:var(--paper)}
+.lab .div{width:1px; height:16px; background:var(--line2)}
+
+/* reveal */
+.rv{opacity:0; transform:translateY(14px); animation:rv .7s cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes rv{to{opacity:1; transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important} .rv{opacity:1; transform:none}}
+
+@media (max-width:640px){
+  .bar nav{display:none}
+  .mast .stats{width:100%; justify-content:space-between; gap:10px}
+  .stops i span{display:none}
+  .stops i:first-child span,.stops i:last-child span{display:block}
+  .recent .oc{width:auto}
+  .evidence{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="bar rv">
+    <a class="wordmark" href="#">Software <em>Factory</em></a>
+    <nav><a class="on" href="#">Floor</a><a href="#">Library</a><a href="#">Studio</a></nav>
+    <div class="sp"></div>
+    <span class="cmdk">⌘K</span>
+    <span class="op" title="Jun Mun">JM</span>
+  </header>
+
+  <div class="mast rv" style="animation-delay:.06s">
+    <span class="date">Friday, 11 July 2026</span>
+    <span class="live"><i></i>live agent · synced 4 s ago</span>
+    <span class="sp"></span>
+    <div class="stats">
+      <span><b>7</b>shipped this week</span>
+      <span><b>3 h 42 m</b>median cycle</span>
+      <span><b>18 m</b>wait on human</span>
+    </div>
+  </div>
+
+  <!-- ACT I -->
+  <section class="act rv" style="animation-delay:.12s">
+    <h1><span class="n">ACT I</span>Two things <em>need you.</em></h1>
+    <p class="sub">Everything else is moving on its own.</p>
+
+    <article class="card rv" style="animation-delay:.2s">
+      <div class="chiprow">
+        <span class="kind">Merge gate</span>
+        <span class="meta">Payroll · requested by Sarah Lim · raised 22 m ago</span>
+      </div>
+      <h2>Export payroll summary as CSV</h2>
+      <div class="evidence">
+        <div class="ev"><div class="k">Diff</div><div class="v">+214 −38 · 6 files</div></div>
+        <div class="ev"><div class="k">Tests</div><div class="v"><span class="ok">42 passed</span> · 0 failed</div></div>
+        <div class="ev"><div class="k">Checks</div><div class="v"><span class="ok">lint ✓</span> · <span class="ok">build ✓</span></div></div>
+        <div class="ev"><div class="k">Plan kept</div><div class="v">4 / 4 items</div></div>
+      </div>
+      <p class="effect">Approving merges PR #87 into main and deploys Payroll.</p>
+      <div class="actions">
+        <button class="act-b primary">Approve<kbd>A</kbd></button>
+        <button class="act-b">Send back with note<kbd>S</kbd></button>
+        <button class="act-b" style="border:0;color:var(--mute)">Open PR ↗</button>
+      </div>
+    </article>
+
+    <article class="card fail rv" style="animation-delay:.28s">
+      <div class="chiprow">
+        <span class="kind">Stalled</span>
+        <span class="meta">Insights · Build stage · step 3 of 7 · 24 m without a signal</span>
+      </div>
+      <h2>Customer churn dashboard</h2>
+      <div class="evidence">
+        <div class="ev" style="grid-column:1/-1"><div class="k">Last signal</div><div class="v">“Installing chart dependencies” · 14:07</div></div>
+      </div>
+      <div class="actions">
+        <button class="act-b primary">Retry stage</button>
+        <button class="act-b">Send back to…</button>
+        <button class="act-b">Take over</button>
+        <button class="act-b" style="color:var(--red); border-color:var(--red)">Cancel</button>
+      </div>
+      <p class="conflict">If someone acts first you’ll see it here — <b>“Retried by Aisha R. · 14:31, while you were reading.”</b></p>
+    </article>
+  </section>
+
+  <!-- ACT II -->
+  <section class="act rv" style="animation-delay:.34s">
+    <h1><span class="n">ACT II</span>The line.</h1>
+    <p class="sub">Three requests in motion, left to right: spec → ship.</p>
+
+    <div class="lane">
+      <div class="head"><h3>Invoice reminder emails</h3><span class="app">Billing</span><span class="sp"></span><span class="sig"><span class="shape">●</span>steady · 40 s ago</span></div>
+      <div class="track">
+        <div class="rail"><div class="fill" style="width:28%"></div></div>
+        <div class="stops"><i class="past"><span>Spec</span></i><i class="past"><span>Plan</span></i><i><span>Build</span></i><i><span>Review</span></i><i><span>Merge</span></i><i><span>Ship</span></i></div>
+        <div class="bead" style="left:28%"></div>
+      </div>
+      <div class="foot"><span class="st">Plan · step 2 / 4</span><span>drafting PLAN.md against src/notify</span></div>
+    </div>
+
+    <div class="lane">
+      <div class="head"><h3>SSO for the admin portal</h3><span class="app">Identity</span><span class="sp"></span><span class="sig"><span class="shape">●</span>steady · 12 s ago</span></div>
+      <div class="track">
+        <div class="rail"><div class="fill" style="width:47%"></div></div>
+        <div class="stops"><i class="past"><span>Spec</span></i><i class="past"><span>Plan</span></i><i class="past"><span>Build</span></i><i><span>Review</span></i><i><span>Merge</span></i><i><span>Ship</span></i></div>
+        <div class="bead" style="left:47%"></div>
+      </div>
+      <div class="foot"><span class="st">Build · step 5 / 9</span><span>writing token-refresh tests</span></div>
+      <div class="steer"><input placeholder="Steer this run… e.g. “reuse the existing OAuth client”" /><button>Send</button></div>
+      <p class="steer-note">Earlier note “prefer session cookies over JWT” — <span class="heard">heard ✓ at step 4</span></p>
+    </div>
+
+    <div class="lane quiet">
+      <div class="head"><h3>Customer churn dashboard</h3><span class="app">Insights</span><span class="sp"></span><span class="sig"><span class="shape">▲</span>quiet for 24 m</span></div>
+      <div class="track">
+        <div class="rail"><div class="fill" style="width:39%"></div></div>
+        <div class="stops"><i class="past"><span>Spec</span></i><i class="past"><span>Plan</span></i><i><span>Build</span></i><i><span>Review</span></i><i><span>Merge</span></i><i><span>Ship</span></i></div>
+        <div class="bead" style="left:39%"></div>
+      </div>
+      <div class="foot"><span class="st">Build · step 3 / 7</span><span>stalled — triage card above</span></div>
+    </div>
+  </section>
+
+  <!-- ACT III -->
+  <section class="act rv" style="animation-delay:.4s">
+    <h1><span class="n">ACT III</span>Recently.</h1>
+    <ul class="recent">
+      <li><span class="oc ship">Shipped</span><span class="t">Rate-limit public API keys</span><span class="sp"></span><span class="who">approved by Kim Park · 2 h ago</span></li>
+      <li><span class="oc back">Sent back</span><span class="t">Dark mode for weekly reports</span><span class="sp"></span><span class="who">Aisha Rahman · 5 h ago</span></li>
+      <li><span class="oc ship">Shipped</span><span class="t">Audit-log export</span><span class="sp"></span><span class="who">approved by Kim Park · yesterday</span></li>
+      <li><span class="oc cxl">Cancelled</span><span class="t">Legacy CSV importer rewrite</span><span class="sp"></span><span class="who">Jun Mun · Tuesday</span></li>
+    </ul>
+  </section>
+</div>
+
+<div class="lab">
+  <a class="on" href="console-floor-atelier.html">A · Atelier</a>
+  <a href="console-floor-instrument.html">B · Instrument</a>
+  <a href="console-floor-nightshift.html">C · Night&nbsp;Shift</a>
+  <a href="console-floor-family.html">D · Family</a>
+  <span class="div"></span>
+  <button id="theme" title="toggle theme">◐</button>
+</div>
+
+<script>
+const t=document.getElementById('theme'), h=document.documentElement;
+if(localStorage.getItem('lab-theme')==='dark' || (!localStorage.getItem('lab-theme') && matchMedia('(prefers-color-scheme: dark)').matches)) h.classList.add('dark');
+t.onclick=()=>{h.classList.toggle('dark'); localStorage.setItem('lab-theme', h.classList.contains('dark')?'dark':'light');};
+</script>
+</body>
+</html>

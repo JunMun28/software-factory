@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Floor · Lab D — Family (intake theme)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* Tokens lifted from apps/intake/src/styles.css (Micron Atlas).
+   In the real console, --display/--body resolve to Micron Basis (local OTF);
+   this standalone lab uses the same fallback stack the intake app declares. */
+:root{
+  --bg:#faf9fb; --surface:#ffffff; --surface-2:#f4f3f7; --surface-3:#ecebf1;
+  --fg1:#1a1a1f; --fg2:#3a3a42; --muted:#63636e; --faint:#6b6b76;
+  --border:#e6e6ea; --border-strong:#d7d7de; --hairline:#eeeef2;
+  --accent:#a402dc; --accent-hover:#8a01bc; --accent-link:#8a01bc;
+  --accent-tint:#fbe9fe; --accent-tint-bd:#eea6fc; --accent-tx:#8a01bc;
+  --amber:#c77800; --amber-bg:#fbf0df; --amber-tx:#6e4500; --amber-line:#e6a53d;
+  --red:#c0392b; --red-bg:#fbeae8; --red-tx:#8e2b20; --red-line:#e7aea7;
+  --green:#2e7d52; --green-bg:#e7f2ec; --green-tx:#1f5a3a; --green-line:#bcdbc9;
+  --display:'Micron Basis','Space Grotesk',system-ui,sans-serif;
+  --body:'Micron Basis','Hanken Grotesk',system-ui,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  --r-sm:4px; --r:6px; --r-lg:10px; --r-pill:999px;
+  --shadow-pop:0 6px 22px -8px rgba(20,18,28,.18), 0 2px 6px -3px rgba(20,18,28,.12);
+  --ease:cubic-bezier(.2,.6,.2,1); --ease-out:cubic-bezier(.16,1,.3,1);
+  color-scheme:light;
+}
+html.dark{
+  --bg:#101013; --surface:#19191c; --surface-2:#222226; --surface-3:#2d2d32;
+  --fg1:#f0f0f3; --fg2:#c7c7cb; --muted:#959599; --faint:#8d8d92;
+  --border:#323237; --border-strong:#48484f; --hairline:#1e1e21;
+  --accent:#a402dc; --accent-hover:#8a01bc; --accent-link:#d78bf9;
+  --accent-tint:#2a1140; --accent-tint-bd:#4a2a6e; --accent-tx:#d78bf9;
+  --amber:#e0962a; --amber-bg:#36280f; --amber-tx:#f0c474; --amber-line:#7a5a1e;
+  --red:#e0655a; --red-bg:#371915; --red-tx:#f1a99f; --red-line:#7a352c;
+  --green:#46b07a; --green-bg:#15301f; --green-tx:#84d3a4; --green-line:#2c5a3f;
+  --shadow-pop:0 6px 22px -8px rgba(0,0,0,.55), 0 2px 6px -3px rgba(0,0,0,.45);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:var(--body); background:var(--bg); color:var(--fg1); font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; transition:background-color .25s var(--ease), color .25s var(--ease)}
+.wrap{max-width:1060px; margin:0 auto; padding:0 clamp(18px,4vw,48px) 100px}
+
+/* top bar */
+.bar{display:flex; align-items:center; gap:24px; padding:16px 0; border-bottom:1px solid var(--hairline)}
+.mark{display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--fg1); font-family:var(--display); font-weight:700; font-size:15.5px; letter-spacing:-.01em}
+.mark i{width:10px; height:10px; border-radius:3px; background:var(--accent); display:inline-block}
+.bar nav{display:flex; gap:4px; font-size:13.5px; font-weight:600}
+.bar nav a{color:var(--muted); text-decoration:none; padding:6px 12px; border-radius:var(--r-pill)}
+.bar nav a:hover{color:var(--fg1); background:var(--surface-2)}
+.bar nav a.on{color:var(--accent-tx); background:var(--accent-tint)}
+.sp{flex:1}
+.cmdk{font-family:var(--mono); font-size:11.5px; color:var(--muted); border:1px solid var(--border); border-radius:var(--r); padding:4px 9px; background:var(--surface)}
+.op{width:30px; height:30px; border-radius:var(--r-pill); background:var(--accent-tint); border:1px solid var(--accent-tint-bd); color:var(--accent-tx); display:grid; place-items:center; font-size:11px; font-weight:700}
+
+/* greeting + stats */
+.hello{padding:44px 0 0}
+.hello h1{font-family:var(--display); font-weight:700; font-size:clamp(26px,3.6vw,36px); letter-spacing:-.02em; margin:0 0 6px; line-height:1.15}
+.hello p{margin:0; color:var(--muted); font-size:14.5px}
+.hello p b{color:var(--fg2); font-weight:600}
+.statrow{display:flex; flex-wrap:wrap; gap:10px; margin-top:20px}
+.stat{display:flex; align-items:baseline; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:10px 16px; font-size:13px; color:var(--muted)}
+.stat b{font-family:var(--mono); font-size:15px; font-weight:600; color:var(--fg1); font-variant-numeric:tabular-nums}
+.stat .live{width:8px; height:8px; border-radius:99px; background:var(--green); align-self:center; animation:breathe 2.6s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
+
+/* section titles */
+h2.sec{font-family:var(--display); font-weight:700; font-size:24px; letter-spacing:-.01em; margin:46px 0 4px}
+p.secsub{margin:0 0 16px; color:var(--muted); font-size:13.5px}
+
+/* cards */
+.card{background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:22px 24px; margin-bottom:14px}
+.chips{display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; margin-bottom:10px; font-size:12.5px; color:var(--muted)}
+.chip{font-size:11.5px; font-weight:700; letter-spacing:.04em; padding:4px 12px; border-radius:var(--r-pill); border:1px solid}
+.chip.gate{color:var(--amber-tx); background:var(--amber-bg); border-color:var(--amber-line)}
+.chip.stall{color:var(--red-tx); background:var(--red-bg); border-color:var(--red-line)}
+.card h3{font-family:var(--display); font-weight:700; font-size:19px; line-height:1.3; letter-spacing:-.01em; margin:0 0 14px}
+.facts{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:14px}
+.fact{background:var(--surface-2); border-radius:var(--r); padding:10px 14px}
+.fact .k{font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--faint); margin-bottom:2px}
+.fact .v{font-family:var(--mono); font-size:13px; color:var(--fg2); font-variant-numeric:tabular-nums}
+.fact .v .ok{color:var(--green-tx); font-weight:600}
+.willdo{font-size:13.5px; color:var(--fg2); background:var(--accent-tint); border:1px solid var(--accent-tint-bd); border-radius:var(--r); padding:9px 14px; margin-bottom:16px}
+.willdo b{color:var(--accent-tx)}
+.card .btns{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+.btn{font-family:var(--body); font-size:13.5px; font-weight:600; border-radius:var(--r-pill); padding:8px 18px; cursor:pointer; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg1); transition:background .14s var(--ease), border-color .14s var(--ease)}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+.btn.primary:hover{background:var(--accent-hover); border-color:var(--accent-hover)}
+.btn.quiet{border-color:transparent; color:var(--accent-link)}
+.btn.danger{color:var(--red); border-color:var(--red-line)}
+kbd{font-family:var(--mono); font-size:10.5px; border:1px solid var(--border-strong); border-bottom-width:2px; border-radius:var(--r-sm); padding:1px 5px; color:var(--muted); margin-left:7px; vertical-align:1px}
+.race{font-size:12.5px; color:var(--muted); margin:14px 0 0}
+.race b{color:var(--fg2)}
+
+/* lanes */
+.lane{background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:18px 24px 20px; margin-bottom:12px; cursor:pointer; transition:border-color .14s var(--ease)}
+.lane:hover{border-color:var(--border-strong)}
+.lane .top{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 14px; margin-bottom:14px}
+.lane h3{font-family:var(--display); font-weight:600; font-size:16px; margin:0}
+.lane .app{font-size:12px; font-weight:600; color:var(--accent-tx); background:var(--accent-tint); border-radius:var(--r-pill); padding:3px 12px}
+.lane .top .sp{flex:1}
+.lane .sig{font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums}
+.lane .sig .dot{color:var(--green); margin-right:4px}
+.lane.quiet .sig .dot{color:var(--red)}
+.track{position:relative; height:30px}
+.rail{position:absolute; left:0; right:0; top:13px; height:4px; border-radius:99px; background:var(--surface-3)}
+.rail .fill{position:absolute; left:0; top:0; bottom:0; border-radius:99px; background:var(--accent); opacity:.9}
+.lane.quiet .rail .fill{background:var(--border-strong); opacity:1}
+.bead{position:absolute; top:9px; width:12px; height:12px; border-radius:99px; background:var(--accent); border:2px solid var(--surface); box-shadow:0 0 0 1px var(--accent); transform:translateX(-50%)}
+.bead::after{content:""; position:absolute; inset:-6px; border-radius:99px; border:1px solid var(--accent); opacity:0; animation:ping 2.8s ease-out infinite}
+@keyframes ping{0%{transform:scale(.55); opacity:.55}70%{transform:scale(1.5); opacity:0}100%{opacity:0}}
+.lane.quiet .bead{background:var(--faint); box-shadow:0 0 0 1px var(--faint)}
+.lane.quiet .bead::after{display:none}
+.marks{position:absolute; inset:0; display:flex; justify-content:space-between}
+.marks i{width:4px; height:4px; border-radius:99px; background:var(--border-strong); margin-top:15px; position:relative}
+.marks i span{position:absolute; top:12px; left:50%; transform:translateX(-50%); font-size:10.5px; font-weight:600; color:var(--faint); white-space:nowrap}
+.lane .now{display:flex; flex-wrap:wrap; gap:6px 18px; margin-top:22px; font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums}
+.lane .now .st{font-family:var(--mono); font-size:12px; color:var(--fg2)}
+.steer{display:flex; gap:8px; margin-top:14px; max-width:540px}
+.steer input{flex:1; font-family:var(--body); font-size:13px; padding:8px 14px; border-radius:var(--r-pill); border:1px solid var(--border-strong); background:var(--surface); color:var(--fg1); outline:none; transition:border-color .14s}
+.steer input:focus{border-color:var(--accent)}
+.steer input::placeholder{color:var(--faint)}
+.steer button{border-radius:var(--r-pill); border:1px solid var(--border-strong); background:var(--surface); padding:8px 16px; font-size:12.5px; font-weight:600; color:var(--fg2); cursor:pointer}
+.heard{font-size:12.5px; color:var(--muted); margin-top:8px}
+.heard b{color:var(--green-tx); background:var(--green-bg); border:1px solid var(--green-line); border-radius:var(--r-pill); padding:2px 11px; font-weight:600}
+
+/* recently */
+.recent{list-style:none; margin:0; padding:0; background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden}
+.recent li{display:flex; flex-wrap:wrap; gap:6px 14px; align-items:baseline; padding:13px 20px; border-bottom:1px solid var(--hairline); font-size:14px}
+.recent li:last-child{border-bottom:0}
+.oc{font-size:11.5px; font-weight:700; letter-spacing:.03em; border-radius:var(--r-pill); padding:4px 12px; width:auto}
+.oc.ship{color:var(--green-tx); background:var(--green-bg)}
+.oc.back{color:var(--amber-tx); background:var(--amber-bg)}
+.oc.cxl{color:var(--muted); background:var(--surface-2)}
+.recent .sp{flex:1}
+.recent .who{color:var(--muted); font-size:12.5px; font-variant-numeric:tabular-nums}
+
+/* lab switcher */
+.lab{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); display:flex; gap:4px; align-items:center; background:var(--surface); border:1px solid var(--border-strong); border-radius:var(--r-pill); padding:5px 8px; box-shadow:var(--shadow-pop); z-index:9; font-size:12px}
+.lab a,.lab button{font-family:var(--mono); font-weight:600; color:var(--muted); text-decoration:none; border:0; background:transparent; padding:5px 10px; border-radius:var(--r-pill); cursor:pointer; font-size:12px}
+.lab a.on{background:var(--accent); color:#fff}
+.lab .div{width:1px; height:16px; background:var(--border)}
+
+.rv{opacity:0; transform:translateY(10px); animation:rv .55s var(--ease-out) forwards}
+@keyframes rv{to{opacity:1; transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important} .rv{opacity:1; transform:none}}
+
+@media (max-width:640px){
+  .bar nav{display:none}
+  .marks i span{display:none}
+  .marks i:first-child span,.marks i:last-child span{display:block}
+  .card,.lane{padding:18px}
+  .facts{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="bar rv">
+    <a class="mark" href="#"><i></i>Software Factory</a>
+    <nav><a class="on" href="#">Floor</a><a href="#">Library</a><a href="#">Studio</a></nav>
+    <div class="sp"></div>
+    <span class="cmdk">⌘K</span>
+    <span class="op" title="Jun Mun">JM</span>
+  </header>
+
+  <section class="hello rv" style="animation-delay:.05s">
+    <h1>Good afternoon, Jun. Two things need you.</h1>
+    <p>Everything else is moving on its own · <b>live agent</b>, synced 4 s ago · Friday, 11 July 2026</p>
+    <div class="statrow">
+      <span class="stat"><span class="live"></span><b>3</b> in motion</span>
+      <span class="stat"><b>7</b> shipped this week</span>
+      <span class="stat"><b>3 h 42 m</b> median cycle</span>
+      <span class="stat"><b>18 m</b> wait on human</span>
+    </div>
+  </section>
+
+  <h2 class="sec rv" style="animation-delay:.1s">Needs you</h2>
+  <p class="secsub rv" style="animation-delay:.1s">Decide here — the card shows everything the decision needs.</p>
+
+  <article class="card rv" style="animation-delay:.14s">
+    <div class="chips">
+      <span class="chip gate">Merge gate</span>
+      <span>Payroll · requested by Sarah Lim · raised 22 m ago</span>
+    </div>
+    <h3>Export payroll summary as CSV</h3>
+    <div class="facts">
+      <div class="fact"><div class="k">Diff</div><div class="v">+214 −38 · 6 files</div></div>
+      <div class="fact"><div class="k">Tests</div><div class="v"><span class="ok">42 passed</span> · 0 failed</div></div>
+      <div class="fact"><div class="k">Checks</div><div class="v"><span class="ok">lint ✓ · build ✓</span></div></div>
+      <div class="fact"><div class="k">Plan kept</div><div class="v">4 / 4 items</div></div>
+    </div>
+    <p class="willdo">Approving will <b>merge PR #87 into main and deploy Payroll</b>.</p>
+    <div class="btns">
+      <button class="btn primary">Approve<kbd style="border-color:rgba(255,255,255,.5); color:#fff">A</kbd></button>
+      <button class="btn">Send back with a note<kbd>S</kbd></button>
+      <button class="btn quiet">Open the PR ↗</button>
+    </div>
+  </article>
+
+  <article class="card rv" style="animation-delay:.18s">
+    <div class="chips">
+      <span class="chip stall">Stalled</span>
+      <span>Insights · Build stage, step 3 of 7 · quiet for 24 m</span>
+    </div>
+    <h3>Customer churn dashboard</h3>
+    <div class="facts">
+      <div class="fact" style="grid-column:1/-1"><div class="k">Last signal · 14:07</div><div class="v">“Installing chart dependencies”</div></div>
+    </div>
+    <div class="btns">
+      <button class="btn primary">Retry this stage</button>
+      <button class="btn">Send back to…</button>
+      <button class="btn">Take over</button>
+      <button class="btn danger">Cancel</button>
+    </div>
+    <p class="race">If a teammate gets here first, this card simply tells you: <b>“Retried by Aisha R. at 14:31.”</b></p>
+  </article>
+
+  <h2 class="sec rv" style="animation-delay:.24s">On the line</h2>
+  <p class="secsub rv" style="animation-delay:.24s">Each request travels spec → plan → build → review → merge → ship.</p>
+
+  <div class="lane rv" style="animation-delay:.28s">
+    <div class="top"><h3>Invoice reminder emails</h3><span class="app">Billing</span><span class="sp"></span><span class="sig"><span class="dot">●</span>steady · 40 s ago</span></div>
+    <div class="track">
+      <div class="rail"><div class="fill" style="width:28%"></div></div>
+      <div class="marks"><i><span>Spec</span></i><i><span>Plan</span></i><i><span>Build</span></i><i><span>Review</span></i><i><span>Merge</span></i><i><span>Ship</span></i></div>
+      <div class="bead" style="left:28%"></div>
+    </div>
+    <div class="now"><span class="st">Plan · step 2 of 4</span><span>drafting the plan against src/notify</span></div>
+  </div>
+
+  <div class="lane rv" style="animation-delay:.32s">
+    <div class="top"><h3>SSO for the admin portal</h3><span class="app">Identity</span><span class="sp"></span><span class="sig"><span class="dot">●</span>steady · 12 s ago</span></div>
+    <div class="track">
+      <div class="rail"><div class="fill" style="width:47%"></div></div>
+      <div class="marks"><i><span>Spec</span></i><i><span>Plan</span></i><i><span>Build</span></i><i><span>Review</span></i><i><span>Merge</span></i><i><span>Ship</span></i></div>
+      <div class="bead" style="left:47%"></div>
+    </div>
+    <div class="now"><span class="st">Build · step 5 of 9</span><span>writing token-refresh tests</span></div>
+    <div class="steer"><input placeholder="Steer this run… e.g. “reuse the existing OAuth client”" /><button>Send</button></div>
+    <p class="heard">Your note “prefer session cookies over JWT” was <b>heard ✓ at step 4</b></p>
+  </div>
+
+  <div class="lane quiet rv" style="animation-delay:.36s">
+    <div class="top"><h3>Customer churn dashboard</h3><span class="app">Insights</span><span class="sp"></span><span class="sig"><span class="dot">▲</span>quiet for 24 m</span></div>
+    <div class="track">
+      <div class="rail"><div class="fill" style="width:39%"></div></div>
+      <div class="marks"><i><span>Spec</span></i><i><span>Plan</span></i><i><span>Build</span></i><i><span>Review</span></i><i><span>Merge</span></i><i><span>Ship</span></i></div>
+      <div class="bead" style="left:39%"></div>
+    </div>
+    <div class="now"><span class="st">Build · step 3 of 7</span><span>stalled — the triage card above has the recovery options</span></div>
+  </div>
+
+  <h2 class="sec rv" style="animation-delay:.4s">Recently</h2>
+  <p class="secsub rv" style="animation-delay:.4s">Every outcome is signed: who decided, and when.</p>
+  <ul class="recent rv" style="animation-delay:.44s">
+    <li><span class="oc ship">Shipped</span><span>Rate-limit public API keys</span><span class="sp"></span><span class="who">approved by Kim Park · 2 h ago</span></li>
+    <li><span class="oc back">Sent back</span><span>Dark mode for weekly reports</span><span class="sp"></span><span class="who">Aisha Rahman · 5 h ago</span></li>
+    <li><span class="oc ship">Shipped</span><span>Audit-log export</span><span class="sp"></span><span class="who">approved by Kim Park · yesterday</span></li>
+    <li><span class="oc cxl">Cancelled</span><span>Legacy CSV importer rewrite</span><span class="sp"></span><span class="who">Jun Mun · Tuesday</span></li>
+  </ul>
+</div>
+
+<div class="lab">
+  <a href="console-floor-atelier.html">A</a>
+  <a href="console-floor-instrument.html">B</a>
+  <a href="console-floor-nightshift.html">C</a>
+  <a class="on" href="console-floor-family.html">D · Family</a>
+  <span class="div"></span>
+  <button id="theme" title="toggle theme">◐</button>
+</div>
+
+<script>
+const t=document.getElementById('theme'), h=document.documentElement;
+if(localStorage.getItem('lab-theme')==='dark' || (!localStorage.getItem('lab-theme') && matchMedia('(prefers-color-scheme: dark)').matches)) h.classList.add('dark');
+t.onclick=()=>{h.classList.toggle('dark'); localStorage.setItem('lab-theme', h.classList.contains('dark')?'dark':'light');};
+</script>
+</body>
+</html>

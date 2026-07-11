@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Floor · Lab B — Instrument</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#f7f8fa; --panel:#ffffff; --inset:#eef0f4;
+  --fg:#0e1116; --fg2:#3a414d; --mute:#525a66; --faint:#646c78;
+  --line:rgba(14,17,22,.1); --line2:rgba(14,17,22,.22);
+  --sig:#2242cc; --sig-wash:rgba(34,66,204,.06); --sig-b:rgba(34,66,204,.32);
+  --ok:#1a7a45; --bad:#c03d2e; --bad-wash:rgba(192,61,46,.05);
+  --ui:'Schibsted Grotesk',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+html.dark{
+  --bg:#0c0e12; --panel:#12151b; --inset:#181c23;
+  --fg:#eceef2; --fg2:#c0c6cf; --mute:#98a0ac; --faint:#7d8592;
+  --line:rgba(236,238,242,.09); --line2:rgba(236,238,242,.2);
+  --sig:#7d95ff; --sig-wash:rgba(125,149,255,.08); --sig-b:rgba(125,149,255,.36);
+  --ok:#57c98a; --bad:#ef7a66; --bad-wash:rgba(239,122,102,.07);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:var(--ui); background:var(--bg); color:var(--fg); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased; transition:background-color .3s,color .3s}
+.wrap{max-width:1120px; margin:0 auto; padding:0 clamp(16px,4vw,48px) 90px}
+
+/* bar */
+.bar{display:flex; align-items:center; gap:24px; padding:16px 0; border-bottom:1px solid var(--line)}
+.mark{display:flex; align-items:center; gap:9px; text-decoration:none; color:var(--fg); font-weight:800; font-size:14px; letter-spacing:-.01em}
+.mark i{width:9px; height:9px; background:var(--sig); display:inline-block; transform:rotate(45deg)}
+.bar nav{display:flex; gap:2px; font-size:13px; font-weight:600}
+.bar nav a{color:var(--mute); text-decoration:none; padding:5px 11px; border-radius:6px}
+.bar nav a.on{color:var(--fg); background:var(--inset)}
+.sp{flex:1}
+.cmdk{font-family:var(--mono); font-size:11.5px; color:var(--mute); border:1px solid var(--line); border-radius:6px; padding:4px 9px}
+.op{width:26px; height:26px; border-radius:6px; background:var(--sig); color:#fff; display:grid; place-items:center; font-size:10px; font-weight:700}
+
+/* masthead strip */
+.mast{display:flex; flex-wrap:wrap; gap:8px 0; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums}
+.cell{padding:14px 22px 14px 0; margin-right:22px; border-right:1px solid var(--line); font-size:12px; color:var(--mute)}
+.cell:last-child{border-right:0; margin-right:0}
+.cell b{display:block; font-family:var(--mono); font-size:16px; font-weight:600; color:var(--fg); margin-bottom:1px}
+.cell .live{color:var(--ok); font-weight:600}
+.cell .live::before{content:"▮ "; animation:blink 2.4s steps(2) infinite}
+@keyframes blink{50%{opacity:.35}}
+
+/* section headers */
+.sec{display:flex; align-items:baseline; gap:14px; margin:52px 0 18px}
+.sec h1{font-size:clamp(24px,3vw,32px); font-weight:800; letter-spacing:-.03em; margin:0}
+.sec h1 .sig-t{color:var(--sig)}
+.sec .rule{flex:1; height:1px; background:var(--line); align-self:center}
+.sec .count{font-family:var(--mono); font-size:12px; color:var(--mute)}
+
+/* gate/triage cards — spec sheets */
+.sheet{background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:14px; overflow:hidden}
+.sheet .head{display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:16px 20px 0}
+.tag{font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; padding:3px 8px; border-radius:4px; background:var(--sig-wash); color:var(--sig); border:1px solid var(--sig-b)}
+.sheet.fail .tag{background:var(--bad-wash); color:var(--bad); border-color:var(--bad)}
+.sheet .meta{font-size:12px; color:var(--mute)}
+.sheet h2{font-size:21px; font-weight:700; letter-spacing:-.02em; margin:8px 20px 14px; }
+.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); border-top:1px solid var(--line)}
+.g{padding:11px 20px; border-right:1px solid var(--line); font-variant-numeric:tabular-nums}
+.g:last-child{border-right:0}
+.g .k{font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); margin-bottom:3px}
+.g .v{font-family:var(--mono); font-size:13px; color:var(--fg2)}
+.g .v .ok{color:var(--ok)} .g .v .bad{color:var(--bad)}
+.footRow{display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:14px 20px; border-top:1px solid var(--line); background:var(--inset)}
+.effect{font-size:12.5px; color:var(--mute)}
+.effect b{color:var(--fg2); font-weight:600}
+.btn{font-family:var(--ui); font-size:13px; font-weight:600; border-radius:7px; padding:7px 15px; cursor:pointer; border:1px solid var(--line2); background:var(--panel); color:var(--fg); transition:border-color .15s}
+.btn:hover{border-color:var(--sig)}
+.btn.primary{background:var(--sig); border-color:var(--sig); color:#fff}
+.btn.danger{color:var(--bad); border-color:var(--bad)}
+kbd{font-family:var(--mono); font-size:11px; opacity:.7; margin-left:7px}
+.conflict{font-size:12px; color:var(--mute); padding:10px 20px; border-top:1px dashed var(--line2)}
+.conflict b{color:var(--fg2)}
+
+/* the line — instrument rows */
+.lane{display:grid; grid-template-columns:270px 1fr 190px; gap:24px; align-items:center; padding:18px 0; border-bottom:1px solid var(--line)}
+.lane:first-of-type{border-top:1px solid var(--line)}
+.lane .id h2{font-size:16px; font-weight:700; letter-spacing:-.01em; margin:0 0 2px}
+.lane .id .app{font-family:var(--mono); font-size:11px; color:var(--mute); text-transform:uppercase; letter-spacing:.08em}
+.meter{position:relative}
+.ticks{display:flex; gap:3px; height:22px}
+.ticks i{flex:1; background:var(--inset); border-radius:2px; position:relative; overflow:hidden}
+.ticks i.done{background:var(--sig); opacity:.85}
+.ticks i.now{background:var(--sig-wash); border:1px solid var(--sig-b)}
+.ticks i.now::after{content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,var(--sig-b),transparent); animation:scan 1.8s linear infinite}
+@keyframes scan{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.lane.quiet .ticks i.done{background:var(--faint); opacity:.5}
+.lane.quiet .ticks i.now{border-color:var(--bad); background:var(--bad-wash)}
+.lane.quiet .ticks i.now::after{display:none}
+.meter .lbl{display:flex; justify-content:space-between; font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:5px; letter-spacing:.06em; text-transform:uppercase}
+.lane .st{font-family:var(--mono); font-size:12px; color:var(--mute); text-align:right; font-variant-numeric:tabular-nums; line-height:1.7}
+.lane .st .sig-t{color:var(--ok); font-weight:600}
+.lane.quiet .st .sig-t{color:var(--bad)}
+.steer{grid-column:2/4; display:flex; gap:8px; margin-top:2px}
+.steer input{flex:1; font-family:var(--ui); font-size:12.5px; padding:7px 12px; border-radius:7px; border:1px solid var(--line); background:var(--panel); color:var(--fg); outline:none}
+.steer input:focus{border-color:var(--sig)}
+.steer input::placeholder{color:var(--faint)}
+.steer .note{font-size:11.5px; color:var(--mute); align-self:center}
+.steer .note b{color:var(--ok)}
+
+/* recently */
+table.recent{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums}
+table.recent td{padding:11px 0; border-bottom:1px solid var(--line); font-size:13px}
+td.oc{font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; width:110px}
+td.oc.ship{color:var(--ok)} td.oc.back{color:var(--sig)} td.oc.cxl{color:var(--faint)}
+td.who{text-align:right; color:var(--mute); font-size:12px}
+
+/* lab switcher */
+.lab{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); display:flex; gap:4px; align-items:center; background:var(--panel); border:1px solid var(--line2); border-radius:9px; padding:5px 8px; box-shadow:0 10px 30px -12px rgba(0,0,0,.35); z-index:9; font-size:12px}
+.lab a,.lab button{font-family:var(--mono); font-weight:600; color:var(--mute); text-decoration:none; border:0; background:transparent; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:12px}
+.lab a.on{background:var(--fg); color:var(--bg)}
+.lab .div{width:1px; height:16px; background:var(--line2)}
+
+.rv{opacity:0; transform:translateY(10px); animation:rv .5s cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes rv{to{opacity:1; transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important} .rv{opacity:1; transform:none}}
+
+@media (max-width:760px){
+  .bar nav{display:none}
+  .lane{grid-template-columns:1fr; gap:10px}
+  .lane .st{text-align:left}
+  .steer{grid-column:1}
+  .cell{border-right:0; padding-right:0; margin-right:18px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="bar rv">
+    <a class="mark" href="#"><i></i>FACTORY</a>
+    <nav><a class="on" href="#">Floor</a><a href="#">Library</a><a href="#">Studio</a></nav>
+    <div class="sp"></div>
+    <span class="cmdk">⌘K</span>
+    <span class="op" title="Jun Mun">JM</span>
+  </header>
+
+  <div class="mast rv" style="animation-delay:.05s">
+    <div class="cell"><b class="live">LIVE AGENT</b>synced 4 s ago · Fri 11 Jul 2026</div>
+    <div class="cell"><b>7</b>shipped this week</div>
+    <div class="cell"><b>3 h 42 m</b>median cycle</div>
+    <div class="cell"><b>18 m</b>wait on human</div>
+  </div>
+
+  <!-- 01 needs you -->
+  <div class="sec rv" style="animation-delay:.1s">
+    <h1>Needs <span class="sig-t">you</span></h1>
+    <div class="rule"></div><span class="count">2 items</span>
+  </div>
+
+  <article class="sheet rv" style="animation-delay:.16s">
+    <div class="head"><span class="tag">Merge gate</span><span class="meta">Payroll · requested by Sarah Lim · raised 22 m ago</span></div>
+    <h2>Export payroll summary as CSV</h2>
+    <div class="grid">
+      <div class="g"><div class="k">Diff</div><div class="v">+214 −38 · 6 files</div></div>
+      <div class="g"><div class="k">Tests</div><div class="v"><span class="ok">42 pass</span> / 0 fail</div></div>
+      <div class="g"><div class="k">Checks</div><div class="v"><span class="ok">lint ✓ build ✓</span></div></div>
+      <div class="g"><div class="k">Plan kept</div><div class="v">4 / 4</div></div>
+    </div>
+    <div class="footRow">
+      <span class="effect">Approve → <b>merges PR #87 into main and deploys Payroll</b></span>
+      <span class="sp"></span>
+      <button class="btn">Open PR ↗</button>
+      <button class="btn">Send back<kbd>S</kbd></button>
+      <button class="btn primary">Approve<kbd>A</kbd></button>
+    </div>
+  </article>
+
+  <article class="sheet fail rv" style="animation-delay:.22s">
+    <div class="head"><span class="tag">Stalled</span><span class="meta">Insights · Build · step 3 / 7 · 24 m without a signal</span></div>
+    <h2>Customer churn dashboard</h2>
+    <div class="grid">
+      <div class="g" style="grid-column:1/-1"><div class="k">Last signal</div><div class="v">“Installing chart dependencies” · 14:07</div></div>
+    </div>
+    <div class="footRow">
+      <span class="sp"></span>
+      <button class="btn danger">Cancel</button>
+      <button class="btn">Take over</button>
+      <button class="btn">Send back to…</button>
+      <button class="btn primary">Retry stage</button>
+    </div>
+    <p class="conflict">Raced by a teammate? The card resolves in place: <b>“Retried by Aisha R. · 14:31.”</b></p>
+  </article>
+
+  <!-- 02 the line -->
+  <div class="sec rv" style="animation-delay:.28s">
+    <h1>The line</h1>
+    <div class="rule"></div><span class="count">3 in motion</span>
+  </div>
+
+  <div class="lane rv" style="animation-delay:.32s">
+    <div class="id"><h2>Invoice reminder emails</h2><span class="app">Billing</span></div>
+    <div class="meter">
+      <div class="ticks"><i class="done"></i><i class="now"></i><i></i><i></i><i></i><i></i></div>
+      <div class="lbl"><span>spec</span><span>plan</span><span>build</span><span>review</span><span>merge</span><span>ship</span></div>
+    </div>
+    <div class="st"><span class="sig-t">● steady</span> · 40 s<br/>Plan · step 2 / 4</div>
+  </div>
+
+  <div class="lane rv" style="animation-delay:.36s">
+    <div class="id"><h2>SSO for the admin portal</h2><span class="app">Identity</span></div>
+    <div class="meter">
+      <div class="ticks"><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i></div>
+      <div class="lbl"><span>spec</span><span>plan</span><span>build</span><span>review</span><span>merge</span><span>ship</span></div>
+    </div>
+    <div class="st"><span class="sig-t">● steady</span> · 12 s<br/>Build · step 5 / 9</div>
+    <div class="steer">
+      <input placeholder="Steer this run… e.g. reuse the existing OAuth client" />
+      <span class="note">“prefer session cookies” — <b>heard ✓ step 4</b></span>
+    </div>
+  </div>
+
+  <div class="lane quiet rv" style="animation-delay:.4s">
+    <div class="id"><h2>Customer churn dashboard</h2><span class="app">Insights</span></div>
+    <div class="meter">
+      <div class="ticks"><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i></div>
+      <div class="lbl"><span>spec</span><span>plan</span><span>build</span><span>review</span><span>merge</span><span>ship</span></div>
+    </div>
+    <div class="st"><span class="sig-t">▲ quiet</span> · 24 m<br/>Build · step 3 / 7</div>
+  </div>
+
+  <!-- 03 recently -->
+  <div class="sec rv" style="animation-delay:.44s">
+    <h1>Recently</h1><div class="rule"></div>
+  </div>
+  <table class="recent rv" style="animation-delay:.48s">
+    <tr><td class="oc ship">Shipped</td><td>Rate-limit public API keys</td><td class="who">approved by Kim Park · 2 h ago</td></tr>
+    <tr><td class="oc back">Sent back</td><td>Dark mode for weekly reports</td><td class="who">Aisha Rahman · 5 h ago</td></tr>
+    <tr><td class="oc ship">Shipped</td><td>Audit-log export</td><td class="who">approved by Kim Park · yesterday</td></tr>
+    <tr><td class="oc cxl">Cancelled</td><td>Legacy CSV importer rewrite</td><td class="who">Jun Mun · Tuesday</td></tr>
+  </table>
+</div>
+
+<div class="lab">
+  <a href="console-floor-atelier.html">A · Atelier</a>
+  <a class="on" href="console-floor-instrument.html">B · Instrument</a>
+  <a href="console-floor-nightshift.html">C · Night&nbsp;Shift</a>
+  <a href="console-floor-family.html">D · Family</a>
+  <span class="div"></span>
+  <button id="theme" title="toggle theme">◐</button>
+</div>
+
+<script>
+const t=document.getElementById('theme'), h=document.documentElement;
+if(localStorage.getItem('lab-theme')==='dark' || (!localStorage.getItem('lab-theme') && matchMedia('(prefers-color-scheme: dark)').matches)) h.classList.add('dark');
+t.onclick=()=>{h.classList.toggle('dark'); localStorage.setItem('lab-theme', h.classList.contains('dark')?'dark':'light');};
+</script>
+</body>
+</html>
