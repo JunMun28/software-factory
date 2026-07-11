@@ -30,9 +30,7 @@ import { SubShell } from './sub-shell';
       <div class="sub-col pop-in" style="max-width:820px">
         <section class="hero-screen">
           <h1 class="hero__t">What should we build?</h1>
-          <p class="hero__s">
-            Put your idea into words. We’ll help turn it into a clear plan.
-          </p>
+          <p class="hero__s">Put your idea into words. We’ll help turn it into a clear plan.</p>
           <div class="glow" [class.glow--over]="dragOver()">
             <div class="glow__card">
               @if (draft.attachments().length || draft.pending().length) {

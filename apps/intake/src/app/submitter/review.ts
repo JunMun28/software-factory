@@ -70,11 +70,20 @@ import { SubShell } from './sub-shell';
                   >
                   @if (r.type !== 'bug') {
                     <span
-                      ><i>{{ r.type === 'enh' ? 'Who benefits?' : r.type === 'other' ? 'Who is this for?' : 'Who will use it?' }}</i
+                      ><i>{{
+                        r.type === 'enh'
+                          ? 'Who benefits?'
+                          : r.type === 'other'
+                            ? 'Who is this for?'
+                            : 'Who will use it?'
+                      }}</i
                       >{{ reachLabel(r.reach) || 'Only the requester' }}</span
                     >
                     @if (impactLabel(r); as impact) {
-                      <span><i>{{ r.type === 'other' ? 'Expected outcome' : 'Expected benefit' }}</i>{{ impact }}</span>
+                      <span
+                        ><i>{{ r.type === 'other' ? 'Expected outcome' : 'Expected benefit' }}</i
+                        >{{ impact }}</span
+                      >
                     }
                   }
                   <button class="rv__edit" (click)="go('/submit/new')">Edit details</button>

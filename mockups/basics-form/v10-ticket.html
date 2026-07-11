@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Basics · v10 — Fill the ticket</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#FAF8F5; --card:#FFFFFF; --card2:#F5F2ED;
+  --ink:#211C28; --body:#3B3444; --muted:#6E6878; --faint:#9A93A6;
+  --line:#E9E4DC; --line2:#D9D3C9;
+  --accent:#BD03F7; --accent-ink:#8A02B5; --accent-soft:rgba(189,3,247,.07); --accent-line:rgba(189,3,247,.35);
+  --green:#1E7D4F; --green-soft:#E7F3EC; --green-line:#BCDCC9;
+  --amber:#8A5A0A; --amber-strong:#B47408; --amber-soft:#FBF3E1; --amber-line:#EAD9AC;
+  --red:#B3362A; --red-soft:#FBECEA; --red-line:#EFC7C1;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --sans:'Space Grotesk',system-ui,sans-serif;
+  --r:10px; --r-lg:16px;
+  --shadow:0 1px 2px rgba(40,30,60,.05), 0 8px 28px -18px rgba(40,30,60,.25);
+  /* ticket paper */
+  --paper:#FBFAF7; --paper2:#F2EEE7; --perf:#E4DED4;
+  --stamp:#B3362A; --stamp-soft:rgba(179,54,42,.06); --stamp-line:rgba(179,54,42,.4);
+  --ticket-shadow:0 2px 4px rgba(40,30,60,.06), 0 26px 60px -30px rgba(40,30,60,.45);
+}
+.dark{
+  --bg:#16121B; --card:#1F1A26; --card2:#282230;
+  --ink:#F2EEF7; --body:#D6D0DF; --muted:#A29AAE; --faint:#7A7288;
+  --line:#2F2939; --line2:#3D3648;
+  --accent:#D65CFF; --accent-ink:#E393FF; --accent-soft:rgba(214,92,255,.1); --accent-line:rgba(214,92,255,.4);
+  --green:#5FC58F; --green-soft:#1B2B22; --green-line:#2E4A3A;
+  --amber:#E4B45E; --amber-strong:#E4B45E; --amber-soft:#2E2617; --amber-line:#4A3D22;
+  --red:#F08C80; --red-soft:#2E1B18; --red-line:#4A2C27;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 28px -18px rgba(0,0,0,.6);
+  --paper:#211B29; --paper2:#191420; --perf:#0F0C14;
+  --stamp:#F08C80; --stamp-soft:rgba(240,140,128,.08); --stamp-line:rgba(240,140,128,.45);
+  --ticket-shadow:0 2px 4px rgba(0,0,0,.4), 0 30px 70px -30px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--body);
+  font-family:var(--sans); font-size:16px; line-height:1.6;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  transition:background .25s, color .25s;
+  min-height:100vh;
+}
+
+/* ============ SHELL TOP BAR (shared, do not redesign) ============ */
+.appbar{display:flex; align-items:center; gap:14px; padding:14px clamp(16px,4vw,40px); border-bottom:1px solid var(--line); background:var(--card);}
+.logo{display:flex; align-items:center; gap:11px; color:var(--ink); font-weight:600; font-size:15.5px; letter-spacing:-.01em;}
+.logo .mark{display:grid; grid-template-columns:repeat(3,1fr); gap:2px; width:18px; height:18px; flex:none;}
+.logo .mark i{background:var(--accent); border-radius:1.5px; opacity:.9;}
+.logo .mark i:nth-child(2),.logo .mark i:nth-child(4),.logo .mark i:nth-child(6),.logo .mark i:nth-child(8){opacity:.45;}
+.appbar .sp{flex:1;}
+.navpills{display:flex; gap:8px; align-items:center;}
+.navpill{font-size:13.5px; text-decoration:none; padding:7px 15px; border-radius:999px; color:var(--muted); border:1px solid transparent; white-space:nowrap;}
+.navpill.act{background:var(--accent); color:#fff; font-weight:500;}
+.navpill:not(.act):hover{border-color:var(--line2); color:var(--ink);}
+.tgl{border:1px solid var(--line2); background:var(--card); color:var(--body); width:36px; height:36px; border-radius:999px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:none; font-size:15px; transition:transform .15s, border-color .15s;}
+.tgl:hover{border-color:var(--accent-line); transform:rotate(12deg);}
+.avatar{display:flex; align-items:center; gap:9px; flex:none;}
+.avatar .pic{width:30px; height:30px; border-radius:50%; background:var(--accent-soft); border:1px solid var(--accent-line); display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--accent-ink); font-weight:600; font-family:var(--mono);}
+.avatar .who{font-size:13px; color:var(--muted); line-height:1.1;}
+.avatar .who b{display:block; color:var(--ink); font-weight:500; font-size:13px;}
+@media (max-width:640px){ .avatar .who, .navpill:not(.act){display:none;} }
+
+/* ============ PAGE ============ */
+.page{max-width:820px; margin:0 auto; padding:clamp(28px,5vw,56px) clamp(16px,4vw,28px) 140px;}
+.kicker{font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent-ink); margin:0 0 10px; display:flex; align-items:center; gap:9px;}
+.kicker::before{content:''; width:22px; height:1px; background:var(--accent-line);}
+h1{color:var(--ink); font-weight:600; font-size:clamp(26px,4.4vw,34px); letter-spacing:-.02em; margin:0 0 8px; line-height:1.12;}
+.lede{color:var(--muted); margin:0 0 30px; font-size:16px; max-width:56ch;}
+.lede b{color:var(--body); font-weight:600;}
+
+/* ============ TICKET ============ */
+.ticket-shell{perspective:1400px;}
+.ticket{
+  display:flex; align-items:stretch;
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:14px;
+  box-shadow:var(--ticket-shadow);
+  position:relative;
+  overflow:visible;
+}
+.ticket::before{ /* top accent print bar */
+  content:''; position:absolute; left:14px; right:14px; top:0; height:4px;
+  background:linear-gradient(90deg,var(--accent),var(--accent) 40%,transparent);
+  border-radius:0 0 4px 4px; opacity:.85;
+}
+.tk-main{flex:1; min-width:0; padding:26px clamp(20px,3.4vw,34px) 22px;}
+.tk-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding-bottom:18px; margin-bottom:20px; border-bottom:1.5px dashed var(--line2);}
+.tk-head .tt{font-family:var(--mono); font-weight:700; font-size:16px; letter-spacing:.14em; color:var(--ink); text-transform:uppercase;}
+.tk-head .ts{font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--muted); margin-top:5px; text-transform:uppercase;}
+.tk-head .meta{text-align:right; font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; color:var(--muted); line-height:1.7; white-space:nowrap;}
+.tk-head .meta b{color:var(--body); font-weight:600;}
+.tk-head .seal{display:inline-flex; align-items:center; gap:5px; margin-top:6px; border:1px solid var(--line2); border-radius:999px; padding:3px 10px; color:var(--muted); font-size:9.5px; letter-spacing:.14em;}
+.tk-head .seal b{width:6px; height:6px; border-radius:50%; background:var(--amber-strong);}
+
+/* printed fields */
+.fields{display:flex; flex-direction:column; gap:6px;}
+.field{
+  display:grid; grid-template-columns:130px 1fr; gap:18px; align-items:center;
+  padding:15px 10px 15px 12px; border-radius:10px;
+  cursor:pointer; position:relative;
+  border:1px solid transparent; background:transparent;
+  transition:background .16s, border-color .16s;
+}
+.field:hover{background:var(--paper2);}
+.field:focus-visible{outline:2px solid var(--accent-line); outline-offset:2px;}
+.field.active{background:var(--paper2); border-color:var(--accent-line);}
+.field .flabel{font-family:var(--mono); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); line-height:1.5; display:flex; flex-direction:column; gap:2px;}
+.field .flabel span{color:var(--muted); font-size:9px; letter-spacing:.1em;}
+.field .fnum{display:inline-block; width:16px; color:var(--muted);}
+.field .fval{
+  min-height:38px; display:flex; align-items:center;
+  border-bottom:2px dotted var(--line2);
+}
+.field.filled .fval{border-bottom-color:transparent;}
+.blank{font-family:var(--mono); font-size:12.5px; letter-spacing:.02em; color:var(--muted); font-style:italic; display:flex; align-items:center; gap:8px;}
+.blank .caret{width:15px; height:15px; opacity:.7;}
+
+/* the stamp */
+.stamp{
+  display:inline-flex; flex-direction:column; align-items:flex-start; gap:1px;
+  font-family:var(--mono); font-weight:700; text-transform:uppercase;
+  color:var(--stamp);
+  border:2px solid var(--stamp-line); border-radius:7px;
+  padding:8px 15px 7px; background:var(--stamp-soft);
+  transform:rotate(-2.5deg); transform-origin:center;
+  letter-spacing:.06em; line-height:1.05;
+  box-shadow:inset 0 0 0 1px var(--stamp-soft);
+  position:relative;
+}
+.stamp .sv{font-size:14.5px;}
+.stamp .ssub{font-size:9px; letter-spacing:.1em; font-weight:500; opacity:.8;}
+.stamp::after{ /* faint ink-bleed corner ticks */
+  content:''; position:absolute; inset:2px; border-radius:5px;
+  box-shadow:inset 0 0 0 1px var(--stamp-line); opacity:.25; pointer-events:none;
+}
+.field.filled:hover .stamp{transform:rotate(-2.5deg) scale(1.02);}
+@keyframes stamp-down{
+  0%{transform:rotate(-16deg) scale(1.9); opacity:0;}
+  55%{transform:rotate(1deg) scale(.9); opacity:1;}
+  78%{transform:rotate(-4deg) scale(1.05);}
+  100%{transform:rotate(-2.5deg) scale(1); opacity:1;}
+}
+.stamp.animate{animation:stamp-down .42s cubic-bezier(.2,.9,.3,1.2);}
+
+/* barcode */
+.barcode{margin-top:22px; padding-top:16px; border-top:1.5px dashed var(--line2); display:flex; align-items:flex-end; justify-content:space-between; gap:16px;}
+.bars{height:34px; flex:1; max-width:340px;
+  background-image:repeating-linear-gradient(90deg,
+    var(--ink) 0, var(--ink) 2px, transparent 2px, transparent 4px,
+    var(--ink) 4px, var(--ink) 5px, transparent 5px, transparent 9px,
+    var(--ink) 9px, var(--ink) 12px, transparent 12px, transparent 14px,
+    var(--ink) 14px, var(--ink) 15px, transparent 15px, transparent 19px);
+  opacity:.82;}
+.barcode .bc-no{font-family:var(--mono); font-size:10px; letter-spacing:.24em; color:var(--muted); text-transform:uppercase; white-space:nowrap;}
+
+/* perforation + notches */
+.perf{position:relative; width:0; border-left:2px dashed var(--perf); margin:14px 0;}
+.perf::before,.perf::after{content:''; position:absolute; left:-9px; width:18px; height:18px; border-radius:50%; background:var(--bg); border:1px solid var(--line);}
+.perf::before{top:-15px;} .perf::after{bottom:-15px;}
+
+/* tear-off stub */
+.stub{
+  flex:none; width:118px; display:flex; flex-direction:column; align-items:center; justify-content:space-between;
+  padding:22px 10px; text-decoration:none; position:relative;
+  border-radius:0 14px 14px 0; background:transparent; color:var(--muted);
+  transition:background .2s, color .2s;
+}
+.stub .go{
+  writing-mode:vertical-rl; transform:rotate(180deg);
+  font-family:var(--mono); font-weight:700; font-size:15px; letter-spacing:.16em; text-transform:uppercase;
+  color:inherit; padding:6px 0;
+}
+.stub .stub-cap{font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); text-align:center; line-height:1.5;}
+.stub .minibars{width:26px; height:44px;
+  background-image:repeating-linear-gradient(0deg,currentColor 0,currentColor 2px,transparent 2px,transparent 5px);
+  opacity:.35;}
+.stub .cnt{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--muted); border:1px solid var(--line2); border-radius:999px; padding:3px 9px;}
+.stub.ready{background:var(--accent); color:#fff; cursor:pointer;}
+.stub.ready .stub-cap,.stub.ready .cnt{color:rgba(255,255,255,.85); border-color:rgba(255,255,255,.4);}
+.stub.ready .minibars{opacity:.6;}
+.stub.ready .cnt{background:rgba(255,255,255,.15);}
+@keyframes stub-wake{0%{transform:translateY(0);}50%{transform:translateY(-3px);}100%{transform:translateY(0);}}
+.stub.ready{animation:stub-wake .5s ease 1;}
+.stub.ready:hover{filter:brightness(1.06);}
+.stub.ready:active{transform:translateY(1px);}
+
+/* ============ OPTION TRAY ============ */
+.tray{
+  margin-top:16px; border:1px solid var(--line); border-radius:14px; background:var(--card);
+  box-shadow:var(--shadow); overflow:hidden;
+  max-height:0; opacity:0; transform:translateY(-6px);
+  transition:max-height .32s cubic-bezier(.4,0,.2,1), opacity .22s, transform .22s;
+  pointer-events:none;
+}
+.tray.open{max-height:560px; opacity:1; transform:none; pointer-events:auto;}
+.tray-head{display:flex; align-items:center; gap:12px; padding:15px 20px; border-bottom:1px solid var(--line); background:var(--card2);}
+.tray-head .tag{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-ink); background:var(--accent-soft); border:1px solid var(--accent-line); padding:3px 9px; border-radius:999px;}
+.tray-head .th{font-size:15px; color:var(--ink); font-weight:600;}
+.tray-head .sp{flex:1;}
+.tray-head .close{background:none; border:none; color:var(--faint); cursor:pointer; font-size:20px; line-height:1; padding:4px; border-radius:6px;}
+.tray-head .close:hover{color:var(--ink); background:var(--card);}
+.opts{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; padding:18px 20px;}
+.opt{
+  display:flex; gap:13px; align-items:flex-start; text-align:left;
+  border:1.5px solid var(--line); border-radius:11px; padding:14px 15px;
+  background:var(--card); cursor:pointer; font:inherit; color:inherit;
+  transition:border-color .14s, background .14s, transform .1s;
+}
+.opt:hover{border-color:var(--accent-line); background:var(--accent-soft); transform:translateY(-1px);}
+.opt:focus-visible{outline:2px solid var(--accent-line); outline-offset:2px;}
+.opt.chosen{border-color:var(--accent); background:var(--accent-soft);}
+.opt .ico{flex:none; width:34px; height:34px; border-radius:9px; background:var(--card2); border:1px solid var(--line); display:flex; align-items:center; justify-content:center; color:var(--accent-ink);}
+.opt.chosen .ico{background:var(--accent); border-color:var(--accent); color:#fff;}
+.opt .ico svg{width:19px; height:19px;}
+.opt .ot{color:var(--ink); font-weight:600; font-size:15px; display:flex; align-items:center; gap:8px;}
+.opt .ot .k{font-family:var(--mono); font-size:10px; color:var(--faint); font-weight:500; letter-spacing:.08em;}
+.opt .od{font-size:13px; color:var(--muted); margin-top:2px; line-height:1.45;}
+.trayfoot{padding:0 20px 16px; font-size:12.5px; color:var(--muted); display:flex; gap:8px; align-items:center;}
+.trayfoot svg{width:14px; height:14px; flex:none; opacity:.7;}
+
+/* footnote under ticket */
+.underline-note{margin-top:18px; font-size:13.5px; color:var(--muted); display:flex; gap:9px; align-items:center; justify-content:center; text-align:center;}
+.underline-note svg{width:15px; height:15px; opacity:.7; flex:none;}
+
+/* ============ STATE PILL ============ */
+.statepill{position:fixed; left:16px; bottom:16px; z-index:60; font-family:var(--mono); font-size:10px;
+  background:var(--card); border:1px solid var(--line2); color:var(--muted);
+  border-radius:8px; box-shadow:var(--shadow); max-width:280px; overflow:hidden;}
+.statepill .sp-h{display:flex; align-items:center; gap:7px; padding:6px 10px; cursor:pointer; user-select:none; letter-spacing:.1em; text-transform:uppercase;}
+.statepill .sp-h b{width:6px; height:6px; border-radius:50%; background:var(--green);}
+.statepill .sp-h .car{margin-left:auto; opacity:.6; transition:transform .2s;}
+.statepill.open .sp-h .car{transform:rotate(180deg);}
+.statepill pre{margin:0; padding:0 12px; max-height:0; overflow:hidden; transition:max-height .25s, padding .25s; font-size:10.5px; line-height:1.55; color:var(--body); white-space:pre-wrap; word-break:break-word;}
+.statepill.open pre{max-height:240px; padding:2px 12px 12px;}
+.statepill.flash{animation:flash .9s ease;}
+@keyframes flash{0%,100%{border-color:var(--line2);}30%{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}}
+
+/* ============ RESPONSIVE — stub tears off to bottom ============ */
+@media (max-width:680px){
+  .ticket{flex-direction:column;}
+  .perf{width:auto; height:0; border-left:none; border-top:2px dashed var(--perf); margin:0 14px;}
+  .perf::before,.perf::after{left:auto; top:-9px; bottom:auto; width:18px; height:18px;}
+  .perf::before{left:-15px;} .perf::after{right:-15px; left:auto;}
+  .stub{width:auto; flex-direction:row; justify-content:center; gap:16px; padding:18px 14px; border-radius:0 0 14px 14px;}
+  .stub .go{writing-mode:horizontal-tb; transform:none;}
+  .stub .minibars{width:44px; height:24px; background-image:repeating-linear-gradient(90deg,currentColor 0,currentColor 2px,transparent 2px,transparent 5px);}
+  .opts{grid-template-columns:1fr;}
+  .field{grid-template-columns:112px 1fr; gap:12px;}
+}
+@media (max-width:400px){
+  .field{grid-template-columns:1fr; gap:6px;}
+  .field .fval{min-height:34px;}
+  .tk-head .meta{font-size:9.5px;}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none !important; transition:none !important;}
+  .tray{transition:none;}
+}
+</style>
+</head>
+<body>
+
+<!-- ===== shared shell top bar ===== -->
+<header class="appbar">
+  <div class="logo"><span class="mark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span> Software Factory</div>
+  <span class="sp"></span>
+  <nav class="navpills">
+    <a href="#" class="navpill act">New request</a>
+    <a href="#" class="navpill">My requests</a>
+  </nav>
+  <button class="tgl" id="tgl" title="Toggle theme" aria-label="Toggle light/dark theme">☾</button>
+  <div class="avatar"><span class="pic">JD</span><span class="who"><b>Jordan D.</b>Submitter</span></div>
+</header>
+
+<main class="page">
+  <p class="kicker">Work order · Intake</p>
+  <h1>Cut your work order.</h1>
+  <p class="lede">Three stamps and your ticket is live. Tap a blank line, pick a stamp — the AI interview fills in everything else.</p>
+
+  <!-- ===== TICKET ===== -->
+  <div class="ticket-shell">
+    <div class="ticket" id="ticket">
+      <div class="tk-main">
+        <div class="tk-head">
+          <div>
+            <div class="tt">Work Order</div>
+            <div class="ts">Software Factory · Intake bay</div>
+          </div>
+          <div class="meta">
+            NO. <b id="tno">SF-2607-11</b><br>
+            ISSUED <b id="tdate">—</b><br>
+            <span class="seal"><b></b> AWAITING STAMPS</span>
+          </div>
+        </div>
+
+        <div class="fields" id="fields">
+          <div class="field" data-key="type" tabindex="0" role="button" aria-label="Request type — tap to fill">
+            <div class="flabel"><span class="fnum">01</span>Request<br>Type</div>
+            <div class="fval"><span class="blank"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>tap to stamp the type</span></div>
+          </div>
+          <div class="field" data-key="audience" tabindex="0" role="button" aria-label="Commissioned for — tap to fill">
+            <div class="flabel"><span class="fnum">02</span>Commissioned<br>For</div>
+            <div class="fval"><span class="blank"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>tap to stamp the audience</span></div>
+          </div>
+          <div class="field" data-key="payoff" tabindex="0" role="button" aria-label="Expected payoff — tap to fill">
+            <div class="flabel"><span class="fnum">03</span>Expected<br>Payoff</div>
+            <div class="fval"><span class="blank"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>tap to stamp the payoff</span></div>
+          </div>
+        </div>
+
+        <div class="barcode">
+          <div class="bars"></div>
+          <div class="bc-no" id="bcno">SF · 2026 · 0000</div>
+        </div>
+      </div>
+
+      <div class="perf"></div>
+
+      <a class="stub" id="stub" role="button" aria-disabled="true" tabindex="0">
+        <span class="stub-cap">Tear<br>here</span>
+        <span class="go">Start interview →</span>
+        <span class="minibars"></span>
+        <span class="cnt" id="cnt">0 / 3</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- ===== OPTION TRAY ===== -->
+  <div class="tray" id="tray" aria-live="polite">
+    <div class="tray-head">
+      <span class="tag" id="trayTag">STAMP 01</span>
+      <span class="th" id="trayTitle">Pick a stamp</span>
+      <span class="sp"></span>
+      <button class="close" id="trayClose" aria-label="Close tray">×</button>
+    </div>
+    <div class="opts" id="opts"></div>
+    <div class="trayfoot">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span>Rough is fine — the interview refines it. Tap a stamped line anytime to change it.</span>
+    </div>
+  </div>
+
+  <p class="underline-note">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+    Only the three facts routing needs. Everything else is deferred to the interview.
+  </p>
+</main>
+
+<!-- ===== state readout ===== -->
+<div class="statepill" id="statepill">
+  <div class="sp-h" id="spHead"><b></b> state <span class="car">▾</span></div>
+  <pre id="spBody">{}</pre>
+</div>
+
+<script>
+(function(){
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- theme toggle ---- */
+  var tgl = document.getElementById('tgl');
+  function syncTgl(){ tgl.textContent = document.documentElement.classList.contains('dark') ? '☾' : '☀'; }
+  tgl.addEventListener('click', function(){ document.documentElement.classList.toggle('dark'); syncTgl(); });
+  syncTgl();
+
+  /* ---- issued date + numbers ---- */
+  var d = new Date();
+  var pad = function(n){ return String(n).padStart(2,'0'); };
+  document.getElementById('tdate').textContent = d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  var rnd = Math.floor(1000 + Math.random()*8999);
+  document.getElementById('tno').textContent = 'SF-'+pad(d.getMonth()+1)+pad(d.getDate())+'-'+rnd;
+  document.getElementById('bcno').textContent = 'SF · '+d.getFullYear()+' · '+rnd;
+
+  /* ---- icons ---- */
+  var I = {
+    fix:'<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2-2 2.5-2.5z"/>',
+    improve:'<path d="M4 20l5-5m0 0l3 3 8-8m-11 5V9h6"/><path d="M12 3l1.5 3 3 .5-2 2.2.5 3-3-1.5-3 1.5.5-3-2-2.2 3-.5z"/>',
+    build:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
+    other:'<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+    me:'<circle cx="12" cy="8" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>',
+    team:'<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9.5" r="2.4"/><path d="M3 19a6 6 0 0 1 12 0M15.5 19a5 5 0 0 1 5.5-4.8"/>',
+    dept:'<rect x="4" y="9" width="16" height="11" rx="1.5"/><path d="M9 9V5h6v4M9 14h.01M15 14h.01M9 17h.01M15 17h.01"/>',
+    org:'<path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-4h6v4M9 12h.01M15 12h.01"/>',
+    time:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
+    money:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7v10M9.5 9.2a2.4 2.4 0 0 1 2.5-1.7c1.4 0 2.5.8 2.5 1.9s-1.1 1.6-2.5 1.6-2.5.6-2.5 1.7 1.1 1.9 2.5 1.9a2.4 2.4 0 0 0 2.5-1.7"/>',
+    errors:'<path d="M9 12l2 2 4-4"/><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/>',
+    unlocks:'<circle cx="12" cy="15" r="6"/><path d="M12 13v4M18 9V7a6 6 0 0 0-11.3-2.8"/>'
+  };
+  function icon(k){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+(I[k]||'')+'</svg>'; }
+
+  /* ---- question bank ---- */
+  var BANK = {
+    type:{ n:'01', label:'Request type', title:'What kind of request is this?', opts:[
+      {id:'fix',    ic:'fix',     t:'Fix a problem',   k:'FIX',   d:'Something is broken or error-prone', stamp:'FIX A PROBLEM'},
+      {id:'improve',ic:'improve', t:'Improve an app',  k:'IMPROVE',d:'Make an existing tool better',      stamp:'IMPROVE AN APP'},
+      {id:'build',  ic:'build',   t:'Build a new app', k:'BUILD', d:'Start something from scratch',       stamp:'BUILD A NEW APP'},
+      {id:'other',  ic:'other',   t:'Something else',  k:'OTHER', d:"Not sure yet — describe it later",   stamp:'SOMETHING ELSE'}
+    ]},
+    audience:{ n:'02', label:'Commissioned for', title:'Who is going to use it?', opts:[
+      {id:'me',   ic:'me',   t:'Just me',      k:'1',     d:'A personal tool',        stamp:'JUST ME', sub:'1 PERSON'},
+      {id:'team', ic:'team', t:'My team',      k:'2–10',  d:'A small working group',  stamp:'MY TEAM', sub:'2–10 PEOPLE'},
+      {id:'dept', ic:'dept', t:'A department', k:'10–50', d:'A whole function',       stamp:'A DEPARTMENT', sub:'10–50 PEOPLE'},
+      {id:'org',  ic:'org',  t:'Lots of us',   k:'50+',   d:'Company-wide reach',     stamp:'LOTS OF US', sub:'50+ PEOPLE'}
+    ]},
+    payoff:{ n:'03', label:'Expected payoff', title:'What would success look like?', opts:[
+      {id:'time',   ic:'time',   t:'Saves time',      k:'TIME',   d:'Cut manual or repeated work', stamp:'SAVES TIME'},
+      {id:'money',  ic:'money',  t:'Saves money',     k:'COST',   d:'Reduce cost or waste',        stamp:'SAVES MONEY'},
+      {id:'errors', ic:'errors', t:'Fewer errors',    k:'QUALITY',d:'More accurate, less rework',  stamp:'FEWER ERRORS'},
+      {id:'unlocks',ic:'unlocks',t:'Makes it possible',k:'UNLOCK',d:"Do something we can't today", stamp:'MAKES IT POSSIBLE'}
+    ]}
+  };
+  var ORDER = ['type','audience','payoff'];
+  var state = { type:null, audience:null, payoff:null };
+
+  /* ---- element refs ---- */
+  var fieldEls = {};
+  document.querySelectorAll('.field').forEach(function(el){ fieldEls[el.dataset.key] = el; });
+  var tray = document.getElementById('tray');
+  var opts = document.getElementById('opts');
+  var trayTag = document.getElementById('trayTag');
+  var trayTitle = document.getElementById('trayTitle');
+  var stub = document.getElementById('stub');
+  var cnt = document.getElementById('cnt');
+  var sp = document.getElementById('statepill');
+  var spBody = document.getElementById('spBody');
+  var activeKey = null;
+
+  /* ---- state pill ---- */
+  document.getElementById('spHead').addEventListener('click', function(){ sp.classList.toggle('open'); });
+  function renderState(){
+    var out = {};
+    ORDER.forEach(function(k){ out[k] = state[k] ? state[k].id : null; });
+    spBody.textContent = JSON.stringify(out, null, 2);
+  }
+  renderState();
+
+  /* ---- render a stamp onto a field ---- */
+  function stampField(key, opt, animate){
+    var f = fieldEls[key];
+    var fval = f.querySelector('.fval');
+    var sub = opt.sub ? '<span class="ssub">'+opt.sub+'</span>' : '';
+    fval.innerHTML = '<span class="stamp'+(animate&&!reduce?' animate':'')+'"><span class="sv">'+opt.stamp+'</span>'+sub+'</span>';
+    f.classList.add('filled');
+  }
+
+  /* ---- open / close tray ---- */
+  function openTray(key){
+    activeKey = key;
+    var q = BANK[key];
+    trayTag.textContent = 'STAMP ' + q.n;
+    trayTitle.textContent = q.title;
+    Object.keys(fieldEls).forEach(function(k){ fieldEls[k].classList.toggle('active', k===key); });
+    opts.innerHTML = '';
+    q.opts.forEach(function(o){
+      var b = document.createElement('button');
+      b.className = 'opt' + (state[key] && state[key].id===o.id ? ' chosen' : '');
+      b.type = 'button';
+      b.innerHTML =
+        '<span class="ico">'+icon(o.ic)+'</span>'+
+        '<span><span class="ot">'+o.t+' <span class="k">'+o.k+'</span></span><span class="od">'+o.d+'</span></span>';
+      b.addEventListener('click', function(){ choose(key, o); });
+      opts.appendChild(b);
+    });
+    tray.classList.add('open');
+  }
+  function closeTray(){
+    activeKey = null;
+    tray.classList.remove('open');
+    Object.keys(fieldEls).forEach(function(k){ fieldEls[k].classList.remove('active'); });
+  }
+  document.getElementById('trayClose').addEventListener('click', closeTray);
+
+  /* ---- choose an option ---- */
+  function choose(key, opt){
+    var isNew = !state[key];
+    state[key] = opt;
+    stampField(key, opt, true);
+    renderState();
+    updateStub();
+    // mark chosen in the (soon-closing) tray
+    closeTray();
+    // momentum: auto-advance to the next empty field
+    var next = ORDER.find(function(k){ return !state[k]; });
+    if(next && isNew){
+      var delay = reduce ? 0 : 470;
+      setTimeout(function(){ openTray(next); }, delay);
+    }
+  }
+
+  /* ---- stub / completion ---- */
+  function filledCount(){ return ORDER.filter(function(k){ return state[k]; }).length; }
+  function updateStub(){
+    var c = filledCount();
+    cnt.textContent = c + ' / 3';
+    var ready = c === 3;
+    stub.classList.toggle('ready', ready);
+    stub.setAttribute('aria-disabled', ready ? 'false' : 'true');
+    var seal = document.querySelector('.seal');
+    if(seal){ seal.innerHTML = ready ? '<b style="background:var(--green)"></b> READY TO CUT' : '<b></b> AWAITING STAMPS'; }
+  }
+  stub.addEventListener('click', function(){ if(stub.classList.contains('ready')) submit(); });
+  stub.addEventListener('keydown', function(e){ if((e.key==='Enter'||e.key===' ')&&stub.classList.contains('ready')){ e.preventDefault(); submit(); } });
+  function submit(){
+    sp.classList.add('open','flash');
+    setTimeout(function(){ sp.classList.remove('flash'); }, 900);
+  }
+
+  /* ---- field click / keyboard ---- */
+  Object.keys(fieldEls).forEach(function(key){
+    var el = fieldEls[key];
+    el.addEventListener('click', function(){ activeKey===key ? closeTray() : openTray(key); });
+    el.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); activeKey===key ? closeTray() : openTray(key); } });
+  });
+
+  updateStub();
+})();
+</script>
+</body>
+</html>

@@ -7,11 +7,11 @@ import { Session } from '../core/session.service';
 import { BasicsCard, basicsAnswered } from './basics-card';
 import { IntakeDraft } from './intake-draft.service';
 
-function row(root: HTMLElement, label: string): HTMLElement {
-  const match = [...root.querySelectorAll<HTMLElement>('.brow2')].find(
-    (candidate) => candidate.querySelector('.brow2__q')?.textContent?.trim() === label,
+function section(root: HTMLElement, heading: string): HTMLElement {
+  const match = [...root.querySelectorAll<HTMLElement>('.sec')].find(
+    (candidate) => candidate.querySelector('h2')?.textContent?.trim() === heading,
   );
-  if (!match) throw new Error(`Missing row: ${label}`);
+  if (!match) throw new Error(`Missing section: ${heading}`);
   return match;
 }
 
@@ -63,9 +63,9 @@ describe('BasicsCard', () => {
     return fixture;
   }
 
-  it('uses plain-language request type choices', () => {
+  it('offers the four plain-language request types as cards', () => {
     const root = render().nativeElement as HTMLElement;
-    const choices = [...row(root, 'Request').querySelectorAll('button')].map((b) =>
+    const choices = [...root.querySelectorAll('.typegrid .tcard .tl')].map((b) =>
       b.textContent?.trim(),
     );
 
@@ -78,23 +78,30 @@ describe('BasicsCard', () => {
   });
 
   it.each([
-    ['bug', 'Help us understand the problem', ['App', 'Evidence', 'How often?']],
-    ['enh', 'Tell us about the improvement', ['App', 'Who benefits?', 'Expected benefit']],
-    ['new', 'Tell us who this is for', ['Who will use it?', 'Expected benefit']],
-    ['other', 'Add a little context', ['Who is this for?', 'Expected outcome']],
-  ] as const)('tailors the basics copy for %s requests', (type, title, labels) => {
+    ['bug', ['Which app is this about?', 'Show us where it happens', 'How often does it happen?']],
+    ['enh', ['Which app is this about?', 'Who benefits?', 'What would winning look like?']],
+    ['new', ['Who feels it if this works?', 'What would winning look like?']],
+    ['other', ['Who is this for?', 'What would a good outcome be?']],
+  ] as const)('tailors the sections for %s requests', (type, headings) => {
     const root = render(type).nativeElement as HTMLElement;
 
-    expect(root.querySelector('.basics__t')?.textContent?.trim()).toBe(title);
-    for (const label of labels) expect(row(root, label)).toBeTruthy();
+    expect(section(root, 'What kind of request is this?')).toBeTruthy();
+    for (const heading of headings) expect(section(root, heading)).toBeTruthy();
   });
 
-  it('places a free-text affected input after the reach options', () => {
+  it('keeps later sections locked until the earlier ones are answered', () => {
+    const root = render().nativeElement as HTMLElement;
+
+    expect(section(root, 'Who feels it if this works?').classList).not.toContain('locked');
+    expect(section(root, 'What would winning look like?').classList).toContain('locked');
+  });
+
+  it('places a free-text affected input after the blast-radius options', () => {
     draft.reach = 'team';
     const fixture = render();
-    const affected = row(fixture.nativeElement, 'Who will use it?');
-    const options = affected.querySelector('.bseg')!;
-    const input = affected.querySelector<HTMLInputElement>('input');
+    const affected = section(fixture.nativeElement, 'Who feels it if this works?');
+    const options = affected.querySelector('.legend')!;
+    const input = affected.querySelector<HTMLInputElement>('input.aud-free');
 
     expect(input).not.toBeNull();
     expect(options.compareDocumentPosition(input!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -107,25 +114,58 @@ describe('BasicsCard', () => {
     expect(draft.reachText).toBe('Regional finance teams');
   });
 
-  it('places an always-visible impact input before the metric options', () => {
+  it('maps the outer blast-radius ring onto the wider reach value', () => {
+    draft.reach = 'me';
     const fixture = render();
-    const impact = row(fixture.nativeElement, 'Expected benefit');
-    const input = impact.querySelector<HTMLInputElement>('input');
-    const options = impact.querySelector('.bseg')!;
+    const affected = section(fixture.nativeElement, 'Who feels it if this works?');
+    const legend = [...affected.querySelectorAll<HTMLButtonElement>('.legend button')];
 
+    legend.at(-1)!.click();
+    fixture.detectChanges();
+
+    expect(draft.reach).toBe('wider');
+    // legacy site/network drafts still light the outer band
+    draft.reach = 'network';
+    fixture.detectChanges();
+    expect(legend.at(-1)!.classList).toContain('on');
+  });
+
+  it('reveals the estimate input only after a payoff card is picked', () => {
+    draft.reach = 'team';
+    const fixture = render();
+    const impact = section(fixture.nativeElement, 'What would winning look like?');
+
+    expect(impact.querySelector('.imp-est')).toBeNull();
+
+    const timeCard = [...impact.querySelectorAll<HTMLButtonElement>('.icard')].find((c) =>
+      c.textContent?.includes('Saves time'),
+    )!;
+    timeCard.click();
+    fixture.detectChanges();
+
+    const input = impact.querySelector<HTMLInputElement>('.imp-est input')!;
     expect(input).not.toBeNull();
-    expect(input!.compareDocumentPosition(options)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(impact.querySelector('.impgrid')!.compareDocumentPosition(input)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    input.value = '120';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(draft.impactMetric).toBe('hours');
+    expect(draft.impactValue).toBe('120');
   });
 
   it('lets a bug reporter provide a page link or add a screenshot', () => {
     const root = render('bug').nativeElement as HTMLElement;
-    const evidence = row(root, 'Evidence');
+    const evidence = section(root, 'Show us where it happens');
 
     expect(evidence.querySelector('input[inputmode="url"]')?.getAttribute('placeholder')).toBe(
       'Paste a page link',
     );
     expect(evidence.querySelector('input[type="file"]')?.getAttribute('accept')).toBe('image/*');
-    expect(evidence.querySelector('button')?.textContent?.trim()).toBe('Add screenshot');
+    expect(evidence.querySelector('.evidence button')?.textContent?.trim()).toBe('Add screenshot');
   });
 
   it('counts an uploaded screenshot as bug evidence when no link is provided', () => {
@@ -151,7 +191,7 @@ describe('BasicsCard', () => {
     draft.appName = 'Atlas';
     draft.bugFreq = 'Every time';
     const fixture = render('bug');
-    const evidence = row(fixture.nativeElement, 'Evidence');
+    const evidence = section(fixture.nativeElement, 'Show us where it happens');
     const pasted = new File(['pixels'], 'pasted-screenshot.png', { type: 'image/png' });
     const event = new Event('paste', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'clipboardData', { value: { files: [pasted] } });

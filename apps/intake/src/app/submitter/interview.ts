@@ -41,7 +41,7 @@ import { IntakeDraft } from './intake-draft.service';
           >
           <h1 class="intro__t blurin blurin--2">A few details will help us get this right.</h1>
           <p class="intro__s blurin blurin--2">
-            Add what you know. You can fill in the rest during the interview.
+            Point at what fits — no typing needed. The interview handles the rest.
           </p>
           @if (req(); as r) {
             <div class="intro__card blurin blurin--3">
@@ -51,9 +51,14 @@ import { IntakeDraft } from './intake-draft.service';
                 (typeChanged)="onTypeChanged()"
                 (saved)="onBasicsSaved()"
               />
-              <button class="btn primary intro__go" (click)="startInterview()">
-                Submit
-              </button>
+              <div class="intro__foot">
+                <p class="intro__note">
+                  <b>That's the basics.</b> The interview covers everything else.
+                </p>
+                <button class="btn primary intro__go" (click)="startInterview()">
+                  Start the interview
+                </button>
+              </div>
               @if (nudge()) {
                 <p class="intro__nudge" role="alert">
                   Add the missing details before you continue.
@@ -274,7 +279,7 @@ import { IntakeDraft } from './intake-draft.service';
   `,
   styles: `
     .intro {
-      max-width: 640px;
+      max-width: 800px;
       margin: 0 auto;
       min-height: calc(100dvh - 170px);
       padding: 20px 26px;
@@ -326,10 +331,30 @@ import { IntakeDraft } from './intake-draft.service';
       width: 100%;
       text-align: left;
     }
+    .intro__foot {
+      margin-top: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+    .intro__note {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: left;
+      max-width: 300px;
+    }
+    .intro__note b {
+      color: var(--fg1);
+      font-weight: 600;
+    }
     .intro__go {
-      width: 100%;
       justify-content: center;
-      margin-top: 14px;
+      padding: 12px 26px;
+      border-radius: 999px;
+      font-size: 15px;
     }
     .intro__nudge {
       margin: 10px 0 0;
@@ -792,13 +817,13 @@ export class Interview implements OnInit {
   private sawQuestion = false;
   private advancing = false;
 
-  private thread = viewChild.required<ElementRef<HTMLDivElement>>('thread');
+  private thread = viewChild<ElementRef<HTMLDivElement>>('thread'); // absent during the basics intro phase
 
   /** keep the newest turn in view — the thread grows from the bottom */
   private scrollToEnd() {
     setTimeout(() => {
-      const el = this.thread().nativeElement;
-      el.scrollTo({ top: el.scrollHeight });
+      const el = this.thread()?.nativeElement;
+      el?.scrollTo({ top: el.scrollHeight });
     });
   }
 
@@ -883,7 +908,11 @@ export class Interview implements OnInit {
       const reach = d.reachText.trim() || (d.reach ? reachLabels[d.reach] : '');
       if (reach)
         out.push([
-          r?.type === 'enh' ? 'Who benefits?' : r?.type === 'other' ? 'Who is this for?' : 'Who will use it?',
+          r?.type === 'enh'
+            ? 'Who benefits?'
+            : r?.type === 'other'
+              ? 'Who is this for?'
+              : 'Who will use it?',
           reach,
         ]);
       if (d.impactMetric && d.impactValue.trim()) {

@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Basics form prototypes</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #0b0b0d;
+    overflow: hidden;
+  }
+
+  iframe {
+    display: block;
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    border: 0;
+    background: #0b0b0d;
+  }
+
+  .switcher {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #0a0a0a;
+    color: #ffffff;
+    border-radius: 999px;
+    padding: 6px 8px 6px 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    max-width: calc(100vw - 24px);
+  }
+
+  .switcher button {
+    appearance: none;
+    border: none;
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    border-radius: 999px;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease;
+  }
+
+  .switcher button:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  .switcher button:active {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .switcher .label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 2px;
+  }
+
+  @media (max-width: 420px) {
+    .switcher {
+      max-width: calc(100vw - 16px);
+      padding: 5px 6px;
+      gap: 6px;
+      bottom: 10px;
+    }
+    .switcher button {
+      width: 26px;
+      height: 26px;
+      min-width: 26px;
+      font-size: 13px;
+    }
+    .switcher .label {
+      font-size: 11px;
+      max-width: 62vw;
+    }
+  }
+</style>
+</head>
+<body>
+
+<iframe id="stage" title="Prototype preview"></iframe>
+
+<div class="switcher" role="group" aria-label="Prototype switcher">
+  <button id="prev" type="button" aria-label="Previous variant">&#8592;</button>
+  <span class="label" id="label">1 / 10 — One at a time</span>
+  <button id="next" type="button" aria-label="Next variant">&#8594;</button>
+</div>
+
+<script>
+(function () {
+  var VARIANTS = [
+    { file: "v01-one-at-a-time.html", label: "One at a time" },
+    { file: "v02-madlibs.html", label: "Mad-libs sentence" },
+    { file: "v03-card-sort.html", label: "Card sort & blast radius" },
+    { file: "v04-checklist-ladder.html", label: "Checklist ladder" },
+    { file: "v05-live-brief.html", label: "Live brief" },
+    { file: "v06-chat.html", label: "Chat quick-replies" },
+    { file: "v07-impact-calc.html", label: "Impact calculator" },
+    { file: "v08-two-questions.html", label: "Two questions" },
+    { file: "v09-guided-focus.html", label: "Annotated spotlight" },
+    { file: "v10-ticket.html", label: "Fill the ticket" }
+  ];
+
+  var stage = document.getElementById("stage");
+  var label = document.getElementById("label");
+  var prevBtn = document.getElementById("prev");
+  var nextBtn = document.getElementById("next");
+
+  function isTypingTarget(target) {
+    if (!target) return false;
+    var tag = (target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    if (target.isContentEditable) return true;
+    return false;
+  }
+
+  function parseIndexFromUrl() {
+    var params = new URLSearchParams(window.location.search);
+    var raw = parseInt(params.get("v"), 10);
+    if (!raw || raw < 1 || raw > VARIANTS.length) return 0;
+    return raw - 1;
+  }
+
+  var current = parseIndexFromUrl();
+
+  function updateUrl() {
+    var params = new URLSearchParams(window.location.search);
+    params.set("v", String(current + 1));
+    var newUrl = window.location.pathname + "?" + params.toString() + window.location.hash;
+    history.replaceState(null, "", newUrl);
+  }
+
+  function attachIframeKeydownForwarding() {
+    try {
+      var doc = stage.contentDocument;
+      if (!doc) return;
+      doc.addEventListener("keydown", function (e) {
+        if (isTypingTarget(e.target)) return;
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          e.stopPropagation();
+          go(-1);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          e.stopPropagation();
+          go(1);
+        }
+      }, true);
+    } catch (err) {
+      // Cross-origin or not-yet-ready iframe document; ignore.
+    }
+  }
+
+  function render() {
+    var v = VARIANTS[current];
+    label.textContent = (current + 1) + " / " + VARIANTS.length + " — " + v.label;
+    stage.src = v.file + "?t=" + Date.now(); // cache-bust: mockups iterate fast
+    updateUrl();
+  }
+
+  function go(delta) {
+    current = (current + delta + VARIANTS.length) % VARIANTS.length;
+    render();
+  }
+
+  prevBtn.addEventListener("click", function () { go(-1); });
+  nextBtn.addEventListener("click", function () { go(1); });
+
+  document.addEventListener("keydown", function (e) {
+    if (isTypingTarget(e.target)) return;
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      go(-1);
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      go(1);
+    }
+  });
+
+  stage.addEventListener("load", attachIframeKeydownForwarding);
+
+  render();
+})();
+</script>
+
+</body>
+</html>

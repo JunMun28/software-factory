@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>v08 · Radical minimal — two questions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#FAF8F5; --card:#FFFFFF; --card2:#F5F2ED;
+  --ink:#211C28; --body:#3B3444; --muted:#6E6878; --faint:#9A93A6;
+  --line:#E9E4DC; --line2:#D9D3C9;
+  --accent:#BD03F7; --accent-ink:#8A02B5; --accent-soft:rgba(189,3,247,.07); --accent-line:rgba(189,3,247,.35);
+  --green:#1E7D4F; --green-soft:#E7F3EC; --green-line:#BCDCC9;
+  --amber:#8A5A0A; --amber-strong:#B47408; --amber-soft:#FBF3E1; --amber-line:#EAD9AC;
+  --red:#B3362A; --red-soft:#FBECEA; --red-line:#EFC7C1;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --sans:'Space Grotesk',system-ui,sans-serif;
+  --r:10px; --r-lg:16px;
+  --shadow:0 1px 2px rgba(40,30,60,.05), 0 8px 28px -18px rgba(40,30,60,.25);
+  --shadow-lg:0 2px 6px rgba(40,30,60,.06), 0 26px 60px -30px rgba(40,30,60,.4);
+}
+.dark{
+  --bg:#16121B; --card:#1F1A26; --card2:#282230;
+  --ink:#F2EEF7; --body:#D6D0DF; --muted:#A29AAE; --faint:#7A7288;
+  --line:#2F2939; --line2:#3D3648;
+  --accent:#D65CFF; --accent-ink:#E393FF; --accent-soft:rgba(214,92,255,.1); --accent-line:rgba(214,92,255,.4);
+  --green:#5FC58F; --green-soft:#1B2B22; --green-line:#2E4A3A;
+  --amber:#E4B45E; --amber-strong:#E4B45E; --amber-soft:#2E2617; --amber-line:#4A3D22;
+  --red:#F08C80; --red-soft:#2E1B18; --red-line:#4A2C27;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 28px -18px rgba(0,0,0,.6);
+  --shadow-lg:0 2px 6px rgba(0,0,0,.35), 0 26px 60px -28px rgba(0,0,0,.75);
+}
+*{box-sizing:border-box}
+html,body{margin:0;}
+body{
+  background:var(--bg); color:var(--body); font-family:var(--sans);
+  font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  transition:background .3s ease, color .3s ease; min-height:100vh;
+}
+
+/* ---------- shared shell chrome ---------- */
+.appbar{
+  display:flex; align-items:center; gap:16px;
+  padding:14px clamp(18px,4vw,40px);
+  border-bottom:1px solid var(--line);
+  position:sticky; top:0; z-index:20;
+  background:color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter:saturate(1.2) blur(10px);
+}
+.brand{display:flex; align-items:center; gap:11px; color:var(--ink); font-weight:600; font-size:15.5px; letter-spacing:-.01em;}
+.mark{width:20px; height:20px; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:2.5px; flex:none;}
+.mark span{border-radius:1.5px; background:var(--faint);}
+.mark span:nth-child(1),.mark span:nth-child(5),.mark span:nth-child(9){background:var(--accent);}
+.appbar .sp{flex:1;}
+.nav{display:flex; gap:6px; align-items:center;}
+.pill{
+  border:1px solid transparent; background:none; color:var(--muted);
+  font:inherit; font-size:14px; font-weight:500; padding:7px 15px;
+  border-radius:999px; cursor:pointer; text-decoration:none; white-space:nowrap;
+  transition:background .18s, color .18s, border-color .18s;
+}
+.pill:hover{color:var(--ink); background:var(--card2);}
+.pill.on{background:var(--accent); color:#fff; border-color:var(--accent);}
+.pill.on:hover{background:var(--accent);}
+.iconbtn{
+  width:36px; height:36px; border-radius:999px; border:1px solid var(--line2);
+  background:var(--card); color:var(--body); cursor:pointer; flex:none;
+  display:flex; align-items:center; justify-content:center; font-size:16px;
+  transition:background .18s, border-color .18s, transform .18s;
+}
+.iconbtn:hover{background:var(--card2); border-color:var(--faint);}
+.iconbtn:active{transform:scale(.94);}
+.who{display:flex; align-items:center; gap:9px;}
+.avatar{
+  width:32px; height:32px; border-radius:50%;
+  background:linear-gradient(140deg, var(--accent), color-mix(in srgb, var(--accent) 40%, var(--card2)));
+  color:#fff; display:flex; align-items:center; justify-content:center;
+  font-size:11.5px; font-weight:600; flex:none; letter-spacing:.02em;
+}
+.who .nm{font-size:13.5px; color:var(--muted); white-space:nowrap;}
+@media (max-width:640px){.who .nm{display:none;} .pill.ghostnav{display:none;}}
+
+/* ---------- page ---------- */
+.page{max-width:760px; margin:0 auto; padding:clamp(32px,6vw,68px) clamp(18px,5vw,28px) 140px;}
+.eyebrow{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--accent-ink); background:var(--accent-soft); border:1px solid var(--accent-line);
+  padding:5px 12px; border-radius:999px; margin-bottom:20px;
+}
+.eyebrow b{color:var(--ink); font-weight:600;}
+h1.hero{
+  color:var(--ink); font-weight:700; letter-spacing:-.025em; line-height:1.04;
+  font-size:clamp(34px,7vw,56px); margin:0;
+}
+h1.hero em{font-style:normal; color:var(--accent-ink);}
+.sub{color:var(--muted); font-size:clamp(16px,2.4vw,19px); margin:16px 0 0; max-width:34ch;}
+
+/* ---------- question block ---------- */
+.q{margin-top:clamp(44px,7vw,72px);}
+.qhead{display:flex; align-items:baseline; gap:14px; margin-bottom:20px;}
+.qnum{
+  font-family:var(--mono); font-size:13px; font-weight:500; color:var(--accent-ink);
+  border:1px solid var(--accent-line); background:var(--accent-soft);
+  width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex:none;
+  transition:background .25s, color .25s;
+}
+.q.done .qnum{background:var(--accent); color:#fff; border-color:var(--accent);}
+.qhead h2{color:var(--ink); font-weight:600; font-size:clamp(22px,3.6vw,28px); letter-spacing:-.015em; margin:0;}
+.qhead .qh{color:var(--muted); font-size:14px; margin:2px 0 0;}
+
+/* ---------- Q1 : four giant segmented tiles ---------- */
+.tiles{
+  display:grid; grid-template-columns:repeat(4,1fr); gap:12px;
+  border-radius:var(--r-lg);
+}
+.tile{
+  position:relative; text-align:left; cursor:pointer;
+  border:1.5px solid var(--line); background:var(--card);
+  border-radius:var(--r-lg); padding:22px 20px 20px;
+  min-height:186px; display:flex; flex-direction:column; gap:0;
+  color:var(--body); font-family:inherit;
+  transition:border-color .18s, background .18s, transform .18s, box-shadow .18s;
+}
+.tile:hover{border-color:var(--accent-line); transform:translateY(-3px); box-shadow:var(--shadow);}
+.tile:focus-visible{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
+.tile .ic{
+  width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+  background:var(--card2); color:var(--muted); margin-bottom:auto;
+  transition:background .18s, color .18s;
+}
+.tile .ic svg{width:24px; height:24px; display:block;}
+.tile .tl{display:block; color:var(--ink); font-weight:600; font-size:17px; letter-spacing:-.01em; margin:18px 0 5px; line-height:1.15;}
+.tile .ex{display:block; color:var(--muted); font-size:13.5px; line-height:1.4;}
+.tile .tick{
+  position:absolute; top:14px; right:14px; width:22px; height:22px; border-radius:50%;
+  background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center;
+  font-size:13px; opacity:0; transform:scale(.6); transition:opacity .2s, transform .2s;
+}
+.tile.sel{border-color:var(--accent); background:var(--accent-soft); box-shadow:0 0 0 1px var(--accent) inset;}
+.tile.sel .ic{background:var(--accent); color:#fff;}
+.tile.sel .tick{opacity:1; transform:scale(1);}
+
+/* ---------- Q2 : 3x3 "how big a deal" matrix ---------- */
+.matrix{display:grid; grid-template-columns:26px 1fr; gap:10px;}
+.yaxis{
+  grid-row:1; grid-column:1;
+  writing-mode:vertical-rl; transform:rotate(180deg);
+  display:flex; align-items:center; justify-content:space-between;
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--muted); padding:2px 0;
+}
+.yaxis .yhi{color:var(--red); font-weight:500;}
+.gridwrap{grid-row:1; grid-column:2; display:flex; flex-direction:column; gap:8px;}
+.cells{
+  display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+  gap:8px;
+}
+.cell{
+  position:relative; cursor:pointer; text-align:left; font-family:inherit;
+  border:1.5px solid var(--line); border-radius:12px;
+  padding:14px 13px; min-height:96px;
+  display:flex; flex-direction:column; justify-content:flex-end; gap:5px;
+  color:var(--body); overflow:hidden;
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--accent) calc(var(--h) * 7%), transparent),
+      color-mix(in srgb, var(--accent) calc(var(--h) * 2%), transparent)),
+    var(--card);
+  transition:border-color .16s, transform .16s, box-shadow .16s, background .16s;
+}
+.cell .heat{
+  position:absolute; top:11px; left:13px; display:flex; gap:3px;
+}
+.cell .heat i{width:5px; height:5px; border-radius:50%; background:var(--line2);}
+.cell .heat i.on{background:var(--accent);}
+.cell .ml{color:var(--ink); font-weight:600; font-size:14px; line-height:1.15; letter-spacing:-.01em;}
+.cell .cap{font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--muted); text-transform:uppercase; line-height:1.25;}
+.cell:hover{border-color:var(--accent-line); transform:translateY(-2px); box-shadow:var(--shadow);}
+.cell:focus-visible{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
+.cell .tick{
+  position:absolute; top:10px; right:11px; width:19px; height:19px; border-radius:50%;
+  background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center;
+  font-size:11px; opacity:0; transform:scale(.5); transition:opacity .18s, transform .18s;
+}
+.cell.sel{
+  border-color:var(--accent);
+  box-shadow:0 0 0 1.5px var(--accent) inset, var(--shadow);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent) 8%, transparent)),
+    var(--card);
+}
+.cell.sel .heat{opacity:0;}
+.cell.sel .tick{opacity:1; transform:scale(1);}
+.cell.sel .cap{color:var(--accent-ink);}
+.xaxis{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--muted); text-align:center; padding-top:2px;
+}
+.xaxis span{display:flex; align-items:center; justify-content:center; gap:6px;}
+.xaxis .arrow{color:var(--faint);}
+
+/* ---------- foot / start ---------- */
+.foot{margin-top:clamp(40px,7vw,64px); display:flex; flex-direction:column; align-items:flex-start; gap:16px;}
+.start{
+  border:none; border-radius:14px; cursor:pointer; font:inherit; font-weight:600;
+  font-size:19px; letter-spacing:-.01em; padding:19px 46px; color:#fff;
+  background:var(--accent);
+  box-shadow:0 10px 30px -12px color-mix(in srgb, var(--accent) 70%, transparent);
+  display:flex; align-items:center; gap:12px;
+  transition:transform .18s, box-shadow .18s, opacity .18s, filter .18s;
+}
+.start:hover{transform:translateY(-2px); box-shadow:0 16px 40px -14px color-mix(in srgb, var(--accent) 75%, transparent); filter:brightness(1.05);}
+.start:active{transform:translateY(0);}
+.start[disabled]{opacity:.42; cursor:not-allowed; box-shadow:none; filter:saturate(.6);}
+.start .arw{font-size:20px; transition:transform .2s;}
+.start:not([disabled]):hover .arw{transform:translateX(4px);}
+.start.flash{animation:flash .5s ease;}
+@keyframes flash{0%,100%{transform:translateY(0);}30%{transform:translateY(-3px) scale(1.015);}}
+.tagline{color:var(--muted); font-size:15px;}
+.tagline b{color:var(--ink); font-weight:600;}
+
+/* ---------- state pill ---------- */
+.state{
+  position:fixed; bottom:16px; left:16px; z-index:40;
+  font-family:var(--mono); font-size:10px; line-height:1.5;
+  background:var(--card); border:1px solid var(--line2); color:var(--body);
+  border-radius:8px; box-shadow:var(--shadow); max-width:340px;
+  transition:box-shadow .2s;
+}
+.state.flash{box-shadow:0 0 0 2px var(--accent-line), var(--shadow);}
+.state .hd{
+  display:flex; align-items:center; gap:7px; padding:6px 10px; cursor:pointer; user-select:none;
+}
+.state .hd .d{width:6px; height:6px; border-radius:50%; background:var(--faint);}
+.state .hd .lbl{letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
+.state .hd .cnt{color:var(--muted);}
+.state .hd .chev{margin-left:2px; color:var(--muted);}
+.state pre{
+  margin:0; padding:0 10px 9px; white-space:pre-wrap; word-break:break-word;
+  color:var(--body); max-height:0; overflow:hidden; transition:max-height .2s ease, padding .2s ease;
+}
+.state.open pre{max-height:240px; padding:2px 10px 10px;}
+.state:not(.open) pre{padding-top:0; padding-bottom:0;}
+.state .k{color:var(--accent-ink);}
+
+@media (prefers-reduced-motion: reduce){
+  *{transition:none !important; animation:none !important;}
+  .start:hover{transform:none;} .tile:hover{transform:none;} .cell:hover{transform:none;}
+}
+
+/* ---------- responsive ---------- */
+@media (max-width:720px){
+  .tiles{grid-template-columns:repeat(2,1fr);}
+  .tile{min-height:150px;}
+}
+@media (max-width:430px){
+  .tiles{grid-template-columns:1fr;}
+  .tile{min-height:0; flex-direction:row; align-items:center; gap:15px; padding:16px;}
+  .tile .ic{margin-bottom:0; width:40px; height:40px;}
+  .tile .tl{margin:0 0 3px;}
+  .tile .txt{flex:1;}
+  .matrix{grid-template-columns:20px 1fr; gap:7px;}
+  .cells{gap:6px;}
+  .cell{min-height:82px; padding:11px 10px; border-radius:10px;}
+  .cell .ml{font-size:12.5px;}
+  .cell .cap{font-size:8.5px;}
+  .cell .heat i{width:4px; height:4px;}
+  .yaxis{font-size:9px;}
+  .xaxis{font-size:8.5px;}
+  .xaxis .arrow{display:none;}
+  .start{width:100%; justify-content:center; font-size:18px; padding:18px;}
+  .foot{align-items:stretch;}
+}
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <div class="brand">
+    <div class="mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    Software Factory
+  </div>
+  <div class="sp"></div>
+  <nav class="nav">
+    <a class="pill on" href="#">New request</a>
+    <a class="pill ghostnav" href="#">My requests</a>
+  </nav>
+  <button class="iconbtn" id="theme" title="Toggle theme" aria-label="Toggle light and dark theme">☾</button>
+  <div class="who">
+    <div class="avatar">JD</div>
+    <span class="nm">Jordan D.</span>
+  </div>
+</header>
+
+<main class="page">
+  <span class="eyebrow"><b>New request</b> · the basics</span>
+  <h1 class="hero">Two questions.<br>Then we <em>start</em>.</h1>
+  <p class="sub">Enough to point your request the right way. A short interview handles everything else.</p>
+
+  <!-- Q1 -->
+  <section class="q" id="q1">
+    <div class="qhead">
+      <div class="qnum">1</div>
+      <div>
+        <h2>What is it?</h2>
+        <p class="qh">Pick the one that fits best.</p>
+      </div>
+    </div>
+    <div class="tiles" id="tiles" role="radiogroup" aria-label="What is it?">
+      <button class="tile" role="radio" aria-checked="false" data-type="fix">
+        <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 16.8V20h3.2l5.3-5.3a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.3-.5-.5-2.3z"/></svg></span>
+        <span class="txt"><span class="tl">Fix a problem</span><span class="ex">Something's broken, slow, or driving people up the wall.</span></span>
+        <span class="tick" aria-hidden="true">✓</span>
+      </button>
+      <button class="tile" role="radio" aria-checked="false" data-type="improve">
+        <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 4 8-8"/><path d="M16 8h5v5"/></svg></span>
+        <span class="txt"><span class="tl">Improve an app</span><span class="ex">A tool you already use could do more or work better.</span></span>
+        <span class="tick" aria-hidden="true">✓</span>
+      </button>
+      <button class="tile" role="radio" aria-checked="false" data-type="build">
+        <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></span>
+        <span class="txt"><span class="tl">Build a new app</span><span class="ex">Nothing does this yet — start it from scratch.</span></span>
+        <span class="tick" aria-hidden="true">✓</span>
+      </button>
+      <button class="tile" role="radio" aria-checked="false" data-type="other">
+        <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/></svg></span>
+        <span class="txt"><span class="tl">Something else</span><span class="ex">Not sure yet — we'll figure it out together.</span></span>
+        <span class="tick" aria-hidden="true">✓</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Q2 -->
+  <section class="q" id="q2">
+    <div class="qhead">
+      <div class="qnum">2</div>
+      <div>
+        <h2>How big a deal is it?</h2>
+        <p class="qh">Roughly who it touches, and how much it hurts. One tap.</p>
+      </div>
+    </div>
+    <div class="matrix">
+      <div class="yaxis" aria-hidden="true">
+        <span class="yhi">business-critical</span>
+        <span>annoying</span>
+      </div>
+      <div class="gridwrap">
+        <div class="cells" id="cells" role="grid" aria-label="How big a deal is it?">
+          <!-- row: business-critical -->
+          <button class="cell" style="--h:2" data-reach="a few people" data-sev="business-critical" data-heat="2">
+            <span class="heat" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></span>
+            <span class="ml">Quiet blocker</span>
+            <span class="cap">few · critical</span>
+            <span class="tick" aria-hidden="true">✓</span>
+          </button>
+          <button class="cell" style="--h:3" data-reach="a department" data-sev="business-critical" data-heat="3">
+            <span class="heat" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></span>
+            <span class="ml">Department blocker</span>
+            <span class="cap">dept · critical</span>
+            <span class="tick" aria-hidden="true">✓</span>
+          </button>
+          <button class="cell" style="--h:4" data-reach="the whole company" data-sev="business-critical" data-heat="4">
+            <span class="heat" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></span>
+            <span class="ml">All-hands problem</span>
+            <span class="cap">company · critical</span>
+            <span class="tick" aria-hidden="true">✓</span>
+          </button>
+          <!-- row: painful -->
+          <button class="cell" style="--h:1" data-reach="a few people" data-sev="painful" data-heat="1">
+            <span class="heat" aria-hidden="true"><i class="on"></i><i></i><i></i></span>
+            <span class="ml">Real grind</span>
+            <span class="cap">few · painful</span>
+            <span class="tick" aria-hidden="true">✓</span>
+          </button>
+          <button class="cell" style="--h:2" data-reach="a department" data-sev="painful" data-heat="2">
+            <span class="heat" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></span>
+            <span class="ml">Team bottleneck</span>
+            <span class="cap">dept · painful</span>
+            <span class="tick" aria-hidden="true">✓</span>
+          </button>
+          <button class="cell" style="--h:3" data-reach="the whole company" data-sev="painful" data-heat="3">
+            <span class="heat" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></span>
+            <span class="ml">Company-wide drag</span>
+            <span class="cap">company · painful</span>
+            <span class="tick" aria-hidden="true">✓</span>
+          </button>
+          <!-- row: annoying -->
+          <button class="cell" style="--h:0" data-reach="a few people" data-sev="annoying" data-heat="0">
+            <span class="heat" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="ml">Classic time-sink</span>
+            <span class="cap">few · annoying</span>
+            <span class="tick" aria-hidden="true">✓</span>
+          </button>
+          <button class="cell" style="--h:1" data-reach="a department" data-sev="annoying" data-heat="1">
+            <span class="heat" aria-hidden="true"><i class="on"></i><i></i><i></i></span>
+            <span class="ml">Office paper-cut</span>
+            <span class="cap">dept · annoying</span>
+            <span class="tick" aria-hidden="true">✓</span>
+          </button>
+          <button class="cell" style="--h:2" data-reach="the whole company" data-sev="annoying" data-heat="2">
+            <span class="heat" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></span>
+            <span class="ml">Everywhere nuisance</span>
+            <span class="cap">company · annoying</span>
+            <span class="tick" aria-hidden="true">✓</span>
+          </button>
+        </div>
+        <div class="xaxis" aria-hidden="true">
+          <span>a few people</span>
+          <span>a department</span>
+          <span>the whole company <b class="arrow">→</b></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- foot -->
+  <div class="foot">
+    <button class="start" id="start" disabled>Start the interview <span class="arw" aria-hidden="true">→</span></button>
+    <p class="tagline"><b>That's it.</b> The interview covers the rest.</p>
+  </div>
+</main>
+
+<!-- state readout -->
+<div class="state" id="state">
+  <div class="hd" id="stateHd">
+    <span class="d"></span>
+    <span class="lbl">state</span>
+    <span class="cnt" id="stateCnt">0/2</span>
+    <span class="chev" id="stateChev">▸</span>
+  </div>
+  <pre id="stateBody"></pre>
+</div>
+
+<script>
+(function(){
+  var doc = document.documentElement;
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* theme toggle */
+  var themeBtn = document.getElementById('theme');
+  function syncThemeIcon(){ themeBtn.textContent = doc.classList.contains('dark') ? '☾' : '☀'; }
+  syncThemeIcon();
+  themeBtn.addEventListener('click', function(){
+    doc.classList.toggle('dark');
+    syncThemeIcon();
+  });
+
+  /* state model */
+  var state = { type: null, impact: null };
+
+  var stateEl = document.getElementById('state');
+  var stateBody = document.getElementById('stateBody');
+  var stateCnt = document.getElementById('stateCnt');
+  var stateChev = document.getElementById('stateChev');
+  var startBtn = document.getElementById('start');
+
+  function render(){
+    var pretty = JSON.stringify(state, null, 2)
+      .replace(/"(\w+)":/g, '"<span class="k">$1</span>":');
+    stateBody.innerHTML = pretty;
+    var n = (state.type ? 1 : 0) + (state.impact ? 1 : 0);
+    stateCnt.textContent = n + '/2';
+    var ready = !!state.type && !!state.impact;
+    startBtn.disabled = !ready;
+    document.getElementById('q1').classList.toggle('done', !!state.type);
+    document.getElementById('q2').classList.toggle('done', !!state.impact);
+  }
+  render();
+
+  /* state pill expand/collapse */
+  document.getElementById('stateHd').addEventListener('click', function(){
+    var open = stateEl.classList.toggle('open');
+    stateChev.textContent = open ? '▾' : '▸';
+  });
+  function flashState(){
+    if(!stateEl.classList.contains('open')){
+      stateEl.classList.add('open'); stateChev.textContent = '▾';
+    }
+    if(reduce) return;
+    stateEl.classList.remove('flash');
+    void stateEl.offsetWidth;
+    stateEl.classList.add('flash');
+    setTimeout(function(){ stateEl.classList.remove('flash'); }, 500);
+  }
+
+  /* Q1 tiles */
+  var tiles = Array.prototype.slice.call(document.querySelectorAll('.tile'));
+  tiles.forEach(function(t){
+    t.addEventListener('click', function(){
+      tiles.forEach(function(o){ o.classList.remove('sel'); o.setAttribute('aria-checked','false'); });
+      t.classList.add('sel'); t.setAttribute('aria-checked','true');
+      state.type = t.getAttribute('data-type');
+      render();
+    });
+  });
+
+  /* Q2 cells */
+  var cells = Array.prototype.slice.call(document.querySelectorAll('.cell'));
+  cells.forEach(function(c){
+    c.addEventListener('click', function(){
+      cells.forEach(function(o){ o.classList.remove('sel'); });
+      c.classList.add('sel');
+      state.impact = {
+        reach: c.getAttribute('data-reach'),
+        severity: c.getAttribute('data-sev'),
+        label: c.querySelector('.ml').textContent,
+        heat: Number(c.getAttribute('data-heat'))
+      };
+      render();
+    });
+  });
+
+  /* start */
+  startBtn.addEventListener('click', function(){
+    if(startBtn.disabled) return;
+    if(!reduce){
+      startBtn.classList.remove('flash'); void startBtn.offsetWidth; startBtn.classList.add('flash');
+      setTimeout(function(){ startBtn.classList.remove('flash'); }, 500);
+    }
+    flashState();
+  });
+})();
+</script>
+</body>
+</html>

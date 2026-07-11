@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>v09 — Annotated spotlight · Basics form</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#FAF8F5; --card:#FFFFFF; --card2:#F5F2ED;
+  --ink:#211C28; --body:#3B3444; --muted:#6E6878; --faint:#9A93A6;
+  --line:#E9E4DC; --line2:#D9D3C9;
+  --accent:#BD03F7; --accent-ink:#8A02B5; --accent-soft:rgba(189,3,247,.07); --accent-line:rgba(189,3,247,.35);
+  --green:#1E7D4F; --green-soft:#E7F3EC; --green-line:#BCDCC9;
+  --amber:#8A5A0A; --amber-strong:#B47408; --amber-soft:#FBF3E1; --amber-line:#EAD9AC;
+  --red:#B3362A; --red-soft:#FBECEA; --red-line:#EFC7C1;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --sans:'Space Grotesk',system-ui,sans-serif;
+  --r:10px; --r-lg:16px;
+  --shadow:0 1px 2px rgba(40,30,60,.05), 0 8px 28px -18px rgba(40,30,60,.25);
+}
+.dark{
+  --bg:#16121B; --card:#1F1A26; --card2:#282230;
+  --ink:#F2EEF7; --body:#D6D0DF; --muted:#A29AAE; --faint:#7A7288;
+  --line:#2F2939; --line2:#3D3648;
+  --accent:#D65CFF; --accent-ink:#E393FF; --accent-soft:rgba(214,92,255,.1); --accent-line:rgba(214,92,255,.4);
+  --green:#5FC58F; --green-soft:#1B2B22; --green-line:#2E4A3A;
+  --amber:#E4B45E; --amber-strong:#E4B45E; --amber-soft:#2E2617; --amber-line:#4A3D22;
+  --red:#F08C80; --red-soft:#2E1B18; --red-line:#4A2C27;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 28px -18px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--body);
+  font-family:var(--sans); font-size:16px; line-height:1.6;
+  -webkit-font-smoothing:antialiased; transition:background .25s, color .25s;
+}
+button{font-family:inherit}
+
+/* ---------- shell top bar (identical across variants — do not redesign) ---------- */
+.appbar{
+  display:flex; align-items:center; gap:16px;
+  padding:14px clamp(16px,4vw,40px);
+  border-bottom:1px solid var(--line);
+  background:color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter:blur(8px);
+  position:sticky; top:0; z-index:20;
+}
+.brand{display:flex; align-items:center; gap:11px; color:var(--ink); font-weight:600; font-size:15.5px; letter-spacing:-.01em;}
+.mark{display:grid; grid-template-columns:repeat(3,1fr); gap:2px; width:18px; height:18px; flex:none;}
+.mark span{background:var(--faint); border-radius:1.5px;}
+.mark span:nth-child(1),.mark span:nth-child(5),.mark span:nth-child(9){background:var(--accent);}
+.appbar .sp{flex:1}
+.nav{display:flex; align-items:center; gap:6px;}
+.navpill{
+  font-size:14px; color:var(--muted); text-decoration:none;
+  padding:7px 15px; border-radius:999px; border:1px solid transparent; white-space:nowrap;
+}
+.navpill.on{background:var(--accent); color:#fff; font-weight:500;}
+.navpill:not(.on):hover{border-color:var(--line2); color:var(--ink);}
+.tgl{
+  border:1px solid var(--line2); background:var(--card); color:var(--body);
+  width:34px; height:34px; border-radius:999px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; font-size:15px; flex:none;
+}
+.tgl:hover{color:var(--ink); border-color:var(--faint);}
+.avatar{
+  display:flex; align-items:center; gap:9px; padding-left:6px;
+}
+.avatar .pic{
+  width:30px; height:30px; border-radius:50%; background:var(--card2);
+  border:1px solid var(--line2); display:flex; align-items:center; justify-content:center;
+  font-size:11px; color:var(--muted); font-weight:600; flex:none;
+}
+.avatar .who{font-size:13.5px; color:var(--muted); white-space:nowrap;}
+
+/* ---------- page ---------- */
+.page{max-width:1000px; margin:0 auto; padding:48px clamp(16px,4vw,32px) 140px;}
+.head{max-width:760px; margin:0 auto 30px;}
+.kicker{font-family:var(--mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-ink); margin:0 0 12px;}
+h1{color:var(--ink); font-weight:600; font-size:clamp(26px,3.4vw,34px); letter-spacing:-.02em; margin:0; line-height:1.15;}
+/* progress sentence */
+.prog{
+  display:inline-flex; align-items:center; gap:11px; margin-top:18px;
+  font-size:15px; color:var(--body);
+}
+.prog .dots{display:flex; gap:5px;}
+.prog .dots i{width:7px; height:7px; border-radius:50%; background:var(--line2); transition:background .3s, transform .3s;}
+.prog .dots i.done{background:var(--green);}
+.prog .dots i.here{background:var(--accent); transform:scale(1.35);}
+.prog b{color:var(--ink); font-weight:600;}
+
+/* ---------- stage: card + annotation rail ---------- */
+.stage{position:relative; max-width:760px; margin:0 auto;}
+.stagegrid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 236px;
+  gap:64px; align-items:start;
+}
+.card{
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r-lg);
+  box-shadow:var(--shadow); overflow:hidden;
+}
+.card-h{padding:20px 26px 0;}
+.card-h .t{color:var(--ink); font-weight:600; font-size:17px;}
+.card-h .s{color:var(--muted); font-size:13.5px; margin-top:2px;}
+
+/* rows */
+.row{
+  position:relative; padding:22px 26px; cursor:pointer;
+  border-top:1px solid var(--line);
+  transition:opacity .35s ease, filter .35s ease, background .25s ease;
+}
+.card-h + .row{border-top:1px solid var(--line);}
+.row:first-of-type{border-top:none;}
+.row.dim{opacity:.4; filter:blur(1.6px);}
+.row.dim *{pointer-events:none;}
+.row.active{background:linear-gradient(90deg, var(--accent-soft), transparent 78%);}
+.row.active::before{
+  content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+  background:var(--accent);
+}
+/* connector anchor node on the active row's right edge */
+.row .node{
+  position:absolute; right:-1px; top:50%; transform:translate(50%,-50%) scale(0);
+  width:9px; height:9px; border-radius:50%; background:var(--accent);
+  box-shadow:0 0 0 4px var(--accent-soft); transition:transform .3s ease; z-index:3;
+}
+.row.active .node{transform:translate(50%,-50%) scale(1);}
+
+.row .rowtop{display:flex; align-items:center; gap:12px;}
+.row .num{
+  width:22px; height:22px; border-radius:50%; flex:none;
+  border:1.5px solid var(--line2); color:var(--faint);
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:11px; font-weight:500;
+  transition:.25s;
+}
+.row.active .num{border-color:var(--accent); color:var(--accent-ink); background:var(--accent-soft);}
+.row.done .num{border-color:var(--green-line); background:var(--green-soft); color:var(--green);}
+.row .q{color:var(--ink); font-weight:500; font-size:16px; flex:1;}
+.row .opt-tag{font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--faint); border:1px solid var(--line); border-radius:999px; padding:2px 9px;}
+.row .answer{margin-left:auto; font-size:14px; color:var(--accent-ink); font-weight:500; display:none;}
+.row.done:not(.active) .answer{display:inline;}
+.row.done:not(.active) .opt-tag{display:none;}
+
+/* the interactive body of a row, only meaningful when active */
+.rowbody{
+  margin-top:16px; margin-left:34px;
+  display:grid; grid-template-rows:0fr; opacity:0;
+  transition:grid-template-rows .35s ease, opacity .3s ease;
+}
+.row.active .rowbody{grid-template-rows:1fr; opacity:1;}
+.row:not(.active) .rowbody{margin-top:0;}
+.rowbody > div{overflow:hidden; min-height:0;}
+
+/* type tiles */
+.tiles{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+.tile{
+  display:flex; gap:12px; align-items:flex-start; text-align:left;
+  border:1.5px solid var(--line); background:var(--card); border-radius:var(--r);
+  padding:13px 14px; cursor:pointer; transition:.16s; color:inherit;
+}
+.tile:hover{border-color:var(--line2); background:var(--card2);}
+.tile .ic{width:20px; height:20px; flex:none; color:var(--muted); margin-top:1px;}
+.tile .tl{display:block; color:var(--ink); font-weight:500; font-size:14.5px;}
+.tile .td{display:block; color:var(--muted); font-size:12.5px; line-height:1.4; margin-top:2px;}
+.tile.sel{border-color:var(--accent); background:var(--accent-soft);}
+.tile.sel .ic{color:var(--accent-ink);}
+
+/* pills */
+.pills{display:flex; flex-wrap:wrap; gap:8px;}
+.pill{
+  border:1.5px solid var(--line); background:var(--card); border-radius:999px;
+  padding:9px 15px; cursor:pointer; color:var(--body); font-size:14px; transition:.16s;
+}
+.pill:hover{border-color:var(--line2); background:var(--card2); color:var(--ink);}
+.pill b{color:var(--ink); font-weight:500;}
+.pill .cnt{color:var(--faint); font-size:12.5px; margin-left:5px;}
+.pill.sel{border-color:var(--accent); background:var(--accent-soft); color:var(--ink);}
+.pill.sel .cnt{color:var(--accent-ink);}
+.subq{margin-top:12px;}
+.subq label{display:block; font-size:12.5px; color:var(--muted); margin-bottom:6px;}
+.input{
+  width:100%; border:1.5px solid var(--line2); border-radius:var(--r);
+  background:var(--card); color:var(--ink); font:inherit; font-size:14.5px; padding:10px 13px;
+}
+.input::placeholder{color:var(--faint);}
+.input:focus{outline:2px solid var(--accent-line); border-color:var(--accent);}
+
+/* inline note (mobile only) */
+.note-inline{display:none;}
+
+/* footer / submit */
+.foot{display:flex; align-items:center; gap:16px; padding:22px 26px; border-top:1px solid var(--line); flex-wrap:wrap;}
+.btn{
+  border:none; border-radius:var(--r); padding:12px 24px; font-size:15px; font-weight:600;
+  cursor:pointer; background:var(--accent); color:#fff; transition:.18s;
+}
+.btn:disabled{opacity:.42; cursor:not-allowed;}
+.btn:not(:disabled):hover{filter:brightness(1.06);}
+.foot .fnote{font-size:13px; color:var(--faint);}
+.foot .sp{flex:1;}
+
+/* ---------- annotation rail (desktop) ---------- */
+.rail{position:relative; align-self:stretch;}
+.connector{
+  position:absolute; height:1px; background:var(--accent-line);
+  left:0; width:0; top:0; z-index:1;
+  transition:top .38s cubic-bezier(.4,0,.2,1);
+}
+.anno{
+  position:absolute; left:0; right:0; top:0;
+  border:1px solid var(--accent-line); border-radius:var(--r);
+  background:var(--card); box-shadow:var(--shadow);
+  padding:16px 18px; z-index:2;
+  transition:top .38s cubic-bezier(.4,0,.2,1);
+}
+.anno::before{ /* node where the line meets the card */
+  content:''; position:absolute; left:-5px; top:50%; transform:translateY(-50%);
+  width:9px; height:9px; border-radius:50%; background:var(--card);
+  border:2px solid var(--accent);
+}
+.anno .why-k{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--accent-ink); margin-bottom:9px;
+}
+.anno .why-k .q{width:15px; height:15px; border-radius:50%; background:var(--accent-soft); border:1px solid var(--accent-line); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:10px;}
+.anno .why{color:var(--body); font-size:13.5px; line-height:1.5; margin:0;}
+.anno .eg{
+  margin-top:13px; padding-top:12px; border-top:1px solid var(--line);
+  font-size:12.5px; color:var(--muted); line-height:1.5;
+}
+.anno .eg .lab{display:block; color:var(--faint); font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px;}
+.anno .eg em{color:var(--ink); font-style:normal; font-weight:500;}
+.anno.swap{opacity:0; transform:translateY(4px);}
+.anno{transition:top .38s cubic-bezier(.4,0,.2,1), opacity .18s ease, transform .18s ease;}
+
+/* ---------- state pill (bottom-left) ---------- */
+.state{
+  position:fixed; left:16px; bottom:16px; z-index:50;
+  font-family:var(--mono); font-size:10px; color:var(--muted);
+  background:var(--card); border:1px solid var(--line2); border-radius:8px;
+  box-shadow:var(--shadow); max-width:min(340px,calc(100vw - 32px));
+}
+.state .lab{padding:6px 11px; cursor:pointer; display:flex; align-items:center; gap:7px; user-select:none;}
+.state .lab .d{width:6px; height:6px; border-radius:50%; background:var(--faint);}
+.state .json{display:none; padding:0 11px 10px; white-space:pre; overflow:auto; max-height:40vh; color:var(--body); line-height:1.5;}
+.state.open .json{display:block;}
+.state.flash{animation:flash .8s ease;}
+@keyframes flash{0%,100%{border-color:var(--line2)} 30%{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft), var(--shadow)}}
+
+/* ---------- responsive ---------- */
+@media (max-width:860px){
+  .stagegrid{grid-template-columns:1fr; gap:0;}
+  .rail{display:none;}
+  .row .node{display:none;}
+  .note-inline{
+    display:block; margin-top:14px; margin-left:34px;
+    border-left:2px solid var(--accent-line); padding:4px 0 4px 14px;
+  }
+  .note-inline .why-k{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:var(--mono); font-size:10px; letter-spacing:.07em; text-transform:uppercase;
+    color:var(--accent-ink); margin-bottom:6px;
+  }
+  .note-inline .why{margin:0; font-size:13px; color:var(--body); line-height:1.5;}
+  .note-inline .eg{margin-top:10px; font-size:12px; color:var(--muted); line-height:1.5;}
+  .note-inline .eg .lab{display:block; color:var(--faint); font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px;}
+  .note-inline .eg em{color:var(--ink); font-style:normal; font-weight:500;}
+  .row:not(.active) .note-inline{display:none;}
+  .tiles{grid-template-columns:1fr;}
+  .avatar .who{display:none;}
+}
+@media (max-width:420px){
+  .page{padding-top:32px;}
+  .nav .navpill:not(.on){display:none;}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition:none !important; animation:none !important;}
+  .row .node{transform:translate(50%,-50%) scale(1);}
+}
+</style>
+</head>
+<body>
+
+<!-- shell top bar -->
+<header class="appbar">
+  <div class="brand">
+    <div class="mark"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    Software Factory
+  </div>
+  <div class="sp"></div>
+  <nav class="nav">
+    <a class="navpill on" href="#">New request</a>
+    <a class="navpill" href="#">My requests</a>
+  </nav>
+  <button class="tgl" id="tgl" title="Toggle theme" aria-label="Toggle light and dark">☾</button>
+  <div class="avatar">
+    <div class="pic">JD</div>
+    <span class="who">Jordan D.</span>
+  </div>
+</header>
+
+<main class="page">
+  <div class="head">
+    <p class="kicker">New request · Basics</p>
+    <h1>A few details will help us get this right.</h1>
+    <div class="prog" id="prog">
+      <span class="dots" id="dots"><i></i><i></i><i></i></span>
+      <span id="progtext"><b>2 quick facts</b>, then the interview.</span>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="stagegrid">
+      <!-- the single card, three rows -->
+      <section class="card" id="card">
+        <div class="card-h">
+          <div class="t">Tell us who this is for</div>
+          <div class="s">Just the essentials — the interview fills in everything else.</div>
+        </div>
+
+        <!-- ROW 1 · type -->
+        <div class="row" data-row="type"
+             data-why="This decides who reviews it and how fast it moves — a broken thing gets triaged, a brand-new app gets scoped."
+             data-eg-lab="For example"
+             data-eg="Most people start with <em>&ldquo;Fix a problem&rdquo;</em> — e.g. the report that breaks every Monday.">
+          <div class="rowtop">
+            <span class="num">1</span>
+            <span class="q">What kind of request is this?</span>
+            <span class="answer" data-answer></span>
+          </div>
+          <div class="rowbody"><div>
+            <div class="tiles" data-group="type">
+              <button class="tile" data-val="Fix a problem">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2.2-.5-.5-2.2 2.3-2.3z"/></svg>
+                <span><span class="tl">Fix a problem</span><span class="td">Something's broken or painful.</span></span>
+              </button>
+              <button class="tile" data-val="Improve an app">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6m0 6v6M5.6 5.6l4.2 4.2m4.4 4.4 4.2 4.2M3 12h6m6 0h6"/></svg>
+                <span><span class="tl">Improve an app</span><span class="td">Make an existing tool better.</span></span>
+              </button>
+              <button class="tile" data-val="Build a new app">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5v9L12 21l9-4.5v-9L12 3zm0 0v18M3 7.5 12 12l9-4.5"/></svg>
+                <span><span class="tl">Build a new app</span><span class="td">Start something from scratch.</span></span>
+              </button>
+              <button class="tile" data-val="Something else">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>
+                <span><span class="tl">Something else</span><span class="td">Not sure yet — we'll figure it out.</span></span>
+              </button>
+            </div>
+            <div class="note-inline"></div>
+          </div></div>
+        </div>
+
+        <!-- ROW 2 · audience -->
+        <div class="row" data-row="audience"
+             data-why="How many people feel this tells us how much to invest and who to loop in."
+             data-eg-lab="A concrete answer"
+             data-eg="<em>My team</em> — e.g. the 6 people on quality who file these reports.">
+          <div class="rowtop">
+            <span class="num">2</span>
+            <span class="q">Who's going to use it?</span>
+            <span class="answer" data-answer></span>
+          </div>
+          <div class="rowbody"><div>
+            <div class="pills" data-group="audience">
+              <button class="pill" data-val="Just me"><b>Just me</b><span class="cnt">1</span></button>
+              <button class="pill" data-val="My team"><b>My team</b><span class="cnt">2–10</span></button>
+              <button class="pill" data-val="A department"><b>A department</b><span class="cnt">10–50</span></button>
+              <button class="pill" data-val="Lots of us"><b>Lots of us</b><span class="cnt">50+</span></button>
+            </div>
+            <div class="subq">
+              <label for="who">Who exactly? <span style="color:var(--faint)">(optional)</span></label>
+              <input class="input" id="who" type="text" placeholder="e.g. the 6 people on quality who file these reports" />
+            </div>
+            <div class="note-inline"></div>
+          </div></div>
+        </div>
+
+        <!-- ROW 3 · impact (optional) -->
+        <div class="row" data-row="impact"
+             data-why="A rough sense of severity sets the priority. Be honest — nothing here is binding, and the interview can revisit it."
+             data-eg-lab="A concrete answer"
+             data-eg="<em>A real time-sink</em> — it works today, but it eats an afternoon every week.">
+          <div class="rowtop">
+            <span class="num">3</span>
+            <span class="q">How big a deal is it?</span>
+            <span class="opt-tag">optional</span>
+            <span class="answer" data-answer></span>
+          </div>
+          <div class="rowbody"><div>
+            <div class="pills" data-group="impact">
+              <button class="pill" data-val="Nice to have"><b>Nice to have</b></button>
+              <button class="pill" data-val="A real time-sink"><b>A real time-sink</b></button>
+              <button class="pill" data-val="Business-critical"><b>Business-critical</b></button>
+            </div>
+            <div class="note-inline"></div>
+          </div></div>
+        </div>
+
+        <div class="foot">
+          <button class="btn" id="start" disabled>Start the interview</button>
+          <span class="sp"></span>
+          <span class="fnote" id="fnote">Answer the first two to continue.</span>
+        </div>
+      </section>
+
+      <!-- annotation rail (desktop) -->
+      <div class="rail" id="rail">
+        <div class="connector" id="connector"></div>
+        <div class="anno" id="anno">
+          <span class="why-k"><span class="q">?</span> Why we ask</span>
+          <p class="why" id="annoWhy"></p>
+          <div class="eg"><span class="lab" id="annoEgLab">For example</span><span id="annoEg"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- state readout -->
+<div class="state" id="state">
+  <div class="lab" id="stateLab"><span class="d"></span> state</div>
+  <div class="json" id="stateJson">{}</div>
+</div>
+
+<script>
+(function(){
+  var reduce = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+  /* theme toggle */
+  var tgl = document.getElementById('tgl');
+  function syncTgl(){ tgl.textContent = document.documentElement.classList.contains('dark') ? '☾' : '☀'; }
+  tgl.addEventListener('click', function(){
+    document.documentElement.classList.toggle('dark'); syncTgl();
+    requestAnimationFrame(positionAnno);
+  });
+  syncTgl();
+
+  /* state */
+  var state = { type:null, audience:null, who:'', impact:null };
+  var rows = Array.prototype.slice.call(document.querySelectorAll('.row'));
+  var activeKey = 'type';
+
+  var anno = document.getElementById('anno');
+  var annoWhy = document.getElementById('annoWhy');
+  var annoEg = document.getElementById('annoEg');
+  var annoEgLab = document.getElementById('annoEgLab');
+  var connector = document.getElementById('connector');
+  var stage = document.getElementById('stage');
+  var rail = document.getElementById('rail');
+  var card = document.getElementById('card');
+
+  function rowByKey(k){ return rows.filter(function(r){return r.dataset.row===k;})[0]; }
+
+  /* place the floating annotation + connector against the active row */
+  function positionAnno(){
+    if (rail.offsetParent === null) return; // hidden (mobile)
+    var r = rowByKey(activeKey);
+    if(!r) return;
+    var sRect = stage.getBoundingClientRect();
+    var rRect = r.getBoundingClientRect();
+    var cRect = card.getBoundingClientRect();
+    var railRect = rail.getBoundingClientRect();
+    var centerY = rRect.top - sRect.top + rRect.height/2;
+    // connector: from card right edge to rail left edge
+    connector.style.top = centerY + 'px';
+    connector.style.left = (cRect.right - sRect.left) + 'px';
+    connector.style.width = Math.max(0,(railRect.left - cRect.right)) + 'px';
+    // annotation card centered on the line, clamped within stage
+    var aH = anno.offsetHeight;
+    var railTop = railRect.top - sRect.top;
+    var top = centerY - railTop - aH/2;
+    var maxTop = stage.offsetHeight - railTop - aH;
+    top = Math.max(0, Math.min(top, maxTop));
+    anno.style.top = top + 'px';
+  }
+
+  function fillNote(el, r){
+    el.innerHTML =
+      '<span class="why-k"><span class="q">?</span> Why we ask</span>' +
+      '<p class="why">' + r.dataset.why + '</p>' +
+      '<div class="eg"><span class="lab">'+ (r.dataset.egLab||'For example') +'</span>' + r.dataset.eg + '</div>';
+  }
+
+  function setActive(key, animate){
+    activeKey = key;
+    rows.forEach(function(r){
+      var k = r.dataset.row;
+      var isActive = (k===key);
+      r.classList.toggle('active', isActive);
+      r.classList.toggle('dim', !isActive);
+      // keep inline (mobile) note in sync for the active row
+      var inline = r.querySelector('.note-inline');
+      if(inline) fillNote(inline, r);
+    });
+    var r = rowByKey(key);
+    // swap desktop annotation content with a quick fade
+    var apply = function(){
+      annoWhy.innerHTML = r.dataset.why;
+      annoEg.innerHTML = r.dataset.eg;
+      annoEgLab.textContent = r.dataset.egLab || 'For example';
+      anno.classList.remove('swap');
+      requestAnimationFrame(positionAnno);
+    };
+    if(animate && !reduce){
+      anno.classList.add('swap');
+      setTimeout(apply, 150);
+    } else {
+      apply();
+    }
+  }
+
+  /* advance to the next unanswered row after a pick */
+  function nextUnanswered(fromKey){
+    var order = ['type','audience','impact'];
+    var start = order.indexOf(fromKey);
+    for(var i=start+1;i<order.length;i++){
+      var k = order[i];
+      if(!state[k]) return k;
+    }
+    return null; // all after are answered
+  }
+
+  var ANSWER_KEY = { type:'type', audience:'audience', impact:'impact' };
+
+  function selectValue(group, val, el){
+    // toggle single-select within the group
+    var container = el.parentElement;
+    container.querySelectorAll('.tile,.pill').forEach(function(n){ n.classList.remove('sel'); });
+    el.classList.add('sel');
+    state[group] = val;
+    var r = rowByKey(group);
+    r.classList.add('done');
+    r.querySelector('[data-answer]').textContent = val;
+    render();
+    var nxt = nextUnanswered(group);
+    if(nxt){
+      setActive(nxt, true);
+    } else {
+      // stay on the current row (let user tweak) but drop spotlight lock softly
+      setActive(group, false);
+    }
+  }
+
+  // wire tiles + pills
+  document.querySelectorAll('[data-group]').forEach(function(g){
+    var group = g.dataset.group;
+    g.querySelectorAll('[data-val]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        selectValue(group, btn.dataset.val, btn);
+      });
+    });
+  });
+
+  // free-text "who"
+  var who = document.getElementById('who');
+  who.addEventListener('input', function(){ state.who = who.value.trim(); render(); });
+  who.addEventListener('focus', function(){ if(activeKey!=='audience') setActive('audience', true); });
+
+  // clicking a row refocuses it
+  rows.forEach(function(r){
+    r.addEventListener('click', function(){ if(activeKey!==r.dataset.row) setActive(r.dataset.row, true); });
+  });
+
+  /* progress + submit */
+  var dots = document.getElementById('dots').children;
+  var progtext = document.getElementById('progtext');
+  var startBtn = document.getElementById('start');
+  var fnote = document.getElementById('fnote');
+  var order = ['type','audience','impact'];
+
+  function render(){
+    // dots reflect the three rows
+    order.forEach(function(k,i){
+      var d = dots[i];
+      d.classList.toggle('done', !!state[k]);
+      d.classList.toggle('here', activeKey===k && !state[k]);
+    });
+    var reqDone = (state.type?1:0) + (state.audience?1:0);
+    if(reqDone===0){
+      progtext.innerHTML = '<b>2 quick facts</b>, then the interview.';
+    } else if(reqDone===1){
+      progtext.innerHTML = '<b>1 quick fact left</b>, then the interview.';
+    } else {
+      progtext.innerHTML = "<b>You're set</b> — start the interview whenever you like.";
+    }
+    var ready = reqDone===2;
+    startBtn.disabled = !ready;
+    fnote.textContent = ready ? (state.impact ? 'All set.' : "Add impact if you like — it's optional.") : 'Answer the first two to continue.';
+    // state pill
+    stateJson.textContent = JSON.stringify({
+      type: state.type, audience: state.audience,
+      who: state.who || null, impact: state.impact
+    }, null, 2);
+  }
+
+  startBtn.addEventListener('click', function(){
+    if(startBtn.disabled) return;
+    var s = document.getElementById('state');
+    s.classList.add('open','flash');
+    setTimeout(function(){ s.classList.remove('flash'); }, 800);
+  });
+
+  /* state pill */
+  var stateJson = document.getElementById('stateJson');
+  document.getElementById('stateLab').addEventListener('click', function(){
+    document.getElementById('state').classList.toggle('open');
+  });
+
+  /* boot */
+  setActive('type', false);
+  render();
+  window.addEventListener('resize', positionAnno);
+  window.addEventListener('load', positionAnno);
+  // re-measure after fonts settle
+  if(document.fonts && document.fonts.ready){ document.fonts.ready.then(positionAnno); }
+  setTimeout(positionAnno, 60);
+  setTimeout(positionAnno, 300);
+})();
+</script>
+</body>
+</html>

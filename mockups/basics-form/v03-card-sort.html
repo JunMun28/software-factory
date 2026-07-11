@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Basics · v03 — Visual card sort + blast radius</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#FAF8F5; --card:#FFFFFF; --card2:#F5F2ED;
+  --ink:#211C28; --body:#3B3444; --muted:#6E6878; --faint:#9A93A6;
+  --line:#E9E4DC; --line2:#D9D3C9;
+  --accent:#BD03F7; --accent-ink:#8A02B5; --accent-soft:rgba(189,3,247,.07); --accent-line:rgba(189,3,247,.35);
+  --green:#1E7D4F; --green-soft:#E7F3EC; --green-line:#BCDCC9;
+  --amber:#8A5A0A; --amber-strong:#B47408; --amber-soft:#FBF3E1; --amber-line:#EAD9AC;
+  --red:#B3362A; --red-soft:#FBECEA; --red-line:#EFC7C1;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --sans:'Space Grotesk',system-ui,sans-serif;
+  --r:10px; --r-lg:16px;
+  --shadow:0 1px 2px rgba(40,30,60,.05), 0 8px 28px -18px rgba(40,30,60,.25);
+  --shadow-lg:0 2px 4px rgba(40,30,60,.06), 0 24px 60px -28px rgba(40,30,60,.4);
+}
+.dark{
+  --bg:#16121B; --card:#1F1A26; --card2:#282230;
+  --ink:#F2EEF7; --body:#D6D0DF; --muted:#A29AAE; --faint:#7A7288;
+  --line:#2F2939; --line2:#3D3648;
+  --accent:#D65CFF; --accent-ink:#E393FF; --accent-soft:rgba(214,92,255,.1); --accent-line:rgba(214,92,255,.4);
+  --green:#5FC58F; --green-soft:#1B2B22; --green-line:#2E4A3A;
+  --amber:#E4B45E; --amber-strong:#E4B45E; --amber-soft:#2E2617; --amber-line:#4A3D22;
+  --red:#F08C80; --red-soft:#2E1B18; --red-line:#4A2C27;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 28px -18px rgba(0,0,0,.6);
+  --shadow-lg:0 2px 6px rgba(0,0,0,.4), 0 30px 70px -30px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--body);
+  font-family:var(--sans); font-size:16px; line-height:1.6;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  transition:background .3s ease, color .3s ease;
+}
+h1,h2,h3{color:var(--ink); font-weight:600; margin:0; letter-spacing:-.015em;}
+
+/* ---------- app bar ---------- */
+.appbar{
+  position:sticky; top:0; z-index:20;
+  display:flex; align-items:center; gap:16px;
+  padding:14px clamp(16px,4vw,40px);
+  background:color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter:saturate(1.4) blur(14px);
+  border-bottom:1px solid var(--line);
+}
+.logo{display:flex; align-items:center; gap:11px; color:var(--ink); font-weight:600; font-size:15.5px; letter-spacing:-.01em;}
+.mark{width:20px; height:20px; display:grid; grid-template-columns:repeat(3,1fr); grid-gap:2.5px; flex:none;}
+.mark i{background:var(--faint); border-radius:1.5px; display:block; width:100%; aspect-ratio:1;}
+.mark i:nth-child(1),.mark i:nth-child(5),.mark i:nth-child(9){background:var(--accent);}
+.appbar .sp{flex:1;}
+.nav{display:flex; gap:6px; align-items:center;}
+.pill{
+  font:inherit; font-size:14px; font-weight:500; color:var(--muted);
+  border:1px solid transparent; background:none; border-radius:999px;
+  padding:7px 15px; cursor:pointer; text-decoration:none; white-space:nowrap;
+  transition:background .18s, color .18s, border-color .18s;
+}
+.pill:hover{color:var(--ink); background:var(--card2);}
+.pill.on{color:#fff; background:var(--accent); border-color:var(--accent); box-shadow:0 6px 18px -8px var(--accent);}
+.dark .pill.on{color:#160a1c;}
+.icobtn{
+  width:38px; height:38px; flex:none; display:flex; align-items:center; justify-content:center;
+  border-radius:999px; border:1px solid var(--line2); background:var(--card); color:var(--body);
+  cursor:pointer; font-size:16px; transition:background .18s, transform .18s;
+}
+.icobtn:hover{background:var(--card2);}
+.icobtn:active{transform:scale(.94);}
+.avatar{
+  display:flex; align-items:center; gap:9px; padding:4px 12px 4px 5px;
+  border:1px solid var(--line2); border-radius:999px; background:var(--card);
+}
+.avatar .a{width:28px; height:28px; border-radius:50%; flex:none;
+  background:linear-gradient(135deg,var(--accent),var(--accent-ink)); color:#fff;
+  display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600;}
+.dark .avatar .a{color:#160a1c;}
+.avatar .who{font-size:13px; color:var(--muted); line-height:1.1;}
+.avatar .who b{display:block; color:var(--ink); font-size:13.5px; font-weight:500;}
+
+/* ---------- page ---------- */
+.page{max-width:760px; margin:0 auto; padding:44px clamp(18px,5vw,28px) 160px;}
+.hero{text-align:center; margin-bottom:40px;}
+.kicker{
+  display:inline-flex; align-items:center; gap:8px;
+  font:var(--mono); font-size:12px; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--accent-ink); background:var(--accent-soft); border:1px solid var(--accent-line);
+  padding:5px 13px; border-radius:999px; margin-bottom:18px;
+}
+.kicker .dotpulse{width:6px; height:6px; border-radius:50%; background:var(--accent);}
+.hero h1{font-size:clamp(28px,4.4vw,38px); line-height:1.12;}
+.hero p{color:var(--muted); font-size:17px; margin:14px auto 0; max-width:480px;}
+
+/* ---------- sections / staging ---------- */
+.sec{margin-top:30px; position:relative; transition:filter .5s ease, opacity .5s ease, transform .5s ease;}
+.sec.locked{filter:blur(6px) saturate(.5); opacity:.5; pointer-events:none; transform:scale(.99); user-select:none;}
+.sechead{display:flex; align-items:center; gap:14px; margin-bottom:18px;}
+.snum{
+  width:30px; height:30px; flex:none; border-radius:9px;
+  display:flex; align-items:center; justify-content:center;
+  font:var(--mono); font-size:13px; font-weight:500;
+  color:var(--muted); background:var(--card2); border:1px solid var(--line);
+  transition:background .3s, color .3s, border-color .3s;
+}
+.sec.answered .snum{background:var(--green-soft); border-color:var(--green-line); color:var(--green);}
+.sec.answered .snum::after{content:'✓';}
+.sec.answered .snum span{display:none;}
+.sechead h2{font-size:20px;}
+.sechead .sub{font-size:13.5px; color:var(--muted); margin-top:1px;}
+.sechead .htxt{flex:1; min-width:0;}
+.picked-tag{
+  font:var(--mono); font-size:12px; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent-line);
+  padding:4px 11px; border-radius:999px; white-space:nowrap;
+  opacity:0; transform:translateY(3px); transition:opacity .3s, transform .3s;
+}
+.sec.answered .picked-tag{opacity:1; transform:none;}
+
+/* ---------- type cards ---------- */
+.typegrid{display:grid; grid-template-columns:repeat(2,1fr); gap:14px;}
+.tcard{
+  position:relative; text-align:left; cursor:pointer;
+  border:1.5px solid var(--line); border-radius:var(--r-lg); background:var(--card);
+  padding:20px 20px 18px; overflow:hidden;
+  transition:border-color .2s, background .2s, transform .18s, box-shadow .2s;
+}
+.tcard:hover{transform:translateY(-3px); box-shadow:var(--shadow-lg); border-color:var(--line2);}
+.tcard:active{transform:translateY(-1px);}
+.tcard .art{width:52px; height:52px; margin-bottom:12px; color:var(--faint); transition:color .2s;}
+.tcard .art svg{width:100%; height:100%; display:block;}
+.tcard h3{font-size:16.5px; color:var(--ink);}
+.tcard p{margin:4px 0 0; font-size:13.5px; color:var(--muted); line-height:1.45;}
+.tcard .tick{
+  position:absolute; top:14px; right:14px; width:24px; height:24px; border-radius:50%;
+  border:1.5px solid var(--line2); display:flex; align-items:center; justify-content:center;
+  color:transparent; font-size:13px; transition:all .2s;
+}
+.tcard.sel{border-color:var(--accent); background:var(--accent-soft); box-shadow:0 0 0 1px var(--accent) inset;}
+.tcard.sel .art{color:var(--accent-ink);}
+.tcard.sel .tick{background:var(--accent); border-color:var(--accent); color:#fff;}
+.dark .tcard.sel .tick{color:#160a1c;}
+.tcard .glow{position:absolute; inset:0; background:radial-gradient(120% 80% at 15% 0%, var(--accent-soft), transparent 60%); opacity:0; transition:opacity .3s; pointer-events:none;}
+.tcard.sel .glow{opacity:1;}
+
+/* ---------- blast radius (audience) ---------- */
+.radius{
+  display:grid; grid-template-columns:minmax(0,1fr) 250px; gap:26px; align-items:center;
+  border:1px solid var(--line); border-radius:var(--r-lg); background:var(--card);
+  padding:26px; box-shadow:var(--shadow);
+}
+.ringwrap{position:relative; width:100%; max-width:380px; margin:0 auto; aspect-ratio:1;}
+.ringwrap svg{width:100%; height:100%; display:block; overflow:visible;}
+.ring{cursor:pointer; transition:fill .3s, stroke .3s, opacity .3s;}
+.ringhit{cursor:pointer; fill:transparent;}
+.ring-band{fill:var(--card2); stroke:var(--line2); stroke-width:1.5; opacity:.55;}
+.ring-band.reach{fill:var(--accent-soft); stroke:var(--accent-line); opacity:1;}
+.ring-band.edge{stroke:var(--accent); stroke-width:2.5;}
+.ringwrap:hover .ring-band{opacity:.75;}
+.dot-people{fill:var(--faint); transition:fill .3s, opacity .3s;}
+.dot-people.lit{fill:var(--accent-ink);}
+.you-body{fill:var(--muted); transition:fill .3s;}
+.reach .you-body, .ring-band.edge ~ * .you-body{fill:var(--accent-ink);}
+.centerlabel{fill:var(--faint); font:500 11px var(--mono);}
+
+.readout{display:flex; flex-direction:column; gap:2px;}
+.readout .count{font-size:34px; font-weight:600; color:var(--ink); letter-spacing:-.02em; line-height:1.1;}
+.readout .count .u{font-size:16px; color:var(--muted); font-weight:500;}
+.readout .scope{font:var(--mono); font-size:12.5px; color:var(--accent-ink); text-transform:uppercase; letter-spacing:.04em; margin-top:2px;}
+.readout .hint{font-size:13px; color:var(--muted); margin-top:8px; line-height:1.45; min-height:38px;}
+.legend{list-style:none; margin:16px 0 0; padding:0; display:flex; flex-direction:column; gap:2px;}
+.legend li{
+  display:flex; align-items:center; gap:10px; cursor:pointer;
+  padding:7px 10px; border-radius:9px; border:1px solid transparent;
+  font-size:13.5px; color:var(--muted); transition:background .16s, color .16s, border-color .16s;
+}
+.legend li:hover{background:var(--card2);}
+.legend li .sw{width:11px; height:11px; border-radius:3px; flex:none; background:var(--line2);}
+.legend li b{color:var(--body); font-weight:500;}
+.legend li small{color:var(--muted); margin-left:auto; font:var(--mono); font-size:11px;}
+.legend li.on{background:var(--accent-soft); border-color:var(--accent-line); color:var(--ink);}
+.legend li.on .sw{background:var(--accent);}
+.legend li.on b{color:var(--ink);}
+.legend li.on small{color:var(--accent-ink);}
+
+/* ---------- impact cards ---------- */
+.impgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
+.icard{
+  position:relative; cursor:pointer; text-align:center;
+  border:1.5px solid var(--line); border-radius:var(--r-lg); background:var(--card);
+  padding:24px 16px 20px; overflow:hidden;
+  transition:border-color .2s, background .2s, transform .18s, box-shadow .2s;
+}
+.icard:hover{transform:translateY(-3px); box-shadow:var(--shadow-lg); border-color:var(--line2);}
+.icard .art{width:48px; height:48px; margin:0 auto 12px; color:var(--faint); transition:color .2s;}
+.icard .art svg{width:100%; height:100%;}
+.icard h3{font-size:15.5px; color:var(--ink);}
+.icard p{margin:5px 0 0; font-size:12.5px; color:var(--muted); line-height:1.45;}
+.icard.sel{border-color:var(--accent); background:var(--accent-soft); box-shadow:0 0 0 1px var(--accent) inset;}
+.icard.sel .art{color:var(--accent-ink);}
+.icard .glow{position:absolute; inset:0; background:radial-gradient(100% 70% at 50% 0%, var(--accent-soft), transparent 65%); opacity:0; transition:opacity .3s; pointer-events:none;}
+.icard.sel .glow{opacity:1;}
+
+/* ---------- footer / submit ---------- */
+.foot{margin-top:44px; display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap;}
+.foot .note{font-size:13.5px; color:var(--muted); max-width:300px;}
+.foot .note b{color:var(--ink); font-weight:500;}
+.start{
+  font:inherit; font-size:16px; font-weight:600; color:#fff;
+  background:var(--accent); border:none; border-radius:999px;
+  padding:15px 30px; cursor:pointer; display:inline-flex; align-items:center; gap:10px;
+  transition:transform .18s, box-shadow .25s, filter .2s;
+  box-shadow:0 10px 30px -12px var(--accent);
+}
+.dark .start{color:#160a1c;}
+.start:hover{transform:translateY(-2px); box-shadow:0 16px 40px -14px var(--accent);}
+.start:active{transform:translateY(0);}
+.start.ready{animation:readypulse 2s ease-in-out infinite;}
+.start .arw{transition:transform .2s;}
+.start:hover .arw{transform:translateX(3px);}
+@keyframes readypulse{0%,100%{box-shadow:0 10px 30px -12px var(--accent);}50%{box-shadow:0 10px 44px -8px var(--accent);}}
+
+/* ---------- state pill ---------- */
+.state{
+  position:fixed; left:14px; bottom:14px; z-index:40;
+  font:var(--mono); font-size:10px; line-height:1.55; color:var(--muted);
+  background:var(--card); border:1px solid var(--line2); border-radius:9px;
+  box-shadow:var(--shadow); max-width:min(320px,80vw); overflow:hidden;
+  transition:background .2s;
+}
+.state .head{display:flex; align-items:center; gap:7px; padding:7px 11px; cursor:pointer; user-select:none;}
+.state .head .g{width:6px; height:6px; border-radius:50%; background:var(--faint);}
+.state .head b{color:var(--body); font-weight:500; letter-spacing:.04em;}
+.state .head .cnt{margin-left:auto; color:var(--faint);}
+.state pre{margin:0; padding:0 11px 11px; white-space:pre-wrap; word-break:break-word; color:var(--faint); display:none;}
+.state.open pre{display:block;}
+.state.flash{outline:2px solid var(--accent); outline-offset:0;}
+
+/* ---------- responsive ---------- */
+@media (max-width:760px){
+  .radius{grid-template-columns:1fr; gap:20px; padding:20px;}
+  .readout{align-items:center; text-align:center;}
+  .readout .hint{min-height:0;}
+  .impgrid{grid-template-columns:1fr; gap:12px;}
+  .icard{display:flex; align-items:center; text-align:left; gap:16px; padding:16px 18px;}
+  .icard .art{margin:0; width:42px; height:42px; flex:none;}
+  .avatar .who{display:none;}
+  .nav .pill.ghost{display:none;}
+}
+@media (max-width:420px){
+  .typegrid{grid-template-columns:1fr;}
+  .hero h1{font-size:26px;}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition-duration:.001ms !important; animation:none !important;}
+  .sec{transition:none;}
+}
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <div class="logo">
+    <div class="mark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    Software Factory
+  </div>
+  <div class="sp"></div>
+  <nav class="nav">
+    <a class="pill on" href="#">New request</a>
+    <a class="pill ghost" href="#">My requests</a>
+  </nav>
+  <button class="icobtn" id="theme" aria-label="Toggle theme" title="Toggle light / dark">☀</button>
+  <div class="avatar"><span class="a">JD</span><span class="who">Jordan D.<b>Product</b></span></div>
+</header>
+
+<main class="page">
+  <div class="hero">
+    <span class="kicker"><span class="dotpulse"></span>Step 1 of 2 · The basics</span>
+    <h1>A few details will help us get this right.</h1>
+    <p>Point at what fits. No typing needed, and the AI interview handles the rest.</p>
+  </div>
+
+  <!-- ============ S1 · TYPE ============ -->
+  <section class="sec answered-target" id="s1">
+    <div class="sechead">
+      <div class="snum"><span>1</span></div>
+      <div class="htxt">
+        <h2>What kind of request is this?</h2>
+        <div class="sub">Pick the one that fits best.</div>
+      </div>
+      <span class="picked-tag" id="tag1"></span>
+    </div>
+    <div class="typegrid" id="typegrid">
+      <button class="tcard" data-v="fix" data-label="Fix a problem">
+        <div class="glow"></div>
+        <div class="art"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M30 12a7 7 0 0 0-9.4 8.3L9 31.9a3.4 3.4 0 0 0 4.8 4.8l11.6-11.6A7 7 0 0 0 34 15.6l-4 4-4.3-1.4L24.3 14z"/>
+          <circle cx="12.2" cy="33.6" r="1"/></svg></div>
+        <h3>Fix a problem</h3>
+        <p>Something's broken, slow, or wrong and needs a fix.</p>
+        <div class="tick">✓</div>
+      </button>
+      <button class="tcard" data-v="improve" data-label="Improve an app">
+        <div class="glow"></div>
+        <div class="art"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="8" y="10" width="32" height="22" rx="3"/>
+          <path d="M8 16h32"/>
+          <path d="M18 40h12M24 32v8"/>
+          <path d="M20 25l4-5 4 3 4-6"/></svg></div>
+        <h3>Improve an app</h3>
+        <p>An app already exists but should do more or better.</p>
+        <div class="tick">✓</div>
+      </button>
+      <button class="tcard" data-v="build" data-label="Build a new app">
+        <div class="glow"></div>
+        <div class="art"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M24 7l14 8v18l-14 8-14-8V15z"/>
+          <path d="M10 15l14 8 14-8M24 23v18"/>
+          <path d="M24 16v6M21 19h6" stroke-width="2.2"/></svg></div>
+        <h3>Build a new app</h3>
+        <p>Nothing exists yet. Start from a blank page.</p>
+        <div class="tick">✓</div>
+      </button>
+      <button class="tcard" data-v="other" data-label="Something else">
+        <div class="glow"></div>
+        <div class="art"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 14a10 10 0 0 1 20 0c0 5-4 6-6 8s-2 4-2 4" stroke-dasharray="0 0"/>
+          <circle cx="24" cy="39" r="1.4"/>
+          <path d="M22 26c0-2 2-3 4-4" opacity=".5"/></svg></div>
+        <h3>Something else</h3>
+        <p>Not sure yet. We'll figure it out together.</p>
+        <div class="tick">✓</div>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ S2 · AUDIENCE (BLAST RADIUS) ============ -->
+  <section class="sec locked" id="s2">
+    <div class="sechead">
+      <div class="snum"><span>2</span></div>
+      <div class="htxt">
+        <h2>Who feels it if this works?</h2>
+        <div class="sub">Click the ring that matches the blast radius.</div>
+      </div>
+      <span class="picked-tag" id="tag2"></span>
+    </div>
+    <div class="radius">
+      <div class="ringwrap">
+        <svg viewBox="0 0 400 400" id="rings" role="group" aria-label="Blast radius picker">
+          <!-- painted largest→smallest so inner disks form annulus hit-zones -->
+          <circle class="ring ring-band" data-v="org"  data-i="4" cx="200" cy="200" r="190"/>
+          <circle class="ring ring-band" data-v="dept" data-i="3" cx="200" cy="200" r="142"/>
+          <circle class="ring ring-band" data-v="team" data-i="2" cx="200" cy="200" r="92"/>
+          <circle class="ring ring-band" data-v="me"   data-i="1" cx="200" cy="200" r="46"/>
+          <!-- decorative people dots (outer bands) -->
+          <g class="people" pointer-events="none">
+            <!-- team band ~ r68 -->
+            <circle class="dot-people d-team" cx="200" cy="128" r="4.5"/>
+            <circle class="dot-people d-team" cx="255" cy="230" r="4.5"/>
+            <circle class="dot-people d-team" cx="150" cy="245" r="4.5"/>
+            <!-- dept band ~ r118 -->
+            <circle class="dot-people d-dept" cx="200" cy="90" r="4.5"/>
+            <circle class="dot-people d-dept" cx="300" cy="170" r="4.5"/>
+            <circle class="dot-people d-dept" cx="285" cy="270" r="4.5"/>
+            <circle class="dot-people d-dept" cx="120" cy="285" r="4.5"/>
+            <circle class="dot-people d-dept" cx="102" cy="150" r="4.5"/>
+            <!-- org band ~ r166 -->
+            <circle class="dot-people d-org" cx="200" cy="48" r="4.5"/>
+            <circle class="dot-people d-org" cx="335" cy="120" r="4.5"/>
+            <circle class="dot-people d-org" cx="360" cy="235" r="4.5"/>
+            <circle class="dot-people d-org" cx="290" cy="330" r="4.5"/>
+            <circle class="dot-people d-org" cx="160" cy="352" r="4.5"/>
+            <circle class="dot-people d-org" cx="62"  cy="290" r="4.5"/>
+            <circle class="dot-people d-org" cx="45"  cy="165" r="4.5"/>
+            <circle class="dot-people d-org" cx="88"  cy="70"  r="4.5"/>
+          </g>
+          <!-- center "you" figure -->
+          <g pointer-events="none">
+            <circle class="you-body" cx="200" cy="188" r="9"/>
+            <path class="you-body" d="M184 216c0-9 7-15 16-15s16 6 16 15z" fill="currentColor"/>
+          </g>
+        </svg>
+      </div>
+      <div>
+        <div class="readout">
+          <div class="count" id="rcount">—</div>
+          <div class="scope" id="rscope">pick a ring</div>
+          <div class="hint" id="rhint">The wider the ring, the more people this touches, and the more eyes review it.</div>
+        </div>
+        <ul class="legend" id="legend">
+          <li data-v="me"><span class="sw"></span><b>Just me</b><small>1</small></li>
+          <li data-v="team"><span class="sw"></span><b>My team</b><small>2–10</small></li>
+          <li data-v="dept"><span class="sw"></span><b>A department</b><small>10–50</small></li>
+          <li data-v="org"><span class="sw"></span><b>The whole org</b><small>50+</small></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ S3 · IMPACT ============ -->
+  <section class="sec locked" id="s3">
+    <div class="sechead">
+      <div class="snum"><span>3</span></div>
+      <div class="htxt">
+        <h2>What would winning look like?</h2>
+        <div class="sub">The main payoff — roughly.</div>
+      </div>
+      <span class="picked-tag" id="tag3"></span>
+    </div>
+    <div class="impgrid" id="impgrid">
+      <button class="icard" data-v="time" data-label="Saves time">
+        <div class="glow"></div>
+        <div class="art"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="24" cy="26" r="15"/>
+          <path d="M24 26V17M24 26l6 4"/>
+          <path d="M18 6h12M24 6v5"/></svg></div>
+        <h3>Saves time</h3>
+        <p>Kills a recurring time-sink.</p>
+      </button>
+      <button class="icard" data-v="money" data-label="Saves money">
+        <div class="glow"></div>
+        <div class="art"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="24" cy="14" rx="14" ry="5"/>
+          <path d="M10 14v9c0 2.8 6.3 5 14 5s14-2.2 14-5v-9"/>
+          <path d="M10 23v9c0 2.8 6.3 5 14 5s14-2.2 14-5v-9"/></svg></div>
+        <h3>Saves money</h3>
+        <p>Cuts cost or unlocks revenue.</p>
+      </button>
+      <button class="icard" data-v="unlock" data-label="Unlocks something">
+        <div class="glow"></div>
+        <div class="art"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="19" cy="20" r="9"/>
+          <path d="M25.5 26.5L38 39M31 33l-4 4M35 29l-4 4"/></svg></div>
+        <h3>Unlocks something</h3>
+        <p>Makes possible what wasn't before.</p>
+      </button>
+    </div>
+  </section>
+
+  <div class="foot">
+    <div class="note"><b>That's the basics.</b> The 10-minute interview covers everything else.</div>
+    <button class="start" id="start">Start the interview <span class="arw">→</span></button>
+  </div>
+</main>
+
+<div class="state" id="state">
+  <div class="head" id="stateHead"><span class="g"></span><b>state</b><span class="cnt" id="stateCnt">0/3</span></div>
+  <pre id="statePre">{}</pre>
+</div>
+
+<script>
+(function(){
+  var reduce = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+  /* ---- theme toggle ---- */
+  var themeBtn = document.getElementById('theme');
+  function syncTheme(){ themeBtn.textContent = document.documentElement.classList.contains('dark') ? '☀' : '☾'; }
+  syncTheme();
+  themeBtn.addEventListener('click', function(){
+    document.documentElement.classList.toggle('dark');
+    syncTheme();
+  });
+
+  /* ---- collected state ---- */
+  var answers = { type:null, audience:null, impact:null };
+  var TYPE_LABEL = { fix:'Fix a problem', improve:'Improve an app', build:'Build a new app', other:'Something else' };
+  var AUD = {
+    me:   { label:'Just me',        scope:'Just me',       count:'~1',    unit:'person',  hint:'A personal tool. Quick to review, quick to ship.' },
+    team: { label:'My team',        scope:'My team',       count:'2–10',  unit:'people',  hint:'Your immediate team feels it. Light review, fast turnaround.' },
+    dept: { label:'A department',   scope:'A department',  count:'10–50', unit:'people',  hint:'A whole function relies on it, so expect a closer review.' },
+    org:  { label:'The whole org',  scope:'Whole org',     count:'50+',   unit:'people',  hint:'Company-wide reach. Highest scrutiny, most careful rollout.' }
+  };
+  var AUD_ORDER = ['me','team','dept','org'];
+  var IMP_LABEL = { time:'Saves time', money:'Saves money', unlock:'Unlocks something' };
+
+  var statePre = document.getElementById('statePre');
+  var stateCnt = document.getElementById('stateCnt');
+  var stateEl = document.getElementById('state');
+  function count(){ return (answers.type?1:0)+(answers.audience?1:0)+(answers.impact?1:0); }
+  function renderState(){
+    statePre.textContent = JSON.stringify(answers, null, 2);
+    stateCnt.textContent = count()+'/3';
+  }
+  document.getElementById('stateHead').addEventListener('click', function(){ stateEl.classList.toggle('open'); });
+  function flashState(){
+    stateEl.classList.add('open','flash');
+    setTimeout(function(){ stateEl.classList.remove('flash'); }, 700);
+  }
+
+  /* ---- staging ---- */
+  var s2 = document.getElementById('s2'), s3 = document.getElementById('s3');
+  function unlock(sec){
+    if(!sec.classList.contains('locked')) return;
+    sec.classList.remove('locked');
+    if(!reduce){
+      sec.scrollIntoView({behavior:'smooth', block:'center'});
+    }
+  }
+
+  /* ---- S1 type ---- */
+  var tag1 = document.getElementById('tag1');
+  document.querySelectorAll('#typegrid .tcard').forEach(function(card){
+    card.addEventListener('click', function(){
+      document.querySelectorAll('#typegrid .tcard').forEach(function(c){ c.classList.remove('sel'); });
+      card.classList.add('sel');
+      answers.type = card.dataset.v;
+      tag1.textContent = card.dataset.label;
+      document.getElementById('s1').classList.add('answered');
+      unlock(s2);
+      renderState(); refreshStart();
+    });
+  });
+
+  /* ---- S2 blast radius ---- */
+  var tag2 = document.getElementById('tag2');
+  var rcount = document.getElementById('rcount'), rscope = document.getElementById('rscope'), rhint = document.getElementById('rhint');
+  var rings = document.querySelectorAll('#rings .ring-band');
+  var legendItems = document.querySelectorAll('#legend li');
+
+  function paintRadius(v){
+    var sel = AUD_ORDER.indexOf(v); // 0..3
+    rings.forEach(function(r){
+      var i = parseInt(r.dataset.i,10) - 1; // 0..3, inner→outer index
+      r.classList.toggle('reach', i <= sel);
+      r.classList.toggle('edge', i === sel);
+    });
+    // light up people dots up to selection
+    document.querySelectorAll('#rings .d-team').forEach(function(d){ d.classList.toggle('lit', sel>=1); });
+    document.querySelectorAll('#rings .d-dept').forEach(function(d){ d.classList.toggle('lit', sel>=2); });
+    document.querySelectorAll('#rings .d-org').forEach(function(d){ d.classList.toggle('lit', sel>=3); });
+    legendItems.forEach(function(li){ li.classList.toggle('on', li.dataset.v===v); });
+    var a = AUD[v];
+    rcount.innerHTML = a.count + ' <span class="u">' + a.unit + '</span>';
+    rscope.textContent = a.scope;
+    rhint.textContent = a.hint;
+  }
+  function chooseAudience(v){
+    answers.audience = v;
+    tag2.textContent = AUD[v].label + ' · ' + AUD[v].count;
+    paintRadius(v);
+    s2.classList.add('answered');
+    unlock(s3);
+    renderState(); refreshStart();
+  }
+  rings.forEach(function(r){ r.addEventListener('click', function(){ chooseAudience(r.dataset.v); }); });
+  legendItems.forEach(function(li){
+    li.addEventListener('click', function(){ chooseAudience(li.dataset.v); });
+    li.addEventListener('mouseenter', function(){ if(!answers.audience) previewLegend(li.dataset.v); });
+    li.addEventListener('mouseleave', function(){ if(!answers.audience) clearPreview(); });
+  });
+  function previewLegend(v){
+    var sel = AUD_ORDER.indexOf(v);
+    rings.forEach(function(r){ var i=parseInt(r.dataset.i,10)-1; r.classList.toggle('reach', i<=sel); r.classList.toggle('edge', i===sel); });
+  }
+  function clearPreview(){ rings.forEach(function(r){ r.classList.remove('reach','edge'); }); }
+
+  /* ---- S3 impact ---- */
+  var tag3 = document.getElementById('tag3');
+  document.querySelectorAll('#impgrid .icard').forEach(function(card){
+    card.addEventListener('click', function(){
+      document.querySelectorAll('#impgrid .icard').forEach(function(c){ c.classList.remove('sel'); });
+      card.classList.add('sel');
+      answers.impact = card.dataset.v;
+      tag3.textContent = card.dataset.label;
+      document.getElementById('s3').classList.add('answered');
+      renderState(); refreshStart();
+    });
+  });
+
+  /* ---- submit ---- */
+  var startBtn = document.getElementById('start');
+  function refreshStart(){ startBtn.classList.toggle('ready', count()===3); }
+  startBtn.addEventListener('click', flashState);
+
+  renderState();
+})();
+</script>
+</body>
+</html>

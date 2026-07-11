@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>v07 · The impact calculator — Basics form</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#FAF8F5; --card:#FFFFFF; --card2:#F5F2ED;
+  --ink:#211C28; --body:#3B3444; --muted:#6E6878; --faint:#9A93A6;
+  --line:#E9E4DC; --line2:#D9D3C9;
+  --accent:#BD03F7; --accent-ink:#8A02B5; --accent-soft:rgba(189,3,247,.07); --accent-line:rgba(189,3,247,.35);
+  --green:#1E7D4F; --green-soft:#E7F3EC; --green-line:#BCDCC9;
+  --amber:#8A5A0A; --amber-strong:#B47408; --amber-soft:#FBF3E1; --amber-line:#EAD9AC;
+  --red:#B3362A; --red-soft:#FBECEA; --red-line:#EFC7C1;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --sans:'Space Grotesk',system-ui,sans-serif;
+  --r:10px; --r-lg:16px;
+  --shadow:0 1px 2px rgba(40,30,60,.05), 0 8px 28px -18px rgba(40,30,60,.25);
+  --glow:0 0 0 1px var(--accent-line), 0 10px 34px -14px rgba(189,3,247,.28);
+}
+.dark{
+  --bg:#16121B; --card:#1F1A26; --card2:#282230;
+  --ink:#F2EEF7; --body:#D6D0DF; --muted:#A29AAE; --faint:#7A7288;
+  --line:#2F2939; --line2:#3D3648;
+  --accent:#D65CFF; --accent-ink:#E393FF; --accent-soft:rgba(214,92,255,.1); --accent-line:rgba(214,92,255,.4);
+  --green:#5FC58F; --green-soft:#1B2B22; --green-line:#2E4A3A;
+  --amber:#E4B45E; --amber-strong:#E4B45E; --amber-soft:#2E2617; --amber-line:#4A3D22;
+  --red:#F08C80; --red-soft:#2E1B18; --red-line:#4A2C27;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 28px -18px rgba(0,0,0,.6);
+  --glow:0 0 0 1px var(--accent-line), 0 12px 40px -14px rgba(214,92,255,.4);
+}
+*{box-sizing:border-box}
+html,body{margin:0;}
+body{background:var(--bg); color:var(--body); font-family:var(--sans); font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; transition:background .25s;}
+h1,h2,h3,h4{color:var(--ink); font-weight:600; margin:0; letter-spacing:-.015em;}
+button{font-family:inherit;}
+
+/* ---------- shell top bar (shared, do not redesign) ---------- */
+.topbar{display:flex; align-items:center; gap:16px; padding:13px 24px; border-bottom:1px solid var(--line); background:var(--card);}
+.brand{display:flex; align-items:center; gap:11px; color:var(--ink); font-weight:600; font-size:15px;}
+.mark{display:grid; grid-template-columns:repeat(3,1fr); gap:2.5px; width:18px; height:18px; flex:none;}
+.mark i{background:var(--faint); border-radius:1.5px;}
+.mark i:nth-child(1),.mark i:nth-child(5),.mark i:nth-child(9){background:var(--accent);}
+.topbar .sp{flex:1;}
+.nav{display:flex; gap:6px; align-items:center;}
+.navpill{font-size:13.5px; font-weight:500; border-radius:999px; padding:7px 15px; border:1px solid transparent; color:var(--muted); background:none; cursor:pointer; text-decoration:none; white-space:nowrap;}
+.navpill.act{background:var(--accent); color:#fff; border-color:var(--accent);}
+.navpill:not(.act):hover{color:var(--ink); background:var(--card2);}
+.toggle{border:1px solid var(--line2); background:var(--card); color:var(--body); border-radius:999px; width:36px; height:36px; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:none;}
+.toggle:hover{color:var(--ink); border-color:var(--faint);}
+.avatar{display:flex; align-items:center; gap:9px; flex:none;}
+.avatar .ph{width:30px; height:30px; border-radius:50%; background:var(--accent-soft); border:1px solid var(--accent-line); display:flex; align-items:center; justify-content:center; font-size:11.5px; color:var(--accent-ink); font-weight:600;}
+.avatar .nm{font-size:13.5px; color:var(--muted);}
+@media (max-width:560px){ .avatar .nm, .navpill.ghost-hide{display:none;} }
+
+/* ---------- page ---------- */
+.page{max-width:760px; margin:0 auto; padding:44px 24px 140px;}
+.kicker{font-family:var(--mono); font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-ink); margin-bottom:12px;}
+.page h1{font-size:34px; line-height:1.1; font-weight:700;}
+.lede{color:var(--muted); margin:12px 0 0; font-size:16.5px; max-width:560px;}
+
+/* ---------- context: type + audience segmented ---------- */
+.context{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:32px 0 26px;}
+@media (max-width:640px){ .context{grid-template-columns:1fr;} }
+.seg{}
+.seg .sl{font-size:12.5px; color:var(--faint); font-weight:500; margin-bottom:8px; display:flex; align-items:center; gap:7px;}
+.seg .sl .n{font-family:var(--mono); font-size:10.5px; color:var(--muted); border:1px solid var(--line2); border-radius:5px; padding:1px 6px;}
+.segrow{display:flex; gap:6px; background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:5px;}
+.segbtn{flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; padding:9px 6px; border:none; background:none; border-radius:8px; cursor:pointer; color:var(--muted); font-size:12px; font-weight:500; line-height:1.15; text-align:center; transition:background .15s, color .15s, box-shadow .15s;}
+.segbtn svg{width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;}
+.segbtn:hover{color:var(--ink);}
+.segbtn.on{background:var(--card); color:var(--accent-ink); box-shadow:0 1px 2px rgba(0,0,0,.12), inset 0 0 0 1px var(--accent-line);}
+.dark .segbtn.on{background:#2f2838;}
+
+/* ---------- hero calculator ---------- */
+.hero{border:1px solid var(--line); border-radius:var(--r-lg); background:var(--card); box-shadow:var(--shadow); overflow:hidden;}
+.tally{position:relative; padding:30px 32px 28px; background:
+   radial-gradient(120% 140% at 100% 0%, var(--accent-soft), transparent 60%);
+   border-bottom:1px solid var(--line);}
+.tally .tl{font-family:var(--mono); font-size:11px; letter-spacing:.15em; text-transform:uppercase; color:var(--muted); margin-bottom:14px;}
+.numline{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;}
+.approx{font-size:34px; font-weight:400; color:var(--accent-ink); line-height:1;}
+.bignum{font-size:78px; font-weight:700; color:var(--ink); line-height:.9; letter-spacing:-.03em; font-variant-numeric:tabular-nums;}
+.unit{font-size:20px; font-weight:500; color:var(--body); line-height:1.15;}
+.unit b{display:block; color:var(--ink); font-weight:600;}
+.secondary{margin-top:16px; display:inline-flex; align-items:center; gap:8px; font-size:13.5px; color:var(--green); background:var(--green-soft); border:1px solid var(--green-line); border-radius:999px; padding:5px 14px; font-weight:500;}
+.secondary svg{width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;}
+.bwrap{margin-top:20px;}
+.btrack{height:10px; border-radius:99px; background:var(--card2); overflow:hidden; border:1px solid var(--line);}
+.bfill{height:100%; width:0; border-radius:99px; background:linear-gradient(90deg, var(--accent-ink), var(--accent)); transition:width .55s cubic-bezier(.22,1,.36,1);}
+.bscale{display:flex; justify-content:space-between; font-family:var(--mono); font-size:10px; color:var(--faint); margin-top:6px; letter-spacing:.04em;}
+
+/* ---------- three micro-questions ---------- */
+.qs{display:grid; grid-template-columns:repeat(3,1fr); gap:0;}
+@media (max-width:640px){ .qs{grid-template-columns:1fr;} }
+.q{padding:22px 24px; border-right:1px solid var(--line);}
+.q:last-child{border-right:none;}
+@media (max-width:640px){ .q{border-right:none; border-bottom:1px solid var(--line);} .q:last-child{border-bottom:none;} }
+.q .ql{font-size:13.5px; color:var(--ink); font-weight:500; margin-bottom:14px; line-height:1.3;}
+
+.stepper{display:flex; align-items:center; gap:12px;}
+.stepbtn{width:40px; height:40px; border-radius:10px; border:1px solid var(--line2); background:var(--card); color:var(--ink); font-size:22px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:none; transition:border-color .15s, background .15s;}
+.stepbtn:hover{border-color:var(--accent-line); background:var(--accent-soft); color:var(--accent-ink);}
+.stepbtn:disabled{opacity:.35; cursor:not-allowed; background:var(--card); color:var(--ink); border-color:var(--line2);}
+.stepval{flex:1; text-align:center;}
+.stepval .v{font-size:30px; font-weight:700; color:var(--ink); line-height:1; font-variant-numeric:tabular-nums;}
+.stepval .u{display:block; font-size:11.5px; color:var(--faint); margin-top:3px;}
+
+.chips{display:flex; flex-wrap:wrap; gap:8px;}
+.chip{border:1px solid var(--line2); background:var(--card); color:var(--body); border-radius:999px; padding:8px 15px; font-size:13.5px; font-weight:500; cursor:pointer; transition:all .15s;}
+.chip:hover{border-color:var(--accent-line); color:var(--ink);}
+.chip.on{background:var(--accent); border-color:var(--accent); color:#fff;}
+
+.caption{padding:16px 24px 18px; font-family:var(--mono); font-size:11.5px; color:var(--faint); display:flex; align-items:center; gap:9px; background:var(--card2); border-top:1px solid var(--line);}
+.caption svg{width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; flex:none;}
+
+/* ---------- footer action ---------- */
+.foot{display:flex; align-items:center; gap:18px; margin-top:28px; flex-wrap:wrap;}
+.start{border:none; border-radius:var(--r); padding:14px 30px; font-size:16px; font-weight:600; cursor:pointer; background:var(--accent); color:#fff; box-shadow:0 8px 24px -12px var(--accent); transition:transform .12s, box-shadow .2s;}
+.start:hover{transform:translateY(-1px); box-shadow:var(--glow);}
+.start:active{transform:translateY(0);}
+.skip{font-size:13.5px; color:var(--faint); text-decoration:none; border-bottom:1px dashed var(--line2); padding-bottom:1px;}
+.skip:hover{color:var(--muted);}
+
+/* ---------- state readout pill ---------- */
+.statepill{position:fixed; left:16px; bottom:16px; z-index:50; font-family:var(--mono); font-size:10px; color:var(--muted); background:var(--card); border:1px solid var(--line2); border-radius:8px; padding:5px 10px; cursor:pointer; box-shadow:var(--shadow); user-select:none; max-width:min(80vw,340px);}
+.statepill .hd{display:flex; align-items:center; gap:6px; letter-spacing:.08em; text-transform:uppercase;}
+.statepill .hd::before{content:''; width:6px; height:6px; border-radius:50%; background:var(--faint);}
+.statepill pre{margin:8px 0 2px; white-space:pre-wrap; word-break:break-word; color:var(--body); line-height:1.5; max-height:40vh; overflow:auto;}
+.statepill:not(.open) pre{display:none;}
+.statepill.flash{border-color:var(--accent); box-shadow:var(--glow);}
+
+@media (prefers-reduced-motion: reduce){
+  *{transition:none !important; animation:none !important;}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+    Software Factory
+  </div>
+  <span class="sp"></span>
+  <nav class="nav">
+    <button class="navpill act">New request</button>
+    <button class="navpill ghost-hide">My requests</button>
+  </nav>
+  <button class="toggle" id="themeToggle" aria-label="Toggle theme">☾</button>
+  <div class="avatar">
+    <span class="ph">JD</span>
+    <span class="nm">Jordan D.</span>
+  </div>
+</header>
+
+<main class="page">
+  <div class="kicker">The basics · 1 of 1</div>
+  <h1>Let's size the prize.</h1>
+  <p class="lede">Two quick tags, then we'll do the maths on what this is worth — so you never have to guess a number cold.</p>
+
+  <!-- type + audience -->
+  <div class="context">
+    <div class="seg">
+      <div class="sl">This is a&hellip; <span class="n">routing</span></div>
+      <div class="segrow" id="typeRow" role="group" aria-label="Request type">
+        <button class="segbtn on" data-k="type" data-v="fix">
+          <svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>
+          Fix a problem
+        </button>
+        <button class="segbtn" data-k="type" data-v="improve">
+          <svg viewBox="0 0 24 24"><path d="M4 17l6-6 4 4 6-8"/><path d="M20 7v5"/><path d="M20 7h-5"/></svg>
+          Improve an app
+        </button>
+        <button class="segbtn" data-k="type" data-v="build">
+          <svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+          Build new
+        </button>
+        <button class="segbtn" data-k="type" data-v="other">
+          <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>
+          Something else
+        </button>
+      </div>
+    </div>
+    <div class="seg">
+      <div class="sl">&hellip;for <span class="n">audience</span></div>
+      <div class="segrow" id="audRow" role="group" aria-label="Who it is for">
+        <button class="segbtn on" data-k="audience" data-v="me">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M6 20a6 6 0 0 1 12 0"/></svg>
+          Just me
+        </button>
+        <button class="segbtn" data-k="audience" data-v="team">
+          <svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 8.5a3 3 0 0 1 0 5"/><path d="M17.5 19a5.5 5.5 0 0 0-2-4.3"/></svg>
+          My team
+        </button>
+        <button class="segbtn" data-k="audience" data-v="dept">
+          <svg viewBox="0 0 24 24"><rect x="4" y="9" width="16" height="11" rx="1.5"/><path d="M9 9V5h6v4"/><path d="M9 14h6M9 17h6"/></svg>
+          A department
+        </button>
+        <button class="segbtn" data-k="audience" data-v="org">
+          <svg viewBox="0 0 24 24"><circle cx="7" cy="8" r="2.2"/><circle cx="17" cy="8" r="2.2"/><circle cx="12" cy="9" r="2.2"/><path d="M3 19a4 4 0 0 1 8 0M13 19a4 4 0 0 1 8 0"/></svg>
+          Lots of us
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- hero calculator -->
+  <section class="hero">
+    <div class="tally">
+      <div class="tl">Estimated time reclaimed</div>
+      <div class="numline">
+        <span class="approx">&asymp;</span>
+        <span class="bignum" id="bignum">0</span>
+        <span class="unit">hours<b>a year, back</b></span>
+      </div>
+      <div class="secondary" id="secondary">
+        <svg viewBox="0 0 24 24"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>
+        <span id="secondaryText">&mdash;</span>
+      </div>
+      <div class="bwrap">
+        <div class="btrack"><div class="bfill" id="bfill"></div></div>
+        <div class="bscale"><span>0</span><span>a whole working year &rarr;</span></div>
+      </div>
+    </div>
+
+    <div class="qs">
+      <div class="q">
+        <div class="ql">How many people deal with this?</div>
+        <div class="stepper">
+          <button class="stepbtn" id="minus" aria-label="Fewer people">&minus;</button>
+          <div class="stepval"><span class="v" id="peopleVal">3</span><span class="u" id="peopleUnit">people</span></div>
+          <button class="stepbtn" id="plus" aria-label="More people">+</button>
+        </div>
+      </div>
+      <div class="q">
+        <div class="ql">How often does it come up?</div>
+        <div class="chips" id="freqChips" role="group" aria-label="Frequency">
+          <button class="chip" data-k="frequency" data-v="daily">Daily</button>
+          <button class="chip on" data-k="frequency" data-v="weekly">Weekly</button>
+          <button class="chip" data-k="frequency" data-v="monthly">Monthly</button>
+        </div>
+      </div>
+      <div class="q">
+        <div class="ql">How long each time?</div>
+        <div class="chips" id="durChips" role="group" aria-label="Duration">
+          <button class="chip" data-k="duration" data-v="15m">15 min</button>
+          <button class="chip on" data-k="duration" data-v="1h">1 hour</button>
+          <button class="chip" data-k="duration" data-v="half">Half a day</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="caption">
+      <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h13"/></svg>
+      rough is fine — we just need the order of magnitude.
+    </div>
+  </section>
+
+  <div class="foot">
+    <button class="start" id="startBtn">Start the interview &rarr;</button>
+    <a class="skip" href="#" id="skipLink">Not sure yet? The interview can size it later.</a>
+  </div>
+</main>
+
+<div class="statepill" id="statepill" title="Collected answers (prototype readout)">
+  <div class="hd">state</div>
+  <pre id="stateJson"></pre>
+</div>
+
+<script>
+(function(){
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- theme toggle ----
+  var toggle = document.getElementById('themeToggle');
+  function syncToggle(){ toggle.textContent = document.documentElement.classList.contains('dark') ? '☀' : '☾'; }
+  syncToggle();
+  toggle.addEventListener('click', function(){
+    document.documentElement.classList.toggle('dark');
+    syncToggle();
+  });
+
+  // ---- model ----
+  var FREQ = { daily:260, weekly:52, monthly:12 };   // occurrences per year
+  var DUR  = { '15m':0.25, '1h':1, 'half':4 };        // hours per occurrence
+  var CAP  = 2080;                                    // one working year (h) = full bar
+  var state = { type:'fix', audience:'team', people:3, frequency:'weekly', duration:'1h' };
+
+  function hours(){ return Math.round(state.people * FREQ[state.frequency] * DUR[state.duration]); }
+
+  // ---- elements ----
+  var bignum = document.getElementById('bignum');
+  var bfill  = document.getElementById('bfill');
+  var secText = document.getElementById('secondaryText');
+  var peopleVal = document.getElementById('peopleVal');
+  var peopleUnit = document.getElementById('peopleUnit');
+  var stateJson = document.getElementById('stateJson');
+  var pill = document.getElementById('statepill');
+
+  // ---- state readout ----
+  function writeState(){
+    var out = {
+      type: state.type, audience: state.audience,
+      people: state.people, frequency: state.frequency, duration: state.duration,
+      hoursPerYear: hours()
+    };
+    stateJson.textContent = JSON.stringify(out, null, 2);
+  }
+  pill.addEventListener('click', function(){ pill.classList.toggle('open'); });
+
+  // ---- count-up ----
+  var raf = null, displayed = 0;
+  function paintStatic(target){
+    bfill.style.width = Math.min(100, target / CAP * 100) + '%';
+    var wk = target / 40, dy = target / 8;
+    secText.textContent = wk >= 1
+      ? '≈ ' + wk.toFixed(1) + ' working weeks reclaimed'
+      : '≈ ' + dy.toFixed(1) + ' working days reclaimed';
+  }
+  function paintNum(){ bignum.textContent = displayed.toLocaleString(); }
+  function animateTo(target){
+    paintStatic(target);
+    if (reduced){ displayed = target; paintNum(); return; }
+    if (raf) cancelAnimationFrame(raf);
+    var start = displayed, t0 = performance.now(), dur = 560;
+    function step(t){
+      var p = Math.min(1, (t - t0) / dur);
+      var e = 1 - Math.pow(1 - p, 3);
+      displayed = Math.round(start + (target - start) * e);
+      paintNum();
+      if (p < 1) raf = requestAnimationFrame(step);
+    }
+    raf = requestAnimationFrame(step);
+  }
+
+  function update(){
+    peopleVal.textContent = state.people >= 50 ? '50+' : state.people;
+    peopleUnit.textContent = state.people === 1 ? 'person' : 'people';
+    animateTo(hours());
+    writeState();
+  }
+
+  // ---- segmented (type + audience) ----
+  function wireSeg(id){
+    var row = document.getElementById(id);
+    row.addEventListener('click', function(e){
+      var b = e.target.closest('.segbtn'); if(!b) return;
+      row.querySelectorAll('.segbtn').forEach(function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+      state[b.dataset.k] = b.dataset.v;
+      writeState();
+    });
+  }
+  wireSeg('typeRow'); wireSeg('audRow');
+
+  // ---- chips (frequency + duration) ----
+  function wireChips(id){
+    var row = document.getElementById(id);
+    row.addEventListener('click', function(e){
+      var b = e.target.closest('.chip'); if(!b) return;
+      row.querySelectorAll('.chip').forEach(function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+      state[b.dataset.k] = b.dataset.v;
+      update();
+    });
+  }
+  wireChips('freqChips'); wireChips('durChips');
+
+  // ---- stepper (adaptive step so 1..50 is quick) ----
+  var minus = document.getElementById('minus'), plus = document.getElementById('plus');
+  function stepSize(v){ return v < 10 ? 1 : v < 20 ? 2 : 5; }
+  function nudge(dir){
+    var v = state.people;
+    var s = dir > 0 ? stepSize(v) : stepSize(v - 1 <= 0 ? 1 : v - 1);
+    v = Math.max(1, Math.min(50, v + dir * s));
+    state.people = v;
+    minus.disabled = v <= 1;
+    plus.disabled = v >= 50;
+    update();
+  }
+  minus.addEventListener('click', function(){ nudge(-1); });
+  plus.addEventListener('click', function(){ nudge(1); });
+
+  // ---- submit (prototype: flash the state pill) ----
+  function flash(){
+    pill.classList.add('open','flash');
+    setTimeout(function(){ pill.classList.remove('flash'); }, 900);
+  }
+  document.getElementById('startBtn').addEventListener('click', flash);
+  document.getElementById('skipLink').addEventListener('click', function(e){ e.preventDefault(); flash(); });
+
+  // ---- init ----
+  minus.disabled = state.people <= 1;
+  update();
+})();
+</script>
+</body>
+</html>
