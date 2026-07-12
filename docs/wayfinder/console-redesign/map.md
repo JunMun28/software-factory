@@ -58,14 +58,18 @@ is done when the redesigned console is merged, not merely specified.
 - [Grilling: information architecture from zero](tickets/004-grill-information-architecture.md) — (delegated) eight June surfaces collapse to four: **The Floor** home, **Dossier**, **Library**, **Studio**; Factory map/queue/inbox/feed killed with reasons; no sidebar — hairline top bar + command palette. Detail: spec §4–7.
 - [Grilling: multi-operator model](tickets/006-grill-multi-operator-model.md) — (delegated) server-side named operator profiles (no passwords, Entra-shaped seam); decided-by rendered everywhere; compare-and-set on all mutations with structured conflict payloads; no leases/presence/claims. Detail: spec §9.
 - **Redesign spec approved:** [docs/superpowers/specs/2026-07-11-console-redesign-design.md](../../superpowers/specs/2026-07-11-console-redesign-design.md) — "The Floor": IA, surface specs, backend work list (10 items), verification plan, build & cutover. User approved 2026-07-11.
+- **PRD published for agents:** [spec-the-floor-prd.md](spec-the-floor-prd.md) — the approved design as a `ready-for-agent` spec (problem, solution, 40 user stories, implementation + testing decisions, seams). Mirror to Linear when the connector is authorized.
 - [Prototype: visual identity directions](tickets/005-prototype-visual-identity.md) — **"Family" approved**: the console adopts the intake app's Micron Atlas theme verbatim (purple accent, amber/red/green status discipline, friendly plain-language copy). Winning lab: `mockups/console-floor-family.html`; A/B/C kept as rejected references. Dossier/Library/Studio inherit the direction — no more mini-labs.
 
 ## Not yet specified
 
-(Nothing — the design phase is complete. The route to the destination is now
-the eight open execution tickets, 007–014: four backend slices → shell +
-Floor → Dossier → Library/Studio → cutover/verify/merge. All build work
-happens on the `console-redesign` worktree branch.)
+(Nothing — the design phase is complete. The route to the destination is the
+ten open execution issues 007–016: vertical tracer-bullet slices, each
+demoable end-to-end (shell+Floor → identity → conflicts → recovery →
+steering → real-run visibility → email/freshness → Dossier → Library/Studio
+→ cutover). Labeled `ready-for-agent`; frontier at start: 007 alone, then
+008/011/012/015 open up. All build work on the `console-redesign` worktree
+branch. These supersede the earlier layer-based slices 007–014.)
 
 ## Out of scope
 
