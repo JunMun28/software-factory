@@ -17,9 +17,10 @@ from .models import Request, SpecLine
 # short script, so the offline path stays shallow.
 QUESTION_BUDGET: dict[str, tuple[int, int]] = {
     "bug": (2, 3),   # a report is usually concrete — a couple of clarifiers
-    "enh": (2, 5),   # scale with complexity
-    "new": (3, 10),  # a whole new app — walk the design tree
-    "other": (2, 3),
+    "enh": (2, 4),   # scale with complexity, capped
+    "new": (3, 99),  # UNCAPPED by design (spec/ADR 0023): the model's judgment and the
+                     # submitter's conversational "that's enough" are the real stops
+    "other": (2, 4),
 }
 DEFAULT_BUDGET = (2, 3)
 
