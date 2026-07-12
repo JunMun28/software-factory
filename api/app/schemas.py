@@ -187,6 +187,15 @@ class RequestCreate(BaseModel):
     reporter_initials: str = Field(default="JD", max_length=4)
 
 
+class ClassifyIn(BaseModel):
+    description: str = Field(default="", max_length=5000)
+
+
+class ClassifyOut(BaseModel):
+    type: Literal["bug", "enh", "new", "other"]
+    confidence: float
+
+
 class RequestUpdate(BaseModel):
     """PATCH semantics for real: only fields the caller sent are applied."""
     type: Literal["bug", "enh", "new", "other"] | None = None

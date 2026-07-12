@@ -36,6 +36,8 @@ from ..interview import (
 )
 from ..models import AuditEvent, InterviewTurn, ProgressEvent, PrototypeTurn, Request, utcnow
 from ..schemas import (
+    ClassifyIn,
+    ClassifyOut,
     EvidenceOut,
     InterviewAnswer,
     InterviewState,
@@ -231,6 +233,13 @@ def _prototype_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractE
 
 
 # ---------- requests CRUD ----------
+
+@router.post("/api/requests/classify", response_model=ClassifyOut)
+def classify_request(body: ClassifyIn):
+    """Stateless type inference for the composer chip — no Request is created.
+    Track/confidence are Intake-only; the Factory still consumes only the stored type."""
+    return get_brain().classify(body.description)
+
 
 @router.get("/api/requests", response_model=list[RequestOut])
 def list_requests(mine: str | None = None, active: bool = False, limit: int = 500,
