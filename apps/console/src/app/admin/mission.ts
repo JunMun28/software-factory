@@ -204,37 +204,41 @@ import { AdminShell } from './admin-shell';
                 <sf-glyph type="check" [size]="13" color="var(--green)" />
                 <span>Recently done &amp; with submitter</span>
               </div>
-              @for (r of m.recent; track r.id) {
+              @for (rec of m.recent; track rec.request.id) {
                 <div
                   #frow
-                  [attr.aria-label]="rowLabel('done', r)"
+                  [attr.aria-label]="rowLabel('done', rec.request)"
                   class="msn-done"
-                  [class.msn-focus]="flatIdx(r) === focusAt()"
+                  [class.msn-focus]="flatIdx(rec.request) === focusAt()"
                   tabindex="0"
-                  (focus)="focusIdx.set(flatIdx(r))"
-                  (click)="openIssue(r)"
+                  (focus)="focusIdx.set(flatIdx(rec.request))"
+                  (click)="openIssue(rec.request)"
                 >
                   <sf-glyph
                     [type]="
-                      r.status === 'done' ? 'check' : r.status === 'cancelled' ? 'strike' : 'flag'
+                      rec.request.status === 'done'
+                        ? 'check'
+                        : rec.request.status === 'cancelled'
+                          ? 'strike'
+                          : 'flag'
                     "
                     [size]="13"
                     [color]="
-                      r.status === 'done'
+                      rec.request.status === 'done'
                         ? 'var(--green)'
-                        : r.status === 'cancelled'
+                        : rec.request.status === 'cancelled'
                           ? 'var(--faint)'
                           : 'var(--muted)'
                     "
                   />
                   <span
                     class="msn-done__title"
-                    [style.text-decoration]="r.status === 'cancelled' ? 'line-through' : ''"
-                    >{{ r.title }}</span
+                    [style.text-decoration]="rec.request.status === 'cancelled' ? 'line-through' : ''"
+                    >{{ rec.request.title }}</span
                   >
-                  <span class="msn-meta">{{ recentLine(r) }}</span>
+                  <span class="msn-meta">{{ recentLine(rec.request) }}</span>
                   <span class="mono msn-ref" style="margin-left:auto">{{
-                    timeAgo(r.updated_at)
+                    timeAgo(rec.request.updated_at)
                   }}</span>
                 </div>
               }
@@ -572,7 +576,7 @@ export class Mission {
   sendSteer(r: FactoryRequest) {
     const note = this.steerText().trim();
     if (!note) return;
-    this.api.steer(r.id, note, this.session.user().name).subscribe({
+    this.api.steer(r.id, note, this.session.operatorId()!).subscribe({
       next: () => {
         this.steeringId.set(null);
         this.steered.update((s) => new Set(s).add(r.id));
@@ -606,12 +610,12 @@ export class Mission {
 
   approve(r: FactoryRequest) {
     this.confirming.set(null);
-    this.api.approve(r.id, this.session.user().name).subscribe(() => this.poll.nudge());
+    this.api.approve(r.id, this.session.operatorId()!).subscribe(() => this.poll.nudge());
   }
 
   sendBack(r: FactoryRequest, note: string) {
     this.sendingBack.set(null);
-    this.api.sendBack(r.id, note, this.session.user().name).subscribe(() => this.poll.nudge());
+    this.api.sendBack(r.id, note, this.session.operatorId()!).subscribe(() => this.poll.nudge());
   }
 
   openInQueue(r: FactoryRequest) {
@@ -619,7 +623,7 @@ export class Mission {
   }
 
   retry(r: FactoryRequest) {
-    this.api.retry(r.id, this.session.user().name).subscribe(() => this.poll.nudge());
+    this.api.retry(r.id, this.session.operatorId()!).subscribe(() => this.poll.nudge());
   }
   openIssue(r: FactoryRequest) {
     this.router.navigateByUrl(`/admin/requests/${r.id}`);
@@ -647,7 +651,7 @@ export class Mission {
       ...m.gates.map((g) => ({ kind: 'gate' as const, r: g.request })),
       ...m.runs.map((x) => ({ kind: 'run' as const, r: x.request })),
       ...m.stalled.map((r) => ({ kind: 'stalled' as const, r })),
-      ...m.recent.map((r) => ({ kind: 'done' as const, r })),
+      ...m.recent.map((rec) => ({ kind: 'done' as const, r: rec.request })),
     ];
   });
 

@@ -19,6 +19,15 @@ export interface User {
   role: 'submitter' | 'admin';
 }
 
+export interface Operator {
+  id: number;
+  name: string;
+  initials: string;
+  hue: string;
+  email: string;
+  created_at: string;
+}
+
 export interface Turn {
   order: number;
   question: string;
@@ -245,6 +254,13 @@ export interface MissionOut {
   gates: MissionGate[];
   runs: MissionRun[];
   stalled: FactoryRequest[];
-  recent: FactoryRequest[];
+  recent: MissionRecent[];
   cursor: number;
+}
+
+export interface MissionRecent {
+  request: FactoryRequest;
+  outcome: string;
+  decided_by: string;
+  decided_at: string;
 }

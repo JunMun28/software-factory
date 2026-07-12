@@ -18,15 +18,16 @@ from ..api_helpers import get_request, pipeline, prospective_repo, to_out
 from ..db import get_db
 from ..events import emit
 from ..models import PIPELINE_STAGES, AuditEvent, Request, SpecLine, utcnow
-from ..schemas import Note, RequestDetail
+from ..schemas import Note, OperatorNote, RequestDetail
+from .operators import resolve_operator
 
 router = APIRouter()
 
 
 @router.post("/api/requests/{rid}/approve", response_model=RequestDetail)
-def approve(rid: int, body: Note | None = None, db: Session = Depends(get_db)):
+def approve(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
     r = get_request(db, rid)
-    actor = (body.actor if body else None) or "Kim P."
+    actor = resolve_operator(db, body.operator_id).name
     if r.gate == "approve_merge":
         if r.status in ("cancelled", "done"):  # a stale gate must never merge dead work
             raise HTTPException(409, f"Cannot merge a {r.status} request")
@@ -75,8 +76,9 @@ def approve(rid: int, body: Note | None = None, db: Session = Depends(get_db)):
 
 
 @router.post("/api/requests/{rid}/send-back", response_model=RequestDetail)
-def send_back(rid: int, body: Note, db: Session = Depends(get_db)):
+def send_back(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
     r = get_request(db, rid)
+    actor = resolve_operator(db, body.operator_id).name
     if r.status not in ("pending_approval", "submitted"):
         raise HTTPException(409, f"Cannot send back from status '{r.status}'")
     r.status = "sent_back"
@@ -89,8 +91,8 @@ def send_back(rid: int, body: Note, db: Session = Depends(get_db)):
     r.send_back_rounds += 1
     r.stage_entered_at = utcnow()
     emit(db, r, "gate_event", "Sent back to the submitter — one question is blocking the spec",
-         actor=body.actor, bot=False, broadcast=True, payload={"gate": "send_back", "Ref": r.ref})
-    db.add(AuditEvent(request_id=r.id, actor=body.actor, action="sent_back", note=body.note))
+         actor=actor, bot=False, broadcast=True, payload={"gate": "send_back", "Ref": r.ref})
+    db.add(AuditEvent(request_id=r.id, actor=actor, action="sent_back", note=body.note))
     db.commit()
     return to_out(r, RequestDetail)
 
@@ -115,29 +117,29 @@ def respond(rid: int, body: Note, db: Session = Depends(get_db)):
 
 
 @router.post("/api/requests/{rid}/cancel", response_model=RequestDetail)
-def cancel(rid: int, body: Note | None = None, db: Session = Depends(get_db)):
+def cancel(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
     r = get_request(db, rid)
+    actor = resolve_operator(db, body.operator_id).name
     if r.status in ("done", "cancelled"):
         return to_out(r, RequestDetail)
     r.status = "cancelled"
     r.gate = None
     r.needs_human = False
     r.needs_human_reason = None
-    actor = (body.actor if body else None) or "Kim P."
     emit(db, r, "recovery_action", f"Request cancelled by {actor}",
          actor=actor, bot=False, payload={"Ref": r.ref})
-    db.add(AuditEvent(request_id=r.id, actor=actor, action="cancelled", note=body.note if body else None))
+    db.add(AuditEvent(request_id=r.id, actor=actor, action="cancelled", note=body.note))
     db.commit()
     return to_out(r, RequestDetail)
 
 
 @router.post("/api/requests/{rid}/retry", response_model=RequestDetail)
-def retry(rid: int, body: Note | None = None, db: Session = Depends(get_db)):
+def retry(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
     """Recovery action: re-run the stuck Stage fresh (CONTEXT.md: Retry)."""
     r = get_request(db, rid)
+    actor = resolve_operator(db, body.operator_id).name
     if not r.needs_human:
         raise HTTPException(409, "Request is not escalated")
-    actor = (body.actor if body else None) or "Kim P."
     r.needs_human = False
     r.needs_human_reason = None
     r.status = "pending_approval" if r.stage == "spec" else "approved"
@@ -146,8 +148,8 @@ def retry(rid: int, body: Note | None = None, db: Session = Depends(get_db)):
     r.sim_step = 0
     r.stage_entered_at = utcnow()
     emit(db, r, "recovery_action", f"Retry — Stage re-run requested by {actor}",
-         actor=actor, bot=False, payload={"Ref": r.ref, "note": body.note if body else None})
-    db.add(AuditEvent(request_id=r.id, actor=actor, action="retried", note=body.note if body else None))
+         actor=actor, bot=False, payload={"Ref": r.ref, "note": body.note})
+    db.add(AuditEvent(request_id=r.id, actor=actor, action="retried", note=body.note))
     db.commit()
     # Retry must actually re-drive the runner: in agent mode nothing else ever
     # picks an 'approved' request back up (the simulator stands down) — without

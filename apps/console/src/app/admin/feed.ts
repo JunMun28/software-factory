@@ -486,7 +486,7 @@ export class Feed {
     });
     this.draft = '';
     queueMicrotask(() => this.scrollToBottom());
-    this.api.comment(target.id, text, u.name, u.initials).subscribe({
+    this.api.comment(target.id, text, this.session.operatorId()!).subscribe({
       next: (c) => {
         this.pendingCommentId = c.id;
         this.poll.nudge();

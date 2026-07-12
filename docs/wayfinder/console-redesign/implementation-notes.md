@@ -2,6 +2,8 @@
 
 ## Deviations
 
+- Slice 2: no deviations from ticket 008. The mission `recent` rows now use a signed outcome wrapper (`request`, `outcome`, `decided_by`, `decided_at`) derived from existing audit events; unsigned historical rows are omitted rather than guessed or backfilled.
+
 - The existing `/api/mission` payload does not include cycle-time or human-wait durations, so The Floor shows an honest em dash for median cycle and wait-on-human. No backend endpoint or inferred number was added in Slice 1.
 - Merge-gate evidence has diff and test totals but no pull-request number or explicit deploy target. The consequence sentence therefore says that approval merges the approved work into main and deploys the named app, without inventing a PR number.
 - Recent mission outcomes include request timestamps but no deciding actor. Recently renders the available outcome, title, and relative update time; signed decision provenance remains for the later backend/projection slice.
@@ -22,3 +24,18 @@
   em dash until a later slice adds them (candidate: 013 or 016).
 - Browser-pane screenshots go blank when scrolled — capture-tool quirk, not an
   app bug (DOM/opacity verified). Workaround: offset `main` margin-top.
+
+## Slice 008 review pass (fable-5, 2026-07-13)
+
+- BLOCKER codex missed: changing `MissionOut.recent` to `MissionRecent[]` broke
+  the old `admin/mission.ts` build; codex reported build green but it was not.
+  Always re-run `npx ng build console` in review — do not trust the agent's
+  build claim for shared-model changes.
+- The mission `recent` projection now includes spec `approved` outcomes, so a
+  single request can appear twice in Recently (spec-approved, then shipped).
+  Intentional — both are distinct signed decisions; revisit if it reads noisy.
+- `OperatorIn.email` is a plain length-checked string (no EmailStr) to avoid a
+  new dependency; the Studio form uses `type=email` client-side.
+- The shared Api mutation methods keep an actor-shaped `string | number` compat
+  signature; the `string` branch is now dead (all callers pass operator id).
+  Cutover (016) should drop the compat overloads.

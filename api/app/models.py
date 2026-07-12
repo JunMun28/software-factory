@@ -31,6 +31,19 @@ class App(Base):
     requests: Mapped[list["Request"]] = relationship(back_populates="app")
 
 
+class Operator(Base):
+    """A named console operator. Authentication can later resolve this same row."""
+
+    __tablename__ = "operators"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    initials: Mapped[str] = mapped_column(String(4))
+    hue: Mapped[str] = mapped_column(String(12))
+    email: Mapped[str] = mapped_column(String(200), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 # Stage columns (fixed, Jira-style): the Work item's position in the Factory.
 STAGES = ["intake", "spec", "architecture", "build", "review", "done"]
 # The post-approval stages the runner/simulator drive autonomously — the one

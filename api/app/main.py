@@ -13,7 +13,7 @@ from .agent_runner import AgentRunner
 from .db import SessionLocal, migrate
 from .routers import attachments as attachments_router
 from .routers import events as events_router
-from .routers import gates, registry, system
+from .routers import gates, operators, registry, system
 from .routers import mission as mission_router
 from .routers import requests as requests_router
 from .seed import seed
@@ -76,6 +76,7 @@ def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = N
 
     app.include_router(system.router)
     app.include_router(registry.router)
+    app.include_router(operators.router)
     app.include_router(events_router.router)
     app.include_router(requests_router.router)
     app.include_router(attachments_router.router)

@@ -9,6 +9,7 @@ import {
   FactoryRequest,
   InterviewState,
   MissionOut,
+  Operator,
   ProgressEvent,
   PrototypeAnnotation,
   PrototypeState,
@@ -34,6 +35,12 @@ export class Api {
   }
   updateApp(id: number, body: Partial<AppEntry>) {
     return this.http.patch<AppEntry>(`${BASE}/apps/${id}`, body);
+  }
+  operators(): Observable<Operator[]> {
+    return this.http.get<Operator[]>(`${BASE}/operators`);
+  }
+  createOperator(body: Pick<Operator, 'name' | 'initials' | 'hue' | 'email'>) {
+    return this.http.post<Operator>(`${BASE}/operators`, body);
   }
 
   requests(opts: { mine?: string; active?: boolean } = {}): Observable<FactoryRequest[]> {
@@ -115,26 +122,41 @@ export class Api {
   submit(id: number, note = '') {
     return this.http.post<RequestDetail>(`${BASE}/requests/${id}/submit`, { note });
   }
-  approve(id: number, actor: string) {
-    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/approve`, { actor });
+  approve(id: number, actorOrOperatorId: string | number, operatorId?: number) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/approve`, {
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
   }
-  sendBack(id: number, note: string, actor: string) {
-    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/send-back`, { note, actor });
+  sendBack(id: number, note: string, actorOrOperatorId: string | number, operatorId?: number) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/send-back`, {
+      note,
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
   }
   respond(id: number, note: string, actor: string) {
     return this.http.post<RequestDetail>(`${BASE}/requests/${id}/respond`, { note, actor });
   }
-  cancel(id: number, actor: string) {
-    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/cancel`, { actor });
+  cancel(id: number, actorOrOperatorId: string | number, operatorId?: number) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/cancel`, {
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
   }
-  retry(id: number, actor: string, note = '') {
-    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/retry`, { note, actor });
+  retry(id: number, actorOrOperatorId: string | number, note = '', operatorId?: number) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/retry`, {
+      note,
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
   }
-  comment(id: number, body: string, author: string, initials: string) {
+  comment(
+    id: number,
+    body: string,
+    authorOrOperatorId: string | number,
+    _initials?: string,
+    operatorId?: number,
+  ) {
     return this.http.post<CommentItem>(`${BASE}/requests/${id}/comments`, {
       body,
-      author,
-      initials,
+      operator_id: typeof authorOrOperatorId === 'number' ? authorOrOperatorId : operatorId,
     });
   }
   comments(id: number) {
@@ -167,10 +189,10 @@ export class Api {
   mission() {
     return this.http.get<MissionOut>(`${BASE}/mission`);
   }
-  steer(id: number, note: string, actor: string) {
+  steer(id: number, note: string, actorOrOperatorId: string | number, operatorId?: number) {
     return this.http.post<{ id: number; status: string }>(`${BASE}/requests/${id}/steer`, {
       note,
-      actor,
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
     });
   }
   trace(id: number, after = 0, limit = 200) {

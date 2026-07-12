@@ -172,7 +172,7 @@ def test_retry_resumes_at_build_with_clean_workspace(client, ws_root):
     assert out["stage"] == "build"
 
     # Retry clears the flag; the re-run resumes at build, not architecture
-    client.post(f"/api/requests/{d['id']}/retry", json={"note": "fixed the agent"})
+    client.post(f"/api/requests/{d['id']}/retry", json={"note": "fixed the agent", "operator_id": 1})
     AgentRunner(executor=honest_executor).run_pipeline(d["id"])
 
     out = client.get(f"/api/requests/{d['id']}").json()

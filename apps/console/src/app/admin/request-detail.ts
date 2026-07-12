@@ -796,7 +796,7 @@ export class RequestDetailPage {
 
   approve(r: RequestDetail) {
     this.confirming.set(false);
-    this.api.approve(r.id, this.session.user().name).subscribe((d) => {
+    this.api.approve(r.id, this.session.operatorId()!).subscribe((d) => {
       this.d.set(d as RequestDetail);
       this.poll.nudge();
     });
@@ -804,7 +804,7 @@ export class RequestDetailPage {
 
   sendBack(r: RequestDetail, note: string) {
     this.sendingBack.set(false);
-    this.api.sendBack(r.id, note, this.session.user().name).subscribe((d) => {
+    this.api.sendBack(r.id, note, this.session.operatorId()!).subscribe((d) => {
       this.d.set(d as RequestDetail);
       this.poll.nudge();
     });
@@ -812,14 +812,14 @@ export class RequestDetailPage {
 
   cancel(r: RequestDetail) {
     this.cancelling.set(false);
-    this.api.cancel(r.id, this.session.user().name).subscribe((d) => {
+    this.api.cancel(r.id, this.session.operatorId()!).subscribe((d) => {
       this.d.set(d as RequestDetail);
       this.poll.nudge();
     });
   }
 
   retry(r: RequestDetail) {
-    this.api.retry(r.id, this.session.user().name, this.retryNote().trim()).subscribe((d) => {
+    this.api.retry(r.id, this.session.operatorId()!, this.retryNote().trim()).subscribe((d) => {
       this.d.set(d as RequestDetail);
       this.poll.nudge();
       this.showRetryNote.set(false);
@@ -828,8 +828,7 @@ export class RequestDetailPage {
   }
 
   comment(r: RequestDetail) {
-    const u = this.session.user();
-    this.api.comment(r.id, this.commentText.trim(), u.name, u.initials).subscribe(() => {
+    this.api.comment(r.id, this.commentText.trim(), this.session.operatorId()!).subscribe(() => {
       this.commentText = '';
       this.api.request(this.id()).subscribe((d) => this.d.set(d));
     });

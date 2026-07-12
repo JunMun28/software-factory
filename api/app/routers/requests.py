@@ -523,10 +523,12 @@ def steer(rid: int, body: SteerIn, db: Session = Depends(get_db)):
     """Append a steer note for a RUNNING build (spec §6). 409 anywhere else:
     at a gate the human verb is approve/send-back; stalled has Recovery."""
     r = get_request(db, rid)
+    from .operators import resolve_operator
+    actor = resolve_operator(db, body.operator_id).name
     if not in_flight(r):
         raise HTTPException(409, "Steer is only available while a run is in flight")
-    ev = emit(db, r, "steer_note", body.note[:300], actor=body.actor, bot=False, body=body.note)
-    db.add(AuditEvent(request_id=r.id, actor=body.actor, action="steered", note=body.note[:300]))
+    ev = emit(db, r, "steer_note", body.note[:300], actor=actor, bot=False, body=body.note)
+    db.add(AuditEvent(request_id=r.id, actor=actor, action="steered", note=body.note[:300]))
     db.flush()  # assign the event id before returning it
     db.commit()
     return {"id": ev.id, "status": "queued"}

@@ -18,6 +18,7 @@ from ..db import get_db
 from ..events import emit
 from ..models import App, AuditEvent, Comment, ProgressEvent, Request
 from ..schemas import CommentIn, CommentOut, EventOut, FeedPage, RequestOut
+from .operators import resolve_operator
 
 router = APIRouter()
 
@@ -111,14 +112,15 @@ def request_trace(rid: int, after: int = 0, limit: int = 200, db: Session = Depe
 @router.post("/api/requests/{rid}/comments", response_model=CommentOut, status_code=201)
 def add_comment(rid: int, body: CommentIn, db: Session = Depends(get_db)):
     r = get_request(db, rid)
-    c = Comment(request=r, author=body.author, initials=body.initials, color=body.color, body=body.body)
+    operator = resolve_operator(db, body.operator_id)
+    c = Comment(request=r, author=operator.name, initials=operator.initials, color=operator.hue, body=body.body)
     db.add(c)
-    db.add(AuditEvent(request_id=r.id, actor=body.author, action="commented"))
+    db.add(AuditEvent(request_id=r.id, actor=operator.name, action="commented"))
     db.flush()  # assign the comment id before the event references it
     # the comment also rides the one progress_event rail (ADR 0012) so feeds
     # update through the same keyset cursor as every other entry
-    emit(db, r, "comment", body.body[:300], actor=body.author, bot=False,
-         payload={"comment_id": c.id, "initials": body.initials, "color": body.color, "body": body.body})
+    emit(db, r, "comment", body.body[:300], actor=operator.name, bot=False,
+         payload={"comment_id": c.id, "initials": operator.initials, "color": operator.hue, "body": body.body})
     db.commit()
     return c
 

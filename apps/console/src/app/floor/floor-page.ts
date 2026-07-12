@@ -106,20 +106,20 @@ export class FloorPage {
   }
   approve(request: FactoryRequest) {
     this.confirming.set(null);
-    this.api.approve(request.id, this.session.user().name).subscribe(() => this.poll.nudge());
+    this.api.approve(request.id, this.session.operatorId()!).subscribe(() => this.poll.nudge());
   }
   sendBack(request: FactoryRequest, note: string) {
     this.sendingBack.set(null);
     this.api
-      .sendBack(request.id, note, this.session.user().name)
+      .sendBack(request.id, note, this.session.operatorId()!)
       .subscribe(() => this.poll.nudge());
   }
   retry(request: FactoryRequest) {
-    this.api.retry(request.id, this.session.user().name).subscribe(() => this.poll.nudge());
+    this.api.retry(request.id, this.session.operatorId()!).subscribe(() => this.poll.nudge());
   }
   cancel(request: FactoryRequest) {
     this.cancelling.set(null);
-    this.api.cancel(request.id, this.session.user().name).subscribe(() => this.poll.nudge());
+    this.api.cancel(request.id, this.session.operatorId()!).subscribe(() => this.poll.nudge());
   }
   private focusRow() {
     const rows = this.host.nativeElement.querySelectorAll<HTMLElement>(

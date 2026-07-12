@@ -29,8 +29,7 @@ export const routes: Routes = [
   },
   {
     path: 'studio',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./shell/stub-page').then((m) => m.StubPage),
+    loadComponent: () => import('./studio/studio-page').then((m) => m.StudioPage),
   },
   {
     path: 'requests/:id',

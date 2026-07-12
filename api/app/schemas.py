@@ -26,6 +26,23 @@ class AppIn(BaseModel):
     muted: bool = False
 
 
+class OperatorOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    initials: str
+    hue: str
+    email: str
+    created_at: datetime
+
+
+class OperatorIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    initials: str = Field(min_length=1, max_length=4)
+    hue: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    email: str = Field(min_length=3, max_length=200)
+
+
 class TurnOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     order: int
@@ -163,12 +180,19 @@ class MissionRun(BaseModel):
     run: RunStateOut
 
 
+class MissionRecent(BaseModel):
+    request: RequestOut
+    outcome: str
+    decided_by: str
+    decided_at: datetime
+
+
 class MissionOut(BaseModel):
     """One poll for the Mission control home (spec §6)."""
     gates: list[MissionGate]
     runs: list[MissionRun]
     stalled: list[RequestOut]
-    recent: list[RequestOut]
+    recent: list[MissionRecent]
     cursor: int
 
 
@@ -291,18 +315,21 @@ class Note(BaseModel):
     actor: str = Field(default="Kim P.", max_length=80)
 
 
+class OperatorNote(BaseModel):
+    operator_id: int
+    note: str = Field(default="", max_length=4000)
+
+
 class SteerIn(BaseModel):
     """A mid-run course-correction note (spec §5): consumed by the runner at
     the next step boundary."""
     note: str = Field(min_length=1, max_length=1000)
-    actor: str = Field(default="Kim P.", max_length=80)
+    operator_id: int
 
 
 class CommentIn(BaseModel):
     body: str = Field(min_length=1, max_length=4000)
-    author: str = Field(default="Kim P.", max_length=80)
-    initials: str = Field(default="KP", max_length=4)
-    color: str = Field(default="#6E5A8A", max_length=12)
+    operator_id: int
 
 
 class FeedPage(BaseModel):

@@ -40,7 +40,9 @@ import { Session } from '../core/session.service';
         >
           ⌘K
         </button>
-        <span class="operator" [title]="session.user().name">{{ session.user().initials }}</span>
+        @if (session.operator(); as operator) {
+          <a class="operator" routerLink="/studio" [title]="operator.name" [style.background]="operator.hue">{{ operator.initials }}</a>
+        }
       </header>
       <main><ng-content /></main>
     </div>
@@ -157,6 +159,7 @@ import { Session } from '../core/session.service';
       border-radius: 50%;
       font-size: 11px;
       font-weight: 700;
+      text-decoration: none;
     }
     .backdrop {
       position: fixed;

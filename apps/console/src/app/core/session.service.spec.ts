@@ -1,63 +1,60 @@
+import { TestBed } from '@angular/core/testing';
+import { Api, Operator } from '@sf/shared';
+import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ADMIN, Session } from './session.service';
+import { Session } from './session.service';
 
-// The Angular unit-test runner uses Node.js with a stub localStorage that has no
-// standard Web Storage API methods (setItem/getItem/removeItem/clear). Replace it
-// with a minimal in-memory implementation for the duration of these tests.
-function makeLocalStorageMock() {
-  const store: Record<string, string> = {};
+const operators: Operator[] = [
+  {
+    id: 7,
+    name: 'Avery Stone',
+    initials: 'AS',
+    hue: '#0F766E',
+    email: 'avery@example.com',
+    created_at: '2026-07-11T00:00:00Z',
+  },
+];
+
+function storage(initial: Record<string, string> = {}) {
+  const values = { ...initial };
   return {
-    getItem: (key: string) => (key in store ? store[key] : null),
-    setItem: (key: string, value: string) => {
-      store[key] = String(value);
-    },
-    removeItem: (key: string) => {
-      delete store[key];
-    },
-    clear: () => {
-      Object.keys(store).forEach((k) => delete store[k]);
-    },
+    getItem: (key: string) => values[key] ?? null,
+    setItem: (key: string, value: string) => (values[key] = value),
+    removeItem: (key: string) => delete values[key],
   };
 }
 
 describe('console Session', () => {
-  beforeEach(() => {
-    vi.stubGlobal('localStorage', makeLocalStorageMock());
+  beforeEach(() => vi.stubGlobal('localStorage', storage()));
+
+  it('starts empty and resolves only a stored server-row pointer', () => {
+    localStorage.setItem('sf-console-operator-id', '7');
+    TestBed.configureTestingModule({
+      providers: [{ provide: Api, useValue: { operators: () => of(operators) } }],
+    });
+    const session = TestBed.inject(Session);
+    expect(session.operator()).toEqual(operators[0]);
+    expect(localStorage.getItem('sf-console-operator-id')).toBe('7');
   });
 
-  it('defaults to the ADMIN user so the admin guard passes', () => {
-    expect(new Session().user()).toEqual(ADMIN);
+  it('clears an invalid pointer instead of inventing a mock identity', () => {
+    localStorage.setItem('sf-console-operator-id', '99');
+    TestBed.configureTestingModule({
+      providers: [{ provide: Api, useValue: { operators: () => of(operators) } }],
+    });
+    const session = TestBed.inject(Session);
+    expect(session.operator()).toBeNull();
+    expect(localStorage.getItem('sf-console-operator-id')).toBeNull();
   });
 
-  it('round-trips a signed-in user through localStorage', () => {
-    new Session().signIn('admin');
-    expect(new Session().user().role).toBe('admin');
-  });
-
-  it('round-trips the full admin user object', () => {
-    new Session().signIn('admin');
-    expect(new Session().user()).toEqual(ADMIN);
-  });
-
-  it('falls back to ADMIN on malformed JSON', () => {
-    localStorage.setItem('sf-console-user', '{not json');
-    expect(new Session().user()).toEqual(ADMIN);
-  });
-
-  it('discards a wrong-shape blob and removes it from localStorage', () => {
-    localStorage.setItem('sf-console-user', JSON.stringify({ name: 'X' }));
-    expect(new Session().user()).toEqual(ADMIN);
+  it('persists only the selected operator id', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: Api, useValue: { operators: () => of(operators) } }],
+    });
+    const session = TestBed.inject(Session);
+    session.select(operators[0]);
+    expect(localStorage.getItem('sf-console-operator-id')).toBe('7');
     expect(localStorage.getItem('sf-console-user')).toBeNull();
-  });
-
-  it('rejects an unknown role and removes the blob', () => {
-    localStorage.setItem('sf-console-user', JSON.stringify({ ...ADMIN, role: 'root' }));
-    expect(new Session().user()).toEqual(ADMIN);
-    expect(localStorage.getItem('sf-console-user')).toBeNull();
-  });
-
-  it('returns ADMIN when localStorage is empty', () => {
-    expect(new Session().user()).toEqual(ADMIN);
   });
 });

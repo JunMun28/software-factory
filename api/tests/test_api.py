@@ -63,12 +63,12 @@ def test_approve_ledger_and_idempotent_replay(client):
     hero = submitted_request(client, title="Ledger replay probe")
     before = client.get("/api/events", params={"request_id": hero["id"]}).json()
 
-    d = client.post(f"/api/requests/{hero['id']}/approve", json={"actor": "Kim P."}).json()
+    d = client.post(f"/api/requests/{hero['id']}/approve", json={"operator_id": 1}).json()
     assert d["status"] == "approved" and d["stage"] == "architecture"
     assert d["repo_ready"] and d["spec_pr_open"] and d["stage2_fired"]
 
     # replay must not double-fire (ADR 0006)
-    d2 = client.post(f"/api/requests/{hero['id']}/approve", json={"actor": "Kim P."}).json()
+    d2 = client.post(f"/api/requests/{hero['id']}/approve", json={"operator_id": 1}).json()
     assert d2["status"] == "approved"
     after = client.get("/api/events", params={"request_id": hero["id"]}).json()
     approvals = [e for e in after if e["kind"] == "gate_event" and e["title"].startswith("Spec approved")]
@@ -78,14 +78,17 @@ def test_approve_ledger_and_idempotent_replay(client):
 
 def test_illegal_approve_rejected(client):
     intake = new_request(client, title="Too early to approve")  # still a draft — no gate raised
-    resp = client.post(f"/api/requests/{intake['id']}/approve", json={})
+    # missing identity is rejected by validation before the state check
+    assert client.post(f"/api/requests/{intake['id']}/approve", json={}).status_code == 422
+    # with a valid operator the state guard still refuses to approve a draft (409)
+    resp = client.post(f"/api/requests/{intake['id']}/approve", json={"operator_id": 1})
     assert resp.status_code == 409
 
 
 def test_send_back_respond_loop(client):
     target = submitted_request(client, title="Send-back loop")
     d = client.post(f"/api/requests/{target['id']}/send-back",
-                    json={"note": "Which CSV columns are required?", "actor": "Kim P."}).json()
+                    json={"note": "Which CSV columns are required?", "operator_id": 1}).json()
     assert d["status"] == "sent_back" and d["send_back_rounds"] == 1 and d["gate"] is None
 
     d = client.post(f"/api/requests/{target['id']}/respond",
@@ -124,7 +127,7 @@ def test_simulator_drives_stages_to_merge_gate(client):
     hero2 = client.get(f"/api/requests/{hero['id']}").json()
     assert hero2["stage"] == "review"
 
-    d = client.post(f"/api/requests/{hero['id']}/approve", json={"actor": "Kim P."}).json()
+    d = client.post(f"/api/requests/{hero['id']}/approve", json={"operator_id": 1}).json()
     assert d["stage"] == "done" and d["status"] == "done"
     evs = client.get("/api/events", params={"request_id": hero["id"]}).json()
     assert any("Deployed" in e["title"] for e in evs)
@@ -136,7 +139,7 @@ def test_retry_clears_escalation(client):
         req = db.get(Request, stuck["id"])
         req.stage, req.needs_human, req.needs_human_reason = "build", True, "GREEN gate: boom"
         db.commit()
-    d = client.post(f"/api/requests/{stuck['id']}/retry", json={"note": "flaky — run it again"}).json()
+    d = client.post(f"/api/requests/{stuck['id']}/retry", json={"note": "flaky — run it again", "operator_id": 1}).json()
     assert d["needs_human"] is False
     evs = client.get("/api/events", params={"request_id": stuck["id"]}).json()
     assert any(e["kind"] == "recovery_action" for e in evs)
@@ -144,9 +147,9 @@ def test_retry_clears_escalation(client):
 
 def test_cancel_terminal_and_idempotent(client):
     intake = submitted_request(client, title="Cancel me")
-    d = client.post(f"/api/requests/{intake['id']}/cancel", json={"actor": "Kim P."}).json()
+    d = client.post(f"/api/requests/{intake['id']}/cancel", json={"operator_id": 1}).json()
     assert d["status"] == "cancelled"
-    d2 = client.post(f"/api/requests/{intake['id']}/cancel", json={"actor": "Kim P."}).json()
+    d2 = client.post(f"/api/requests/{intake['id']}/cancel", json={"operator_id": 1}).json()
     assert d2["status"] == "cancelled"
 
 
@@ -166,7 +169,7 @@ def test_stage_clock_and_last_event(client):
     hero = approved_request(client, title="Stage clock probe")
     for _ in range(16):
         client.post("/api/simulator/tick")
-    client.post(f"/api/requests/{hero['id']}/approve", json={"actor": "Kim P."})  # merge gate → done
+    client.post(f"/api/requests/{hero['id']}/approve", json={"operator_id": 1})  # merge gate → done
     done = next(r for r in client.get("/api/requests").json() if r["id"] == hero["id"])
     assert done["stage_entered_at"] is not None
     assert done["last_event"] and "Deployed" in done["last_event"]
@@ -174,14 +177,14 @@ def test_stage_clock_and_last_event(client):
     # a fresh approve stamps a new stage clock
     target = submitted_request(client, title="Stage clock second probe")
     before = target["stage_entered_at"]
-    d = client.post(f"/api/requests/{target['id']}/approve", json={"actor": "Kim P."}).json()
+    d = client.post(f"/api/requests/{target['id']}/approve", json={"operator_id": 1}).json()
     assert d["stage_entered_at"] > before
 
 
 def test_comments(client):
     r = submitted_request(client, title="Comment thread")
-    c = client.post(f"/api/requests/{r['id']}/comments", json={"body": "Looks fine to me."}).json()
-    assert c["author"] == "Kim P."
+    c = client.post(f"/api/requests/{r['id']}/comments", json={"body": "Looks fine to me.", "operator_id": 1}).json()
+    assert c["author"] == "Kim Park"
     cs = client.get(f"/api/requests/{r['id']}/comments").json()
     assert any(x["body"] == "Looks fine to me." for x in cs)
 

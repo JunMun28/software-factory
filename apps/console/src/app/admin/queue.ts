@@ -367,20 +367,20 @@ export class ApprovalQueue {
   }
   approve(r: RequestDetail) {
     this.confirming.set(false);
-    this.api.approve(r.id, this.session.user().name).subscribe(() => this.poll.nudge());
+    this.api.approve(r.id, this.session.operatorId()!).subscribe(() => this.poll.nudge());
   }
   sendBack(r: RequestDetail, note: string) {
     this.sendingBack.set(false);
-    this.api.sendBack(r.id, note, this.session.user().name).subscribe(() => {
+    this.api.sendBack(r.id, note, this.session.operatorId()!).subscribe(() => {
       this.poll.nudge();
     });
   }
   cancel(r: RequestDetail) {
     this.cancelling.set(false);
-    this.api.cancel(r.id, this.session.user().name).subscribe(() => this.poll.nudge());
+    this.api.cancel(r.id, this.session.operatorId()!).subscribe(() => this.poll.nudge());
   }
   retry(r: RequestDetail) {
-    this.api.retry(r.id, this.session.user().name).subscribe(() => this.poll.nudge());
+    this.api.retry(r.id, this.session.operatorId()!).subscribe(() => this.poll.nudge());
   }
   openIssue(id: number) {
     this.router.navigateByUrl(`/admin/requests/${id}`);

@@ -161,3 +161,57 @@ describe('Floor all-clear state', () => {
     expect(fixture.nativeElement.textContent).toContain('Nothing needs you — 1 request in motion.');
   });
 });
+
+describe('Floor recently outcomes', () => {
+  it('renders the server-signed operator and decision time', async () => {
+    await TestBed.configureTestingModule({
+      imports: [FloorContent],
+      providers: [provideRouter([])],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorContent);
+    fixture.componentRef.setInput(
+      'mission',
+      mission({
+        recent: [
+          {
+            request: request({ status: 'cancelled' }),
+            outcome: 'approved',
+            decided_by: 'Avery Stone',
+            decided_at: '2026-07-11T02:00:00Z',
+          },
+        ],
+      }),
+    );
+    fixture.detectChanges();
+    const row = fixture.nativeElement.querySelector('.recent li');
+    expect(row.textContent).toContain('Approved');
+    expect(row.textContent).toContain('by Avery Stone');
+    expect(row.querySelector('time')?.getAttribute('datetime')).toBe('2026-07-11T02:00:00Z');
+  });
+
+  it('labels a merge outcome as a shipped success and counts it', async () => {
+    await TestBed.configureTestingModule({
+      imports: [FloorContent],
+      providers: [provideRouter([])],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorContent);
+    fixture.componentRef.setInput(
+      'mission',
+      mission({
+        recent: [
+          {
+            request: request({ status: 'done' }),
+            outcome: 'approved_merge',
+            decided_by: 'Avery Stone',
+            decided_at: '2026-07-11T02:00:00Z',
+          },
+        ],
+      }),
+    );
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.recent .outcome.shipped')?.textContent).toContain(
+      'Shipped',
+    );
+    expect(fixture.nativeElement.textContent).toContain('1 shipped this week');
+  });
+});

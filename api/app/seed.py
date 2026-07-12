@@ -6,10 +6,11 @@ views) reads from the same records.
 """
 from datetime import timedelta
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .events import emit
-from .models import App, AuditEvent, Comment, InterviewTurn, Request, SpecLine, utcnow
+from .models import App, AuditEvent, Comment, InterviewTurn, Operator, Request, SpecLine, utcnow
 
 
 def ago(**kw):
@@ -17,6 +18,12 @@ def ago(**kw):
 
 
 def seed(db: Session) -> None:
+    if not db.scalar(select(func.count()).select_from(Operator)):
+        db.add_all([
+            Operator(name="Kim Park", initials="KP", hue="#6E5A8A", email="kim.park@micron.com"),
+            Operator(name="Jun Wong", initials="JW", hue="#7C5CFC", email="jun.wong@micron.com"),
+        ])
+        db.commit()
     if db.query(App).count():
         return
 

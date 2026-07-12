@@ -1,5 +1,6 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
+import { map } from 'rxjs';
 
 import { Session } from './session.service';
 
@@ -7,5 +8,5 @@ import { Session } from './session.service';
 export const adminGuard: CanActivateFn = () => {
   const session = inject(Session);
   const router = inject(Router);
-  return session.user().role === 'admin' ? true : router.parseUrl('/login');
+  return session.resolve().pipe(map((operator) => operator ? true : router.parseUrl('/studio')));
 };

@@ -132,14 +132,14 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
         <h2 id="recent-title">Recently</h2>
         <p class="section-note">The latest outcomes, in factory order.</p>
         <ul class="recent">
-          @for (request of m.recent; track request.id) {
+          @for (recent of m.recent; track recent.request.id) {
             <li>
-              <span class="outcome" [class.shipped]="request.status === 'done'">{{
-                outcome(request)
+              <span class="outcome" [class.shipped]="recent.outcome === 'approved_merge'">{{
+                outcome(recent.outcome)
               }}</span
-              ><a [routerLink]="['/requests', request.id]">{{ request.title }}</a
-              ><span class="spacer"></span
-              ><time [attr.datetime]="request.updated_at">{{ timeAgo(request.updated_at) }}</time>
+              ><a [routerLink]="['/requests', recent.request.id]">{{ recent.request.title }}</a
+              ><span class="spacer"></span><span class="signed">by {{ recent.decided_by }} · </span
+              ><time [attr.datetime]="recent.decided_at">{{ timeAgo(recent.decided_at) }}</time>
             </li>
           } @empty {
             <li class="muted">No recent outcomes yet.</li>
@@ -443,6 +443,7 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
       text-decoration: none;
     }
     .recent time,
+    .signed,
     .muted {
       color: var(--muted);
       font-size: 12.5px;
@@ -531,7 +532,9 @@ export class FloorContent {
 
   lanes = computed(() => this.mission().runs.map(deriveLane));
   needsCount = computed(() => this.mission().gates.length + this.mission().stalled.length);
-  shippedThisWeek = computed(() => this.mission().recent.filter((r) => r.status === 'done').length);
+  shippedThisWeek = computed(
+    () => this.mission().recent.filter((r) => r.outcome === 'approved_merge').length,
+  );
   greeting = computed(() => {
     const hour = new Date().getHours();
     return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -547,11 +550,13 @@ export class FloorContent {
       ? 'Plan stage'
       : `${request.stage[0].toUpperCase()}${request.stage.slice(1)} stage`;
   }
-  outcome(request: FactoryRequest) {
-    return request.status === 'done'
+  outcome(outcome: string) {
+    return outcome === 'approved_merge'
       ? 'Shipped'
-      : request.status === 'cancelled'
-        ? 'Cancelled'
-        : 'Sent back';
+      : outcome === 'approved'
+        ? 'Approved'
+        : outcome === 'cancelled'
+          ? 'Cancelled'
+          : 'Sent back';
   }
 }

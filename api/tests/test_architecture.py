@@ -49,7 +49,7 @@ def _spec_gated_request(client, title="Hardening probe"):
 def test_retry_restarts_agent_pipeline(agent_client):
     client, runner = agent_client
     r = _spec_gated_request(client, "Retry re-drive")
-    client.post(f"/api/requests/{r['id']}/approve", json={"actor": "Kim P."})
+    client.post(f"/api/requests/{r['id']}/approve", json={"operator_id": 1})
     assert runner.started == [r["id"]]  # approve dispatched the pipeline
 
     # escalate it mid-build (what a gate failure does), then Retry
@@ -57,7 +57,7 @@ def test_retry_restarts_agent_pipeline(agent_client):
         req = db.get(Request, r["id"])
         req.stage, req.needs_human, req.needs_human_reason = "build", True, "GREEN gate: boom"
         db.commit()
-    out = client.post(f"/api/requests/{r['id']}/retry", json={"actor": "Kim P."}).json()
+    out = client.post(f"/api/requests/{r['id']}/retry", json={"operator_id": 1}).json()
     assert out["needs_human"] is False and out["status"] == "approved"
     assert runner.started == [r["id"], r["id"]]  # retry re-drove it — the dead-end is gone
 
@@ -65,8 +65,8 @@ def test_retry_restarts_agent_pipeline(agent_client):
 def test_approve_replay_never_double_starts(agent_client):
     client, runner = agent_client
     r = _spec_gated_request(client, "Replay single-start")
-    client.post(f"/api/requests/{r['id']}/approve", json={"actor": "Kim P."})
-    client.post(f"/api/requests/{r['id']}/approve", json={"actor": "Kim P."})  # replay
+    client.post(f"/api/requests/{r['id']}/approve", json={"operator_id": 1})
+    client.post(f"/api/requests/{r['id']}/approve", json={"operator_id": 1})  # replay
     assert runner.started == [r["id"]]  # exactly one pipeline
 
 
@@ -78,7 +78,7 @@ def test_startup_rescan_escalates_orphans(monkeypatch):
     pre = create_app(auto_tick=0, runner=RecordingRunner())
     with TestClient(pre) as c:
         r = _spec_gated_request(c, "Orphaned by restart")
-        c.post(f"/api/requests/{r['id']}/approve", json={"actor": "Kim P."})
+        c.post(f"/api/requests/{r['id']}/approve", json={"operator_id": 1})
     # "restart": a fresh app boots over the same DB
     post = create_app(auto_tick=0, runner=RecordingRunner())
     with TestClient(post) as c:
@@ -148,7 +148,7 @@ def test_cancelled_request_cannot_reach_merge(client, ws_root):
         req = db.get(Request, d["id"])
         req.status, req.gate = "cancelled", "approve_merge"
         db.commit()
-    assert client.post(f"/api/requests/{d['id']}/approve", json={}).status_code == 409
+    assert client.post(f"/api/requests/{d['id']}/approve", json={"operator_id": 1}).status_code == 409
     assert d["id"] not in [x["id"] for x in client.get("/api/inbox").json()]
 
 
