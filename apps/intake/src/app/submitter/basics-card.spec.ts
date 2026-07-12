@@ -64,6 +64,7 @@ describe('BasicsCard', () => {
   }
 
   it('offers the four plain-language request types as cards', () => {
+    draft.typeConfidence = 0.3; // unsure → cards open so we can read them
     const root = render().nativeElement as HTMLElement;
     const choices = [...root.querySelectorAll('.typegrid .tcard .tl')].map((b) =>
       b.textContent?.trim(),
@@ -75,6 +76,28 @@ describe('BasicsCard', () => {
       'Build a new app',
       'Something else',
     ]);
+  });
+
+  it('collapses the type cards behind the chip when confident', () => {
+    draft.typeConfidence = 0.9;
+    const root = render('bug').nativeElement as HTMLElement;
+    expect(root.querySelector('sf-track-chip')).not.toBeNull();
+    expect(root.querySelector('.typegrid')).toBeNull(); // cards collapsed
+  });
+
+  it('opens the type cards when the guess is unsure', () => {
+    draft.typeConfidence = 0.3;
+    const root = render('other').nativeElement as HTMLElement;
+    expect(root.querySelector('.typegrid')).not.toBeNull(); // cards open
+  });
+
+  it('opens the cards when the chip is clicked', () => {
+    draft.typeConfidence = 0.9;
+    const fixture = render('bug');
+    const root = fixture.nativeElement as HTMLElement;
+    root.querySelector<HTMLButtonElement>('sf-track-chip button')!.click();
+    fixture.detectChanges();
+    expect(root.querySelector('.typegrid')).not.toBeNull();
   });
 
   it.each([
