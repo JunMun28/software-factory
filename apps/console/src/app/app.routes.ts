@@ -2,60 +2,41 @@ import { Routes } from '@angular/router';
 
 import { adminGuard } from './core/guards';
 
-/**
- * Console routes (ADR 0017 Phase 2). The Control center owns the admin world —
- * mission control is the default landing. The /admin path prefix is kept so the
- * shell's nav, command palette, and keyboard shortcuts resolve unchanged after
- * the move from apps/intake.
- */
-export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'admin/mission' },
-  { path: 'admin', pathMatch: 'full', redirectTo: 'admin/mission' },
-  {
-    path: 'admin/map',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/map').then((m) => m.FactoryMap),
-  },
-  {
-    path: 'admin/mission',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/mission').then((m) => m.Mission),
-  },
-  {
-    path: 'admin/list',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/list').then((m) => m.ListView),
-  },
-  {
-    path: 'admin/queue',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/queue').then((m) => m.ApprovalQueue),
-  },
-  {
-    path: 'admin/requests/:id',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/request-detail').then((m) => m.RequestDetailPage),
-  },
-  {
-    path: 'admin/apps/:key',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/feed').then((m) => m.Feed),
-  },
-  {
-    path: 'admin/inbox',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/inbox').then((m) => m.NeedsMe),
-  },
-  {
-    path: 'admin/registry',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/registry').then((m) => m.Registry),
-  },
-  {
-    path: 'admin/settings',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./admin/settings').then((m) => m.Settings),
-  },
+export const legacyRedirects: Routes = [
+  { path: 'admin', pathMatch: 'full', redirectTo: '' },
+  { path: 'admin/mission', pathMatch: 'full', redirectTo: '' },
+  { path: 'admin/map', pathMatch: 'full', redirectTo: '' },
+  { path: 'admin/queue', pathMatch: 'full', redirectTo: '' },
+  { path: 'admin/inbox', pathMatch: 'full', redirectTo: '' },
+  { path: 'admin/list', pathMatch: 'full', redirectTo: 'library' },
+  { path: 'admin/registry', pathMatch: 'full', redirectTo: 'studio' },
+  { path: 'admin/settings', pathMatch: 'full', redirectTo: 'studio' },
+  { path: 'admin/requests/:id', redirectTo: 'requests/:id' },
+  { path: 'admin/apps/:key', redirectTo: 'library' },
+];
 
-  { path: '**', redirectTo: 'admin/mission' },
+export const routes: Routes = [
+  {
+    path: '',
+    pathMatch: 'full',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./floor/floor-page').then((m) => m.FloorPage),
+  },
+  {
+    path: 'library',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./shell/stub-page').then((m) => m.StubPage),
+  },
+  {
+    path: 'studio',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./shell/stub-page').then((m) => m.StubPage),
+  },
+  {
+    path: 'requests/:id',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./shell/stub-page').then((m) => m.StubPage),
+  },
+  ...legacyRedirects,
+  { path: '**', redirectTo: '' },
 ];
