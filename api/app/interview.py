@@ -192,6 +192,24 @@ SCRIPTS: dict[str, list[Question]] = {
 }
 
 
+# Deterministic offline classifier (the ADR 0007 fallback). Real models override
+# in AgentBrain. Keyword hits vote for a type; the winning margin sets confidence.
+_CLASSIFY_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "bug": ("broken", "error", "crash", "fails", "failing", "wrong", "bug",
+            "doesn't work", "does not work", "slow", "stuck", "can't", "cannot"),
+    "enh": ("add", "improve", "existing", "also", "better", "extend", "support",
+            "enhance", "option to", "ability to", "would be nice"),
+    "new": ("build", "new app", "new tool", "from scratch", "create a", "brand-new",
+            "brand new", "greenfield", "stand up", "spin up"),
+}
+_VAGUE = ("not sure", "maybe", "idea", "think about", "unsure", "no idea", "dunno")
+
+
+def _classify_scores(text: str) -> dict[str, int]:
+    t = text.lower()
+    return {k: sum(t.count(kw) for kw in kws) for k, kws in _CLASSIFY_KEYWORDS.items()}
+
+
 class ScriptedBrain:
     """Deterministic interview + spec generator (the offline LLMClient)."""
 
@@ -201,6 +219,26 @@ class ScriptedBrain:
         if answered >= min(question_ceiling(req), len(script)):
             return None
         return script[answered]
+
+    def classify(self, description: str) -> dict:
+        """Deterministic type guess + confidence from the free-text description.
+        Empty/vague → new with low confidence; a clear keyword winner → high."""
+        text = (description or "").strip()
+        if not text:
+            return {"type": "new", "confidence": 0.0}
+        scores = _classify_scores(text)
+        best = max(scores, key=lambda k: scores[k])
+        top = scores[best]
+        if top == 0:
+            # no signal — default to the factory's main flow, low confidence
+            conf = 0.15 if any(v in text.lower() for v in _VAGUE) else 0.35
+            return {"type": "new", "confidence": conf}
+        runner_up = max((v for k, v in scores.items() if k != best), default=0)
+        margin = top - runner_up
+        conf = min(0.95, 0.55 + 0.15 * margin)
+        if any(v in text.lower() for v in _VAGUE):
+            conf = min(conf, 0.45)  # hedged language caps confidence
+        return {"type": best, "confidence": round(conf, 2)}
 
     def summarize(self, req: Request) -> dict:
         """Deterministic review spec (the offline fallback): overview from the request, plus
