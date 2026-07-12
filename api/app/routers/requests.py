@@ -31,6 +31,7 @@ from ..interview import (
     Question,
     answered_count,
     get_brain,
+    is_stop_signal,
     pending_payload,
     question_ceiling,
 )
@@ -360,6 +361,8 @@ def answer_interview(rid: int, body: InterviewAnswer, db: Session = Depends(get_
     db.add(InterviewTurn(request=r, order=order, question=q.question, sub=q.sub, options=q.options,
                          answer=None if body.skip else (body.answer or None), skipped=body.skip))
     r.pending_question = None
+    if not body.skip and is_stop_signal(body.answer or ""):
+        r.pending_question = DONE_SENTINEL  # submitter ended the interview conversationally
     db.commit()
     db.refresh(r)
     # returns immediately with `thinking`. In async mode we DON'T kick pre-gen here —

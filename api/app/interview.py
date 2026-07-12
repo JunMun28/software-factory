@@ -60,6 +60,21 @@ def answered_count(req: Request) -> int:
     return sum(1 for t in req.turns if t.answer is not None or t.skipped)
 
 
+# Short, explicit stop phrases the submitter can type to end an uncapped interview
+# (spec/ADR 0023: the chat is the control — no dedicated stop button). Kept deterministic
+# so it works in every brain mode; only a SHORT message counts, so a long answer that
+# merely contains the words is still treated as a real answer.
+_STOP_PHRASES = ("that's enough", "thats enough", "no more questions", "stop asking",
+                 "stop", "i'm done", "im done", "that is enough", "no more")
+
+
+def is_stop_signal(text: str) -> bool:
+    t = (text or "").strip().lower().rstrip(".!")
+    if len(t) > 40:  # a substantive answer, not a stop command
+        return False
+    return any(t == p or t.startswith(p + " ") or t == p + " please" for p in _STOP_PHRASES)
+
+
 @dataclass
 class Question:
     question: str

@@ -62,7 +62,8 @@ def _question_prompt(req: Request, answered: int, floor: int, ceiling: int,
     )
     finish_clause = (
         "If the request is already specified well enough that another question would just be "
-        'noise, skip the question and write only the marker followed by {"done": true}. '
+        'noise, OR the colleague signals they are done (e.g. "that\'s enough", "no more questions"), '
+        'skip the question and write only the marker followed by {"done": true}. '
         if may_finish else ""
     )
     return (
