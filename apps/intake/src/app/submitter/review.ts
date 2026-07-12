@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -20,7 +21,7 @@ import { SubShell } from './sub-shell';
  *  forward: "Add more detail" reopens the chat, or "Submit request" sends it to a reviewer. */
 @Component({
   selector: 'sf-review',
-  imports: [SubShell, Icon, Mark, TypeChip, ProtoFullscreen],
+  imports: [SubShell, Icon, Mark, TypeChip, ProtoFullscreen, NgTemplateOutlet],
   template: `
     <sub-shell active="new">
       <div class="rv-wrap fade-in">
@@ -28,71 +29,49 @@ import { SubShell } from './sub-shell';
         <p class="rv-sub">Here's the spec we'll send to the reviewer. Add more, or submit it.</p>
 
         @if (req(); as r) {
-          <div class="rv-grid" [class.rv-grid--solo]="r.type !== 'new'">
-            <!-- LEFT: the structured spec -->
-            <div class="rv-main">
-              <div class="card rv" style="overflow:hidden">
-                <div class="rv__head">
-                  <span class="rv__av"><sf-mark [size]="14" color="#fff" /></span>
-                  <span class="rv__title">Request spec</span>
-                </div>
-
-                @if (summary()?.overview; as ov) {
-                  <div class="rv__body">
-                    <p class="rv__overview">{{ ov }}</p>
-                    @for (sec of summary()!.sections; track sec.title) {
-                      <div class="rv__sec">
-                        <div class="rv__sec-title">{{ sec.title }}</div>
-                        <ul class="rv__list">
-                          @for (it of sec.items; track $index) {
-                            <li>{{ it }}</li>
-                          }
-                        </ul>
-                      </div>
-                    }
+          @if (r.type === 'new') {
+            <!-- FULL/RICH review — New app only: structured spec + prototype -->
+            <div class="rv-grid">
+              <!-- LEFT: the structured spec -->
+              <div class="rv-main">
+                <div class="card rv" style="overflow:hidden">
+                  <div class="rv__head">
+                    <span class="rv__av"><sf-mark [size]="14" color="#fff" /></span>
+                    <span class="rv__title">Request spec</span>
                   </div>
-                } @else {
-                  <div class="rv__body rv__loading" aria-hidden="true">
-                    <span class="rv__bar" style="width:92%"></span>
-                    <span class="rv__bar" style="width:80%"></span>
-                    <span class="rv__bar" style="width:96%"></span>
-                    <span class="rv__bar" style="width:70%"></span>
-                    <span class="rv__bar" style="width:60%"></span>
-                    <span class="rv__thinking">Writing the spec…</span>
-                  </div>
-                }
 
-                <div class="rv__facts">
-                  <span><i>Type</i><sf-type-chip [t]="r.type" /></span>
-                  <span
-                    ><i>{{ r.type === 'new' ? 'App name' : 'App' }}</i
-                    >{{ r.app_name }}</span
-                  >
-                  @if (r.type !== 'bug') {
-                    <span
-                      ><i>{{
-                        r.type === 'enh'
-                          ? 'Who benefits?'
-                          : r.type === 'other'
-                            ? 'Who is this for?'
-                            : 'Who will use it?'
-                      }}</i
-                      >{{ reachLabel(r.reach) || 'Only the requester' }}</span
-                    >
-                    @if (impactLabel(r); as impact) {
-                      <span
-                        ><i>{{ r.type === 'other' ? 'Expected outcome' : 'Expected benefit' }}</i
-                        >{{ impact }}</span
-                      >
-                    }
+                  @if (summary()?.overview; as ov) {
+                    <div class="rv__body">
+                      <p class="rv__overview">{{ ov }}</p>
+                      @for (sec of summary()!.sections; track sec.title) {
+                        <div class="rv__sec">
+                          <div class="rv__sec-title">{{ sec.title }}</div>
+                          <ul class="rv__list">
+                            @for (it of sec.items; track $index) {
+                              <li>{{ it }}</li>
+                            }
+                          </ul>
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div class="rv__body rv__loading" aria-hidden="true">
+                      <span class="rv__bar" style="width:92%"></span>
+                      <span class="rv__bar" style="width:80%"></span>
+                      <span class="rv__bar" style="width:96%"></span>
+                      <span class="rv__bar" style="width:70%"></span>
+                      <span class="rv__bar" style="width:60%"></span>
+                      <span class="rv__thinking">Writing the spec…</span>
+                    </div>
                   }
-                  <button class="rv__edit" (click)="go('/submit/new')">Edit details</button>
+
+                  <div class="rv__facts">
+                    <ng-container [ngTemplateOutlet]="facts" [ngTemplateOutletContext]="{ r }" />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- RIGHT: the prototype (new-app only) -->
-            @if (r.type === 'new') {
+              <!-- RIGHT: the prototype (new-app only) -->
               <aside class="rv-side">
                 @if (protoDoc(); as doc) {
                   <div class="card pv" style="overflow:hidden">
@@ -119,9 +98,44 @@ import { SubShell } from './sub-shell';
                   </button>
                 }
               </aside>
-            }
-          </div>
+            </div>
+          } @else {
+            <!-- COMPACT review — short tracks (bug/enh/other): what the factory understood -->
+            <div class="rv-grid rv-grid--solo review--compact">
+              <div class="card rv" style="overflow:hidden">
+                <div class="rv__head">
+                  <span class="rv__av"><sf-mark [size]="14" color="#fff" /></span>
+                  <span class="rv__title">What we understood</span>
+                </div>
+
+                @if (summary()?.overview; as ov) {
+                  <div class="rv__body">
+                    <p class="rv__overview">{{ ov }}</p>
+                  </div>
+                } @else {
+                  <div class="rv__body rv__loading" aria-hidden="true">
+                    <span class="rv__bar" style="width:92%"></span>
+                    <span class="rv__bar" style="width:76%"></span>
+                    <span class="rv__thinking">Writing the spec…</span>
+                  </div>
+                }
+
+                <div class="rv__facts">
+                  <ng-container [ngTemplateOutlet]="facts" [ngTemplateOutletContext]="{ r }" />
+                </div>
+              </div>
+            </div>
+          }
         }
+
+        <!-- Shared "what happens next" footer — same copy for every track -->
+        <div class="rv-next">
+          <span class="rv-next__k">What happens next</span>
+          <p class="rv-next__p">
+            A reviewer checks your request, then either approves it to build or sends back a quick
+            question. You'll get an email either way.
+          </p>
+        </div>
 
         <div class="rv-actions">
           <button class="btn ghost" (click)="addMore()">
@@ -133,6 +147,34 @@ import { SubShell } from './sub-shell';
           </button>
         </div>
       </div>
+
+      <!-- Key facts — shared between the full and compact layouts -->
+      <ng-template #facts let-r="r">
+        <span><i>Type</i><sf-type-chip [t]="r.type" /></span>
+        <span
+          ><i>{{ r.type === 'new' ? 'App name' : 'App' }}</i
+          >{{ r.app_name }}</span
+        >
+        @if (r.type !== 'bug') {
+          <span
+            ><i>{{
+              r.type === 'enh'
+                ? 'Who benefits?'
+                : r.type === 'other'
+                  ? 'Who is this for?'
+                  : 'Who will use it?'
+            }}</i
+            >{{ reachLabel(r.reach) || 'Only the requester' }}</span
+          >
+          @if (impactLabel(r); as impact) {
+            <span
+              ><i>{{ r.type === 'other' ? 'Expected outcome' : 'Expected benefit' }}</i
+              >{{ impact }}</span
+            >
+          }
+        }
+        <button class="rv__edit" (click)="go('/submit/new')">Edit details</button>
+      </ng-template>
 
       <!-- full-screen prototype overlay (shared component) -->
       @if (fullscreen() && protoDoc(); as doc) {
@@ -179,11 +221,33 @@ import { SubShell } from './sub-shell';
       position: sticky;
       top: 18px;
     }
+    .rv-next {
+      margin-top: 22px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--hairline);
+    }
+    .rv-next__k {
+      display: block;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--accent-link);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 5px;
+    }
+    .rv-next__p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--fg1);
+    }
     .rv-actions {
       display: flex;
       justify-content: space-between;
       gap: 12px;
-      margin-top: 22px;
+      margin-top: 16px;
     }
 
     .rv__head {
