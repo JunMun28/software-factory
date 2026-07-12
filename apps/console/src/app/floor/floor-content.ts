@@ -2,6 +2,7 @@ import { Component, computed, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { FactoryRequest, MissionGate, MissionOut, timeAgo } from '@sf/shared';
 
+import { FloorActionOutcome } from './floor-action-outcome';
 import { FloorGateCard } from './floor-gate-card';
 import { FLOOR_STAGES, deriveLane } from './floor-view';
 
@@ -40,6 +41,7 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
           @for (gate of m.gates; track gate.request.id) {
             <sf-floor-gate-card
               [gate]="gate"
+              [actionOutcome]="actionOutcomes()[gate.request.id]"
               (approved)="approved.emit(gate)"
               (sentBack)="sentBack.emit(gate)"
             />
@@ -69,6 +71,15 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
                   Cancel
                 </button>
               </div>
+              @if (actionOutcomes()[request.id]; as outcome) {
+                <p
+                  class="action-outcome"
+                  [class.conflict]="outcome.kind === 'conflict'"
+                  role="status"
+                >
+                  {{ outcome.message }}
+                </p>
+              }
             </article>
           }
         }
@@ -275,6 +286,20 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
     .actions .danger {
       color: var(--red);
       border-color: var(--red-line);
+    }
+    .action-outcome {
+      margin: 12px 0 0;
+      padding: 8px 12px;
+      color: var(--muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      font-size: 12.5px;
+    }
+    .action-outcome.conflict {
+      color: var(--amber-tx);
+      background: var(--amber-bg);
+      border-color: var(--amber-line);
     }
     .lane {
       display: block;
@@ -523,6 +548,7 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
 export class FloorContent {
   mission = input.required<MissionOut>();
   intakeUrl = input('http://localhost:4201/submit/new');
+  actionOutcomes = input<Record<number, FloorActionOutcome>>({});
   approved = output<MissionGate>();
   sentBack = output<MissionGate>();
   retried = output<FactoryRequest>();

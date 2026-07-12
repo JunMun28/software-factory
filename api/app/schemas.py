@@ -43,6 +43,13 @@ class OperatorIn(BaseModel):
     email: str = Field(min_length=3, max_length=200)
 
 
+class ConflictOut(BaseModel):
+    detail: str
+    acted_by: str
+    acted_at: datetime
+    resulting_state: str
+
+
 class TurnOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     order: int

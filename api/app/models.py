@@ -277,6 +277,7 @@ class AuditEvent(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
+    operator_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id"), nullable=True)
     actor: Mapped[str] = mapped_column(String(80))
     action: Mapped[str] = mapped_column(String(40))  # submitted | approved | sent_back | cancelled | responded | commented
     note: Mapped[str | None] = mapped_column(Text, nullable=True)

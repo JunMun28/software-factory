@@ -2,6 +2,8 @@
 
 ## Deviations
 
+- Slice 3: no product or conflict-contract deviations from ticket 009. Decisive audit rows gained a nullable `operator_id` pointer so self-replay is resolved by stable identity rather than a potentially duplicated display name; the existing additive SQLite migration path carries this onto established databases. Both production app targets disable Angular's build-time external font inlining so the required builds are hermetic; all other production optimization remains enabled and the existing font stylesheet import is unchanged.
+
 - Slice 2: no deviations from ticket 008. The mission `recent` rows now use a signed outcome wrapper (`request`, `outcome`, `decided_by`, `decided_at`) derived from existing audit events; unsigned historical rows are omitted rather than guessed or backfilled.
 
 - The existing `/api/mission` payload does not include cycle-time or human-wait durations, so The Floor shows an honest em dash for median cycle and wait-on-human. No backend endpoint or inferred number was added in Slice 1.
@@ -39,3 +41,17 @@
 - The shared Api mutation methods keep an actor-shaped `string | number` compat
   signature; the `string` branch is now dead (all callers pass operator id).
   Cutover (016) should drop the compat overloads.
+
+## Slice 009 review pass (fable-5, 2026-07-13)
+
+- Reverted codex's `angular.json` `optimization.fonts:false` on both prod
+  targets — a sandbox-only build workaround (no network) that would ship a
+  runtime external font fetch + FOUT. Builds pass with inlining in a networked
+  env. Watch for this pattern: codex adapts build config to its sandbox.
+- Behavior change (intended, more correct): cancelling a `done` request now
+  returns 409 (was a 200 no-op) — you can't cancel shipped work; the operator
+  gets a clear conflict instead of a silent success.
+- The CAS is race-safe under the single-worker + SQLite write-serialization
+  invariant: concurrent writers block on the row lock, so the second UPDATE
+  sees the winner's committed state (or the rolled-back precondition on failure
+  and legitimately becomes the new winner).

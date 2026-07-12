@@ -1,10 +1,15 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { HttpErrorResponse } from '@angular/common/http';
+import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { FactoryRequest, MissionGate, MissionOut } from '@sf/shared';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { Api, FactoryRequest, MissionGate, MissionOut, Poll, Theme } from '@sf/shared';
+import { of, throwError } from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { Session } from '../core/session.service';
 import { FloorGateCard } from './floor-gate-card';
 import { FloorContent } from './floor-content';
+import { FloorPage } from './floor-page';
 import { deriveLane } from './floor-view';
 
 const request = (over: Partial<FactoryRequest> = {}): FactoryRequest => ({
@@ -213,5 +218,58 @@ describe('Floor recently outcomes', () => {
       'Shipped',
     );
     expect(fixture.nativeElement.textContent).toContain('1 shipped this week');
+  });
+});
+
+describe('Floor conflict outcomes', () => {
+  it('renders a mocked 409 with the winner and local time on the request card', async () => {
+    const actedAt = '2026-07-11T06:02:00Z';
+    const api = {
+      mission: vi.fn(() => of(mission({ gates: [gate()] }))),
+      approve: vi.fn(() =>
+        throwError(
+          () =>
+            new HttpErrorResponse({
+              status: 409,
+              error: {
+                detail: 'Already acted on by Kim Park',
+                acted_by: 'Kim Park',
+                acted_at: actedAt,
+                resulting_state: 'done',
+              },
+            }),
+        ),
+      ),
+    };
+    const poll = { version: signal(0), nudge: vi.fn(), start: vi.fn() };
+    await TestBed.configureTestingModule({
+      imports: [FloorPage],
+      providers: [
+        provideRouter([]),
+        { provide: Api, useValue: api },
+        { provide: Poll, useValue: poll },
+        {
+          provide: Session,
+          useValue: { operatorId: () => 7, operator: () => null },
+        },
+        {
+          provide: Theme,
+          useValue: { resolved: () => 'light', set: vi.fn() },
+        },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorPage);
+    fixture.detectChanges();
+
+    fixture.componentInstance.approve(request());
+    fixture.detectChanges();
+
+    const localTime = new Date(actedAt).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const outcome = fixture.nativeElement.querySelector('.action-outcome');
+    expect(outcome?.textContent).toContain(`Already approved by Kim Park at ${localTime}`);
+    expect(poll.nudge).toHaveBeenCalledOnce();
   });
 });

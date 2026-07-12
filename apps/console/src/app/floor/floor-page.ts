@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { Observable } from 'rxjs';
 import {
   Api,
   ApproveModal,
@@ -22,6 +23,7 @@ import {
 import { INTAKE_URL, intakeNewRequestUrl } from '../core/intake-url';
 import { Session } from '../core/session.service';
 import { ConsoleShell } from '../shell/console-shell';
+import { FloorActionOutcome } from './floor-action-outcome';
 import { FloorContent } from './floor-content';
 
 @Component({
@@ -33,6 +35,7 @@ import { FloorContent } from './floor-content';
         <sf-floor-content
           [mission]="m"
           [intakeUrl]="intakeUrl"
+          [actionOutcomes]="actionOutcomes()"
           (approved)="confirming.set($event)"
           (sentBack)="sendingBack.set($event)"
           (retried)="retry($event)"
@@ -84,6 +87,7 @@ export class FloorPage {
   confirming = signal<MissionGate | null>(null);
   sendingBack = signal<MissionGate | null>(null);
   cancelling = signal<FactoryRequest | null>(null);
+  actionOutcomes = signal<Record<number, FloorActionOutcome>>({});
   intakeUrl = intakeNewRequestUrl(inject(INTAKE_URL));
   /** -1 = nothing focused yet, so the first J lands on the first row. */
   focusIndex = signal(-1);
@@ -106,20 +110,60 @@ export class FloorPage {
   }
   approve(request: FactoryRequest) {
     this.confirming.set(null);
-    this.api.approve(request.id, this.session.operatorId()!).subscribe(() => this.poll.nudge());
+    this.runAction(request, 'approve', this.api.approve(request.id, this.session.operatorId()!));
   }
   sendBack(request: FactoryRequest, note: string) {
     this.sendingBack.set(null);
-    this.api
-      .sendBack(request.id, note, this.session.operatorId()!)
-      .subscribe(() => this.poll.nudge());
+    this.runAction(
+      request,
+      'send back',
+      this.api.sendBack(request.id, note, this.session.operatorId()!),
+    );
   }
   retry(request: FactoryRequest) {
-    this.api.retry(request.id, this.session.operatorId()!).subscribe(() => this.poll.nudge());
+    this.runAction(request, 'retry', this.api.retry(request.id, this.session.operatorId()!));
   }
   cancel(request: FactoryRequest) {
     this.cancelling.set(null);
-    this.api.cancel(request.id, this.session.operatorId()!).subscribe(() => this.poll.nudge());
+    this.runAction(request, 'cancel', this.api.cancel(request.id, this.session.operatorId()!));
+  }
+  private runAction(
+    request: FactoryRequest,
+    verb: 'approve' | 'send back' | 'retry' | 'cancel',
+    action: Observable<unknown>,
+  ) {
+    action.subscribe({
+      next: () => {
+        this.clearOutcome(request.id);
+        this.poll.nudge();
+      },
+      error: (error: { status?: number; error?: Partial<ConflictPayload> }) => {
+        const conflict = error.status === 409 ? error.error : null;
+        const outcome =
+          conflict?.acted_by && conflict.acted_at
+            ? {
+                kind: 'conflict' as const,
+                message: `Already ${this.pastTense(verb)} by ${conflict.acted_by} at ${this.shortTime(conflict.acted_at)}`,
+              }
+            : { kind: 'error' as const, message: `Couldn’t ${verb}. Try again.` };
+        this.actionOutcomes.update((current) => ({ ...current, [request.id]: outcome }));
+        this.poll.nudge();
+      },
+    });
+  }
+  private clearOutcome(requestId: number) {
+    this.actionOutcomes.update((current) => {
+      const { [requestId]: _removed, ...rest } = current;
+      return rest;
+    });
+  }
+  private pastTense(verb: 'approve' | 'send back' | 'retry' | 'cancel') {
+    return { approve: 'approved', 'send back': 'sent back', retry: 'retried', cancel: 'cancelled' }[
+      verb
+    ];
+  }
+  private shortTime(iso: string) {
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
   private focusRow() {
     const rows = this.host.nativeElement.querySelectorAll<HTMLElement>(
@@ -161,4 +205,11 @@ export class FloorPage {
       this.sendingBack.set(current.gate);
     }
   }
+}
+
+interface ConflictPayload {
+  detail: string;
+  acted_by: string;
+  acted_at: string;
+  resulting_state: string;
 }

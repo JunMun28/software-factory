@@ -2,6 +2,8 @@ import { Component, computed, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { MissionGate } from '@sf/shared';
 
+import { FloorActionOutcome } from './floor-action-outcome';
+
 @Component({
   selector: 'sf-floor-gate-card',
   imports: [RouterLink],
@@ -88,6 +90,15 @@ import { MissionGate } from '@sf/shared';
             >Open dossier <span aria-hidden="true">→</span></a
           >
         </div>
+        @if (actionOutcome(); as outcome) {
+          <p
+            class="action-outcome"
+            [class.conflict]="outcome.kind === 'conflict'"
+            role="status"
+          >
+            {{ outcome.message }}
+          </p>
+        }
       </article>
     }
   `,
@@ -204,6 +215,20 @@ import { MissionGate } from '@sf/shared';
       border-radius: var(--r-sm);
       padding: 1px 4px;
     }
+    .action-outcome {
+      margin: 12px 0 0;
+      padding: 8px 12px;
+      color: var(--muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      font-size: 12.5px;
+    }
+    .action-outcome.conflict {
+      color: var(--amber-tx);
+      background: var(--amber-bg);
+      border-color: var(--amber-line);
+    }
     @media (max-width: 640px) {
       .gate-card {
         padding: 18px;
@@ -216,6 +241,7 @@ import { MissionGate } from '@sf/shared';
 })
 export class FloorGateCard {
   gate = input.required<MissionGate>();
+  actionOutcome = input<FloorActionOutcome>();
   approved = output<void>();
   sentBack = output<void>();
   testsFailed = computed(() => {
