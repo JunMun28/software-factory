@@ -123,6 +123,12 @@ export interface RequestDetail extends FactoryRequest {
   prototype_status?: 'none' | 'draft' | 'edited' | 'skipped';
 }
 
+/** Composer type inference for the Track chip (ADR 0023). Intake-only. */
+export interface ClassifyResult {
+  type: 'bug' | 'enh' | 'new' | 'other';
+  confidence: number;
+}
+
 export interface InterviewState {
   done: boolean;
   asked: number;

@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import {
   AppEntry,
   Attachment,
+  ClassifyResult,
   CommentItem,
   FactoryRequest,
   InterviewState,
@@ -47,6 +48,9 @@ export class Api {
   }
   createRequest(body: object) {
     return this.http.post<RequestDetail>(`${BASE}/requests`, body);
+  }
+  classify(description: string): Observable<ClassifyResult> {
+    return this.http.post<ClassifyResult>(`${BASE}/requests/classify`, { description });
   }
   updateRequest(id: number, body: object) {
     return this.http.patch<RequestDetail>(`${BASE}/requests/${id}`, body);
