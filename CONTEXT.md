@@ -99,6 +99,14 @@ once it has enough or hits the cap. Its answers are added to the Request before 
 Issue is created. Same Stage 1 brain that later writes the spec.
 _Avoid_: interrogation, survey (it's short and adaptive).
 
+**Track**:
+The shape of one Submitter's intake journey — which steps it includes and how deep the
+Intake interview goes. Derived by the Intake form from the inferred Request type *plus* how
+rich the description already is; shown to the Submitter as a visible, correctable chip. A
+Track can lengthen or shorten mid-journey (escalation/demotion) without the Request type
+changing. Intake-app vocabulary only — the Factory consumes the Request type, never the Track.
+_Avoid_: path (too generic), flow (means the whole intake UX), type (the stored Request fact).
+
 **Attachment**:
 A file a Submitter uploads to a **Request** as evidence — an image (e.g. an error-message
 screenshot) or a document (logs, a PDF/Word/Excel). It belongs to the Request as a flat set
