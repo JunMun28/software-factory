@@ -1,6 +1,3 @@
-import os
-os.environ["FACTORY_INTERVIEW_PREGEN"] = "sync"  # deterministic inline generation
-
 from app.interview import is_stop_signal
 
 
