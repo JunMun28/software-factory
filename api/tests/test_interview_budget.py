@@ -35,9 +35,9 @@ def _fake_brain(monkeypatch, text: str, ok: bool = True):
 
 def test_ceiling_per_type():
     assert question_ceiling(_req("bug")) == 3
-    assert question_ceiling(_req("enh")) == 5
-    assert question_ceiling(_req("new")) == 10
-    assert question_ceiling(_req("other")) == 3
+    assert question_ceiling(_req("enh")) == 4
+    assert question_ceiling(_req("new")) == 99
+    assert question_ceiling(_req("other")) == 4
     assert question_ceiling(_req("mystery")) == 3  # unknown type → default
 
 
@@ -51,8 +51,9 @@ def test_floor_not_above_ceiling():
 
 def test_stops_at_new_app_ceiling(monkeypatch):
     brain, calls = _fake_brain(monkeypatch, '{"question":"more?"}')
-    assert brain.next_question(_req("new", answered=10)) is None
-    assert calls["n"] == 0  # ceiling reached — the model is never consulted
+    assert brain.next_question(_req("new", answered=10)) is not None  # uncapped — 10 is not the ceiling
+    assert brain.next_question(_req("new", answered=99)) is None  # sentinel ceiling still stops it
+    assert calls["n"] == 1  # only the answered=10 call consults the model; the sentinel skips it
 
 
 def test_asks_below_ceiling(monkeypatch):
@@ -82,4 +83,4 @@ def test_done_ignored_below_floor(monkeypatch):
 def test_prompt_surfaces_budget_range(monkeypatch):
     brain, calls = _fake_brain(monkeypatch, '{"question":"What is it?"}')
     brain.next_question(_req("new", answered=0))
-    assert "10" in calls["prompt"]  # the ceiling is shown to the model
+    assert "99" in calls["prompt"]  # the ceiling is shown to the model
