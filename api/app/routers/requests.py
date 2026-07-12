@@ -39,6 +39,7 @@ from ..models import AuditEvent, InterviewTurn, ProgressEvent, PrototypeTurn, Re
 from ..schemas import (
     ClassifyIn,
     ClassifyOut,
+    EscalateIn,
     EvidenceOut,
     InterviewAnswer,
     InterviewState,
@@ -96,6 +97,13 @@ def interview_state(db: Session, r: Request, *, generate: bool = True) -> Interv
                             thinking=thinking, turns=[t for t in r.turns])
         if q:
             st.question, st.sub, st.options, st.final = q.question, q.sub, q.options, q.final
+        # Surface any mid-interview type-change proposal the brain wants to raise (ADR 0023).
+        # ScriptedBrain (and today's AgentBrain) return None — this is inert wiring for the
+        # seam a future model fills; the UI drives accept/decline via the escalate endpoint.
+        brain = get_brain()
+        prop = brain.propose_escalation(r) if hasattr(brain, "propose_escalation") else None
+        if prop and prop.get("to_type") in ("bug", "enh", "new", "other") and prop["to_type"] != r.type:
+            st.escalation = {"to_type": prop["to_type"], "why": str(prop.get("why") or "")[:200]}
         return st
 
     if answered_count(r) >= question_ceiling(r) or r.pending_question == DONE_SENTINEL:
@@ -386,6 +394,20 @@ def reopen_interview(rid: int, body: Note, db: Session = Depends(get_db)):
     # allow up to ~2 follow-ups from where we resumed (overrides the type budget), not a full grill
     r.reopen_ceiling = answered_count(r) + 2
     r.pending_question = None  # force the next question to (re)generate
+    db.commit()
+    db.refresh(r)
+    return interview_state(db, r, generate=interview_gen.SYNC)
+
+
+@router.post("/api/requests/{rid}/interview/escalate", response_model=InterviewState)
+def escalate_interview(rid: int, body: EscalateIn, db: Session = Depends(get_db)):
+    """Consent gate for a mid-interview type change (ADR 0023). Accept PATCHes the type
+    (the draft's other facts persist — lossless); decline leaves it unchanged. Either way
+    the interview continues; the proposal is cleared."""
+    r = get_request(db, rid)
+    if body.accept:
+        r.type = body.to_type
+        r.summary = None  # type change invalidates the cached Review summary
     db.commit()
     db.refresh(r)
     return interview_state(db, r, generate=interview_gen.SYNC)

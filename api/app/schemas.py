@@ -215,6 +215,12 @@ class InterviewAnswer(BaseModel):
     skip: bool = False
 
 
+class EscalateIn(BaseModel):
+    """Consent on a mid-interview type-change proposal (ADR 0023)."""
+    accept: bool
+    to_type: Literal["bug", "enh", "new", "other"]
+
+
 class InterviewState(BaseModel):
     done: bool
     asked: int
@@ -225,6 +231,7 @@ class InterviewState(BaseModel):
     options: list | None = None
     final: bool = False
     turns: list[TurnOut] = []
+    escalation: dict | None = None  # {"to_type": str, "why": str} — a proposed type change (ADR 0023)
 
 
 class SpecSection(BaseModel):

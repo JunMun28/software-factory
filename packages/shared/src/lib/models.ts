@@ -140,6 +140,8 @@ export interface InterviewState {
   options: { t: string; d: string }[] | null;
   final: boolean;
   turns: Turn[];
+  /** a mid-interview type-change proposal (ADR 0023) — pulse the chip, ask consent */
+  escalation: { to_type: 'bug' | 'enh' | 'new' | 'other'; why: string } | null;
 }
 
 /** One titled section of the structured Review spec. */

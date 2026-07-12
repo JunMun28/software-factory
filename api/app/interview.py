@@ -236,6 +236,12 @@ class ScriptedBrain:
             return None
         return script[answered]
 
+    def propose_escalation(self, req: Request) -> dict | None:
+        """Whether the brain wants to propose a mid-interview type change (ADR 0023).
+        The offline default never proposes one — deterministic, so the scripted/smoke
+        path stays silent. A real model fills this seam later; the UI drives accept/decline."""
+        return None
+
     def classify(self, description: str) -> dict:
         """Deterministic type guess + confidence from the free-text description.
         Empty/vague → new with low confidence; a clear keyword winner → high."""

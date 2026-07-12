@@ -426,6 +426,13 @@ class AgentBrain(ScriptedBrain):
             return fallback
         return q
 
+    def propose_escalation(self, req: Request) -> dict | None:
+        """Seam for a future model-driven proposal (ADR 0023). Returning None keeps the
+        auto-proposal out of scope by design — it needs its own prompt-tuning pass. The
+        contract (schema, endpoint, accept/decline, UI, pulse) is fully wired regardless;
+        the UI drives accept/decline today."""
+        return None
+
     def summarize(self, req: Request) -> dict:
         res = _run_with_attachments(req, _summary_prompt(req), timeout=90)
         return summarize_via(res.text if res.ok else None, req, super().summarize(req))

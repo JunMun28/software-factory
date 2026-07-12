@@ -83,6 +83,14 @@ export class Api {
   reopenInterview(id: number, note: string) {
     return this.http.post<InterviewState>(`${BASE}/requests/${id}/interview/reopen`, { note });
   }
+  /** Consent on a mid-interview type-change proposal (ADR 0023). Accept PATCHes the type
+   *  (lossless — the draft's other facts persist); decline records and continues. */
+  escalate(id: number, accept: boolean, toType: string) {
+    return this.http.post<InterviewState>(`${BASE}/requests/${id}/interview/escalate`, {
+      accept,
+      to_type: toType,
+    });
+  }
   /** The AI-written Review summary. Returns `thinking:true` while it generates — poll. */
   summary(id: number) {
     return this.http.get<ReviewSummary>(`${BASE}/requests/${id}/summary`);
