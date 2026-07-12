@@ -64,15 +64,25 @@ def answered_count(req: Request) -> int:
 # (spec/ADR 0023: the chat is the control — no dedicated stop button). Kept deterministic
 # so it works in every brain mode; only a SHORT message counts, so a long answer that
 # merely contains the words is still treated as a real answer.
-_STOP_PHRASES = ("that's enough", "thats enough", "no more questions", "stop asking",
-                 "stop", "i'm done", "im done", "that is enough", "no more")
+# Unambiguous multi-word phrases: safe to match as a whole message OR a prefix
+# ("stop asking questions" still means stop).
+_STOP_PREFIXES = ("that's enough", "thats enough", "that is enough", "no more questions",
+                  "stop asking", "i'm done", "im done")
+
+# Generic bare phrases: only unambiguous when they ARE the entire message. As a
+# prefix they collide with real answers ("no more than 5 users", "stop the
+# duplicate emails from firing"), so never prefix-match these.
+_STOP_EXACT = ("stop", "no more", "enough", "done")
 
 
 def is_stop_signal(text: str) -> bool:
     t = (text or "").strip().lower().rstrip(".!")
-    if len(t) > 40:  # a substantive answer, not a stop command
+    if not t or len(t) > 40:  # a substantive answer, not a stop command
         return False
-    return any(t == p or t.startswith(p + " ") or t == p + " please" for p in _STOP_PHRASES)
+    t = t.removesuffix(" please").rstrip()
+    if t in _STOP_EXACT:
+        return True
+    return any(t == p or t.startswith(p + " ") for p in _STOP_PREFIXES)
 
 
 @dataclass
