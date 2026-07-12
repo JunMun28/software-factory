@@ -61,6 +61,32 @@
         "4202"
       ],
       "port": 4202
+    },
+    {
+      "name": "api-redesign",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "SIM_INTERVAL=8",
+        "uv",
+        "run",
+        "--directory",
+        ".claude/worktrees/console-redesign/api",
+        "uvicorn",
+        "app.main:app",
+        "--port",
+        "8000"
+      ],
+      "port": 8000,
+      "autoPort": false
+    },
+    {
+      "name": "console-redesign",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd .claude/worktrees/console-redesign && npx ng serve console --port 4202"
+      ],
+      "port": 4202
     }
   ]
 }

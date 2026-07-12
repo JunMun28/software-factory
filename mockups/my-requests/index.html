@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Requests prototypes</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #0b0b0d; overflow: hidden; }
+  iframe { display: block; position: fixed; inset: 0; width: 100vw; height: 100vh; border: 0; background: #0b0b0d; }
+  .switcher {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 999999;
+    display: flex; align-items: center; gap: 10px;
+    background: #0a0a0a; color: #fff; border-radius: 999px; padding: 6px 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.45), 0 2px 6px rgba(0,0,0,.35);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; user-select: none; max-width: calc(100vw - 24px);
+  }
+  .switcher button {
+    appearance: none; border: none; background: rgba(255,255,255,.12); color: #fff;
+    width: 30px; height: 30px; min-width: 30px; border-radius: 999px; font-size: 15px; line-height: 1;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s ease;
+  }
+  .switcher button:hover { background: rgba(255,255,255,.22); }
+  .switcher button:active { background: rgba(255,255,255,.3); }
+  .switcher .label { font-size: 12px; font-weight: 600; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
+  @media (max-width: 420px) {
+    .switcher { max-width: calc(100vw - 16px); padding: 5px 6px; gap: 6px; bottom: 10px; }
+    .switcher button { width: 26px; height: 26px; min-width: 26px; font-size: 13px; }
+    .switcher .label { font-size: 11px; max-width: 62vw; }
+  }
+</style>
+</head>
+<body>
+
+<iframe id="stage" title="Prototype preview"></iframe>
+
+<div class="switcher" role="group" aria-label="Prototype switcher">
+  <button id="prev" type="button" aria-label="Previous variant">&#8592;</button>
+  <span class="label" id="label">1 / 5</span>
+  <button id="next" type="button" aria-label="Next variant">&#8594;</button>
+</div>
+
+<script>
+(function () {
+  var VARIANTS = [
+    { file: "v1-pipeline-board.html", label: "Pipeline board" },
+    { file: "v2-journey-tracker.html", label: "Journey tracker" },
+    { file: "v3-inbox-split.html", label: "Inbox split" },
+    { file: "v4-status-wall.html", label: "Status wall" },
+    { file: "v5-living-cards.html", label: "Living cards" }
+  ];
+
+  var stage = document.getElementById("stage");
+  var label = document.getElementById("label");
+
+  function isTypingTarget(t) {
+    if (!t) return false;
+    var tag = (t.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || tag === "select" || t.isContentEditable;
+  }
+
+  function parseIndexFromUrl() {
+    var raw = parseInt(new URLSearchParams(location.search).get("v"), 10);
+    if (!raw || raw < 1 || raw > VARIANTS.length) return 0;
+    return raw - 1;
+  }
+
+  var current = parseIndexFromUrl();
+
+  function updateUrl() {
+    var params = new URLSearchParams(location.search);
+    params.set("v", String(current + 1));
+    history.replaceState(null, "", location.pathname + "?" + params.toString() + location.hash);
+  }
+
+  function onKey(e) {
+    if (isTypingTarget(e.target)) return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); go(-1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); go(1); }
+  }
+
+  function attachIframeKeydownForwarding() {
+    try {
+      var doc = stage.contentDocument;
+      if (doc) doc.addEventListener("keydown", onKey, true);
+    } catch (err) { /* not ready; ignore */ }
+  }
+
+  var retryTimer = null;
+
+  function render() {
+    var v = VARIANTS[current];
+    label.textContent = (current + 1) + " / " + VARIANTS.length + " — " + v.label;
+    updateUrl();
+    clearTimeout(retryTimer);
+    // probe first: a missing file gets a friendly placeholder + auto-retry,
+    // not the raw python 404 page (builders may still be writing variants)
+    fetch(v.file, { method: "HEAD", cache: "no-store" }).then(function (res) {
+      if (res.ok) {
+        stage.removeAttribute("srcdoc");
+        stage.src = v.file + "?t=" + Date.now(); // cache-bust: mockups iterate fast
+      } else {
+        showPlaceholder(v);
+      }
+    }).catch(function () { showPlaceholder(v); });
+  }
+
+  function showPlaceholder(v) {
+    stage.removeAttribute("src");
+    stage.srcdoc =
+      '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;' +
+      'background:#16121B;color:#A29AAE;font:15px ui-monospace,monospace;text-align:center">' +
+      '<div><div style="font-size:34px;margin-bottom:14px">&#9203;</div>' +
+      '<b style="color:#F2EEF7">' + v.label + '</b> is still being built&hellip;<br>' +
+      'This page retries automatically every 5 seconds.</div></body>';
+    retryTimer = setTimeout(render, 5000);
+  }
+
+  function go(delta) {
+    current = (current + delta + VARIANTS.length) % VARIANTS.length;
+    render();
+  }
+
+  document.getElementById("prev").addEventListener("click", function () { go(-1); });
+  document.getElementById("next").addEventListener("click", function () { go(1); });
+  document.addEventListener("keydown", onKey);
+  stage.addEventListener("load", attachIframeKeydownForwarding);
+
+  render();
+})();
+</script>
+
+</body>
+</html>
