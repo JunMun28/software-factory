@@ -17,6 +17,8 @@ import {
   MissionGate,
   MissionOut,
   Poll,
+  RecoveryConfirm,
+  SendBackStageModal,
   SendBackModal,
 } from '@sf/shared';
 
@@ -28,7 +30,15 @@ import { FloorContent } from './floor-content';
 
 @Component({
   selector: 'sf-floor-page',
-  imports: [ConsoleShell, FloorContent, ApproveModal, SendBackModal, CancelConfirm],
+  imports: [
+    ConsoleShell,
+    FloorContent,
+    ApproveModal,
+    SendBackModal,
+    SendBackStageModal,
+    RecoveryConfirm,
+    CancelConfirm,
+  ],
   template: `
     <sf-console-shell active="floor">
       @if (mission(); as m) {
@@ -38,7 +48,9 @@ import { FloorContent } from './floor-content';
           [actionOutcomes]="actionOutcomes()"
           (approved)="confirming.set($event)"
           (sentBack)="sendingBack.set($event)"
-          (retried)="retry($event)"
+          (retryRequested)="retrying.set($event)"
+          (sendBackToStageRequested)="sendingStageBack.set($event)"
+          (takeOverRequested)="takingOver.set($event)"
           (cancelled)="cancelling.set($event)"
         />
       } @else {
@@ -68,6 +80,31 @@ import { FloorContent } from './floor-content';
         (confirmed)="cancel(request)"
       />
     }
+    @if (retrying(); as request) {
+      <sf-recovery-confirm
+        title="Retry this stage?"
+        [consequence]="'Re-runs the ' + stageLabel(request) + ' stage from the top.'"
+        confirmLabel="Retry stage"
+        (kept)="retrying.set(null)"
+        (confirmed)="retry(request)"
+      />
+    }
+    @if (takingOver(); as request) {
+      <sf-recovery-confirm
+        title="Take over this request?"
+        consequence="Stops automation. You'll finish this request by hand in the PR."
+        confirmLabel="Take over"
+        (kept)="takingOver.set(null)"
+        (confirmed)="takeOver(request)"
+      />
+    }
+    @if (sendingStageBack(); as request) {
+      <sf-send-back-stage-modal
+        [currentStage]="request.stage"
+        (cancelled)="sendingStageBack.set(null)"
+        (sent)="sendBackToStage(request, $event)"
+      />
+    }
   `,
   styles: `
     .loading {
@@ -87,6 +124,9 @@ export class FloorPage {
   confirming = signal<MissionGate | null>(null);
   sendingBack = signal<MissionGate | null>(null);
   cancelling = signal<FactoryRequest | null>(null);
+  retrying = signal<FactoryRequest | null>(null);
+  takingOver = signal<FactoryRequest | null>(null);
+  sendingStageBack = signal<FactoryRequest | null>(null);
   actionOutcomes = signal<Record<number, FloorActionOutcome>>({});
   intakeUrl = intakeNewRequestUrl(inject(INTAKE_URL));
   /** -1 = nothing focused yet, so the first J lands on the first row. */
@@ -121,7 +161,23 @@ export class FloorPage {
     );
   }
   retry(request: FactoryRequest) {
+    this.retrying.set(null);
     this.runAction(request, 'retry', this.api.retry(request.id, this.session.operatorId()!));
+  }
+  takeOver(request: FactoryRequest) {
+    this.takingOver.set(null);
+    this.runAction(request, 'take over', this.api.takeOver(request.id, this.session.operatorId()!));
+  }
+  sendBackToStage(
+    request: FactoryRequest,
+    choice: { stage: 'architecture' | 'build' | 'review'; reason: string },
+  ) {
+    this.sendingStageBack.set(null);
+    this.runAction(
+      request,
+      'send back to stage',
+      this.api.sendBackToStage(request.id, choice.stage, choice.reason, this.session.operatorId()!),
+    );
   }
   cancel(request: FactoryRequest) {
     this.cancelling.set(null);
@@ -129,7 +185,7 @@ export class FloorPage {
   }
   private runAction(
     request: FactoryRequest,
-    verb: 'approve' | 'send back' | 'retry' | 'cancel',
+    verb: 'approve' | 'send back' | 'retry' | 'take over' | 'send back to stage' | 'cancel',
     action: Observable<unknown>,
   ) {
     action.subscribe({
@@ -157,10 +213,21 @@ export class FloorPage {
       return rest;
     });
   }
-  private pastTense(verb: 'approve' | 'send back' | 'retry' | 'cancel') {
-    return { approve: 'approved', 'send back': 'sent back', retry: 'retried', cancel: 'cancelled' }[
-      verb
-    ];
+  private pastTense(
+    verb: 'approve' | 'send back' | 'retry' | 'take over' | 'send back to stage' | 'cancel',
+  ) {
+    return {
+      approve: 'approved',
+      'send back': 'sent back',
+      retry: 'retried',
+      'take over': 'taken over',
+      'send back to stage': 'sent back to stage',
+      cancel: 'cancelled',
+    }[verb];
+  }
+  stageLabel(request: FactoryRequest) {
+    // Match the Floor's vocabulary: the backend 'architecture' stage reads as 'plan'.
+    return request.stage === 'architecture' ? 'plan' : request.stage;
   }
   private shortTime(iso: string) {
     return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -180,6 +247,9 @@ export class FloorPage {
       event.ctrlKey ||
       this.confirming() ||
       this.sendingBack() ||
+      this.retrying() ||
+      this.takingOver() ||
+      this.sendingStageBack() ||
       this.cancelling()
     )
       return;

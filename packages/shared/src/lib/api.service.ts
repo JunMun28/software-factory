@@ -147,6 +147,25 @@ export class Api {
       operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
     });
   }
+  takeOver(id: number, actorOrOperatorId: string | number, note = '', operatorId?: number) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/take-over`, {
+      note,
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
+  }
+  sendBackToStage(
+    id: number,
+    stage: 'architecture' | 'build' | 'review',
+    reason: string,
+    actorOrOperatorId: string | number,
+    operatorId?: number,
+  ) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/send-back-to-stage`, {
+      stage,
+      reason,
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
+  }
   comment(
     id: number,
     body: string,

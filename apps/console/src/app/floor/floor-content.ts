@@ -63,15 +63,50 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
                 }}</span>
               </div>
               <div class="actions">
-                <button class="primary" type="button" (click)="retried.emit(request)">
+                <button class="primary" type="button" (click)="retryRequested.emit(request)">
                   Retry this stage
                 </button>
-                <a [routerLink]="['/requests', request.id]">Open dossier</a>
+                <button type="button" (click)="sendBackToStageRequested.emit(request)">
+                  Send back to…
+                </button>
+                <button type="button" (click)="takeOverRequested.emit(request)">Take over</button>
                 <button class="danger" type="button" (click)="cancelled.emit(request)">
                   Cancel
                 </button>
               </div>
               @if (actionOutcomes()[request.id]; as outcome) {
+                <p
+                  class="action-outcome"
+                  [class.conflict]="outcome.kind === 'conflict'"
+                  role="status"
+                >
+                  {{ outcome.message }}
+                </p>
+              }
+            </article>
+          }
+          @for (owned of m.human_owned; track owned.request.id) {
+            <article
+              class="triage human-owned"
+              tabindex="0"
+              [attr.aria-label]="owned.request.title + ', human-owned by ' + owned.taken_over_by"
+            >
+              <div class="triage-meta">
+                <span>Human-owned</span>{{ owned.request.app_name }} ·
+                {{ stageName(owned.request) }}
+              </div>
+              <h3>{{ owned.request.title }}</h3>
+              <div class="last-signal">
+                <b>Automation stopped</b
+                ><span>{{ owned.taken_over_by }} is finishing this request by hand in the PR.</span>
+              </div>
+              <div class="actions">
+                <a [routerLink]="['/requests', owned.request.id]">Open dossier</a>
+                <button class="danger" type="button" (click)="cancelled.emit(owned.request)">
+                  Cancel
+                </button>
+              </div>
+              @if (actionOutcomes()[owned.request.id]; as outcome) {
                 <p
                   class="action-outcome"
                   [class.conflict]="outcome.kind === 'conflict'"
@@ -241,6 +276,14 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
       border-radius: var(--r-pill);
       padding: 4px 12px;
       font-weight: 700;
+    }
+    .human-owned {
+      border-color: var(--border-strong);
+    }
+    .human-owned .triage-meta span {
+      color: var(--accent-tx);
+      background: var(--accent-tint);
+      border-color: var(--accent);
     }
     .triage h3 {
       margin: 10px 0 14px;
@@ -551,13 +594,20 @@ export class FloorContent {
   actionOutcomes = input<Record<number, FloorActionOutcome>>({});
   approved = output<MissionGate>();
   sentBack = output<MissionGate>();
-  retried = output<FactoryRequest>();
+  retryRequested = output<FactoryRequest>();
+  sendBackToStageRequested = output<FactoryRequest>();
+  takeOverRequested = output<FactoryRequest>();
   cancelled = output<FactoryRequest>();
   stages = FLOOR_STAGES;
   timeAgo = timeAgo;
 
   lanes = computed(() => this.mission().runs.map(deriveLane));
-  needsCount = computed(() => this.mission().gates.length + this.mission().stalled.length);
+  needsCount = computed(
+    () =>
+      this.mission().gates.length +
+      this.mission().stalled.length +
+      this.mission().human_owned.length,
+  );
   shippedThisWeek = computed(
     () => this.mission().recent.filter((r) => r.outcome === 'approved_merge').length,
   );

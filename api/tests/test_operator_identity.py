@@ -43,6 +43,8 @@ def test_console_mutations_reject_missing_and_unknown_operator(client):
         ("approve", {}),
         ("send-back", {"note": "More detail"}),
         ("retry", {}),
+        ("take-over", {}),
+        ("send-back-to-stage", {"stage": "architecture", "reason": "Redo it"}),
         ("cancel", {}),
         ("steer", {"note": "Keep it small"}),
         ("comments", {"body": "Looks good"}),
@@ -55,12 +57,12 @@ def test_console_mutations_reject_missing_and_unknown_operator(client):
 
     for verb, body in cases:
         request = submitted_request(client, title=f"Unknown identity: {verb}")
-        if verb == "retry":
+        if verb in ("retry", "take-over", "send-back-to-stage"):
             from app.db import SessionLocal
             from app.models import Request
             with SessionLocal() as db:
                 row = db.get(Request, request["id"])
-                row.needs_human = True
+                row.stage, row.needs_human = "build", True
                 db.commit()
         unknown = client.post(
             f"/api/requests/{request['id']}/{verb}", json={**body, "operator_id": 999999}

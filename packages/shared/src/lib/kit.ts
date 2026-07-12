@@ -579,6 +579,118 @@ export class SendBackModal {
   note = '';
 }
 
+/** Confirmation for a recovery action whose blast radius must be read first. */
+@Component({
+  selector: 'sf-recovery-confirm',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div
+      class="palette-scrim"
+      style="align-items:center;padding-top:0;z-index:50"
+      (click)="kept.emit()"
+    >
+      <div
+        class="palette"
+        style="width:430px;padding:22px 24px;align-self:center"
+        (click)="$event.stopPropagation()"
+      >
+        <h3 style="font-size:19px;margin-bottom:8px">{{ title() }}</h3>
+        <p style="font-size:14px;color:var(--muted);margin:0 0 16px">{{ consequence() }}</p>
+        <div class="row" style="gap:9px;justify-content:flex-end">
+          <button class="btn" (click)="kept.emit()">Keep it stopped</button>
+          <button class="btn primary" (click)="confirmed.emit()">{{ confirmLabel() }}</button>
+        </div>
+      </div>
+    </div>
+  `,
+})
+export class RecoveryConfirm {
+  title = input.required<string>();
+  consequence = input.required<string>();
+  confirmLabel = input.required<string>();
+  kept = output<void>();
+  confirmed = output<void>();
+}
+
+/** Pick a valid earlier runner stage, explain discarded work, then require a reason. */
+@Component({
+  selector: 'sf-send-back-stage-modal',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [FormsModule, Autofocus],
+  template: `
+    <div
+      class="palette-scrim"
+      style="align-items:center;padding-top:0;z-index:50"
+      (click)="cancelled.emit()"
+    >
+      <div
+        class="palette"
+        style="width:460px;padding:22px 24px;align-self:center"
+        (click)="$event.stopPropagation()"
+      >
+        <h3 style="font-size:19px;margin-bottom:8px">Send back to…</h3>
+        @if (stages().length) {
+          <div class="row" style="gap:8px;margin:12px 0">
+            @for (stage of stages(); track stage) {
+              <button
+                class="btn stage-choice"
+                [class.primary]="target === stage"
+                (click)="target = stage"
+              >
+                {{ label(stage) }}
+              </button>
+            }
+          </div>
+        } @else {
+          <p style="font-size:14px;color:var(--muted);margin:12px 0">
+            This is already the earliest stage — there's nothing earlier to send it
+            back to. Use Retry or Take over instead.
+          </p>
+        }
+        @if (target) {
+          <p style="font-size:14px;color:var(--muted);margin:0 0 12px">
+            Discards the work after {{ label(target) }} and redoes that stage.
+          </p>
+          <textarea
+            sfAutofocus
+            class="input area"
+            placeholder="Why does this stage need redoing?"
+            [(ngModel)]="reason"
+            style="margin-bottom:14px"
+          ></textarea>
+        }
+        <div class="row" style="gap:9px;justify-content:flex-end">
+          <button class="btn" (click)="cancelled.emit()">Cancel</button>
+          <button class="btn primary" [disabled]="!target || !reason.trim()" (click)="send()">
+            Send back
+          </button>
+        </div>
+      </div>
+    </div>
+  `,
+})
+export class SendBackStageModal {
+  currentStage = input.required<FactoryRequest['stage']>();
+  cancelled = output<void>();
+  sent = output<{ stage: 'architecture' | 'build' | 'review'; reason: string }>();
+  target: 'architecture' | 'build' | 'review' | null = null;
+  reason = '';
+  stages = computed(() => {
+    const stages = ['architecture', 'build', 'review'] as const;
+    const here = stages.indexOf(this.currentStage() as (typeof stages)[number]);
+    // Only strictly-earlier pipeline stages are valid targets. A request stalled
+    // before the pipeline (indexOf === -1, e.g. at 'spec') has none.
+    return here <= 0 ? [] : stages.slice(0, here);
+  });
+  label(stage: string) {
+    return stage === 'architecture' ? 'Architecture' : stage[0].toUpperCase() + stage.slice(1);
+  }
+  send() {
+    if (this.target && this.reason.trim())
+      this.sent.emit({ stage: this.target, reason: this.reason.trim() });
+  }
+}
+
 /** Cancel is irreversible too — every surface confirms through this one modal. */
 @Component({
   selector: 'sf-cancel-confirm',
@@ -596,6 +708,7 @@ export class SendBackModal {
       >
         <h3 style="font-size:19px;margin-bottom:8px">Cancel this request?</h3>
         <p style="font-size:14px;color:var(--muted);margin:0 0 16px">
+          Abandons the request and closes its PR.
           <b style="color:var(--fg1)">{{ r().title }}</b> will be closed as won't-do and
           {{ r().reporter }} will be notified.
         </p>

@@ -187,6 +187,12 @@ class MissionRun(BaseModel):
     run: RunStateOut
 
 
+class MissionHumanOwned(BaseModel):
+    request: RequestOut
+    taken_over_by: str
+    taken_over_at: datetime
+
+
 class MissionRecent(BaseModel):
     request: RequestOut
     outcome: str
@@ -199,6 +205,7 @@ class MissionOut(BaseModel):
     gates: list[MissionGate]
     runs: list[MissionRun]
     stalled: list[RequestOut]
+    human_owned: list[MissionHumanOwned]
     recent: list[MissionRecent]
     cursor: int
 
@@ -325,6 +332,12 @@ class Note(BaseModel):
 class OperatorNote(BaseModel):
     operator_id: int
     note: str = Field(default="", max_length=4000)
+
+
+class SendBackToStageIn(BaseModel):
+    operator_id: int
+    stage: str = Field(min_length=1, max_length=16)
+    reason: str = Field(min_length=1, max_length=4000)
 
 
 class SteerIn(BaseModel):

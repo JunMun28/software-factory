@@ -6,6 +6,8 @@ Routes:
   POST /api/requests/{rid}/respond    — submitter reply after send-back
   POST /api/requests/{rid}/cancel     — cancel a request
   POST /api/requests/{rid}/retry      — retry a stranded pipeline stage
+  POST /api/requests/{rid}/take-over  — stop automation for human completion
+  POST /api/requests/{rid}/send-back-to-stage — redo an earlier runner stage
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,7 +21,7 @@ from ..api_helpers import get_request, pipeline, prospective_repo, to_out
 from ..db import get_db
 from ..events import emit
 from ..models import PIPELINE_STAGES, AuditEvent, Request, SpecLine, utcnow
-from ..schemas import ConflictOut, Note, OperatorNote, RequestDetail
+from ..schemas import ConflictOut, Note, OperatorNote, RequestDetail, SendBackToStageIn
 from .operators import resolve_operator
 
 router = APIRouter()
@@ -31,6 +33,8 @@ DECISIVE_ACTIONS = (
     "merge_approval_failed",
     "sent_back",
     "retried",
+    "taken_over",
+    "sent_back_to_stage",
     "cancelled",
 )
 
@@ -291,6 +295,108 @@ def retry(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
     # Retry must actually re-drive the runner: in agent mode nothing else ever
     # picks an 'approved' request back up (the simulator stands down) — without
     # this, Retry silently dead-ends and the request is stranded forever (ADR 0013)
+    if runner_mode() == "agent" and r.stage in PIPELINE_STAGES:
+        pipeline().start(r.id)
+    return to_out(r, RequestDetail)
+
+
+@router.post("/api/requests/{rid}/take-over", response_model=RequestDetail)
+def take_over(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
+    """Recovery action: stop runner work so a named operator can finish in the PR."""
+    r = get_request(db, rid)
+    actor = resolve_operator(db, body.operator_id).name
+    claimed = db.execute(
+        update(Request)
+        .where(Request.id == r.id, Request.needs_human.is_(True))
+        .values(status="human_owned", needs_human=False, needs_human_reason=None, gate=None)
+    ).rowcount
+    if not claimed:
+        return _resolve_cas_loss(
+            db, r, body.operator_id, actor, ("taken_over",), "Request is not escalated"
+        )
+    db.refresh(r)
+    emit(
+        db,
+        r,
+        "recovery_action",
+        f"Taken over by {actor} — finishing by hand",
+        actor=actor,
+        bot=False,
+        payload={"Ref": r.ref, "note": body.note},
+    )
+    db.add(AuditEvent(
+        request_id=r.id,
+        operator_id=body.operator_id,
+        actor=actor,
+        action="taken_over",
+        note=body.note,
+    ))
+    db.commit()
+    return to_out(r, RequestDetail)
+
+
+@router.post("/api/requests/{rid}/send-back-to-stage", response_model=RequestDetail)
+def send_back_to_stage(rid: int, body: SendBackToStageIn, db: Session = Depends(get_db)):
+    """Recovery action: discard later runner work and re-enter an earlier Stage."""
+    r = get_request(db, rid)
+    actor = resolve_operator(db, body.operator_id).name
+    # A replay sees the already-rewound stage, so resolve the consumed recovery
+    # precondition before validating the original target against current state.
+    if not r.needs_human:
+        return _resolve_cas_loss(
+            db,
+            r,
+            body.operator_id,
+            actor,
+            ("sent_back_to_stage",),
+            "Request is not escalated",
+        )
+    if body.stage not in PIPELINE_STAGES or r.stage not in PIPELINE_STAGES:
+        raise HTTPException(400, "Target must be an earlier pipeline stage")
+    if PIPELINE_STAGES.index(body.stage) >= PIPELINE_STAGES.index(r.stage):
+        raise HTTPException(400, "Target stage must be strictly earlier than the current stage")
+    claimed = db.execute(
+        update(Request)
+        .where(Request.id == r.id, Request.needs_human.is_(True))
+        .values(
+            stage=body.stage,
+            status="approved",
+            gate=None,
+            needs_human=False,
+            needs_human_reason=None,
+            sim_step=0,
+            stage_entered_at=utcnow(),
+        )
+    ).rowcount
+    if not claimed:
+        return _resolve_cas_loss(
+            db,
+            r,
+            body.operator_id,
+            actor,
+            ("sent_back_to_stage",),
+            "Request is not escalated",
+        )
+    db.refresh(r)
+    stage_label = body.stage.capitalize()
+    emit(
+        db,
+        r,
+        "recovery_action",
+        f"Sent back to {stage_label} by {actor}",
+        body=body.reason,
+        actor=actor,
+        bot=False,
+        payload={"Ref": r.ref, "target_stage": body.stage, "reason": body.reason},
+    )
+    db.add(AuditEvent(
+        request_id=r.id,
+        operator_id=body.operator_id,
+        actor=actor,
+        action="sent_back_to_stage",
+        note=body.reason,
+    ))
+    db.commit()
     if runner_mode() == "agent" and r.stage in PIPELINE_STAGES:
         pipeline().start(r.id)
     return to_out(r, RequestDetail)

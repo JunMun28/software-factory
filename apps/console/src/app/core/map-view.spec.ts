@@ -55,7 +55,7 @@ function req(over: Partial<FactoryRequest>): FactoryRequest {
 }
 
 function mission(over: Partial<MissionOut> = {}): MissionOut {
-  return { gates: [], runs: [], stalled: [], recent: [], cursor: 0, ...over };
+  return { gates: [], runs: [], stalled: [], human_owned: [], recent: [], cursor: 0, ...over };
 }
 
 describe('factoryColumns', () => {

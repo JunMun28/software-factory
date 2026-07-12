@@ -73,6 +73,7 @@ const mission = (over: Partial<MissionOut> = {}): MissionOut => ({
   gates: [],
   runs: [],
   stalled: [],
+  human_owned: [],
   recent: [],
   cursor: 0,
   ...over,
@@ -271,5 +272,148 @@ describe('Floor conflict outcomes', () => {
     const outcome = fixture.nativeElement.querySelector('.action-outcome');
     expect(outcome?.textContent).toContain(`Already approved by Kim Park at ${localTime}`);
     expect(poll.nudge).toHaveBeenCalledOnce();
+  });
+});
+
+describe('Floor scoped recovery', () => {
+  it('renders all four recovery verbs on a stalled triage card', async () => {
+    await TestBed.configureTestingModule({
+      imports: [FloorContent],
+      providers: [provideRouter([])],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorContent);
+    fixture.componentRef.setInput(
+      'mission',
+      mission({
+        stalled: [
+          request({
+            stage: 'review',
+            status: 'approved',
+            gate: null,
+            needs_human: true,
+            needs_human_reason: 'Review timed out',
+          }),
+        ],
+      }),
+    );
+    fixture.detectChanges();
+
+    const actions = fixture.nativeElement.querySelector('.triage .actions').textContent;
+    expect(actions).toContain('Retry this stage');
+    expect(actions).toContain('Send back to…');
+    expect(actions).toContain('Take over');
+    expect(actions).toContain('Cancel');
+    expect(actions).not.toContain('Open dossier');
+  });
+
+  it('keeps a human-owned request in Needs you with owner and Cancel visible', async () => {
+    await TestBed.configureTestingModule({
+      imports: [FloorContent],
+      providers: [provideRouter([])],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorContent);
+    fixture.componentRef.setInput(
+      'mission',
+      mission({
+        human_owned: [
+          {
+            request: request({ status: 'human_owned', gate: null }),
+            taken_over_by: 'Avery Stone',
+            taken_over_at: '2026-07-11T02:00:00Z',
+          },
+        ],
+      }),
+    );
+    fixture.detectChanges();
+
+    const card = fixture.nativeElement.querySelector('.human-owned');
+    expect(card.textContent).toContain('Human-owned');
+    expect(card.textContent).toContain('Avery Stone is finishing this request by hand in the PR.');
+    expect(card.textContent).toContain('Cancel');
+  });
+
+  it('offers only earlier pipeline stages in the send-back picker and states the blast radius', async () => {
+    const stalled = request({
+      stage: 'review',
+      status: 'approved',
+      gate: null,
+      needs_human: true,
+    });
+    const api = { mission: vi.fn(() => of(mission({ stalled: [stalled] }))) };
+    const poll = { version: signal(0), nudge: vi.fn(), start: vi.fn() };
+    await TestBed.configureTestingModule({
+      imports: [FloorPage],
+      providers: [
+        provideRouter([]),
+        { provide: Api, useValue: api },
+        { provide: Poll, useValue: poll },
+        { provide: Session, useValue: { operatorId: () => 7, operator: () => null } },
+        { provide: Theme, useValue: { resolved: () => 'light', set: vi.fn() } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorPage);
+    fixture.detectChanges();
+
+    const buttons = [
+      ...fixture.nativeElement.querySelectorAll('.triage .actions button'),
+    ] as HTMLButtonElement[];
+    buttons.find((button) => button.textContent?.includes('Send back'))?.click();
+    fixture.detectChanges();
+
+    const modal = fixture.nativeElement.querySelector('sf-send-back-stage-modal');
+    const choices = [...modal.querySelectorAll('.stage-choice')] as HTMLElement[];
+    expect(choices.map((choice) => choice.textContent?.trim())).toEqual(['Architecture', 'Build']);
+    expect(modal.textContent).not.toContain('Review stage');
+    choices[1].click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Discards the work after Build and redoes that stage.',
+    );
+  });
+
+  it('renders a mocked take-over 409 on the triage card', async () => {
+    const actedAt = '2026-07-11T06:02:00Z';
+    const stalled = request({ status: 'approved', gate: null, needs_human: true });
+    const api = {
+      mission: vi.fn(() => of(mission({ stalled: [stalled] }))),
+      takeOver: vi.fn(() =>
+        throwError(
+          () =>
+            new HttpErrorResponse({
+              status: 409,
+              error: {
+                detail: 'Already acted on by Kim Park',
+                acted_by: 'Kim Park',
+                acted_at: actedAt,
+                resulting_state: 'human_owned',
+              },
+            }),
+        ),
+      ),
+    };
+    const poll = { version: signal(0), nudge: vi.fn(), start: vi.fn() };
+    await TestBed.configureTestingModule({
+      imports: [FloorPage],
+      providers: [
+        provideRouter([]),
+        { provide: Api, useValue: api },
+        { provide: Poll, useValue: poll },
+        { provide: Session, useValue: { operatorId: () => 7, operator: () => null } },
+        { provide: Theme, useValue: { resolved: () => 'light', set: vi.fn() } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorPage);
+    fixture.detectChanges();
+
+    fixture.componentInstance.takeOver(stalled);
+    fixture.detectChanges();
+
+    const localTime = new Date(actedAt).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    expect(fixture.nativeElement.querySelector('.action-outcome')?.textContent).toContain(
+      `Already taken over by Kim Park at ${localTime}`,
+    );
   });
 });

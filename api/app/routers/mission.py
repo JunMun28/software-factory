@@ -9,7 +9,15 @@ from sqlalchemy.orm import Session
 from ..api_helpers import to_out
 from ..db import get_db
 from ..models import AuditEvent, ProgressEvent, Request, utcnow
-from ..schemas import EvidenceOut, MissionGate, MissionOut, MissionRecent, MissionRun, RunStateOut
+from ..schemas import (
+    EvidenceOut,
+    MissionGate,
+    MissionHumanOwned,
+    MissionOut,
+    MissionRecent,
+    MissionRun,
+    RunStateOut,
+)
 from ..supervision import evidence, run_state
 
 router = APIRouter()
@@ -36,6 +44,22 @@ def mission(db: Session = Depends(get_db)):
         if rs:
             runs.append(MissionRun(request=to_out(r), run=RunStateOut(**rs)))
     stalled = [to_out(r) for r in live if r.needs_human]
+    human_owned = []
+    for r in live:
+        if r.status != "human_owned":
+            continue
+        takeover = db.scalar(
+            select(AuditEvent)
+            .where(AuditEvent.request_id == r.id, AuditEvent.action == "taken_over")
+            .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+            .limit(1)
+        )
+        if takeover:
+            human_owned.append(MissionHumanOwned(
+                request=to_out(r),
+                taken_over_by=takeover.actor,
+                taken_over_at=takeover.created_at,
+            ))
     week_ago = utcnow() - timedelta(days=7)
     recent = []
     outcomes = db.execute(
@@ -50,4 +74,11 @@ def mission(db: Session = Depends(get_db)):
         recent.append(MissionRecent(request=to_out(request), outcome=decision.action,
                                     decided_by=decision.actor, decided_at=decision.created_at))
     cursor = db.query(func.max(ProgressEvent.id)).scalar() or 0
-    return MissionOut(gates=gates, runs=runs, stalled=stalled, recent=recent, cursor=cursor)
+    return MissionOut(
+        gates=gates,
+        runs=runs,
+        stalled=stalled,
+        human_owned=human_owned,
+        recent=recent,
+        cursor=cursor,
+    )

@@ -2,6 +2,8 @@
 
 ## Deviations
 
+- Slice 4: no acceptance-criteria deviations from ticket 010. The approved slice defines Take over as the terminal automation state `human_owned` (finish by hand), while the older CONTEXT.md vocabulary says a human may later hand control back; this slice implements the approved terminal state and does not add a separate hand-back verb. Human-owned requests use a dedicated signed mission projection in the Needs-you region so ownership stays visible without pretending the request is a gate, stalled run, or active automation.
+
 - Slice 3: no product or conflict-contract deviations from ticket 009. Decisive audit rows gained a nullable `operator_id` pointer so self-replay is resolved by stable identity rather than a potentially duplicated display name; the existing additive SQLite migration path carries this onto established databases. Both production app targets disable Angular's build-time external font inlining so the required builds are hermetic; all other production optimization remains enabled and the existing font stylesheet import is unchanged.
 
 - Slice 2: no deviations from ticket 008. The mission `recent` rows now use a signed outcome wrapper (`request`, `outcome`, `decided_by`, `decided_at`) derived from existing audit events; unsigned historical rows are omitted rather than guessed or backfilled.
@@ -55,3 +57,15 @@
   invariant: concurrent writers block on the row lock, so the second UPDATE
   sees the winner's committed state (or the rolled-back precondition on failure
   and legitimately becomes the new winner).
+
+## Slice 010 review pass (fable-5, 2026-07-13)
+
+- Fixed SendBackStageModal target list for pre-pipeline stalls (indexOf === -1
+  gave a wrong non-empty slice); a 'spec'-stage stall now shows an honest empty
+  state instead of options the backend rejects with 400.
+- Codex left both prod builds unverified (its sandbox lacks network for fonts)
+  but correctly did NOT touch angular.json this time. Builds pass here.
+- `human_owned` is a status value (not a boolean) so the existing tick filter
+  (status==approved) stops automation with no tick-loop edit — fewer moving parts.
+- needsCount now includes human_owned, so the greeting counts a taken-over
+  request as needing you (you are finishing it). Intended.

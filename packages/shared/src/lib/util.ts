@@ -58,6 +58,7 @@ export function plainStage(r: FactoryRequest): {
   tone: string;
   fill?: number;
 } {
+  if (r.status === 'human_owned') return { label: 'Human-owned', glyph: 'flag', tone: 'purple' };
   if (r.status === 'cancelled') return { label: 'Cancelled', glyph: 'strike', tone: 'neutral' };
   if (r.status === 'sent_back') return { label: 'Needs your input', glyph: 'flag', tone: 'amber' };
   if (r.status === 'done') return { label: 'Deployed', glyph: 'check', tone: 'green' };
@@ -75,6 +76,7 @@ export function plainStage(r: FactoryRequest): {
 export function boardGlyph(r: FactoryRequest): { glyph: string; color: string; fill: number } {
   if (r.needs_human) return { glyph: 'flag', color: 'var(--red)', fill: 0.5 };
   if (r.status === 'cancelled') return { glyph: 'strike', color: 'var(--faint)', fill: 0 };
+  if (r.status === 'human_owned') return { glyph: 'flag', color: 'var(--a500)', fill: 1 };
   if (r.stage === 'done') return { glyph: 'check', color: 'var(--green)', fill: 1 };
   if (r.stage === 'intake') return { glyph: 'dotted', color: '#9A9AA6', fill: 0 };
   const idx = ['spec', 'architecture', 'build', 'review'].indexOf(r.stage);
@@ -92,7 +94,7 @@ const IN_FLIGHT_STAGES: readonly string[] = ['architecture', 'build', 'review'];
 
 /** Agents working with no gate or escalation in the way. */
 export function inFlight(r: FactoryRequest): boolean {
-  return !r.gate && !r.needs_human && IN_FLIGHT_STAGES.includes(r.stage);
+  return r.status === 'approved' && !r.gate && !r.needs_human && IN_FLIGHT_STAGES.includes(r.stage);
 }
 
 /** The irreversible steps an Approve fires — [label, detail] pairs for the confirm modal.
@@ -341,6 +343,7 @@ export function adminStateLine(r: RequestDetail): string {
   if (r.status === 'sent_back') return 'With the submitter';
   if (r.status === 'done') return 'Deployed';
   if (r.status === 'cancelled') return 'Cancelled';
+  if (r.status === 'human_owned') return 'Human-owned — automation stopped';
   if (r.run) return `Building · ${STAGE_LABEL[r.stage]} · step ${r.run.step}/${r.run.of}`;
   if (r.status === 'approved') return `Building · ${STAGE_LABEL[r.stage]}`;
   return STAGE_LABEL[r.stage] ?? r.stage;

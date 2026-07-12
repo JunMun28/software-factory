@@ -207,7 +207,7 @@ def test_mission_aggregate(client):
     client.post("/api/simulator/tick")
 
     m = client.get("/api/mission").json()
-    assert set(m) == {"gates", "runs", "stalled", "recent", "cursor"}
+    assert set(m) == {"gates", "runs", "stalled", "human_owned", "recent", "cursor"}
     assert m["cursor"] > 0
 
     gate = next(g for g in m["gates"] if g["request"]["id"] == gated["id"])
@@ -218,6 +218,7 @@ def test_mission_aggregate(client):
     assert run["run"]["step"] >= 1 and run["run"]["health"] in ("healthy", "slow")
 
     assert all(s["needs_human"] for s in m["stalled"])
+    assert all(h["request"]["status"] == "human_owned" for h in m["human_owned"])
     assert all(g["request"]["needs_human"] is False for g in m["gates"])
     recent_ids = {r["request"]["id"] for r in m["recent"]}
     assert running["id"] in recent_ids, "Recently is an outcome history, independent of live bands"

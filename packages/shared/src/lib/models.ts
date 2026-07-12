@@ -84,6 +84,7 @@ export interface FactoryRequest {
     | 'submitted'
     | 'pending_approval'
     | 'approved'
+    | 'human_owned'
     | 'sent_back'
     | 'cancelled'
     | 'done';
@@ -249,11 +250,18 @@ export interface MissionRun {
   run: RunState;
 }
 
+export interface MissionHumanOwned {
+  request: FactoryRequest;
+  taken_over_by: string;
+  taken_over_at: string;
+}
+
 /** One poll for the Mission control home (spec §6). */
 export interface MissionOut {
   gates: MissionGate[];
   runs: MissionRun[];
   stalled: FactoryRequest[];
+  human_owned: MissionHumanOwned[];
   recent: MissionRecent[];
   cursor: number;
 }
