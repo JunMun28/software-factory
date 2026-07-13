@@ -35,10 +35,16 @@ import { FloorActionOutcome } from './floor-action-outcome';
             </div>
             <div class="fact">
               <span>Tests</span
-              ><strong class="mono" [class.success]="testsFailed() === 0" [class.failure]="testsFailed() > 0"
+              ><strong
+                class="mono"
+                [class.success]="testsFailed() === 0"
+                [class.failure]="testsFailed() > 0"
                 >{{
                   testsFailed() === 0
-                    ? (item.evidence?.tests_passed ?? 0) + ' / ' + (item.evidence?.tests_total ?? 0) + ' passed'
+                    ? (item.evidence?.tests_passed ?? 0) +
+                      ' / ' +
+                      (item.evidence?.tests_total ?? 0) +
+                      ' passed'
                     : testsFailed() + ' of ' + (item.evidence?.tests_total ?? 0) + ' failed'
                 }}</strong
               >
@@ -91,11 +97,7 @@ import { FloorActionOutcome } from './floor-action-outcome';
           >
         </div>
         @if (actionOutcome(); as outcome) {
-          <p
-            class="action-outcome"
-            [class.conflict]="outcome.kind === 'conflict'"
-            role="status"
-          >
+          <p class="action-outcome" [class.conflict]="outcome.kind === 'conflict'" role="status">
             {{ outcome.message }}
           </p>
         }

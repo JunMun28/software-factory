@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from . import lifecycle
 from .db import engine
-from .events import emit
 from .models import PIPELINE_STAGES, Comment, ProgressEvent, Request
 
 log = logging.getLogger("factory")

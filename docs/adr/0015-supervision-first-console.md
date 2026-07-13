@@ -1,5 +1,7 @@
 # Supervision-first console: Mission control replaces the Linear board as the operator home
 
+> Superseded by ADR 0023.
+
 **Status:** accepted (supersedes ADR 0010)
 
 A two-track review (code critique + agent-console research) found the Linear-style

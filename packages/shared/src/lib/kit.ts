@@ -643,8 +643,8 @@ export class RecoveryConfirm {
           </div>
         } @else {
           <p style="font-size:14px;color:var(--muted);margin:12px 0">
-            This is already the earliest stage — there's nothing earlier to send it
-            back to. Use Retry or Take over instead.
+            This is already the earliest stage — there's nothing earlier to send it back to. Use
+            Retry or Take over instead.
           </p>
         }
         @if (target) {

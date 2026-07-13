@@ -10,8 +10,7 @@ from sqlalchemy.orm import Session
 
 from .events import emit
 from .models import Request, utcnow
-from .notifications import notify_gate_raised
-from .notifications import notify_escalation
+from .notifications import notify_escalation, notify_gate_raised
 
 
 def escalate(db: Session, req: Request, reason: str) -> None:

@@ -8,5 +8,5 @@ import { Session } from './session.service';
 export const adminGuard: CanActivateFn = () => {
   const session = inject(Session);
   const router = inject(Router);
-  return session.resolve().pipe(map((operator) => operator ? true : router.parseUrl('/studio')));
+  return session.resolve().pipe(map((operator) => (operator ? true : router.parseUrl('/studio'))));
 };

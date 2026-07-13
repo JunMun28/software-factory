@@ -52,7 +52,13 @@ import { Session } from '../core/session.service';
           ⌘K
         </button>
         @if (session.operator(); as operator) {
-          <a class="operator" routerLink="/studio" [title]="operator.name" [style.background]="operator.hue">{{ operator.initials }}</a>
+          <a
+            class="operator"
+            routerLink="/studio"
+            [title]="operator.name"
+            [style.background]="operator.hue"
+            >{{ operator.initials }}</a
+          >
         }
       </header>
       <main><ng-content /></main>
@@ -328,9 +334,9 @@ export class ConsoleShell {
 
   constructor() {
     this.poll.start();
-    this.api.health().subscribe((health) =>
-      this.runnerMode.set({ runner: health.runner, cli: health.cli }),
-    );
+    this.api
+      .health()
+      .subscribe((health) => this.runnerMode.set({ runner: health.runner, cli: health.cli }));
   }
 
   toggleTheme() {

@@ -2,9 +2,8 @@
 
 from datetime import datetime
 
-from sqlalchemy import select
-
 from helpers import approved_request
+from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models import AuditEvent, Request

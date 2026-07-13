@@ -1,8 +1,7 @@
 """Compare-and-set behavior for every state-changing console action."""
 
-from sqlalchemy import select
-
 from helpers import approved_request, submitted_request
+from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models import AuditEvent, Request

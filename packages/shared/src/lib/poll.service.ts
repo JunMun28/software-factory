@@ -48,9 +48,9 @@ export class Poll implements OnDestroy {
       evs: this.api.events({ after: this.cursor }),
       // Freshness is additive to ADR 0008's event path: if this lightweight
       // read ever fails, real events still advance and the next tick retries.
-      freshness: this.api.eventsCursor().pipe(
-        catchError(() => of({ cursor: this.cursor, revision: this.revision })),
-      ),
+      freshness: this.api
+        .eventsCursor()
+        .pipe(catchError(() => of({ cursor: this.cursor, revision: this.revision }))),
     }).subscribe({
       next: ({ evs, freshness }) => {
         this.inFlight = false;
