@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { Api, Glyph, RequestDetail, TypeChip } from '@sf/shared';
+import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';
 
 const STAGES = ['Submitted', 'Spec drafted', 'Approved', 'Building', 'In review', 'Deployed'];
@@ -82,6 +83,7 @@ const STAGES = ['Submitted', 'Spec drafted', 'Approved', 'Building', 'In review'
 export class Confirm {
   private api = inject(Api);
   private router = inject(Router);
+  private draft = inject(IntakeDraft);
   id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
   req = signal<RequestDetail | null>(null);
   stages = STAGES;
@@ -100,6 +102,7 @@ export class Confirm {
     this.router.navigateByUrl(`/requests/${this.id}`);
   }
   another() {
+    this.draft.reset(); // start the next request from a clean slate
     this.router.navigateByUrl('/submit/new');
   }
 }
