@@ -17,9 +17,10 @@ from .models import Request, SpecLine
 # short script, so the offline path stays shallow.
 QUESTION_BUDGET: dict[str, tuple[int, int]] = {
     "bug": (2, 3),   # a report is usually concrete — a couple of clarifiers
-    "enh": (2, 5),   # scale with complexity
-    "new": (3, 10),  # a whole new app — walk the design tree
-    "other": (2, 3),
+    "enh": (2, 4),   # scale with complexity, capped
+    "new": (3, 99),  # UNCAPPED by design (spec/ADR 0023): the model's judgment and the
+                     # submitter's conversational "that's enough" are the real stops
+    "other": (2, 4),
 }
 DEFAULT_BUDGET = (2, 3)
 
@@ -57,6 +58,31 @@ IMPACT_WORDING = {
 def answered_count(req: Request) -> int:
     """The one definition of an answered turn: answered or explicitly skipped."""
     return sum(1 for t in req.turns if t.answer is not None or t.skipped)
+
+
+# Short, explicit stop phrases the submitter can type to end an uncapped interview
+# (spec/ADR 0023: the chat is the control — no dedicated stop button). Kept deterministic
+# so it works in every brain mode; only a SHORT message counts, so a long answer that
+# merely contains the words is still treated as a real answer.
+# Unambiguous multi-word phrases: safe to match as a whole message OR a prefix
+# ("stop asking questions" still means stop).
+_STOP_PREFIXES = ("that's enough", "thats enough", "that is enough", "no more questions",
+                  "stop asking", "i'm done", "im done")
+
+# Generic bare phrases: only unambiguous when they ARE the entire message. As a
+# prefix they collide with real answers ("no more than 5 users", "stop the
+# duplicate emails from firing"), so never prefix-match these.
+_STOP_EXACT = ("stop", "no more", "enough", "done")
+
+
+def is_stop_signal(text: str) -> bool:
+    t = (text or "").strip().lower().rstrip(".!")
+    if not t or len(t) > 40:  # a substantive answer, not a stop command
+        return False
+    t = t.removesuffix(" please").rstrip()
+    if t in _STOP_EXACT:
+        return True
+    return any(t == p or t.startswith(p + " ") for p in _STOP_PREFIXES)
 
 
 @dataclass
@@ -192,6 +218,24 @@ SCRIPTS: dict[str, list[Question]] = {
 }
 
 
+# Deterministic offline classifier (the ADR 0007 fallback). Real models override
+# in AgentBrain. Keyword hits vote for a type; the winning margin sets confidence.
+_CLASSIFY_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "bug": ("broken", "error", "crash", "fails", "failing", "wrong", "bug",
+            "doesn't work", "does not work", "slow", "stuck", "can't", "cannot"),
+    "enh": ("add", "improve", "existing", "also", "better", "extend", "support",
+            "enhance", "option to", "ability to", "would be nice"),
+    "new": ("build", "new app", "new tool", "from scratch", "create a", "brand-new",
+            "brand new", "greenfield", "stand up", "spin up"),
+}
+_VAGUE = ("not sure", "maybe", "idea", "think about", "unsure", "no idea", "dunno")
+
+
+def _classify_scores(text: str) -> dict[str, int]:
+    t = text.lower()
+    return {k: sum(t.count(kw) for kw in kws) for k, kws in _CLASSIFY_KEYWORDS.items()}
+
+
 class ScriptedBrain:
     """Deterministic interview + spec generator (the offline LLMClient)."""
 
@@ -201,6 +245,32 @@ class ScriptedBrain:
         if answered >= min(question_ceiling(req), len(script)):
             return None
         return script[answered]
+
+    def propose_escalation(self, req: Request) -> dict | None:
+        """Whether the brain wants to propose a mid-interview type change (ADR 0023).
+        The offline default never proposes one — deterministic, so the scripted/smoke
+        path stays silent. A real model fills this seam later; the UI drives accept/decline."""
+        return None
+
+    def classify(self, description: str) -> dict:
+        """Deterministic type guess + confidence from the free-text description.
+        Empty/vague → new with low confidence; a clear keyword winner → high."""
+        text = (description or "").strip()
+        if not text:
+            return {"type": "new", "confidence": 0.0}
+        scores = _classify_scores(text)
+        best = max(scores, key=lambda k: scores[k])
+        top = scores[best]
+        if top == 0:
+            # no signal — default to the factory's main flow, low confidence
+            conf = 0.15 if any(v in text.lower() for v in _VAGUE) else 0.35
+            return {"type": "new", "confidence": conf}
+        runner_up = max((v for k, v in scores.items() if k != best), default=0)
+        margin = top - runner_up
+        conf = min(0.95, 0.55 + 0.15 * margin)
+        if any(v in text.lower() for v in _VAGUE):
+            conf = min(conf, 0.45)  # hedged language caps confidence
+        return {"type": best, "confidence": round(conf, 2)}
 
     def summarize(self, req: Request) -> dict:
         """Deterministic review spec (the offline fallback): overview from the request, plus

@@ -123,6 +123,12 @@ export interface RequestDetail extends FactoryRequest {
   prototype_status?: 'none' | 'draft' | 'edited' | 'skipped';
 }
 
+/** Composer type inference for the Track chip (ADR 0023). Intake-only. */
+export interface ClassifyResult {
+  type: 'bug' | 'enh' | 'new' | 'other';
+  confidence: number;
+}
+
 export interface InterviewState {
   done: boolean;
   asked: number;
@@ -134,6 +140,8 @@ export interface InterviewState {
   options: { t: string; d: string }[] | null;
   final: boolean;
   turns: Turn[];
+  /** a mid-interview type-change proposal (ADR 0023) — pulse the chip, ask consent */
+  escalation: { to_type: 'bug' | 'enh' | 'new' | 'other'; why: string } | null;
 }
 
 /** One titled section of the structured Review spec. */

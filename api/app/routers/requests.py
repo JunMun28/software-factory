@@ -31,11 +31,15 @@ from ..interview import (
     Question,
     answered_count,
     get_brain,
+    is_stop_signal,
     pending_payload,
     question_ceiling,
 )
 from ..models import AuditEvent, InterviewTurn, ProgressEvent, PrototypeTurn, Request, utcnow
 from ..schemas import (
+    ClassifyIn,
+    ClassifyOut,
+    EscalateIn,
     EvidenceOut,
     InterviewAnswer,
     InterviewState,
@@ -93,6 +97,13 @@ def interview_state(db: Session, r: Request, *, generate: bool = True) -> Interv
                             thinking=thinking, turns=[t for t in r.turns])
         if q:
             st.question, st.sub, st.options, st.final = q.question, q.sub, q.options, q.final
+        # Surface any mid-interview type-change proposal the brain wants to raise (ADR 0023).
+        # ScriptedBrain (and today's AgentBrain) return None — this is inert wiring for the
+        # seam a future model fills; the UI drives accept/decline via the escalate endpoint.
+        brain = get_brain()
+        prop = brain.propose_escalation(r) if hasattr(brain, "propose_escalation") else None
+        if prop and prop.get("to_type") in ("bug", "enh", "new", "other") and prop["to_type"] != r.type:
+            st.escalation = {"to_type": prop["to_type"], "why": str(prop.get("why") or "")[:200]}
         return st
 
     if answered_count(r) >= question_ceiling(r) or r.pending_question == DONE_SENTINEL:
@@ -232,6 +243,13 @@ def _prototype_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractE
 
 # ---------- requests CRUD ----------
 
+@router.post("/api/requests/classify", response_model=ClassifyOut)
+def classify_request(body: ClassifyIn):
+    """Stateless type inference for the composer chip — no Request is created.
+    Track/confidence are Intake-only; the Factory still consumes only the stored type."""
+    return get_brain().classify(body.description)
+
+
 @router.get("/api/requests", response_model=list[RequestOut])
 def list_requests(mine: str | None = None, active: bool = False, limit: int = 500,
                   db: Session = Depends(get_db)):
@@ -313,6 +331,7 @@ def update_request(rid: int, body: RequestUpdate, db: Session = Depends(get_db))
     data = body.model_dump(exclude_unset=True)  # PATCH: unsent fields stay untouched
     if not data.get("title"):
         data.pop("title", None)  # the title can change but never go blank
+    type_changed = "type" in data and data["type"] != r.type
     for k, v in data.items():
         setattr(r, k, v)
     # Any edit invalidates the cached summary: it is keyed on answered turns only,
@@ -320,6 +339,11 @@ def update_request(rid: int, body: RequestUpdate, db: Session = Depends(get_db))
     # _context; scripted: reach/impact) — a selective set here would drift.
     if data:
         r.summary = None
+    # A type change (e.g. correcting the inferred Track in Basics) invalidates any
+    # question pre-generated for the OLD type — drop it so the next one regenerates
+    # for the new type instead of asking the old track's questions.
+    if type_changed:
+        r.pending_question = None
     db.commit()
     return to_out(r, RequestDetail)
 
@@ -351,6 +375,8 @@ def answer_interview(rid: int, body: InterviewAnswer, db: Session = Depends(get_
     db.add(InterviewTurn(request=r, order=order, question=q.question, sub=q.sub, options=q.options,
                          answer=None if body.skip else (body.answer or None), skipped=body.skip))
     r.pending_question = None
+    if not body.skip and is_stop_signal(body.answer or ""):
+        r.pending_question = DONE_SENTINEL  # submitter ended the interview conversationally
     db.commit()
     db.refresh(r)
     # returns immediately with `thinking`. In async mode we DON'T kick pre-gen here —
@@ -374,6 +400,21 @@ def reopen_interview(rid: int, body: Note, db: Session = Depends(get_db)):
     # allow up to ~2 follow-ups from where we resumed (overrides the type budget), not a full grill
     r.reopen_ceiling = answered_count(r) + 2
     r.pending_question = None  # force the next question to (re)generate
+    db.commit()
+    db.refresh(r)
+    return interview_state(db, r, generate=interview_gen.SYNC)
+
+
+@router.post("/api/requests/{rid}/interview/escalate", response_model=InterviewState)
+def escalate_interview(rid: int, body: EscalateIn, db: Session = Depends(get_db)):
+    """Consent gate for a mid-interview type change (ADR 0023). Accept PATCHes the type
+    (the draft's other facts persist — lossless); decline leaves it unchanged. Either way
+    the interview continues; the proposal is cleared."""
+    r = get_request(db, rid)
+    if body.accept and r.type != body.to_type:
+        r.type = body.to_type
+        r.summary = None  # type change invalidates the cached Review summary
+        r.pending_question = None  # and any question pre-generated for the old type
     db.commit()
     db.refresh(r)
     return interview_state(db, r, generate=interview_gen.SYNC)

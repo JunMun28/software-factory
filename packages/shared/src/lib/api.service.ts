@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import {
   AppEntry,
   Attachment,
+  ClassifyResult,
   CommentItem,
   FactoryRequest,
   InterviewState,
@@ -48,6 +49,9 @@ export class Api {
   createRequest(body: object) {
     return this.http.post<RequestDetail>(`${BASE}/requests`, body);
   }
+  classify(description: string): Observable<ClassifyResult> {
+    return this.http.post<ClassifyResult>(`${BASE}/requests/classify`, { description });
+  }
   updateRequest(id: number, body: object) {
     return this.http.patch<RequestDetail>(`${BASE}/requests/${id}`, body);
   }
@@ -78,6 +82,14 @@ export class Api {
   /** "Add more detail" from Review: record a note and reopen the interview for a follow-up. */
   reopenInterview(id: number, note: string) {
     return this.http.post<InterviewState>(`${BASE}/requests/${id}/interview/reopen`, { note });
+  }
+  /** Consent on a mid-interview type-change proposal (ADR 0023). Accept PATCHes the type
+   *  (lossless — the draft's other facts persist); decline records and continues. */
+  escalate(id: number, accept: boolean, toType: string) {
+    return this.http.post<InterviewState>(`${BASE}/requests/${id}/interview/escalate`, {
+      accept,
+      to_type: toType,
+    });
   }
   /** The AI-written Review summary. Returns `thinking:true` while it generates — poll. */
   summary(id: number) {

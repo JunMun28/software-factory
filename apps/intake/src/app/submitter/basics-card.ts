@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, OnInit, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { Api, AppEntry } from '@sf/shared';
+import { Api, AppEntry, TrackChip } from '@sf/shared';
 import { IntakeDraft } from './intake-draft.service';
 
 /** all basics answered for this request type (identity + the two facts) */
@@ -32,126 +32,132 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
  *  options to four rings — legacy site/network values light the outer ring. */
 @Component({
   selector: 'sf-basics-card',
-  imports: [FormsModule],
+  imports: [FormsModule, TrackChip],
   template: `
     <div class="basics">
-      <!-- S1 · TYPE -->
+      <!-- S1 · TYPE (chip-collapsed; cards open when unsure or correcting) -->
       <section class="sec answered">
         <div class="sechead">
           <span class="snum"></span>
           <div class="htxt">
             <h2>What kind of request is this?</h2>
-            <p class="sub">Pick the one that fits best.</p>
+            <p class="sub">We inferred this from your description — change it if it's off.</p>
           </div>
-          <span class="tag">{{ typeLabel() }}</span>
+          <sf-track-chip
+            [t]="draft.type ?? rtype() ?? 'new'"
+            [state]="cardsOpen() ? 'unsure' : 'confident'"
+            (correct)="cardsOpen.set(!cardsOpen())"
+          />
         </div>
-        <div class="typegrid">
-          <button
-            type="button"
-            class="tcard"
-            [class.sel]="draft.type === 'bug'"
-            (click)="pickType('bug')"
-          >
-            <span class="glow"></span>
-            <span class="art">
-              <svg
-                viewBox="0 0 48 48"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path
-                  d="M30 12a7 7 0 0 0-9.4 8.3L9 31.9a3.4 3.4 0 0 0 4.8 4.8l11.6-11.6A7 7 0 0 0 34 15.6l-4 4-4.3-1.4L24.3 14z"
-                />
-                <circle cx="12.2" cy="33.6" r="1" />
-              </svg>
-            </span>
-            <span class="tl">Fix a problem</span>
-            <span class="ex">Something's broken, slow, or wrong and needs a fix.</span>
-            <span class="tick">✓</span>
-          </button>
-          <button
-            type="button"
-            class="tcard"
-            [class.sel]="draft.type === 'enh'"
-            (click)="pickType('enh')"
-          >
-            <span class="glow"></span>
-            <span class="art">
-              <svg
-                viewBox="0 0 48 48"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <rect x="8" y="10" width="32" height="22" rx="3" />
-                <path d="M8 16h32" />
-                <path d="M18 40h12M24 32v8" />
-                <path d="M20 25l4-5 4 3 4-6" />
-              </svg>
-            </span>
-            <span class="tl">Improve an app</span>
-            <span class="ex">An app already exists but should do more or better.</span>
-            <span class="tick">✓</span>
-          </button>
-          <button
-            type="button"
-            class="tcard"
-            [class.sel]="draft.type === 'new'"
-            (click)="pickType('new')"
-          >
-            <span class="glow"></span>
-            <span class="art">
-              <svg
-                viewBox="0 0 48 48"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M24 7l14 8v18l-14 8-14-8V15z" />
-                <path d="M10 15l14 8 14-8M24 23v18" />
-                <path d="M24 16v6M21 19h6" stroke-width="2.2" />
-              </svg>
-            </span>
-            <span class="tl">Build a new app</span>
-            <span class="ex">Nothing exists yet. Start from a blank page.</span>
-            <span class="tick">✓</span>
-          </button>
-          <button
-            type="button"
-            class="tcard"
-            [class.sel]="draft.type === 'other'"
-            (click)="pickType('other')"
-          >
-            <span class="glow"></span>
-            <span class="art">
-              <svg
-                viewBox="0 0 48 48"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M12 14a10 10 0 0 1 20 0c0 5-4 6-6 8s-2 4-2 4" />
-                <circle cx="24" cy="39" r="1.4" />
-              </svg>
-            </span>
-            <span class="tl">Something else</span>
-            <span class="ex">Not sure yet. We'll figure it out together.</span>
-            <span class="tick">✓</span>
-          </button>
-        </div>
+        @if (cardsOpen()) {
+          <div class="typegrid">
+            <button
+              type="button"
+              class="tcard"
+              [class.sel]="draft.type === 'bug'"
+              (click)="pickType('bug')"
+            >
+              <span class="glow"></span>
+              <span class="art">
+                <svg
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M30 12a7 7 0 0 0-9.4 8.3L9 31.9a3.4 3.4 0 0 0 4.8 4.8l11.6-11.6A7 7 0 0 0 34 15.6l-4 4-4.3-1.4L24.3 14z"
+                  />
+                  <circle cx="12.2" cy="33.6" r="1" />
+                </svg>
+              </span>
+              <span class="tl">Fix a problem</span>
+              <span class="ex">Something's broken, slow, or wrong and needs a fix.</span>
+              <span class="tick">✓</span>
+            </button>
+            <button
+              type="button"
+              class="tcard"
+              [class.sel]="draft.type === 'enh'"
+              (click)="pickType('enh')"
+            >
+              <span class="glow"></span>
+              <span class="art">
+                <svg
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="8" y="10" width="32" height="22" rx="3" />
+                  <path d="M8 16h32" />
+                  <path d="M18 40h12M24 32v8" />
+                  <path d="M20 25l4-5 4 3 4-6" />
+                </svg>
+              </span>
+              <span class="tl">Improve an app</span>
+              <span class="ex">An app already exists but should do more or better.</span>
+              <span class="tick">✓</span>
+            </button>
+            <button
+              type="button"
+              class="tcard"
+              [class.sel]="draft.type === 'new'"
+              (click)="pickType('new')"
+            >
+              <span class="glow"></span>
+              <span class="art">
+                <svg
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M24 7l14 8v18l-14 8-14-8V15z" />
+                  <path d="M10 15l14 8 14-8M24 23v18" />
+                  <path d="M24 16v6M21 19h6" stroke-width="2.2" />
+                </svg>
+              </span>
+              <span class="tl">Build a new app</span>
+              <span class="ex">Nothing exists yet. Start from a blank page.</span>
+              <span class="tick">✓</span>
+            </button>
+            <button
+              type="button"
+              class="tcard"
+              [class.sel]="draft.type === 'other'"
+              (click)="pickType('other')"
+            >
+              <span class="glow"></span>
+              <span class="art">
+                <svg
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 14a10 10 0 0 1 20 0c0 5-4 6-6 8s-2 4-2 4" />
+                  <circle cx="24" cy="39" r="1.4" />
+                </svg>
+              </span>
+              <span class="tl">Something else</span>
+              <span class="ex">Not sure yet. We'll figure it out together.</span>
+              <span class="tick">✓</span>
+            </button>
+          </div>
+        }
       </section>
 
       <!-- S2 · APP (bug / enh only) -->
@@ -1270,6 +1276,9 @@ export class BasicsCard implements OnInit {
     },
   };
 
+  /** the type cards are shown when the guess is unsure or the submitter opens them to correct */
+  cardsOpen = signal(false);
+
   apps = signal<AppEntry[]>([]);
   appsMenuOpen = signal(false);
   appQuery = signal('');
@@ -1309,6 +1318,7 @@ export class BasicsCard implements OnInit {
   ngOnInit() {
     this.api.apps().subscribe((a) => this.apps.set(a.filter((x) => !x.muted)));
     this.seedFromDraft();
+    this.cardsOpen.set(this.draft.typeConfidence < 0.5);
     // hydration may still be in flight when the card mounts (two parallel GETs) —
     // one late reseed covers the deep-link/reload race
     setTimeout(() => {
@@ -1338,16 +1348,6 @@ export class BasicsCard implements OnInit {
   }
 
   /* ---- copy ---- */
-  typeLabel() {
-    return (
-      {
-        bug: 'Fix a problem',
-        enh: 'Improve an app',
-        new: 'Build a new app',
-        other: 'Something else',
-      }[this.draft.type ?? this.rtype() ?? ''] ?? ''
-    );
-  }
   appPlaceholder() {
     return this.rtype() === 'bug'
       ? 'Search for the app with the problem'
@@ -1459,8 +1459,13 @@ export class BasicsCard implements OnInit {
   }
 
   pickType(t: string) {
-    if (this.draft.type === t) return;
+    if (this.draft.type === t) {
+      this.cardsOpen.set(false);
+      return;
+    }
     this.draft.type = t as never;
+    this.draft.typeConfidence = 1; // an explicit choice is certain
+    this.cardsOpen.set(false);
     void this.save(true).then((didSave) => {
       if (didSave) this.typeChanged.emit(t);
     });

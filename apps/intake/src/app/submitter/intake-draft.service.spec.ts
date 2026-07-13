@@ -212,4 +212,27 @@ describe('IntakeDraft', () => {
     expect(api.request).toHaveBeenCalledWith(7);
     expect(draft.attachments()).toEqual([]);
   });
+
+  it('preserves cross-type answers across a bug→enh→bug correction (in session)', () => {
+    const d = TestBed.inject(IntakeDraft);
+    d.requestId = 71;
+    // enhancement facts
+    d.type = 'enh';
+    d.appName = 'Atlas';
+    d.reach = 'team';
+    d.impactMetric = 'hours';
+    d.impactValue = '120';
+    // correct to bug, then back to enh
+    d.type = 'bug';
+    d.bugFreq = 'Every time';
+    d.type = 'enh';
+
+    // nothing was cleared in memory — switching back restores the enhancement facts
+    expect(d.appName).toBe('Atlas');
+    expect(d.reach).toBe('team');
+    expect(d.impactMetric).toBe('hours');
+    expect(d.impactValue).toBe('120');
+    // and the bug fact taken in between is still held too
+    expect(d.bugFreq).toBe('Every time');
+  });
 });

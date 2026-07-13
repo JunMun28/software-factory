@@ -12,6 +12,7 @@ import Lenis from 'lenis';
 
 import { Avatar, Icon, Mark, Theme } from '@sf/shared';
 import { Session } from '../core/session.service';
+import { IntakeDraft } from './intake-draft.service';
 
 /** Submitter shell: top navigation and a Lenis-smoothed content area. Intake is
  *  submitter-only since the app split (ADR 0017 Phase 2). */
@@ -26,7 +27,7 @@ import { Session } from '../core/session.service';
         </button>
         <div class="row" style="gap:16px">
           <nav class="sub-nav">
-            <button [class.on]="active() === 'new'" (click)="go('/submit/new')">New request</button>
+            <button [class.on]="active() === 'new'" (click)="startNew()">New request</button>
             <button [class.on]="active() === 'list'" (click)="go('/requests')">My requests</button>
           </nav>
           <button
@@ -88,12 +89,22 @@ export class SubShell implements OnDestroy {
   session = inject(Session);
   theme = inject(Theme);
   private router = inject(Router);
+  private draft = inject(IntakeDraft);
 
   toggleTheme() {
     this.theme.set(this.theme.resolved() === 'dark' ? 'light' : 'dark');
   }
 
   home() {
+    this.startNew();
+  }
+
+  /** Start a genuinely new request: clear any in-progress draft so the composer
+   *  opens fresh. The brand mark and the "New request" nav both mean "start over"
+   *  — unlike Review's "Edit details", which routes to the composer to keep editing
+   *  the current draft and so must NOT reset. */
+  startNew() {
+    this.draft.reset();
     this.router.navigateByUrl('/submit/new');
   }
 

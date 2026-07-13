@@ -1,8 +1,9 @@
 import { afterNextRender, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 
-import { Icon } from '@sf/shared';
+import { Api, Icon } from '@sf/shared';
 import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';
 
@@ -287,6 +288,7 @@ import { SubShell } from './sub-shell';
 export class NewRequest {
   draft = inject(IntakeDraft);
   private router = inject(Router);
+  private api = inject(Api);
 
   saving = signal(false);
 
@@ -352,11 +354,20 @@ export class NewRequest {
     void this.continue_();
   }
   private async continue_() {
-    // the request needs a type at creation; new-app is the factory's main flow.
-    // The Clarify basics card lets the submitter change it (PATCH).
-    if (!this.draft.type) this.draft.type = 'new';
     this.saving.set(true);
     try {
+      // classify once (ADR 0023): the guess seeds the Track chip; low confidence opens
+      // the type cards in Basics. Degrades to new/low-confidence if the call fails.
+      if (!this.draft.type) {
+        try {
+          const c = await firstValueFrom(this.api.classify(this.draft.desc.trim()));
+          this.draft.type = c.type;
+          this.draft.typeConfidence = c.confidence;
+        } catch {
+          this.draft.type = 'new';
+          this.draft.typeConfidence = 0;
+        }
+      }
       const id = await this.draft.save();
       await this.draft.uploadPending(id);
       this.router.navigateByUrl(`/submit/${id}/interview`);

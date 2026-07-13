@@ -12,6 +12,9 @@ export class IntakeDraft {
 
   requestId: number | null = null;
   type: 'bug' | 'enh' | 'new' | 'other' | null = null;
+  /** confidence in the inferred type (0–1); <0.5 opens the type cards. Session-only,
+   *  not persisted — a reload defaults to confident (the stored type is authoritative). */
+  typeConfidence = 1;
   title = '';
   desc = '';
   newName = '';
@@ -126,6 +129,7 @@ export class IntakeDraft {
   reset() {
     this.requestId = null;
     this.type = null;
+    this.typeConfidence = 1;
     this.title = this.desc = this.newName = this.bugWhere = this.bugFreq = this.extra = '';
     this.reachText = this.impactValue = '';
     this.urgency = 'normal';

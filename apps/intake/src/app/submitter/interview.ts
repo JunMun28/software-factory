@@ -12,7 +12,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
-import { Api, Icon, InterviewState, Mark, RequestDetail, streamState, TypeChip } from '@sf/shared';
+import { Api, Icon, InterviewState, Mark, RequestDetail, streamState, TrackChip } from '@sf/shared';
 import { BasicsCard, basicsAnswered } from './basics-card';
 import { PlanPanel } from './plan-panel';
 import { SubShell } from './sub-shell';
@@ -26,7 +26,7 @@ import { IntakeDraft } from './intake-draft.service';
  *  Chosen from the 2026-07 Clarify prototype (chat persona + command palette). */
 @Component({
   selector: 'sf-interview',
-  imports: [SubShell, Mark, Icon, TypeChip, FormsModule, BasicsCard, PlanPanel],
+  imports: [SubShell, Mark, Icon, TrackChip, FormsModule, BasicsCard, PlanPanel],
   host: {
     '(window:keydown)': 'onKeys($event)',
   },
@@ -76,7 +76,8 @@ import { IntakeDraft } from './intake-draft.service';
             <div class="iv__thread scroll" #thread data-lenis-prevent>
               @if (req(); as r) {
                 <div class="iv__ctx">
-                  <sf-type-chip [t]="r.type" />
+                  <!-- pulses while an escalation proposal is pending (ADR 0023) -->
+                  <sf-track-chip [t]="r.type" [state]="escalation() ? 'pulse' : 'confident'" />
                   <span class="iv__ctxt">{{ r.title }}</span>
                 </div>
               }
@@ -112,6 +113,29 @@ import { IntakeDraft } from './intake-draft.service';
                     </div>
                   </div>
                 }
+              }
+              <!-- consent-gated type change (ADR 0023): the AI may change how much it asks
+                   silently, but never WHAT the request is without the submitter's say-so -->
+              @if (escalation(); as esc) {
+                <div class="brow fade-in">
+                  <span class="bav"><sf-mark [size]="13" color="#fff" /></span>
+                  <div class="bub bub--ai">
+                    This sounds bigger than a {{ typeWord(req()?.type) }} — switch to
+                    <b>{{ typeWord(esc.to_type) }}</b
+                    >?
+                    @if (esc.why) {
+                      <span class="bsub">{{ esc.why }}</span>
+                    }
+                    <div class="esc__row">
+                      <button class="btn primary sm" (click)="acceptEscalation(esc.to_type)">
+                        Switch
+                      </button>
+                      <button class="dock__skip" (click)="declineEscalation(esc.to_type)">
+                        Keep as is
+                      </button>
+                    </div>
+                  </div>
+                </div>
               }
               @if (working()) {
                 <div class="brow fade-in">
@@ -511,6 +535,12 @@ import { IntakeDraft } from './intake-draft.service';
       font-size: 12.5px;
       color: var(--muted);
     }
+    .esc__row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
     .typing {
       color: var(--muted);
       font-size: 12.5px;
@@ -829,6 +859,9 @@ export class Interview implements OnInit {
 
   turns = computed(() => this.st()?.turns.filter((t) => t.answer !== null || t.skipped) ?? []);
 
+  /** a pending mid-interview type-change proposal from the brain (ADR 0023), or null */
+  escalation = computed(() => this.st()?.escalation ?? null);
+
   planPanel = viewChild(PlanPanel); // absent during the basics intro phase
 
   /** Clarify arrives in two beats: first ONLY the basics (centered, while the
@@ -1122,6 +1155,37 @@ export class Interview implements OnInit {
     }
     if (text) this.push({ answer: text });
   }
+  /** A plain-language word for a request type — used in the escalation prompt copy. */
+  typeWord(t: string | null | undefined) {
+    return (
+      (
+        { bug: 'bug fix', enh: 'improvement', new: 'new app', other: 'request' } as Record<
+          string,
+          string
+        >
+      )[t ?? ''] ?? 'request'
+    );
+  }
+  /** Consent to the proposed type change (ADR 0023): PATCH the type (lossless — the draft's
+   *  other facts persist), then let the request, rows and plan re-shape and continue. */
+  acceptEscalation(toType: string) {
+    if (this.working()) return;
+    this.busy.set(true);
+    this.api.escalate(this.id, true, toType).subscribe({
+      next: (s) => {
+        this.st.set(s);
+        this.busy.set(false);
+        this.api.request(this.id).subscribe((r) => this.req.set(r)); // type/rows re-shape
+        this.planPanel()?.refresh();
+      },
+      error: () => this.busy.set(false),
+    });
+  }
+  /** Decline the proposal: the type stands and the interview continues (the proposal clears). */
+  declineEscalation(toType: string) {
+    this.api.escalate(this.id, false, toType).subscribe((s) => this.st.set(s));
+  }
+
   /** the basics Type row changed the request — refresh req (rows, stepper,
    *  labels re-shape) and let the plan catch up */
   onTypeChanged() {
