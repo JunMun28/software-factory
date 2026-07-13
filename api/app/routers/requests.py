@@ -331,6 +331,7 @@ def update_request(rid: int, body: RequestUpdate, db: Session = Depends(get_db))
     data = body.model_dump(exclude_unset=True)  # PATCH: unsent fields stay untouched
     if not data.get("title"):
         data.pop("title", None)  # the title can change but never go blank
+    type_changed = "type" in data and data["type"] != r.type
     for k, v in data.items():
         setattr(r, k, v)
     # Any edit invalidates the cached summary: it is keyed on answered turns only,
@@ -338,6 +339,11 @@ def update_request(rid: int, body: RequestUpdate, db: Session = Depends(get_db))
     # _context; scripted: reach/impact) — a selective set here would drift.
     if data:
         r.summary = None
+    # A type change (e.g. correcting the inferred Track in Basics) invalidates any
+    # question pre-generated for the OLD type — drop it so the next one regenerates
+    # for the new type instead of asking the old track's questions.
+    if type_changed:
+        r.pending_question = None
     db.commit()
     return to_out(r, RequestDetail)
 
@@ -405,9 +411,10 @@ def escalate_interview(rid: int, body: EscalateIn, db: Session = Depends(get_db)
     (the draft's other facts persist — lossless); decline leaves it unchanged. Either way
     the interview continues; the proposal is cleared."""
     r = get_request(db, rid)
-    if body.accept:
+    if body.accept and r.type != body.to_type:
         r.type = body.to_type
         r.summary = None  # type change invalidates the cached Review summary
+        r.pending_question = None  # and any question pre-generated for the old type
     db.commit()
     db.refresh(r)
     return interview_state(db, r, generate=interview_gen.SYNC)
