@@ -2,6 +2,8 @@
 
 ## Deviations
 
+- Slice 7: no acceptance-criteria deviations. Simulator failures now escalate only the affected request and continue the rest of the tick; simulator, real-runner, and restart-orphan needs-human paths all send pings, while healthy steps and Done remain explicit non-triggers. Live 1440/390 light/dark browser inspection could not run because this sandbox rejects local server binds with `operation not permitted`. Focused Studio DOM tests cover the toggle list, revision-driven reload, and log-only status. Both required production builds were attempted with pinned Node 24.15.0 and aborted at `Building...` with exit 134 before Angular emitted a font or compilation diagnostic; `angular.json` was not changed.
+
 - Slice 6: no acceptance-criteria deviations. Real-runner step summaries now emit at stage start, while the injected prompt and acknowledged steer ids are current, and the new shell maps the health endpoint's `runner` plus `cli` fields directly. The required production builds were attempted without changing `angular.json`, but both `npx ng build console` and `npx ng build intake` aborted in this sandbox with exit 134 immediately after `Building...` (including with pinned Node 24.15.0), before Angular printed a font or compilation diagnostic.
 
 - Slice 5: no acceptance-criteria deviations from ticket 011. The real runner emits one minimal `step_summary` per agent-stage boundary (Architecture, RED, GREEN, Review); these events carry steer acknowledgements without attempting the richer per-step visibility or runner-mode badge reserved for slice 012.
@@ -92,3 +94,17 @@
   (long) exec.
 - Badge reads runner+cli honestly; the old admin-shell tested runner==='claude'
   which never matched (runner is agent|sim; the CLI is the claude|codex axis).
+
+## Slice 013 review pass (fable-5, 2026-07-13)
+
+- Fixed the notification deep-link default (4201 intake -> 4202 console). Only
+  bites when CONSOLE_BASE_URL is unset (dev log-only), but it pointed operators
+  at the wrong app.
+- Escalation was centralized into lifecycle.escalate; verified the REAL runner's
+  _escalate delegates to it (so real-run failures email, not just the simulator).
+- The revision poll adds a second lightweight GET (cursor) per 4s tick via
+  forkJoin, with catchError so freshness never breaks the ADR-0008 event path.
+  Fine at 1-5 concurrent runs / single worker.
+- A raw POST /api/requests with app_key does not link app_id (intake assigns the
+  app later); a request with app_id=None emails no one. Not a slice-013 bug, but
+  note it: pre-app requests don't ping.

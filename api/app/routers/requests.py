@@ -35,6 +35,7 @@ from ..interview import (
     question_ceiling,
 )
 from ..models import AuditEvent, InterviewTurn, ProgressEvent, PrototypeTurn, Request, utcnow
+from ..notifications import notify_gate_raised
 from ..schemas import (
     EvidenceOut,
     InterviewAnswer,
@@ -510,6 +511,7 @@ def submit(rid: int, extra: Note | None = None, db: Session = Depends(get_db)):
              payload={"gate": "approve_spec",
                       "fields": {"Status": "Awaiting approval", "Assumptions": "1", "Ref": r.ref}})
         db.commit()
+        notify_gate_raised(db, r)
     except Exception:
         db.rollback()
         r.status = "draft"  # hand the claim back — a failed brain must not strand the request

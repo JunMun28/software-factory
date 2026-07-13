@@ -1,7 +1,7 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Api, Operator } from '@sf/shared';
+import { Api, AppSubscription, Operator, Poll } from '@sf/shared';
 
 import { Session } from '../core/session.service';
 import { ConsoleShell } from '../shell/console-shell';
@@ -40,6 +40,55 @@ const HUES = ['#6E5A8A', '#7C5CFC', '#0F766E', '#B45309', '#B42318', '#2563EB'];
             <p class="quiet">No operators yet. Create the first profile below.</p>
           }
         </div>
+
+        <section class="notifications" aria-labelledby="notifications-title">
+          <div class="notification-head">
+            <div>
+              <p class="eyebrow">Human-needed pings</p>
+              <h2 id="notifications-title">Notification subscriptions</h2>
+            </div>
+            <p class="smtp-note">
+              @if (smtp() === 'configured') {
+                Email delivery is configured.
+              } @else {
+                Email delivery is log-only until SMTP is configured.
+              }
+            </p>
+          </div>
+          @if (session.operatorId()) {
+            <p class="notification-copy">
+              Gate approvals and stalled runs only. Healthy progress and deliveries stay quiet.
+            </p>
+            <div class="subscription-list">
+              @for (subscription of subscriptions(); track subscription.app_id) {
+                <div class="subscription-row">
+                  <span>
+                    <b>{{ subscription.name }}</b>
+                    <small>{{ subscription.key }}</small>
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    [attr.aria-checked]="subscription.subscribed"
+                    [attr.aria-label]="
+                      (subscription.subscribed ? 'Mute ' : 'Subscribe to ') + subscription.name
+                    "
+                    [class.on]="subscription.subscribed"
+                    [disabled]="subscriptionPending(subscription.app_id)"
+                    (click)="toggleSubscription(subscription)"
+                  >
+                    <i aria-hidden="true"></i>
+                    {{ subscription.subscribed ? 'Subscribed' : 'Muted' }}
+                  </button>
+                </div>
+              } @empty {
+                <p class="quiet">No registered apps yet.</p>
+              }
+            </div>
+          } @else {
+            <p class="notification-copy">Pick an operator profile to manage app subscriptions.</p>
+          }
+        </section>
 
         <form (ngSubmit)="create()">
           <div class="form-head">
@@ -151,6 +200,86 @@ const HUES = ['#6E5A8A', '#7C5CFC', '#0F766E', '#B45309', '#B42318', '#2563EB'];
       font-size: 12px;
       font-weight: 700;
     }
+    .notifications {
+      padding: 24px;
+      margin: 0 0 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+    }
+    .notification-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 28px;
+    }
+    .notification-head .eyebrow,
+    .notification-head h2,
+    .smtp-note {
+      margin: 0;
+    }
+    .notification-head h2 {
+      margin-top: 5px;
+      font-size: 22px;
+    }
+    .smtp-note {
+      max-width: 250px;
+      color: var(--muted);
+      font: 500 12px/1.45 var(--mono);
+      text-align: right;
+    }
+    .notification-copy {
+      margin: 14px 0 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .subscription-list {
+      border-top: 1px solid var(--hairline);
+    }
+    .subscription-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 62px;
+      border-bottom: 1px solid var(--hairline);
+    }
+    .subscription-row small {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font: 500 11px var(--mono);
+    }
+    [role='switch'] {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 112px;
+      padding: 7px 10px;
+      color: var(--muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-pill);
+      font: 700 11px var(--body);
+      cursor: pointer;
+    }
+    [role='switch'] i {
+      width: 9px;
+      height: 9px;
+      background: var(--muted);
+      border-radius: 50%;
+    }
+    [role='switch'].on {
+      color: var(--accent-tx);
+      border-color: var(--accent);
+    }
+    [role='switch'].on i {
+      background: var(--accent);
+    }
+    [role='switch']:disabled {
+      cursor: wait;
+      opacity: 0.55;
+    }
     .profiles small {
       display: block;
       margin-top: 2px;
@@ -258,6 +387,21 @@ const HUES = ['#6E5A8A', '#7C5CFC', '#0F766E', '#B45309', '#B42318', '#2563EB'];
       form {
         padding: 18px;
       }
+      .notifications {
+        padding: 18px;
+      }
+      .notification-head {
+        display: grid;
+        gap: 10px;
+      }
+      .smtp-note {
+        max-width: none;
+        text-align: left;
+      }
+      .subscription-row {
+        align-items: flex-start;
+        padding: 13px 0;
+      }
     }
     @media (prefers-reduced-motion: reduce) {
       * {
@@ -268,9 +412,13 @@ const HUES = ['#6E5A8A', '#7C5CFC', '#0F766E', '#B45309', '#B42318', '#2563EB'];
 })
 export class StudioPage {
   private api = inject(Api);
+  private poll = inject(Poll);
   private router = inject(Router);
   session = inject(Session);
   operators = signal<Operator[]>([]);
+  subscriptions = signal<AppSubscription[]>([]);
+  smtp = signal<'configured' | 'log-only'>('log-only');
+  private pendingSubscriptions = signal<Set<number>>(new Set());
   name = signal('');
   initials = signal('');
   hue = signal(HUES[0]);
@@ -281,6 +429,15 @@ export class StudioPage {
   private autoInitials = true;
   constructor() {
     this.api.operators().subscribe((operators) => this.operators.set(operators));
+    this.api.health().subscribe((health) => this.smtp.set(health.smtp));
+    effect(() => {
+      this.poll.version();
+      const operatorId = this.session.operatorId();
+      if (!operatorId) return;
+      this.api
+        .operatorSubscriptions(operatorId)
+        .subscribe((subscriptions) => this.subscriptions.set(subscriptions));
+    });
   }
   setName(value: string) {
     this.name.set(value);
@@ -303,6 +460,34 @@ export class StudioPage {
   pick(operator: Operator) {
     this.session.select(operator);
     this.router.navigateByUrl('/');
+  }
+  subscriptionPending(appId: number) {
+    return this.pendingSubscriptions().has(appId);
+  }
+  toggleSubscription(subscription: AppSubscription) {
+    const operatorId = this.session.operatorId();
+    if (!operatorId || this.subscriptionPending(subscription.app_id)) return;
+    this.pendingSubscriptions.update((pending) => new Set(pending).add(subscription.app_id));
+    const clearPending = () =>
+      this.pendingSubscriptions.update((pending) => {
+        const next = new Set(pending);
+        next.delete(subscription.app_id);
+        return next;
+      });
+    this.api
+      .updateOperatorSubscription(operatorId, subscription.app_id, !subscription.subscribed)
+      .subscribe({
+        next: (updated) => {
+          this.subscriptions.update((all) =>
+            all.map((item) => (item.app_id === updated.app_id ? updated : item)),
+          );
+          clearPending();
+        },
+        error: () => {
+          this.error.set('Could not update that notification preference.');
+          clearPending();
+        },
+      });
   }
   create() {
     if (!this.name().trim() || !this.initials().trim() || !this.email.trim()) return;

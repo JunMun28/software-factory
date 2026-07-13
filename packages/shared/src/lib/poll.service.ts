@@ -1,4 +1,5 @@
 import { Injectable, NgZone, OnDestroy, inject, signal } from '@angular/core';
+import { catchError, forkJoin, of } from 'rxjs';
 
 import { Api } from './api.service';
 import { ProgressEvent } from './models';
@@ -13,6 +14,7 @@ export class Poll implements OnDestroy {
   private api = inject(Api);
   private zone = inject(NgZone);
   private cursor = 0;
+  private revision = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
 
   version = signal(0);
@@ -28,6 +30,7 @@ export class Poll implements OnDestroy {
     this.api.eventsCursor().subscribe({
       next: (c) => {
         this.cursor = c.cursor;
+        this.revision = c.revision;
         this.version.update((v) => v + 1);
         this.lastSync.set(Date.now());
       },
@@ -41,13 +44,28 @@ export class Poll implements OnDestroy {
   private tickOnce() {
     if (this.inFlight) return; // a stalled backend must not queue a refetch burst
     this.inFlight = true;
-    this.api.events({ after: this.cursor }).subscribe({
-      next: (evs) => {
+    forkJoin({
+      evs: this.api.events({ after: this.cursor }),
+      // Freshness is additive to ADR 0008's event path: if this lightweight
+      // read ever fails, real events still advance and the next tick retries.
+      freshness: this.api.eventsCursor().pipe(
+        catchError(() => of({ cursor: this.cursor, revision: this.revision })),
+      ),
+    }).subscribe({
+      next: ({ evs, freshness }) => {
         this.inFlight = false;
+        const revisionChanged = freshness.revision !== this.revision;
+        this.revision = freshness.revision;
         if (evs.length) {
           this.cursor = evs[evs.length - 1].id;
           this.zone.run(() => {
             this.delta.set(evs);
+            this.version.update((v) => v + 1);
+            this.lastSync.set(Date.now());
+          });
+        } else if (revisionChanged) {
+          this.zone.run(() => {
+            this.delta.set([]);
             this.version.update((v) => v + 1);
             this.lastSync.set(Date.now());
           });

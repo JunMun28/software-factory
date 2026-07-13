@@ -180,11 +180,7 @@ class AgentRunner:
         if req.status in ("cancelled", "done"):  # a Cancel raced us — it wins, nothing to flag
             log.info("escalation for %s dropped — request is %s", req.ref, req.status)
             return
-        req.needs_human = True
-        req.needs_human_reason = reason[:300]
-        emit(db, req, "escalation", f"Escalated — needs a human ({reason[:140]})",
-             broadcast=True, payload={"Ref": req.ref, "reason": reason[:300]})
-        db.commit()
+        lifecycle.escalate(db, req, reason)
         log.error("escalated %s: %s", req.ref, reason)
 
     def _commit_ws(self, ws: Path, message: str) -> None:

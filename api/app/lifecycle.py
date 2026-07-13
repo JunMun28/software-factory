@@ -10,6 +10,18 @@ from sqlalchemy.orm import Session
 
 from .events import emit
 from .models import Request, utcnow
+from .notifications import notify_gate_raised
+from .notifications import notify_escalation
+
+
+def escalate(db: Session, req: Request, reason: str) -> None:
+    """Persist the shared needs-human transition, then ping its subscribers."""
+    req.needs_human = True
+    req.needs_human_reason = reason[:300]
+    emit(db, req, "escalation", f"Escalated — needs a human ({reason[:140]})",
+         broadcast=True, payload={"Ref": req.ref, "reason": reason[:300]})
+    db.commit()
+    notify_escalation(db, req)
 
 
 def raise_merge_gate(db: Session, req: Request) -> None:
@@ -18,6 +30,7 @@ def raise_merge_gate(db: Session, req: Request) -> None:
     req.stage_entered_at = utcnow()
     emit(db, req, "gate_event", "Waiting at the merge gate — review passed, approval needed",
          broadcast=True, payload={"gate": "approve_merge", "Ref": req.ref})
+    notify_gate_raised(db, req)
 
 
 def finish_done(db: Session, req: Request, actor: str, *, merge_note: str,

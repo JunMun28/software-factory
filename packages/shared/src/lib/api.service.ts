@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   AppEntry,
+  AppSubscription,
   Attachment,
   CommentItem,
   FactoryRequest,
@@ -30,6 +31,7 @@ export class Api {
       brain: string;
       runner: 'agent' | 'sim';
       cli: 'codex' | 'claude';
+      smtp: 'configured' | 'log-only';
     }>(`${BASE}/health`);
   }
   apps(): Observable<AppEntry[]> {
@@ -46,6 +48,15 @@ export class Api {
   }
   createOperator(body: Pick<Operator, 'name' | 'initials' | 'hue' | 'email'>) {
     return this.http.post<Operator>(`${BASE}/operators`, body);
+  }
+  operatorSubscriptions(operatorId: number) {
+    return this.http.get<AppSubscription[]>(`${BASE}/operators/${operatorId}/subscriptions`);
+  }
+  updateOperatorSubscription(operatorId: number, appId: number, subscribed: boolean) {
+    return this.http.put<AppSubscription>(
+      `${BASE}/operators/${operatorId}/subscriptions/${appId}`,
+      { subscribed },
+    );
   }
 
   requests(opts: { mine?: string; active?: boolean } = {}): Observable<FactoryRequest[]> {
@@ -189,7 +200,7 @@ export class Api {
 
   /** Where "now" is — new clients start polling from here, never replaying history. */
   eventsCursor() {
-    return this.http.get<{ cursor: number }>(`${BASE}/events/cursor`);
+    return this.http.get<{ cursor: number; revision: number }>(`${BASE}/events/cursor`);
   }
 
   events(

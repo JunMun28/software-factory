@@ -44,6 +44,19 @@ class Operator(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class OperatorAppMute(Base):
+    """An explicit opt-out; no row means the operator follows the app."""
+
+    __tablename__ = "operator_app_mutes"
+
+    operator_id: Mapped[int] = mapped_column(
+        ForeignKey("operators.id", ondelete="CASCADE"), primary_key=True
+    )
+    app_id: Mapped[int] = mapped_column(
+        ForeignKey("apps.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 # Stage columns (fixed, Jira-style): the Work item's position in the Factory.
 STAGES = ["intake", "spec", "architecture", "build", "review", "done"]
 # The post-approval stages the runner/simulator drive autonomously — the one

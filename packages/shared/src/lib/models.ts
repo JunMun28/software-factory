@@ -28,6 +28,13 @@ export interface Operator {
   created_at: string;
 }
 
+export interface AppSubscription {
+  app_id: number;
+  key: string;
+  name: string;
+  subscribed: boolean;
+}
+
 export interface Turn {
   order: number;
   question: string;

@@ -21,6 +21,7 @@ from ..api_helpers import get_request, pipeline, prospective_repo, to_out
 from ..db import get_db
 from ..events import emit
 from ..models import PIPELINE_STAGES, AuditEvent, Request, SpecLine, utcnow
+from ..notifications import notify_gate_raised
 from ..schemas import ConflictOut, Note, OperatorNote, RequestDetail, SendBackToStageIn
 from .operators import resolve_operator
 
@@ -223,6 +224,7 @@ def respond(rid: int, body: Note, db: Session = Depends(get_db)):
          actor=body.actor or r.reporter, bot=False, payload={"Ref": r.ref})
     db.add(AuditEvent(request_id=r.id, actor=body.actor or r.reporter, action="responded", note=body.note))
     db.commit()
+    notify_gate_raised(db, r)
     return to_out(r, RequestDetail)
 
 

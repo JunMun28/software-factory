@@ -43,6 +43,17 @@ class OperatorIn(BaseModel):
     email: str = Field(min_length=3, max_length=200)
 
 
+class AppSubscriptionOut(BaseModel):
+    app_id: int
+    key: str
+    name: str
+    subscribed: bool
+
+
+class AppSubscriptionIn(BaseModel):
+    subscribed: bool
+
+
 class ConflictOut(BaseModel):
     detail: str
     acted_by: str

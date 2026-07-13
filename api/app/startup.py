@@ -5,6 +5,7 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from . import lifecycle
 from .db import engine
 from .events import emit
 from .models import PIPELINE_STAGES, Comment, ProgressEvent, Request
@@ -43,10 +44,7 @@ def escalate_orphans(db: Session) -> None:
         Request.gate.is_(None), Request.stage.in_(PIPELINE_STAGES),
     ).all()
     for r in orphans:
-        r.needs_human = True
-        r.needs_human_reason = "Pipeline orphaned by a server restart — Retry re-runs the stage"
-        emit(db, r, "escalation",
-             "Escalated — needs a human (pipeline orphaned by a server restart)",
-             broadcast=True, payload={"Ref": r.ref, "reason": "server restart mid-pipeline"})
+        lifecycle.escalate(
+            db, r, "Pipeline orphaned by a server restart — Retry re-runs the stage"
+        )
         log.warning("startup: %s was orphaned mid-%s — escalated for Retry", r.ref, r.stage)
-    db.commit()

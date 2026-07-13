@@ -10,13 +10,14 @@ Routes:
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..api_helpers import get_request, to_out
 from ..db import get_db
 from ..events import emit
 from ..models import App, AuditEvent, Comment, ProgressEvent, Request
+from ..revision import current_revision
 from ..schemas import CommentIn, CommentOut, EventOut, FeedPage, RequestOut
 from .operators import resolve_operator
 
@@ -52,7 +53,10 @@ def joined_events(db: Session):
 def events_cursor(db: Session = Depends(get_db)):
     """Where 'now' is. New clients start polling from here instead of
     replaying the whole event log from id 0 (ADR 0013)."""
-    return {"cursor": db.query(func.max(ProgressEvent.id)).scalar() or 0}
+    return {
+        "cursor": db.scalar(select(func.max(ProgressEvent.id))) or 0,
+        "revision": current_revision(),
+    }
 
 
 @router.get("/api/events", response_model=list[EventOut])
