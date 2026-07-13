@@ -124,6 +124,7 @@ describe('Floor lane derivation', () => {
         health: 'healthy',
         seconds_since_event: 40,
       },
+      steer: null,
     });
     expect(lane).toMatchObject({ stage: 'Plan', step: 2, of: 4, healthLabel: '● steady' });
   });
@@ -132,6 +133,7 @@ describe('Floor lane derivation', () => {
     const lane = deriveLane({
       request: request({ stage: 'build', gate: null, status: 'approved' }),
       run: { step: 3, of: 7, label: null, health: 'slow', seconds_since_event: 24 * 60 },
+      steer: null,
     });
     expect(lane.healthLabel).toBe('▲ quiet for 24 m');
   });
@@ -140,6 +142,7 @@ describe('Floor lane derivation', () => {
     const lane = deriveLane({
       request: request({ stage: 'review', gate: 'approve_merge' }),
       run: { step: 7, of: 7, label: null, health: 'healthy', seconds_since_event: 12 },
+      steer: null,
     });
     expect(lane.healthLabel).toBe('◆ waiting on merge approval');
   });
@@ -159,12 +162,117 @@ describe('Floor all-clear state', () => {
           {
             request: request({ gate: null, stage: 'build', status: 'approved' }),
             run: { step: 1, of: 3, label: null, health: 'healthy', seconds_since_event: 2 },
+            steer: null,
           },
         ],
       }),
     );
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Nothing needs you — 1 request in motion.');
+  });
+});
+
+describe('Floor honest steering', () => {
+  const running = (steer: MissionOut['runs'][number]['steer']) =>
+    mission({
+      runs: [
+        {
+          request: request({ gate: null, stage: 'build', status: 'approved' }),
+          run: { step: 3, of: 6, label: 'Implementing', health: 'healthy', seconds_since_event: 2 },
+          steer,
+        },
+      ],
+    });
+
+  it('renders queued only from the mission steer projection', async () => {
+    await TestBed.configureTestingModule({
+      imports: [FloorContent],
+      providers: [provideRouter([])],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorContent);
+    fixture.componentRef.setInput(
+      'mission',
+      running({
+        state: 'queued',
+        note: 'Keep the old parser',
+        at_step: null,
+        acked_at: null,
+      }),
+    );
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.steer-state')?.textContent).toContain('queued');
+    expect(fixture.nativeElement.textContent).not.toContain('heard ✓');
+  });
+
+  it('renders heard with the server-reported step', async () => {
+    await TestBed.configureTestingModule({
+      imports: [FloorContent],
+      providers: [provideRouter([])],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorContent);
+    fixture.componentRef.setInput(
+      'mission',
+      running({
+        state: 'heard',
+        note: 'Keep the old parser',
+        at_step: 4,
+        acked_at: '2026-07-11T02:00:00Z',
+      }),
+    );
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.steer-state')?.textContent).toContain(
+      'heard ✓ at step 4',
+    );
+  });
+
+  it('does not invent heard or queued after a local send alone', async () => {
+    await TestBed.configureTestingModule({
+      imports: [FloorContent],
+      providers: [provideRouter([])],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorContent);
+    fixture.componentRef.setInput('mission', running(null));
+    fixture.detectChanges();
+
+    fixture.componentInstance.openSteer(87);
+    fixture.componentInstance.steerText.set('Keep the old parser');
+    fixture.componentInstance.sendSteer(87);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.steer-state')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('heard ✓');
+    expect(fixture.nativeElement.textContent).not.toContain('queued');
+  });
+
+  it('renders an in-place outcome when a steer loses the in-flight race', async () => {
+    const inFlight = running(null);
+    const api = {
+      mission: vi.fn(() => of(inFlight)),
+      steer: vi.fn(() => throwError(() => new HttpErrorResponse({ status: 409 }))),
+    };
+    const poll = { version: signal(0), nudge: vi.fn(), start: vi.fn() };
+    await TestBed.configureTestingModule({
+      imports: [FloorPage],
+      providers: [
+        provideRouter([]),
+        { provide: Api, useValue: api },
+        { provide: Poll, useValue: poll },
+        { provide: Session, useValue: { operatorId: () => 7, operator: () => null } },
+        { provide: Theme, useValue: { resolved: () => 'light', set: vi.fn() } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorPage);
+    fixture.detectChanges();
+
+    fixture.componentInstance.steer(inFlight.runs[0].request, 'Keep the old parser');
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.lane .action-outcome')?.textContent).toContain(
+      'Run is no longer in flight — it reached a gate.',
+    );
+    expect(poll.nudge).toHaveBeenCalledOnce();
   });
 });
 

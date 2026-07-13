@@ -94,6 +94,14 @@ class RunStateOut(BaseModel):
     seconds_since_event: int
 
 
+class SteerStateOut(BaseModel):
+    """Latest steer note state, derived from append-only progress events."""
+    state: Literal["queued", "heard"]
+    note: str
+    at_step: int | None = None
+    acked_at: datetime | None = None
+
+
 class EvidenceOut(BaseModel):
     """What the admin sees before approving (spec §6). kind='spec' uses the
     grounded-lines fields; kind='merge' uses the verification fields."""
@@ -185,6 +193,7 @@ class MissionGate(BaseModel):
 class MissionRun(BaseModel):
     request: RequestOut
     run: RunStateOut
+    steer: SteerStateOut | None = None
 
 
 class MissionHumanOwned(BaseModel):

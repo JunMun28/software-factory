@@ -69,6 +69,37 @@ def pending_steer_notes(db: Session, r: Request) -> list[ProgressEvent]:
     return [ev for ev in rows if ev.kind == "steer_note" and ev.id not in acked]
 
 
+def steer_state(db: Session, r: Request) -> dict | None:
+    """Server-derived state for the request's most recent steer note.
+
+    A note is heard only when a later step_summary names its event id. The
+    append-only events remain untouched; this projection is rebuilt on read.
+    """
+    rows = (db.query(ProgressEvent)
+            .filter(ProgressEvent.request_id == r.id,
+                    ProgressEvent.kind.in_(("steer_note", "step_summary")))
+            .order_by(ProgressEvent.id)
+            .all())
+    note = next((ev for ev in reversed(rows) if ev.kind == "steer_note"), None)
+    if note is None:
+        return None
+    ack = next(
+        (ev for ev in rows
+         if ev.id > note.id
+         and ev.kind == "step_summary"
+         and note.id in ((ev.payload or {}).get("acked_steer_ids") or [])),
+        None,
+    )
+    if ack is None:
+        return {"state": "queued", "note": note.body, "at_step": None, "acked_at": None}
+    return {
+        "state": "heard",
+        "note": note.body,
+        "at_step": (ack.payload or {}).get("step"),
+        "acked_at": ack.created_at,
+    }
+
+
 def evidence(db: Session, r: Request) -> dict | None:
     """What the admin sees before approving (spec §6 'evidence strip').
     Spec gates derive from the grounded draft spec; merge gates read the

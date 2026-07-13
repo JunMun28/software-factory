@@ -1,9 +1,10 @@
-import { MissionRun } from '@sf/shared';
+import { FactoryRequest, MissionRun, SteerState } from '@sf/shared';
 
 export const FLOOR_STAGES = ['Spec', 'Plan', 'Build', 'Review', 'Merge', 'Ship'] as const;
 
 export interface FloorLane {
   id: number;
+  request: FactoryRequest;
   title: string;
   app: string;
   stage: (typeof FLOOR_STAGES)[number];
@@ -13,6 +14,7 @@ export interface FloorLane {
   healthLabel: string;
   quiet: boolean;
   progress: number;
+  steer: SteerState | null;
 }
 
 const stageIndex = (item: MissionRun): number => {
@@ -40,6 +42,7 @@ export function deriveLane(item: MissionRun): FloorLane {
 
   return {
     id: item.request.id,
+    request: item.request,
     title: item.request.title,
     app: item.request.app_name || item.request.new_app_name || 'New app',
     stage: FLOOR_STAGES[index],
@@ -49,5 +52,6 @@ export function deriveLane(item: MissionRun): FloorLane {
     healthLabel,
     quiet,
     progress: Math.min(100, Math.round(((index + withinStage) / (FLOOR_STAGES.length - 1)) * 100)),
+    steer: item.steer,
   };
 }

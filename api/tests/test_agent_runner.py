@@ -97,6 +97,32 @@ def test_full_pipeline_to_merge(client, ws_root):
     assert "merge (approved by Kim P.)" in log
 
 
+def test_real_runner_injects_and_acks_pending_steer_at_stage_boundary(client, ws_root):
+    d = _approved_request(client, "Steered real runner")
+    steer_text = "Keep the export compatible with the legacy payroll importer"
+    steer = client.post(
+        f"/api/requests/{d['id']}/steer",
+        json={"note": steer_text, "operator_id": 1},
+    )
+    assert steer.status_code == 201
+    note_id = steer.json()["id"]
+    prompts: list[str] = []
+
+    def recording_executor(prompt: str, **kwargs) -> AgentResult:
+        prompts.append(prompt)
+        return honest_executor(prompt, **kwargs)
+
+    AgentRunner(executor=recording_executor).run_pipeline(d["id"])
+
+    assert steer_text in prompts[0]
+    steps = [
+        event for event in client.get("/api/events", params={"request_id": d["id"]}).json()
+        if event["kind"] == "step_summary"
+    ]
+    assert steps[0]["payload"]["acked_steer_ids"] == [note_id]
+    assert steps[0]["payload"]["step"] == 1
+
+
 def test_isolation_gate_catches_cheating_implementer(client, ws_root):
     d = _approved_request(client, "Cheater detection")
     AgentRunner(executor=cheating_executor).run_pipeline(d["id"])

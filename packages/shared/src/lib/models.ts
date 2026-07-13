@@ -248,6 +248,14 @@ export interface MissionGate {
 export interface MissionRun {
   request: FactoryRequest;
   run: RunState;
+  steer: SteerState | null;
+}
+
+export interface SteerState {
+  state: 'queued' | 'heard';
+  note: string;
+  at_step: number | null;
+  acked_at: string | null;
 }
 
 export interface MissionHumanOwned {

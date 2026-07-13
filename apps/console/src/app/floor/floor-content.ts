@@ -1,4 +1,4 @@
-import { Component, computed, input, output } from '@angular/core';
+import { Component, computed, input, output, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { FactoryRequest, MissionGate, MissionOut, timeAgo } from '@sf/shared';
 
@@ -126,10 +126,10 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
           Each request travels spec → plan → build → review → merge → ship.
         </p>
         @for (lane of lanes(); track lane.id) {
-          <a
+          <article
             class="lane"
             [class.quiet]="lane.quiet"
-            [routerLink]="['/requests', lane.id]"
+            tabindex="0"
             [attr.aria-label]="
               lane.title +
               ', ' +
@@ -143,7 +143,9 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
             "
           >
             <div class="lane-top">
-              <h3>{{ lane.title }}</h3>
+              <h3>
+                <a [routerLink]="['/requests', lane.id]">{{ lane.title }}</a>
+              </h3>
               <span class="app">{{ lane.app }}</span
               ><span class="spacer"></span><span class="health">{{ lane.healthLabel }}</span>
             </div>
@@ -162,7 +164,55 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
               <span class="mono">{{ lane.stage }} · step {{ lane.step }} of {{ lane.of }}</span
               ><span>{{ lane.label }}</span>
             </div>
-          </a>
+            <div class="steer-bar">
+              <button
+                class="steer-toggle"
+                type="button"
+                [attr.aria-expanded]="steeringId() === lane.id"
+                [attr.aria-controls]="'steer-' + lane.id"
+                (click)="openSteer(lane.id)"
+              >
+                Steer next step
+              </button>
+              @if (lane.steer; as steer) {
+                <span class="steer-state" [class.heard]="steer.state === 'heard'">
+                  {{ steer.state === 'heard' ? 'heard ✓ at step ' + steer.at_step : 'queued' }}
+                </span>
+              }
+            </div>
+            @if (steeringId() === lane.id) {
+              <div class="steer-form" [id]="'steer-' + lane.id">
+                <label [for]="'steer-note-' + lane.id">Note for the next stage boundary</label>
+                <div class="steer-fields">
+                  <input
+                    [id]="'steer-note-' + lane.id"
+                    type="text"
+                    placeholder="Add a constraint the next step must honor…"
+                    [value]="steerText()"
+                    (input)="steerText.set($any($event.target).value)"
+                    (keydown.enter)="sendSteer(lane.id)"
+                    (keydown.escape)="steeringId.set(null)"
+                  />
+                  <button
+                    type="button"
+                    (click)="sendSteer(lane.id)"
+                    [disabled]="!steerText().trim()"
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
+            }
+            @if (actionOutcomes()[lane.id]; as outcome) {
+              <p
+                class="action-outcome"
+                [class.conflict]="outcome.kind === 'conflict'"
+                role="status"
+              >
+                {{ outcome.message }}
+              </p>
+            }
+          </article>
         } @empty {
           <div class="empty-line">
             <span class="resting-track" aria-hidden="true"></span>
@@ -369,6 +419,10 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
     .lane h3 {
       font-size: 16px;
     }
+    .lane h3 a {
+      color: inherit;
+      text-decoration: none;
+    }
     .app {
       color: var(--accent-tx);
       background: var(--accent-tint);
@@ -465,6 +519,73 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
     .now .mono {
       color: var(--fg2);
       font-size: 12px;
+    }
+    .steer-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .steer-toggle,
+    .steer-form button {
+      padding: 7px 13px;
+      color: var(--fg2);
+      background: var(--surface-2);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--r-pill);
+      font: 600 12px var(--body);
+      cursor: pointer;
+    }
+    .steer-state {
+      padding: 4px 10px;
+      color: var(--amber-tx);
+      background: var(--amber-bg);
+      border: 1px dashed var(--amber-line);
+      border-radius: var(--r-pill);
+      font: 700 11.5px var(--body);
+    }
+    .steer-state.heard {
+      color: var(--green-tx);
+      background: var(--green-bg);
+      border-style: solid;
+      border-color: var(--green-line);
+    }
+    .steer-form {
+      margin-top: 10px;
+      padding: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+    }
+    .steer-form label {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .steer-fields {
+      display: flex;
+      gap: 8px;
+    }
+    .steer-fields input {
+      min-width: 0;
+      flex: 1;
+      padding: 9px 12px;
+      color: var(--fg1);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--r);
+      font: 13px var(--body);
+    }
+    .steer-fields button {
+      color: white;
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .steer-fields button:disabled {
+      opacity: 0.55;
+      cursor: default;
     }
     .empty-line {
       padding: 24px;
@@ -574,6 +695,10 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
       .triage {
         padding: 18px;
       }
+      .steer-fields {
+        align-items: stretch;
+        flex-direction: column;
+      }
       .hello {
         padding-top: 32px;
       }
@@ -598,8 +723,25 @@ export class FloorContent {
   sendBackToStageRequested = output<FactoryRequest>();
   takeOverRequested = output<FactoryRequest>();
   cancelled = output<FactoryRequest>();
+  steered = output<{ request: FactoryRequest; note: string }>();
+  steeringId = signal<number | null>(null);
+  steerText = signal('');
   stages = FLOOR_STAGES;
   timeAgo = timeAgo;
+
+  openSteer(requestId: number) {
+    this.steerText.set('');
+    this.steeringId.set(this.steeringId() === requestId ? null : requestId);
+  }
+
+  sendSteer(requestId: number) {
+    const note = this.steerText().trim();
+    const lane = this.lanes().find((item) => item.id === requestId);
+    if (!note || !lane) return;
+    this.steered.emit({ request: lane.request, note });
+    this.steeringId.set(null);
+    this.steerText.set('');
+  }
 
   lanes = computed(() => this.mission().runs.map(deriveLane));
   needsCount = computed(

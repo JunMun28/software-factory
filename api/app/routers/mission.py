@@ -17,8 +17,9 @@ from ..schemas import (
     MissionRecent,
     MissionRun,
     RunStateOut,
+    SteerStateOut,
 )
-from ..supervision import evidence, run_state
+from ..supervision import evidence, run_state, steer_state
 
 router = APIRouter()
 
@@ -42,7 +43,12 @@ def mission(db: Session = Depends(get_db)):
     for r in live:
         rs = run_state(db, r)
         if rs:
-            runs.append(MissionRun(request=to_out(r), run=RunStateOut(**rs)))
+            steer = steer_state(db, r)
+            runs.append(MissionRun(
+                request=to_out(r),
+                run=RunStateOut(**rs),
+                steer=SteerStateOut(**steer) if steer is not None else None,
+            ))
     stalled = [to_out(r) for r in live if r.needs_human]
     human_owned = []
     for r in live:

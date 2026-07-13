@@ -149,6 +149,25 @@ def test_steer_appends_and_is_acked_next_step(client):
     assert note_id in last["acked_steer_ids"]
     assert "honoring note" in last["why"]
 
+    from app.db import SessionLocal
+    from app.models import Request
+    from app.supervision import pending_steer_notes
+
+    with SessionLocal() as db:
+        req = db.get(Request, hero["id"])
+        assert pending_steer_notes(db, req) == []
+
+    run = next(
+        item for item in client.get("/api/mission").json()["runs"]
+        if item["request"]["id"] == hero["id"]
+    )
+    assert run["steer"] == {
+        "state": "heard",
+        "note": "Prefer the existing CSV parser",
+        "at_step": last["step"],
+        "acked_at": steps[-1]["created_at"],
+    }
+
     client.post("/api/simulator/tick")  # acked notes are not re-acked
     steps = _events(client, hero["id"], "step_summary")
     assert "acked_steer_ids" not in (steps[-1]["payload"] or {})

@@ -52,6 +52,7 @@ import { FloorContent } from './floor-content';
           (sendBackToStageRequested)="sendingStageBack.set($event)"
           (takeOverRequested)="takingOver.set($event)"
           (cancelled)="cancelling.set($event)"
+          (steered)="steer($event.request, $event.note)"
         />
       } @else {
         <p class="loading" role="status">Bringing the factory floor into view…</p>
@@ -183,9 +184,19 @@ export class FloorPage {
     this.cancelling.set(null);
     this.runAction(request, 'cancel', this.api.cancel(request.id, this.session.operatorId()!));
   }
+  steer(request: FactoryRequest, note: string) {
+    this.runAction(request, 'steer', this.api.steer(request.id, note, this.session.operatorId()!));
+  }
   private runAction(
     request: FactoryRequest,
-    verb: 'approve' | 'send back' | 'retry' | 'take over' | 'send back to stage' | 'cancel',
+    verb:
+      | 'approve'
+      | 'send back'
+      | 'retry'
+      | 'take over'
+      | 'send back to stage'
+      | 'cancel'
+      | 'steer',
     action: Observable<unknown>,
   ) {
     action.subscribe({
@@ -201,7 +212,12 @@ export class FloorPage {
                 kind: 'conflict' as const,
                 message: `Already ${this.pastTense(verb)} by ${conflict.acted_by} at ${this.shortTime(conflict.acted_at)}`,
               }
-            : { kind: 'error' as const, message: `Couldn’t ${verb}. Try again.` };
+            : error.status === 409 && verb === 'steer'
+              ? {
+                  kind: 'conflict' as const,
+                  message: 'Run is no longer in flight — it reached a gate.',
+                }
+              : { kind: 'error' as const, message: `Couldn’t ${verb}. Try again.` };
         this.actionOutcomes.update((current) => ({ ...current, [request.id]: outcome }));
         this.poll.nudge();
       },
@@ -214,7 +230,14 @@ export class FloorPage {
     });
   }
   private pastTense(
-    verb: 'approve' | 'send back' | 'retry' | 'take over' | 'send back to stage' | 'cancel',
+    verb:
+      | 'approve'
+      | 'send back'
+      | 'retry'
+      | 'take over'
+      | 'send back to stage'
+      | 'cancel'
+      | 'steer',
   ) {
     return {
       approve: 'approved',
@@ -223,6 +246,7 @@ export class FloorPage {
       'take over': 'taken over',
       'send back to stage': 'sent back to stage',
       cancel: 'cancelled',
+      steer: 'steered',
     }[verb];
   }
   stageLabel(request: FactoryRequest) {
@@ -234,7 +258,7 @@ export class FloorPage {
   }
   private focusRow() {
     const rows = this.host.nativeElement.querySelectorAll<HTMLElement>(
-      'sf-floor-gate-card article, article.triage, a.lane',
+      'sf-floor-gate-card article, article.triage, article.lane',
     );
     rows[Math.min(this.focusIndex(), rows.length - 1)]?.focus();
   }

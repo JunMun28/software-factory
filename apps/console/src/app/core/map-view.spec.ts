@@ -91,6 +91,7 @@ describe('factoryColumns', () => {
         {
           request: r,
           run: { step: 3, of: 6, label: 'x', health: 'healthy', seconds_since_event: 0 },
+          steer: null,
         },
       ],
     });
@@ -264,6 +265,7 @@ describe('activeRun', () => {
               health: 'healthy',
               seconds_since_event: 12,
             },
+            steer: null,
           },
         ],
       }),
@@ -290,6 +292,7 @@ describe('activeRun', () => {
           {
             request: req({ stage: 'build' }),
             run: { step: 9, of: 0, label: null, health: 'slow', seconds_since_event: 0 },
+            steer: null,
           },
         ],
       }),

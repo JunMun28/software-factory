@@ -34,6 +34,7 @@ from .agent_exec import AgentResult, run_agent
 from .db import SessionLocal
 from .events import emit
 from .models import Request, utcnow
+from .supervision import pending_steer_notes
 from .verification import build_payload, emit_verification
 from .ws_exec import _git, _pytest
 
@@ -190,16 +191,58 @@ class AgentRunner:
         _git(ws, "add", "-A")
         _git(ws, "commit", "-q", "-m", message)
 
+    def _stage_prompt(self, db: Session, req: Request, prompt: str) -> tuple[str, list[int]]:
+        """Carry pending operator notes into the next agent invocation."""
+        notes = pending_steer_notes(db, req)
+        if not notes:
+            return prompt, []
+        guidance = "\n".join(f"- {note.body}" for note in notes)
+        return (
+            f"{prompt}\n\nOperator steering to honor in this stage:\n{guidance}",
+            [note.id for note in notes],
+        )
+
+    @staticmethod
+    def _emit_step_boundary(
+        db: Session,
+        req: Request,
+        *,
+        step: int,
+        of: int,
+        label: str,
+        acked_steer_ids: list[int],
+    ) -> None:
+        emit(
+            db,
+            req,
+            "step_summary",
+            f"{label} ({step}/{of})",
+            payload={
+                "step": step,
+                "of": of,
+                "label": label,
+                "acked_steer_ids": acked_steer_ids,
+                "Ref": req.ref,
+            },
+        )
+        db.commit()
+
     # ---------- stages ----------
     def _architecture(self, db: Session, req: Request, ws: Path) -> bool:
         self._advance(db, req, "architecture")
-        res = self.exec(
+        prompt, steer_ids = self._stage_prompt(
+            db, req,
             "You are the architect stage of a software factory. Read SPEC.md and the code under src/. "
             "Write PLAN.md: a short implementation plan — which functions in src/ change or get added, "
             "what the public behavior must be, and which tests will prove it. Do NOT change any code. "
             "Keep it under 40 lines. End by confirming PLAN.md is written.",
+        )
+        res = self.exec(
+            prompt,
             cwd=str(ws), allow_edits=True, timeout=STAGE_TIMEOUT,
         )
+        self._emit_step_boundary(db, req, step=1, of=1, label="Architecture agent started",
+                                 acked_steer_ids=steer_ids)
         self._save_transcript(ws, "architecture", res)
         if not res.ok or not (ws / "PLAN.md").exists():
             self._escalate(db, req, res.error or "Architecture stage produced no PLAN.md")
@@ -213,13 +256,19 @@ class AgentRunner:
 
     def _red(self, db: Session, req: Request, ws: Path) -> bool:
         self._advance(db, req, "build")
-        res = self.exec(
+        prompt, steer_ids = self._stage_prompt(
+            db, req,
             "You are the test-author stage. Read SPEC.md and PLAN.md. Write failing pytest tests under "
             "tests/ ONLY (never touch src/) that pin the NEW behavior the spec demands. The existing "
             "tests must stay green. Run pytest to confirm your new tests fail because the feature is "
             "missing — assertion failures, not import errors.",
+        )
+        res = self.exec(
+            prompt,
             cwd=str(ws), allow_edits=True, timeout=STAGE_TIMEOUT,
         )
+        self._emit_step_boundary(db, req, step=1, of=2, label="RED test author started",
+                                 acked_steer_ids=steer_ids)
         self._save_transcript(ws, "red", res)
         if not res.ok:
             self._escalate(db, req, res.error or "Test-author stage failed")
@@ -244,12 +293,18 @@ class AgentRunner:
 
     def _green(self, db: Session, req: Request, ws: Path) -> bool:
         frozen = _tests_hash(ws)
-        res = self.exec(
+        prompt, steer_ids = self._stage_prompt(
+            db, req,
             "You are the implementer stage. Make the failing tests pass by editing src/ ONLY. You are "
             "FORBIDDEN from editing anything under tests/ or any pytest configuration — a CI gate rejects "
             "any change there. Read PLAN.md, implement, run pytest until the whole suite is green.",
+        )
+        res = self.exec(
+            prompt,
             cwd=str(ws), allow_edits=True, timeout=STAGE_TIMEOUT,
         )
+        self._emit_step_boundary(db, req, step=2, of=2, label="GREEN implementer started",
+                                 acked_steer_ids=steer_ids)
         self._save_transcript(ws, "green", res)
         if not res.ok:
             self._escalate(db, req, res.error or "Implementer stage failed")
@@ -277,13 +332,19 @@ class AgentRunner:
     def _review(self, db: Session, req: Request, ws: Path) -> bool:
         self._advance(db, req, "review")
         diff = _git(ws, "diff", "main...HEAD", "--stat").stdout[-1500:]
-        res = self.exec(
+        prompt, steer_ids = self._stage_prompt(
+            db, req,
             "You are the read-only reviewer stage. Review the work branch against SPEC.md and PLAN.md. "
             f"The diff summary:\n{diff}\n"
             "Write REVIEW.md: does the implementation honor the spec, are the tests meaningful, any risks. "
             "Verdict line at the top: APPROVE or REQUEST-CHANGES. Do not modify src/ or tests/.",
+        )
+        res = self.exec(
+            prompt,
             cwd=str(ws), allow_edits=True, timeout=STAGE_TIMEOUT,
         )
+        self._emit_step_boundary(db, req, step=1, of=1, label="Review agent started",
+                                 acked_steer_ids=steer_ids)
         self._save_transcript(ws, "review", res)
         review = (ws / "REVIEW.md")
         if not res.ok or not review.exists() or not review.read_text().strip():

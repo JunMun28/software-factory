@@ -2,6 +2,8 @@
 
 ## Deviations
 
+- Slice 5: no acceptance-criteria deviations from ticket 011. The real runner emits one minimal `step_summary` per agent-stage boundary (Architecture, RED, GREEN, Review); these events carry steer acknowledgements without attempting the richer per-step visibility or runner-mode badge reserved for slice 012.
+
 - Slice 4: no acceptance-criteria deviations from ticket 010. The approved slice defines Take over as the terminal automation state `human_owned` (finish by hand), while the older CONTEXT.md vocabulary says a human may later hand control back; this slice implements the approved terminal state and does not add a separate hand-back verb. Human-owned requests use a dedicated signed mission projection in the Needs-you region so ownership stays visible without pretending the request is a gate, stalled run, or active automation.
 
 - Slice 3: no product or conflict-contract deviations from ticket 009. Decisive audit rows gained a nullable `operator_id` pointer so self-replay is resolved by stable identity rather than a potentially duplicated display name; the existing additive SQLite migration path carries this onto established databases. Both production app targets disable Angular's build-time external font inlining so the required builds are hermetic; all other production optimization remains enabled and the existing font stylesheet import is unchanged.
@@ -69,3 +71,12 @@
   (status==approved) stops automation with no tick-loop edit — fewer moving parts.
 - needsCount now includes human_owned, so the greeting counts a taken-over
   request as needing you (you are finishing it). Intended.
+
+## Slice 011 review pass (fable-5, 2026-07-13)
+
+- No fixes needed. Codex restructured the lane to valid HTML (article + inner
+  title link, not an anchor wrapping a steer button) and updated the focusRow
+  selector to match — a subtle correctness detail it got right on its own.
+- The real runner emits step_summary only at stage boundaries this slice (to
+  carry the steer ack). Slice 012 will enrich step_summary cadence/content and
+  add the runner-mode badge — watch for overlap there.
