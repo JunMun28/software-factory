@@ -1,9 +1,10 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, HostListener, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Api, AppSubscription, Operator, Poll } from '@sf/shared';
+import { Api, AppEntry, AppSubscription, Operator, Poll } from '@sf/shared';
 
 import { Session } from '../core/session.service';
+import { Store } from '../core/store.service';
 import { ConsoleShell } from '../shell/console-shell';
 
 const HUES = ['#6E5A8A', '#7C5CFC', '#0F766E', '#B45309', '#B42318', '#2563EB'];
@@ -40,6 +41,99 @@ const HUES = ['#6E5A8A', '#7C5CFC', '#0F766E', '#B45309', '#B42318', '#2563EB'];
             <p class="quiet">No operators yet. Create the first profile below.</p>
           }
         </div>
+
+        <section class="registry" aria-labelledby="registry-title">
+          <div class="registry-head">
+            <div>
+              <p class="eyebrow">Factory connections</p>
+              <h2 id="registry-title">App registry</h2>
+            </div>
+            <button class="new-app" type="button" (click)="startNewApp()">Register an app</button>
+          </div>
+          <p class="registry-copy">
+            Registration records the app, owner, and repo mapping used by the Factory. It does not
+            by itself verify repository access or finish provisioning.
+          </p>
+          <div class="app-grid">
+            @for (app of apps(); track app.id) {
+              <article class="app-card">
+                <div class="app-title">
+                  <span aria-hidden="true">#</span>
+                  <div>
+                    <h3>{{ app.name }}</h3>
+                    <small>{{ app.key }}</small>
+                  </div>
+                  <button type="button" (click)="editApp(app)">Edit</button>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Repo</dt>
+                    <dd>{{ app.repo || 'Not mapped' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Owner</dt>
+                    <dd>{{ app.owner || 'Not assigned' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Provisioning</dt>
+                    <dd>{{ app.provisioning }}</dd>
+                  </div>
+                </dl>
+              </article>
+            } @empty {
+              <p class="quiet">No apps registered yet.</p>
+            }
+          </div>
+
+          @if (editingApp()) {
+            <form class="app-form" (ngSubmit)="saveApp()" aria-labelledby="app-form-title">
+              <div class="app-form-head">
+                <div>
+                  <p class="eyebrow">{{ newApp() ? 'New registration' : 'Edit registration' }}</p>
+                  <h3 id="app-form-title">
+                    {{ newApp() ? 'Connect an app' : editingApp()!.name }}
+                  </h3>
+                </div>
+                <button type="button" class="close-app" (click)="closeAppForm()">Close</button>
+              </div>
+              <div class="app-fields">
+                <label>Name<input name="app-name" required [(ngModel)]="appForm.name" /></label>
+                <label
+                  >Owner<input name="app-owner" [(ngModel)]="appForm.owner" placeholder="team-name"
+                /></label>
+                <label
+                  >Repo mapping<input
+                    name="app-repo"
+                    [(ngModel)]="appForm.repo"
+                    placeholder="org/repository"
+                /></label>
+                <label
+                  >Provisioning<input
+                    name="app-provisioning"
+                    [(ngModel)]="appForm.provisioning"
+                    placeholder="Manual"
+                /></label>
+              </div>
+              <p class="verification-note">
+                Saving records this mapping. The Factory will still report connection or
+                provisioning failures honestly when it tries to use it.
+              </p>
+              @if (appError()) {
+                <p class="error" role="alert">{{ appError() }}</p>
+              }
+              <div class="app-actions">
+                <button
+                  class="save-app"
+                  type="submit"
+                  [disabled]="appSaving() || !appForm.name.trim()"
+                >
+                  {{ appSaving() ? 'Saving…' : 'Save registration' }}
+                </button>
+                <button type="button" class="cancel-app" (click)="closeAppForm()">Cancel</button>
+              </div>
+            </form>
+          }
+        </section>
 
         <section class="notifications" aria-labelledby="notifications-title">
           <div class="notification-head">
@@ -206,6 +300,158 @@ const HUES = ['#6E5A8A', '#7C5CFC', '#0F766E', '#B45309', '#B42318', '#2563EB'];
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--r-lg);
+    }
+    .registry {
+      padding: 24px;
+      margin: 0 0 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+    }
+    .registry-head,
+    .app-title,
+    .app-form-head,
+    .app-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .registry-head,
+    .app-form-head {
+      justify-content: space-between;
+    }
+    .registry-head .eyebrow,
+    .registry-head h2,
+    .app-form-head .eyebrow,
+    .app-form-head h3 {
+      margin: 0;
+    }
+    .registry-head h2 {
+      margin-top: 5px;
+      font-size: 22px;
+    }
+    .new-app,
+    .save-app {
+      padding: 8px 14px;
+      color: white;
+      background: var(--accent);
+      border: 0;
+      border-radius: var(--r-pill);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .registry-copy,
+    .verification-note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .registry-copy {
+      margin: 14px 0 18px;
+    }
+    .app-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .app-card {
+      padding: 16px;
+      background: var(--surface-2);
+      border: 1px solid var(--hairline);
+      border-radius: var(--r);
+    }
+    .app-title {
+      align-items: flex-start;
+    }
+    .app-title > span {
+      color: var(--faint);
+      font: 600 13px var(--mono);
+    }
+    .app-title h3,
+    .app-title small {
+      margin: 0;
+    }
+    .app-title h3 {
+      font-size: 15px;
+    }
+    .app-title small {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font: 500 10.5px var(--mono);
+    }
+    .app-title button,
+    .close-app,
+    .cancel-app {
+      margin-left: auto;
+      padding: 5px 8px;
+      color: var(--accent-tx);
+      background: transparent;
+      border: 0;
+      border-radius: var(--r);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .app-title button:hover,
+    .close-app:hover,
+    .cancel-app:hover {
+      background: var(--accent-tint);
+    }
+    dl {
+      display: grid;
+      gap: 8px;
+      margin: 16px 0 0;
+    }
+    dl div {
+      display: grid;
+      grid-template-columns: 78px 1fr;
+      gap: 8px;
+    }
+    dt {
+      color: var(--muted);
+      font: 500 10px var(--mono);
+      text-transform: uppercase;
+    }
+    dd {
+      min-width: 0;
+      margin: 0;
+      overflow: hidden;
+      color: var(--fg2);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .app-form {
+      padding: 18px;
+      margin-top: 14px;
+      background: var(--surface-2);
+      border: 1px solid var(--accent-tint-bd);
+      border-radius: var(--r);
+    }
+    .app-form-head h3 {
+      margin-top: 5px;
+      font-size: 18px;
+    }
+    .app-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0 14px;
+    }
+    .verification-note {
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--r);
+    }
+    .app-actions {
+      justify-content: flex-start;
+      margin-top: 14px;
+    }
+    .app-actions .cancel-app {
+      margin-left: 0;
+    }
+    .save-app:disabled {
+      opacity: 0.55;
     }
     .notification-head {
       display: flex;
@@ -390,6 +636,16 @@ const HUES = ['#6E5A8A', '#7C5CFC', '#0F766E', '#B45309', '#B42318', '#2563EB'];
       .notifications {
         padding: 18px;
       }
+      .registry {
+        padding: 18px;
+      }
+      .registry-head {
+        align-items: flex-start;
+      }
+      .app-grid,
+      .app-fields {
+        grid-template-columns: 1fr;
+      }
       .notification-head {
         display: grid;
         gap: 10px;
@@ -414,7 +670,9 @@ export class StudioPage {
   private api = inject(Api);
   private poll = inject(Poll);
   private router = inject(Router);
+  private store = inject(Store);
   session = inject(Session);
+  apps = this.store.apps;
   operators = signal<Operator[]>([]);
   subscriptions = signal<AppSubscription[]>([]);
   smtp = signal<'configured' | 'log-only'>('log-only');
@@ -425,6 +683,11 @@ export class StudioPage {
   email = '';
   saving = signal(false);
   error = signal('');
+  editingApp = signal<AppEntry | null>(null);
+  newApp = signal(false);
+  appSaving = signal(false);
+  appError = signal('');
+  appForm = { name: '', owner: '', repo: '', provisioning: 'Manual', muted: false };
   hues = HUES;
   private autoInitials = true;
   constructor() {
@@ -489,6 +752,59 @@ export class StudioPage {
         },
       });
   }
+  startNewApp() {
+    this.newApp.set(true);
+    this.appError.set('');
+    this.appForm = { name: '', owner: '', repo: '', provisioning: 'Manual', muted: false };
+    this.editingApp.set({
+      id: -1,
+      key: '',
+      name: '',
+      owner: '',
+      repo: '',
+      provisioning: 'Manual',
+      muted: false,
+      open_requests: 0,
+      unread: false,
+    });
+  }
+  editApp(app: AppEntry) {
+    this.newApp.set(false);
+    this.appError.set('');
+    this.appForm = {
+      name: app.name,
+      owner: app.owner,
+      repo: app.repo,
+      provisioning: app.provisioning,
+      muted: app.muted,
+    };
+    this.editingApp.set(app);
+  }
+  saveApp() {
+    if (!this.appForm.name.trim() || this.appSaving()) return;
+    this.appSaving.set(true);
+    this.appError.set('');
+    const request = this.newApp()
+      ? this.api.createApp(this.appForm)
+      : this.api.updateApp(this.editingApp()!.id, this.appForm);
+    request.subscribe({
+      next: (saved) => {
+        if (this.newApp()) this.apps.update((all) => [...all, saved]);
+        else this.apps.update((all) => all.map((app) => (app.id === saved.id ? saved : app)));
+        this.appSaving.set(false);
+        this.closeAppForm();
+        this.poll.nudge();
+      },
+      error: (error) => {
+        this.appSaving.set(false);
+        this.appError.set(error.error?.detail || 'Could not save that app registration.');
+      },
+    });
+  }
+  closeAppForm() {
+    this.editingApp.set(null);
+    this.appSaving.set(false);
+  }
   create() {
     if (!this.name().trim() || !this.initials().trim() || !this.email.trim()) return;
     this.saving.set(true);
@@ -511,5 +827,10 @@ export class StudioPage {
           this.error.set(error.error?.detail || 'Could not create that profile.');
         },
       });
+  }
+
+  @HostListener('window:keydown.escape')
+  onEscape() {
+    if (this.editingApp()) this.closeAppForm();
   }
 }

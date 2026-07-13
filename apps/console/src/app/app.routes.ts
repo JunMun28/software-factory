@@ -25,7 +25,7 @@ export const routes: Routes = [
   {
     path: 'library',
     canActivate: [adminGuard],
-    loadComponent: () => import('./shell/stub-page').then((m) => m.StubPage),
+    loadComponent: () => import('./library/library-page').then((m) => m.LibraryPage),
   },
   {
     path: 'studio',

@@ -2,6 +2,8 @@
 
 ## Deviations
 
+- Slice 9: no product-contract deviations. The real-router component seam mounts `/library` from a shared URL and verifies its initial URL-driven filter state, but live 1440/390 light/dark browser inspection could not run because this sandbox rejects local server binds with `operation not permitted`. The required production build was attempted unchanged: Node 25.6.1 deadlocked in esbuild, while pinned Node 24.15.0 aborted at `Building...` with exit 134 before Angular emitted a font or compilation diagnostic. `angular.json` and dependencies were left untouched for the reviewer's local/networked build.
+
 - Slice 8: the trace endpoint has no backward cursor and caps responses at 500 events, so the Dossier requests that maximum and warns that a 500-event result may omit older evidence; a truly unbounded full story needs a later backend pagination contract. The 1440/390 light/dark Family acceptance check remains unverified because live browser inspection was not available in this sandbox; responsive and dark treatments are token-driven and covered structurally by the component seam, but the reviewer should perform the visual matrix. The Dossier stays console-only and wraps the existing shared `groupTrace` projection rather than changing `packages/shared`. The required production build was attempted unchanged: Node 25.6.1 deadlocked in esbuild, while pinned Node 24.15.0 aborted with `pointer being freed was not allocated`. This worktree has no local `node_modules`, so both attempts fell through to `/usr/local/bin/ng`; `angular.json` and dependencies were left untouched for the reviewer’s networked/local-toolchain build.
 
 - Slice 7: no acceptance-criteria deviations. Simulator failures now escalate only the affected request and continue the rest of the tick; simulator, real-runner, and restart-orphan needs-human paths all send pings, while healthy steps and Done remain explicit non-triggers. Live 1440/390 light/dark browser inspection could not run because this sandbox rejects local server binds with `operation not permitted`. Focused Studio DOM tests cover the toggle list, revision-driven reload, and log-only status. Both required production builds were attempted with pinned Node 24.15.0 and aborted at `Building...` with exit 134 before Angular emitted a font or compilation diagnostic; `angular.json` was not changed.
@@ -124,3 +126,13 @@
   refetch; fine at 1-5 concurrent runs. A future delta-merge could trim it.
 - Codex's build failure was its sandbox toolchain (esbuild deadlock / malloc),
   not the code — builds green here. It left angular.json untouched as asked.
+
+## Slice 015 review pass (fable-5, 2026-07-13)
+
+- No fixes. Codex applied the slice-8 lesson: Library reads queryParams via
+  subscribe + OnDestroy, not toSignal in a field initializer — mounts cleanly.
+- Verified revision convergence end-to-end in the browser: a registry POST
+  (via the API the UI calls) surfaced the new app in the Library's app-filter
+  chips on the next poll without a reload. That's story 33 proven live.
+- Left a throwaway "Payroll Service" app in the dev DB from the live create
+  test; harmless (ephemeral factory.db, re-seeds on wipe; registry has no DELETE).
