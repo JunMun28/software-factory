@@ -2,6 +2,8 @@
 
 ## Deviations
 
+- Slice 8: the trace endpoint has no backward cursor and caps responses at 500 events, so the Dossier requests that maximum and warns that a 500-event result may omit older evidence; a truly unbounded full story needs a later backend pagination contract. The 1440/390 light/dark Family acceptance check remains unverified because live browser inspection was not available in this sandbox; responsive and dark treatments are token-driven and covered structurally by the component seam, but the reviewer should perform the visual matrix. The Dossier stays console-only and wraps the existing shared `groupTrace` projection rather than changing `packages/shared`. The required production build was attempted unchanged: Node 25.6.1 deadlocked in esbuild, while pinned Node 24.15.0 aborted with `pointer being freed was not allocated`. This worktree has no local `node_modules`, so both attempts fell through to `/usr/local/bin/ng`; `angular.json` and dependencies were left untouched for the reviewer’s networked/local-toolchain build.
+
 - Slice 7: no acceptance-criteria deviations. Simulator failures now escalate only the affected request and continue the rest of the tick; simulator, real-runner, and restart-orphan needs-human paths all send pings, while healthy steps and Done remain explicit non-triggers. Live 1440/390 light/dark browser inspection could not run because this sandbox rejects local server binds with `operation not permitted`. Focused Studio DOM tests cover the toggle list, revision-driven reload, and log-only status. Both required production builds were attempted with pinned Node 24.15.0 and aborted at `Building...` with exit 134 before Angular emitted a font or compilation diagnostic; `angular.json` was not changed.
 
 - Slice 6: no acceptance-criteria deviations. Real-runner step summaries now emit at stage start, while the injected prompt and acknowledged steer ids are current, and the new shell maps the health endpoint's `runner` plus `cli` fields directly. The required production builds were attempted without changing `angular.json`, but both `npx ng build console` and `npx ng build intake` aborted in this sandbox with exit 134 immediately after `Building...` (including with pinned Node 24.15.0), before Angular printed a font or compilation diagnostic.
@@ -108,3 +110,17 @@
 - A raw POST /api/requests with app_key does not link app_id (intake assigns the
   app later); a request with app_id=None emails no one. Not a slice-013 bug, but
   note it: pre-app requests don't ping.
+
+## Slice 014 review pass (fable-5, 2026-07-13)
+
+- BLOCKER fixed: DossierPage's `toSignal()` field initializers threw NG0203 at
+  runtime (real router DI), so the whole route fell through to the Floor. The 7
+  vitest tests passed because TestBed instantiates within an injection context
+  that hides it. Fix: inject Injector, pass `{ injector }` to toSignal. LESSON:
+  for a brand-new ROUTED page, always load the real route in the browser — unit
+  green is not proof the page mounts.
+- The Dossier re-fetches request+trace+comments on every 4s poll tick (effect
+  depends on poll.version). Chatty but consistent with the Floor's mission
+  refetch; fine at 1-5 concurrent runs. A future delta-merge could trim it.
+- Codex's build failure was its sandbox toolchain (esbuild deadlock / malloc),
+  not the code — builds green here. It left angular.json untouched as asked.

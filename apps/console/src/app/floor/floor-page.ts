@@ -25,7 +25,12 @@ import {
 import { INTAKE_URL, intakeNewRequestUrl } from '../core/intake-url';
 import { Session } from '../core/session.service';
 import { ConsoleShell } from '../shell/console-shell';
-import { FloorActionOutcome } from './floor-action-outcome';
+import {
+  FloorActionError,
+  FloorActionOutcome,
+  FloorActionVerb,
+  floorActionOutcome,
+} from './floor-action-outcome';
 import { FloorContent } from './floor-content';
 
 @Component({
@@ -187,38 +192,17 @@ export class FloorPage {
   steer(request: FactoryRequest, note: string) {
     this.runAction(request, 'steer', this.api.steer(request.id, note, this.session.operatorId()!));
   }
-  private runAction(
-    request: FactoryRequest,
-    verb:
-      | 'approve'
-      | 'send back'
-      | 'retry'
-      | 'take over'
-      | 'send back to stage'
-      | 'cancel'
-      | 'steer',
-    action: Observable<unknown>,
-  ) {
+  private runAction(request: FactoryRequest, verb: FloorActionVerb, action: Observable<unknown>) {
     action.subscribe({
       next: () => {
         this.clearOutcome(request.id);
         this.poll.nudge();
       },
-      error: (error: { status?: number; error?: Partial<ConflictPayload> }) => {
-        const conflict = error.status === 409 ? error.error : null;
-        const outcome =
-          conflict?.acted_by && conflict.acted_at
-            ? {
-                kind: 'conflict' as const,
-                message: `Already ${this.pastTense(verb)} by ${conflict.acted_by} at ${this.shortTime(conflict.acted_at)}`,
-              }
-            : error.status === 409 && verb === 'steer'
-              ? {
-                  kind: 'conflict' as const,
-                  message: 'Run is no longer in flight — it reached a gate.',
-                }
-              : { kind: 'error' as const, message: `Couldn’t ${verb}. Try again.` };
-        this.actionOutcomes.update((current) => ({ ...current, [request.id]: outcome }));
+      error: (error: FloorActionError) => {
+        this.actionOutcomes.update((current) => ({
+          ...current,
+          [request.id]: floorActionOutcome(verb, error),
+        }));
         this.poll.nudge();
       },
     });
@@ -229,32 +213,9 @@ export class FloorPage {
       return rest;
     });
   }
-  private pastTense(
-    verb:
-      | 'approve'
-      | 'send back'
-      | 'retry'
-      | 'take over'
-      | 'send back to stage'
-      | 'cancel'
-      | 'steer',
-  ) {
-    return {
-      approve: 'approved',
-      'send back': 'sent back',
-      retry: 'retried',
-      'take over': 'taken over',
-      'send back to stage': 'sent back to stage',
-      cancel: 'cancelled',
-      steer: 'steered',
-    }[verb];
-  }
   stageLabel(request: FactoryRequest) {
     // Match the Floor's vocabulary: the backend 'architecture' stage reads as 'plan'.
     return request.stage === 'architecture' ? 'plan' : request.stage;
-  }
-  private shortTime(iso: string) {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
   private focusRow() {
     const rows = this.host.nativeElement.querySelectorAll<HTMLElement>(
@@ -299,11 +260,4 @@ export class FloorPage {
       this.sendingBack.set(current.gate);
     }
   }
-}
-
-interface ConflictPayload {
-  detail: string;
-  acted_by: string;
-  acted_at: string;
-  resulting_state: string;
 }

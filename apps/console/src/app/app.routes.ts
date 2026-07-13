@@ -34,7 +34,7 @@ export const routes: Routes = [
   {
     path: 'requests/:id',
     canActivate: [adminGuard],
-    loadComponent: () => import('./shell/stub-page').then((m) => m.StubPage),
+    loadComponent: () => import('./dossier/dossier-page').then((m) => m.DossierPage),
   },
   ...legacyRedirects,
   { path: '**', redirectTo: '' },
