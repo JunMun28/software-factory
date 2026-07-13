@@ -22,6 +22,17 @@ import { Session } from '../core/session.service';
           <a routerLink="/studio" routerLinkActive="active">Studio</a>
         </nav>
         <span class="spacer"></span>
+        @if (runnerMode(); as mode) {
+          <span
+            class="runner-badge"
+            [class.agent]="mode.runner === 'agent'"
+            [attr.aria-label]="runnerLabel()"
+            [title]="runnerLabel()"
+            aria-live="polite"
+          >
+            <i aria-hidden="true"></i><span class="runner-label">{{ runnerLabel() }}</span>
+          </span>
+        }
         <button
           class="theme"
           type="button"
@@ -131,6 +142,33 @@ import { Session } from '../core/session.service';
     .spacer {
       flex: 1;
     }
+    .runner-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 24px;
+      padding: 3px 8px;
+      color: var(--muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-pill);
+      font: 600 10.5px var(--mono);
+      white-space: nowrap;
+    }
+    .runner-badge i {
+      width: 6px;
+      height: 6px;
+      background: var(--faint);
+      border-radius: 50%;
+    }
+    .runner-badge.agent {
+      color: var(--accent-tx);
+      background: var(--accent-tint);
+      border-color: var(--accent-tint-bd);
+    }
+    .runner-badge.agent i {
+      background: var(--accent);
+    }
     .cmd,
     .theme {
       color: var(--muted);
@@ -237,6 +275,16 @@ import { Session } from '../core/session.service';
         display: none;
       }
     }
+    @media (max-width: 480px) {
+      .runner-badge {
+        width: 24px;
+        padding: 0;
+        justify-content: center;
+      }
+      .runner-label {
+        display: none;
+      }
+    }
     @media (prefers-reduced-motion: reduce) {
       * {
         transition: none !important;
@@ -255,6 +303,13 @@ export class ConsoleShell {
   paletteOpen = signal(false);
   paletteIndex = signal(0);
   query = signal('');
+  runnerMode = signal<{ runner: 'agent' | 'sim'; cli: 'codex' | 'claude' } | null>(null);
+  runnerLabel = computed(() => {
+    const mode = this.runnerMode();
+    if (!mode) return '';
+    if (mode.runner === 'sim') return 'Simulated';
+    return mode.cli === 'claude' ? 'Agents: Claude Code' : 'Agents: Codex';
+  });
   private gPending = false;
   private gTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -273,6 +328,9 @@ export class ConsoleShell {
 
   constructor() {
     this.poll.start();
+    this.api.health().subscribe((health) =>
+      this.runnerMode.set({ runner: health.runner, cli: health.cli }),
+    );
   }
 
   toggleTheme() {

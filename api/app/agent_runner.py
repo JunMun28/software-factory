@@ -237,12 +237,12 @@ class AgentRunner:
             "what the public behavior must be, and which tests will prove it. Do NOT change any code. "
             "Keep it under 40 lines. End by confirming PLAN.md is written.",
         )
+        self._emit_step_boundary(db, req, step=1, of=1, label="Architecture agent started",
+                                 acked_steer_ids=steer_ids)
         res = self.exec(
             prompt,
             cwd=str(ws), allow_edits=True, timeout=STAGE_TIMEOUT,
         )
-        self._emit_step_boundary(db, req, step=1, of=1, label="Architecture agent started",
-                                 acked_steer_ids=steer_ids)
         self._save_transcript(ws, "architecture", res)
         if not res.ok or not (ws / "PLAN.md").exists():
             self._escalate(db, req, res.error or "Architecture stage produced no PLAN.md")
@@ -263,12 +263,12 @@ class AgentRunner:
             "tests must stay green. Run pytest to confirm your new tests fail because the feature is "
             "missing — assertion failures, not import errors.",
         )
+        self._emit_step_boundary(db, req, step=1, of=2, label="RED test author started",
+                                 acked_steer_ids=steer_ids)
         res = self.exec(
             prompt,
             cwd=str(ws), allow_edits=True, timeout=STAGE_TIMEOUT,
         )
-        self._emit_step_boundary(db, req, step=1, of=2, label="RED test author started",
-                                 acked_steer_ids=steer_ids)
         self._save_transcript(ws, "red", res)
         if not res.ok:
             self._escalate(db, req, res.error or "Test-author stage failed")
@@ -299,12 +299,12 @@ class AgentRunner:
             "FORBIDDEN from editing anything under tests/ or any pytest configuration — a CI gate rejects "
             "any change there. Read PLAN.md, implement, run pytest until the whole suite is green.",
         )
+        self._emit_step_boundary(db, req, step=2, of=2, label="GREEN implementer started",
+                                 acked_steer_ids=steer_ids)
         res = self.exec(
             prompt,
             cwd=str(ws), allow_edits=True, timeout=STAGE_TIMEOUT,
         )
-        self._emit_step_boundary(db, req, step=2, of=2, label="GREEN implementer started",
-                                 acked_steer_ids=steer_ids)
         self._save_transcript(ws, "green", res)
         if not res.ok:
             self._escalate(db, req, res.error or "Implementer stage failed")
@@ -339,12 +339,12 @@ class AgentRunner:
             "Write REVIEW.md: does the implementation honor the spec, are the tests meaningful, any risks. "
             "Verdict line at the top: APPROVE or REQUEST-CHANGES. Do not modify src/ or tests/.",
         )
+        self._emit_step_boundary(db, req, step=1, of=1, label="Review agent started",
+                                 acked_steer_ids=steer_ids)
         res = self.exec(
             prompt,
             cwd=str(ws), allow_edits=True, timeout=STAGE_TIMEOUT,
         )
-        self._emit_step_boundary(db, req, step=1, of=1, label="Review agent started",
-                                 acked_steer_ids=steer_ids)
         self._save_transcript(ws, "review", res)
         review = (ws / "REVIEW.md")
         if not res.ok or not review.exists() or not review.read_text().strip():

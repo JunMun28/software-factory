@@ -123,6 +123,44 @@ def test_real_runner_injects_and_acks_pending_steer_at_stage_boundary(client, ws
     assert steps[0]["payload"]["step"] == 1
 
 
+def test_real_runner_emits_fresh_stage_signal_before_executor_completes(client, ws_root):
+    from app.supervision import run_state
+
+    d = _approved_request(client, "Visible real runner")
+    steer = client.post(
+        f"/api/requests/{d['id']}/steer",
+        json={"note": "Keep the public export name stable", "operator_id": 1},
+    )
+    assert steer.status_code == 201
+    note_id = steer.json()["id"]
+    observed: dict[str, object] = {}
+
+    def observing_executor(prompt: str, **kwargs) -> AgentResult:
+        # This callback is the long-running stage boundary: anything observed
+        # here was persisted before, and independently of, executor completion.
+        steps = [
+            event
+            for event in client.get("/api/events", params={"request_id": d["id"]}).json()
+            if event["kind"] == "step_summary" and event["stage"] == "architecture"
+        ]
+        observed["steps"] = steps
+        with SessionLocal() as db:
+            observed["run"] = run_state(db, db.get(Request, d["id"]))
+        return AgentResult(ok=False, text="", error="stop after observing stage start")
+
+    AgentRunner(executor=observing_executor).run_pipeline(d["id"])
+
+    steps = observed["steps"]
+    assert isinstance(steps, list) and len(steps) == 1
+    assert steps[0]["payload"]["step"] == 1
+    assert steps[0]["payload"]["of"] == 1
+    assert steps[0]["payload"]["acked_steer_ids"] == [note_id]
+    run = observed["run"]
+    assert isinstance(run, dict)
+    assert run["step"] > 0 and run["of"] == 1
+    assert run["health"] != "no_signal"
+
+
 def test_isolation_gate_catches_cheating_implementer(client, ws_root):
     d = _approved_request(client, "Cheater detection")
     AgentRunner(executor=cheating_executor).run_pipeline(d["id"])

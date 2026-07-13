@@ -12,6 +12,9 @@ import { FloorContent } from './floor-content';
 import { FloorPage } from './floor-page';
 import { deriveLane } from './floor-view';
 
+const simulatedHealth = () =>
+  of({ status: 'ok', brain: 'scripted', runner: 'sim' as const, cli: 'codex' as const });
+
 const request = (over: Partial<FactoryRequest> = {}): FactoryRequest => ({
   id: 87,
   ref: 'SF-0087',
@@ -249,6 +252,7 @@ describe('Floor honest steering', () => {
   it('renders an in-place outcome when a steer loses the in-flight race', async () => {
     const inFlight = running(null);
     const api = {
+      health: simulatedHealth,
       mission: vi.fn(() => of(inFlight)),
       steer: vi.fn(() => throwError(() => new HttpErrorResponse({ status: 409 }))),
     };
@@ -334,6 +338,7 @@ describe('Floor conflict outcomes', () => {
   it('renders a mocked 409 with the winner and local time on the request card', async () => {
     const actedAt = '2026-07-11T06:02:00Z';
     const api = {
+      health: simulatedHealth,
       mission: vi.fn(() => of(mission({ gates: [gate()] }))),
       approve: vi.fn(() =>
         throwError(
@@ -447,7 +452,10 @@ describe('Floor scoped recovery', () => {
       gate: null,
       needs_human: true,
     });
-    const api = { mission: vi.fn(() => of(mission({ stalled: [stalled] }))) };
+    const api = {
+      health: simulatedHealth,
+      mission: vi.fn(() => of(mission({ stalled: [stalled] }))),
+    };
     const poll = { version: signal(0), nudge: vi.fn(), start: vi.fn() };
     await TestBed.configureTestingModule({
       imports: [FloorPage],
@@ -483,6 +491,7 @@ describe('Floor scoped recovery', () => {
     const actedAt = '2026-07-11T06:02:00Z';
     const stalled = request({ status: 'approved', gate: null, needs_human: true });
     const api = {
+      health: simulatedHealth,
       mission: vi.fn(() => of(mission({ stalled: [stalled] }))),
       takeOver: vi.fn(() =>
         throwError(

@@ -25,7 +25,12 @@ export class Api {
   private http = inject(HttpClient);
 
   health() {
-    return this.http.get<{ status: string; brain: string; runner: string }>(`${BASE}/health`);
+    return this.http.get<{
+      status: string;
+      brain: string;
+      runner: 'agent' | 'sim';
+      cli: 'codex' | 'claude';
+    }>(`${BASE}/health`);
   }
   apps(): Observable<AppEntry[]> {
     return this.http.get<AppEntry[]>(`${BASE}/apps`);

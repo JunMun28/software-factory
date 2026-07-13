@@ -13,7 +13,7 @@ def test_tick_emits_step_summary(client):
     hero = approved_request(client, title="Step summary probe")
     client.post("/api/simulator/tick")
     steps = _events(client, hero["id"], "step_summary")
-    assert steps, "first tick after approval must emit a step_summary"
+    assert len(steps) == 1, "one simulator tick must still emit exactly one step_summary"
     p = steps[0]["payload"]
     assert p["step"] == 1 and p["of"] == 4
     assert p["label"] == "reading SPEC.md"

@@ -2,6 +2,8 @@
 
 ## Deviations
 
+- Slice 6: no acceptance-criteria deviations. Real-runner step summaries now emit at stage start, while the injected prompt and acknowledged steer ids are current, and the new shell maps the health endpoint's `runner` plus `cli` fields directly. The required production builds were attempted without changing `angular.json`, but both `npx ng build console` and `npx ng build intake` aborted in this sandbox with exit 134 immediately after `Building...` (including with pinned Node 24.15.0), before Angular printed a font or compilation diagnostic.
+
 - Slice 5: no acceptance-criteria deviations from ticket 011. The real runner emits one minimal `step_summary` per agent-stage boundary (Architecture, RED, GREEN, Review); these events carry steer acknowledgements without attempting the richer per-step visibility or runner-mode badge reserved for slice 012.
 
 - Slice 4: no acceptance-criteria deviations from ticket 010. The approved slice defines Take over as the terminal automation state `human_owned` (finish by hand), while the older CONTEXT.md vocabulary says a human may later hand control back; this slice implements the approved terminal state and does not add a separate hand-back verb. Human-owned requests use a dedicated signed mission projection in the Needs-you region so ownership stays visible without pretending the request is a gate, stalled run, or active automation.
@@ -80,3 +82,13 @@
 - The real runner emits step_summary only at stage boundaries this slice (to
   carry the steer ack). Slice 012 will enrich step_summary cadence/content and
   add the runner-mode badge — watch for overlap there.
+
+## Slice 012 review pass (fable-5, 2026-07-13)
+
+- No fixes needed. Confirmed the step_summary emission was MOVED to stage start
+  (not duplicated — a double-emit would have spammed the trace). This is the
+  actual fix for the permanent step-0/no-signal: run_state only sees a
+  current-stage event once one exists, and slice 5 emitted it only after the
+  (long) exec.
+- Badge reads runner+cli honestly; the old admin-shell tested runner==='claude'
+  which never matched (runner is agent|sim; the CLI is the claude|codex axis).
