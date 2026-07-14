@@ -109,34 +109,54 @@ def pending_payload(q: Question | None) -> dict:
     return {"question": q.question, "sub": q.sub, "options": q.options, "final": q.final}
 
 
+# The host app's design tokens (mirrors apps/intake/src/styles.css) — the single source both the
+# scripted prototype floor and the real design harness cite, so a mock looks like part of THIS
+# product (the Micron-purple accent on a near-neutral canvas), not a bespoke palette. Dark keys off
+# prefers-color-scheme because the mock renders in an isolated sandbox with no theme toggle.
+HOST_APP_PALETTE = """:root {
+    --bg:#faf9fb; --surface:#ffffff; --surface-2:#f4f3f7; --fg1:#1a1a1f; --fg2:#3a3a42;
+    --muted:#6c6c78; --border:#e6e6ea; --hairline:#eeeef2; --radius:10px;
+    --accent:#a402dc; --accent-strong:#bd03f7; --accent-tint:#fbe9fe; --accent-tx:#8a01bc;
+    --green:#2e7d52; --amber:#c77800; --red:#c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#101013; --surface:#19191c; --surface-2:#222226; --fg1:#f0f0f3; --fg2:#c7c7cb;
+      --muted:#959599; --border:#323237; --hairline:#1e1e21;
+      --accent-tint:#2a1140; --accent-tx:#d78bf9;
+    }
+  }"""
+
+
 def scripted_prototype_html(req: Request) -> str:
     """A deterministic, self-contained, CSP-safe single-screen mock — the offline prototype
-    floor (and the seed the real harness improves on). Carries data-pid / data-screen-label
+    floor (and the seed the real harness improves on). Themed from the host app's tokens
+    (HOST_APP_PALETTE) so it matches this product; carries data-pid / data-screen-label
     anchors so the point-to-edit inspector works even offline."""
     app = escape((req.app_name or "New app").strip())
     title = escape((req.title or req.app_name or "New app").strip())
     desc = escape((req.description or "").strip() or "A first look at the experience you described.")
     return f"""<!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'">
 <title>{app}</title>
 <style>
-  :root {{ --bg:#f7f5f2; --ink:#1d1b19; --muted:#6b655d; --line:#e6e1d9; --card:#fff; --accent:#b4531f; }}
+  {HOST_APP_PALETTE}
   * {{ box-sizing:border-box; }}
-  body {{ margin:0; font-family:ui-sans-serif,system-ui,sans-serif; background:var(--bg); color:var(--ink); }}
+  body {{ margin:0; font-family:'Hanken Grotesk',system-ui,sans-serif; background:var(--bg); color:var(--fg1); }}
   .wrap {{ max-width:720px; margin:0 auto; padding:40px 24px; }}
   header {{ display:flex; align-items:center; gap:10px; margin-bottom:26px; }}
-  .logo {{ font-family:ui-serif,Georgia,serif; font-weight:700; font-size:20px; }}
-  h1 {{ font-family:ui-serif,Georgia,serif; font-size:32px; line-height:1.15; margin:0 0 10px; max-width:16ch; text-wrap:balance; }}
+  .logo {{ font-family:'Space Grotesk',system-ui,sans-serif; font-weight:700; font-size:20px; color:var(--accent); }}
+  h1 {{ font-family:'Space Grotesk',system-ui,sans-serif; font-size:32px; line-height:1.15; margin:0 0 10px; max-width:16ch; text-wrap:balance; color:var(--fg1); }}
   p.sub {{ color:var(--muted); font-size:16px; margin:0 0 26px; max-width:52ch; }}
   .cards {{ display:grid; gap:14px; }}
-  .card {{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; }}
-  .card h2 {{ font-size:15px; margin:0 0 6px; }}
+  .card {{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; }}
+  .card h2 {{ font-size:15px; margin:0 0 6px; color:var(--fg1); }}
   .card p {{ margin:0; color:var(--muted); font-size:14px; }}
-  .cta {{ display:inline-flex; background:var(--accent); color:#fff; font-weight:600; padding:11px 20px; border-radius:10px; margin-top:18px; }}
+  .cta {{ display:inline-flex; background:var(--accent); color:#fff; font-weight:600; padding:11px 20px; border-radius:var(--radius); margin-top:18px; }}
 </style>
 </head>
 <body>
@@ -190,8 +210,9 @@ SCRIPTS: dict[str, list[Question]] = {
         ),
     ],
     "new": [
-        # headcount is no longer asked here — the Describe step's reach chip captures it
-        _q("Who will use this day-to-day, and for what?"),
+        # who + headcount already come from the basics (the reach chip) — don't re-ask them here;
+        # this question is about the functional job the app must do, in plain non-technical terms
+        _q("What are the main things people should be able to do in it?"),
         _q(
             "Last thing — what single outcome would make this a clear win?",
             sub="One sentence is plenty.",

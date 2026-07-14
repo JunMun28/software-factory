@@ -165,17 +165,64 @@ import { SubShell } from './sub-shell';
         </div>
       </div>
 
-      <!-- full-screen prototype overlay (shared component) -->
+      <!-- full-screen prototype overlay (shared component) with point-to-edit + a follow-up composer -->
       @if (fullscreen() && srcdoc(); as doc) {
-        <sf-proto-fullscreen [doc]="doc" (closed)="closeFull()" />
+        <sf-proto-fullscreen [doc]="doc" (closed)="closeFull()" (frameReady)="onFsFrame($event)">
+          <button
+            fs-actions
+            type="button"
+            class="fs-selbtn"
+            [class.on]="inspecting()"
+            (click)="toggleInspect()"
+            title="Select an element to edit"
+          >
+            <sf-icon name="target" [size]="14" />
+            {{ inspecting() ? 'Selecting…' : 'Select to edit' }}
+          </button>
+          <div fs-footer class="fs-composer">
+            @if (annotations().length) {
+              <div class="chips">
+                @for (a of annotations(); track a.pid; let i = $index) {
+                  <span class="chip">
+                    <sf-icon name="target" [size]="11" />{{ chipLabel(a) }}
+                    <button type="button" (click)="removeAnnot(i)" aria-label="Remove">✕</button>
+                  </span>
+                }
+              </div>
+            }
+            <div class="cbox">
+              <textarea
+                class="cbox__in"
+                rows="1"
+                [ngModel]="msg()"
+                (ngModelChange)="msg.set($event)"
+                (keydown.enter)="onEnter($event)"
+                [disabled]="working()"
+                [placeholder]="working() ? 'Designing…' : 'Ask for follow-up changes'"
+              ></textarea>
+              <button
+                class="send"
+                (click)="send()"
+                [disabled]="working() || !msg().trim()"
+                aria-label="Send"
+              >
+                ↑
+              </button>
+            </div>
+          </div>
+        </sf-proto-fullscreen>
       }
     </sub-shell>
   `,
   styles: `
+    /* fill the shell body: .sub-body-inner has no height, so height:100% would
+       collapse to content height — anchor to the viewport like the interview step.
+       padding keeps the intro + panes off the viewport edges (matches .cl). */
     .pt {
       display: flex;
       flex-direction: column;
-      height: 100%;
+      height: calc(100dvh - 58px);
+      padding: 20px 26px;
     }
     .pt__intro {
       flex: 0 0 auto;
@@ -194,7 +241,7 @@ import { SubShell } from './sub-shell';
     .pt__panes {
       flex: 1 1 auto;
       display: grid;
-      grid-template-columns: minmax(320px, 38%) 1fr;
+      grid-template-columns: minmax(300px, 360px) 1fr;
       gap: 16px;
       min-height: 0;
     }
@@ -310,6 +357,36 @@ import { SubShell } from './sub-shell';
       flex: 0 0 auto;
       border-top: 1px solid var(--hairline);
       padding: 11px 12px;
+    }
+    /* follow-up composer docked in the full-screen overlay — centered, capped width */
+    .fs-composer {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+    /* Select-to-edit toggle projected into the full-screen bar (matches .fs__close) */
+    .fs-selbtn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface-2);
+      border: 1px solid var(--hairline);
+      border-radius: 9px;
+      padding: 7px 13px;
+      margin-right: 10px;
+      cursor: pointer;
+      color: var(--fg1);
+      font-weight: 600;
+      font-size: 13px;
+      font-family: var(--body);
+    }
+    .fs-selbtn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .fs-selbtn.on {
+      background: var(--accent-tint);
+      border-color: var(--accent);
+      color: var(--accent-tx);
     }
     .chips {
       display: flex;
@@ -534,6 +611,15 @@ export class Prototype implements OnInit {
   msg = signal('');
   annotations = signal<PrototypeAnnotation[]>([]); // point-to-edit selection (multi)
   inspecting = signal(false);
+  private fsFrame = signal<HTMLIFrameElement | null>(null); // the full-screen overlay's iframe
+
+  /** the iframe the user is currently looking at — the full-screen one while it's open,
+   *  otherwise the docked preview. All point-to-edit messaging targets this frame. */
+  private activeFrame(): HTMLIFrameElement | null {
+    const fs = this.fsFrame();
+    if (this.fullscreen() && fs) return fs;
+    return this.frame()?.nativeElement ?? null;
+  }
   fullscreen = signal(false);
 
   private frame = viewChild<ElementRef<HTMLIFrameElement>>('frame');
@@ -703,6 +789,18 @@ export class Prototype implements OnInit {
   }
   closeFull() {
     this.fullscreen.set(false);
+    this.fsFrame.set(null);
+    // the fs selection belonged to the overlay's document — reset and re-arm the docked frame
+    this.annotations.set([]);
+    this.postSync([]); // clear any stale highlights in the docked frame
+    if (this.inspecting()) this.postInspect(true);
+  }
+  /** the full-screen overlay's iframe (re)loaded — a fresh document has no valid selection;
+   *  clear and re-arm select mode if it's on (mirrors onFrameLoad for the docked frame) */
+  onFsFrame(frame: HTMLIFrameElement) {
+    this.fsFrame.set(frame);
+    this.annotations.set([]);
+    if (this.inspecting()) this.postInspect(true);
   }
 
   // ── point-to-edit ──
@@ -728,15 +826,17 @@ export class Prototype implements OnInit {
     if (this.inspecting()) this.postInspect(true);
   }
   private postInspect(on: boolean) {
-    this.frame()?.nativeElement.contentWindow?.postMessage({ type: 'sf-inspect', on }, '*');
+    this.activeFrame()?.contentWindow?.postMessage({ type: 'sf-inspect', on }, '*');
   }
   private postSync(picked: PrototypeAnnotation[]) {
     const pids = picked.map((a) => a.pid).filter(Boolean);
-    this.frame()?.nativeElement.contentWindow?.postMessage({ type: 'sf-sync', pids }, '*');
+    this.activeFrame()?.contentWindow?.postMessage({ type: 'sf-sync', pids }, '*');
   }
   private handleMessage(ev: MessageEvent) {
-    const f = this.frame()?.nativeElement;
-    if (!f || ev.source !== f.contentWindow) return; // only trust our own sandboxed frame
+    // only trust our own sandboxed frames — the docked preview or the full-screen overlay
+    const docked = this.frame()?.nativeElement?.contentWindow;
+    const fs = this.fsFrame()?.contentWindow;
+    if (ev.source !== docked && ev.source !== fs) return;
     const d = ev.data || {};
     if (d.type === 'sf-annot' && Array.isArray(d.items)) {
       // coerce every field to a string — a crafted mock could postMessage non-string values,

@@ -17,6 +17,14 @@ CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 CLAUDE_MODEL = os.environ.get("FACTORY_CLAUDE_MODEL", "claude-haiku-4-5")
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 CODEX_MODEL = os.environ.get("FACTORY_CODEX_MODEL", "")  # empty → the CLI's configured default
+OPENCODE_BIN = os.environ.get("OPENCODE_BIN", "opencode")
+# opencode model ids are "provider/model". Default to a provider authed on this host.
+OPENCODE_MODEL = os.environ.get("FACTORY_OPENCODE_MODEL", "openai/gpt-5.5").strip()
+# Read-only vs write is a HARD guarantee, enforced by a factory-owned config pointed at
+# via OPENCODE_CONFIG (never the operator's global agents). deny = fail-closed sandbox.
+OPENCODE_CONFIG_DIR = API_DIR / "app" / "opencode"
+OPENCODE_RO_CONFIG = OPENCODE_CONFIG_DIR / "factory-readonly.json"
+OPENCODE_RW_CONFIG = OPENCODE_CONFIG_DIR / "factory-write.json"
 WORKSPACES = Path(os.environ.get("FACTORY_WORKSPACES", str(API_DIR / "workspaces")))
 SAMPLE = Path(os.environ.get("FACTORY_SAMPLE", str(REPO_DIR / "sample")))
 STAGE_TIMEOUT = int(os.environ.get("FACTORY_STAGE_TIMEOUT", "300"))

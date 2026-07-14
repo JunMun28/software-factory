@@ -103,7 +103,7 @@ describe('BasicsCard', () => {
   it.each([
     ['bug', ['Which app is this about?', 'Show us where it happens', 'How often does it happen?']],
     ['enh', ['Which app is this about?', 'Who benefits?', 'What would winning look like?']],
-    ['new', ['Who feels it if this works?', 'What would winning look like?']],
+    ['new', ['Who is this for?', 'What is the business value?']],
     ['other', ['Who is this for?', 'What would a good outcome be?']],
   ] as const)('tailors the sections for %s requests', (type, headings) => {
     const root = render(type).nativeElement as HTMLElement;
@@ -115,14 +115,14 @@ describe('BasicsCard', () => {
   it('keeps later sections locked until the earlier ones are answered', () => {
     const root = render().nativeElement as HTMLElement;
 
-    expect(section(root, 'Who feels it if this works?').classList).not.toContain('locked');
-    expect(section(root, 'What would winning look like?').classList).toContain('locked');
+    expect(section(root, 'Who is this for?').classList).not.toContain('locked');
+    expect(section(root, 'What is the business value?').classList).toContain('locked');
   });
 
   it('places a free-text affected input after the blast-radius options', () => {
     draft.reach = 'team';
     const fixture = render();
-    const affected = section(fixture.nativeElement, 'Who feels it if this works?');
+    const affected = section(fixture.nativeElement, 'Who is this for?');
     const options = affected.querySelector('.legend')!;
     const input = affected.querySelector<HTMLInputElement>('input.aud-free');
 
@@ -140,7 +140,7 @@ describe('BasicsCard', () => {
   it('maps the outer blast-radius ring onto the wider reach value', () => {
     draft.reach = 'me';
     const fixture = render();
-    const affected = section(fixture.nativeElement, 'Who feels it if this works?');
+    const affected = section(fixture.nativeElement, 'Who is this for?');
     const legend = [...affected.querySelectorAll<HTMLButtonElement>('.legend button')];
 
     legend.at(-1)!.click();
@@ -156,7 +156,7 @@ describe('BasicsCard', () => {
   it('reveals the estimate input only after a payoff card is picked', () => {
     draft.reach = 'team';
     const fixture = render();
-    const impact = section(fixture.nativeElement, 'What would winning look like?');
+    const impact = section(fixture.nativeElement, 'What is the business value?');
 
     expect(impact.querySelector('.imp-est')).toBeNull();
 
