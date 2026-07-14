@@ -54,7 +54,7 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
             <button
               type="button"
               class="tcard"
-              [class.sel]="draft.type === 'bug'"
+              [class.sel]="picked() === 'bug'"
               (click)="pickType('bug')"
             >
               <span class="glow"></span>
@@ -81,7 +81,7 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
             <button
               type="button"
               class="tcard"
-              [class.sel]="draft.type === 'enh'"
+              [class.sel]="picked() === 'enh'"
               (click)="pickType('enh')"
             >
               <span class="glow"></span>
@@ -108,7 +108,7 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
             <button
               type="button"
               class="tcard"
-              [class.sel]="draft.type === 'new'"
+              [class.sel]="picked() === 'new'"
               (click)="pickType('new')"
             >
               <span class="glow"></span>
@@ -134,7 +134,7 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
             <button
               type="button"
               class="tcard"
-              [class.sel]="draft.type === 'other'"
+              [class.sel]="picked() === 'other'"
               (click)="pickType('other')"
             >
               <span class="glow"></span>
@@ -1278,6 +1278,9 @@ export class BasicsCard implements OnInit {
 
   /** the type cards are shown when the guess is unsure or the submitter opens them to correct */
   cardsOpen = signal(false);
+  /** which card the submitter has explicitly clicked — starts empty so NO card is pre-selected
+   *  (the inferred type lives in the chip; the grid is for an active choice, not a default nudge) */
+  picked = signal<string | null>(null);
 
   apps = signal<AppEntry[]>([]);
   appsMenuOpen = signal(false);
@@ -1460,6 +1463,7 @@ export class BasicsCard implements OnInit {
   }
 
   pickType(t: string) {
+    this.picked.set(t); // reflect the explicit choice (the grid starts with none selected)
     if (this.draft.type === t) {
       this.cardsOpen.set(false);
       return;
