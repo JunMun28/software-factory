@@ -27,6 +27,8 @@
 
 8. Smoke-test the leader, transition, and intent paths against Azure SQL:
 
+   **Warning:** Never point the full test suite at a database you care about; the `CI` environment variable gates destructive cleanup.
+
    ```bash
    FACTORY_DB_URL="mssql+pyodbc://..." uv run pytest tests/test_leader.py tests/test_transitions.py tests/test_intents.py -v
    ```

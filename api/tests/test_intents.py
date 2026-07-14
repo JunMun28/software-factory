@@ -4,10 +4,14 @@ import uuid
 import pytest
 
 import app.intents as intents
-from app.db import SessionLocal, engine, migrate
-from app.leader import LeaderElector
+from app.db import SessionLocal, migrate
 from app.models import Intent, Request
 from app.transitions import cas_status
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _restore_app_leadership(restore_app_leadership):
+    yield
 
 
 def test_begin_is_idempotent_by_key():
@@ -23,9 +27,9 @@ def test_begin_is_idempotent_by_key():
         intents.complete(db, "req1:merge_pr:sha123", {})
 
 
-def test_duplicate_begin_preserves_sibling_writes():
+def test_duplicate_begin_preserves_sibling_writes(make_elector):
     migrate()
-    elector = LeaderElector(engine)
+    elector = make_elector()
     assert elector.try_acquire() is True
 
     with SessionLocal() as db:

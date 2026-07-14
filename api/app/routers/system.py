@@ -30,10 +30,11 @@ def health(db: Session = Depends(get_db)):
         log.exception("health check: database unavailable")
         from fastapi import HTTPException
         raise HTTPException(503, "database unavailable")
+    elector = get_elector()
     return {
         "status": "ok", "db": "ok", "brain": brain_mode(), "runner": runner_mode(),
         "cli": agent_cli(), "smtp": smtp_status(),
-        "leader": get_elector().is_leader(), "epoch": get_elector().epoch,
+        "leader": elector.is_leader(), "epoch": elector.epoch,
     }
 
 

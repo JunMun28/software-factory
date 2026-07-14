@@ -3,32 +3,13 @@ contract (stale epoch loses) is dialect-independent and tested here."""
 import pytest
 from sqlalchemy import select
 
-from app.db import SessionLocal, engine, migrate
-from app.leader import LeaderElector, get_elector
+from app.db import SessionLocal, migrate
 from app.models import LeaderEpoch
 
 
 @pytest.fixture(scope="module", autouse=True)
-def restore_app_leadership():
-    app_elector = get_elector()
-    app_elector.release()
+def _restore_app_leadership(restore_app_leadership):
     yield
-    app_elector.try_acquire()
-
-
-@pytest.fixture
-def make_elector():
-    electors = []
-
-    def make():
-        elector = LeaderElector(engine)
-        electors.append(elector)
-        return elector
-
-    yield make
-
-    for elector in reversed(electors):
-        elector.release()
 
 
 def test_sqlite_acquire_is_leader_and_bumps_epoch(make_elector):

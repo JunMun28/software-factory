@@ -1,10 +1,16 @@
 """Epoch-fenced compare-and-swap transition tests."""
 import uuid
 
-from app.db import SessionLocal, engine, migrate
-from app.leader import LeaderElector
+import pytest
+
+from app.db import SessionLocal, migrate
 from app.models import Request
 from app.transitions import cas_status
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _restore_app_leadership(restore_app_leadership):
+    yield
 
 
 def _fresh_request(db):
@@ -20,9 +26,9 @@ def _fresh_request(db):
     return request
 
 
-def test_cas_moves_exactly_once():
+def test_cas_moves_exactly_once(make_elector):
     migrate()
-    elector = LeaderElector(engine)
+    elector = make_elector()
     elector.try_acquire()
     with SessionLocal() as db:
         request = _fresh_request(db)
@@ -36,9 +42,9 @@ def test_cas_moves_exactly_once():
         db.rollback()
 
 
-def test_stale_epoch_cannot_write():
+def test_stale_epoch_cannot_write(make_elector):
     migrate()
-    elector = LeaderElector(engine)
+    elector = make_elector()
     elector.try_acquire()
     stale = elector.epoch
     elector.release()
@@ -55,12 +61,12 @@ def test_stale_epoch_cannot_write():
         db.commit()
 
 
-def test_true_cas_is_not_durable_until_caller_commits():
+def test_true_cas_is_not_durable_until_caller_commits(make_elector):
     """The regression pin for caller-owned transactions: this test FAILS if
     cas_status ever commits internally again (the write would survive the
     caller's rollback and the fence could be bypassed via committed intents)."""
     migrate()
-    elector = LeaderElector(engine)
+    elector = make_elector()
     elector.try_acquire()
     with SessionLocal() as db:
         request = _fresh_request(db)
@@ -73,9 +79,9 @@ def test_true_cas_is_not_durable_until_caller_commits():
         assert db2.get(Request, req_id).status == "queued_for_pipeline"
 
 
-def test_cas_missing_row_returns_false():
+def test_cas_missing_row_returns_false(make_elector):
     migrate()
-    elector = LeaderElector(engine)
+    elector = make_elector()
     elector.try_acquire()
     with SessionLocal() as db:
         assert cas_status(

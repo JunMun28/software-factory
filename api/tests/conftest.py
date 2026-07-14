@@ -17,28 +17,50 @@ from app.main import create_app  # noqa: E402
 
 
 def _truncate_all():
-    """Wipe every row (schema stays) — on a real network DB (MSSQL/Azure SQL) the
-    session-scoped client fixture reuses one database for the whole run, so a
-    leftover row from an earlier test can bleed into a later one. SQLite tests get
-    a fresh throwaway file per run (see FACTORY_DB_URL above) so this is a no-op
-    there in practice, but it's cheap enough to always be correct."""
+    """Wipe every row in CI when the suite shares a real network database."""
     from sqlalchemy import delete
 
     from app.db import Base, engine
 
-    with engine.begin() as conn:
-        for table in reversed(Base.metadata.sorted_tables):
-            conn.execute(delete(table))
+    if engine.dialect.name != "sqlite" and os.environ.get("CI"):
+        with engine.begin() as conn:
+            for table in reversed(Base.metadata.sorted_tables):
+                conn.execute(delete(table))
+
+
+@pytest.fixture(scope="module")
+def restore_app_leadership():
+    """Give module-local electors exclusive use of the MSSQL leader lock."""
+    from app.leader import get_elector
+
+    app_elector = get_elector()
+    app_elector.release()
+    yield
+    app_elector.try_acquire()
+
+
+@pytest.fixture
+def make_elector():
+    """Create electors and release all of them after each test."""
+    from app.db import engine
+    from app.leader import LeaderElector
+
+    electors = []
+
+    def make():
+        elector = LeaderElector(engine)
+        electors.append(elector)
+        return elector
+
+    yield make
+
+    for elector in reversed(electors):
+        elector.release()
 
 
 @pytest.fixture(scope="session")
 def client():
     app = create_app(auto_tick=0)
-    # gate on the engine's real dialect, not os.environ — test modules mutate the
-    # env var at import time, but the engine's URL was frozen when app.settings loaded
-    from app.db import engine
-
-    if engine.dialect.name != "sqlite":
-        _truncate_all()
+    _truncate_all()
     with TestClient(app) as c:
         yield c
