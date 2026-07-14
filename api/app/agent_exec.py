@@ -1,12 +1,15 @@
-"""The one place an agent CLI is invoked (ADR 0011, 0021).
+"""The one place an agent CLI is invoked (ADR 0011, 0021, 0024).
 
 Everything agent-shaped goes through `run_agent` so tests can inject a fake
-executor and the rest of the app never touches subprocess. Two CLIs sit behind
+executor and the rest of the app never touches subprocess. Three CLIs sit behind
 the same call, switched per call with FACTORY_CLI:
 
-  codex  (default, for now) — `codex exec`; the no-edits contract is enforced
-         by codex's OS sandbox (read-only vs workspace-write). It has NO turn
-         cap, so the wall-clock timeout is its only autonomy bound (ADR 0021).
+  opencode — (default) `opencode run --format json`; the no-edits contract is
+         enforced by a factory-owned config (edit/bash denied) pointed at via
+         OPENCODE_CONFIG, never the operator's global agents. No turn cap, so the
+         wall-clock timeout is its only autonomy bound (ADR 0024).
+  codex  — `codex exec`; the no-edits contract is enforced by codex's OS sandbox
+         (read-only vs workspace-write). It too has NO turn cap.
   claude — `claude -p`; no-edits enforced by a tool disallow list, and
          --max-turns caps it on top of the timeout.
 """
@@ -26,6 +29,8 @@ CLAUDE_BIN = settings.CLAUDE_BIN
 CLAUDE_MODEL = settings.CLAUDE_MODEL
 CODEX_BIN = settings.CODEX_BIN
 CODEX_MODEL = settings.CODEX_MODEL
+OPENCODE_BIN = settings.OPENCODE_BIN
+OPENCODE_MODEL = settings.OPENCODE_MODEL
 
 log = logging.getLogger("factory.agent")
 
@@ -39,8 +44,8 @@ def runner_mode() -> str:
 
 
 def agent_cli() -> str:
-    """Which CLI drives the real brain/runner: codex (default, for now) or claude."""
-    return os.environ.get("FACTORY_CLI", "codex")
+    """Which CLI drives the real brain/runner: opencode (default), codex, or claude."""
+    return os.environ.get("FACTORY_CLI", "opencode")
 
 
 @dataclass
@@ -92,15 +97,52 @@ def _codex_cmd(prompt: str, *, allow_edits: bool, last_message: str,
     return cmd
 
 
-def _communicate(cmd: list[str], cwd: str | None, timeout: int):
+# Headless-autonomy directive — the opencode adapter's counterpart to claude's --safe-mode.
+# gpt-5.5 via opencode otherwise sometimes answers a stage prompt with a plan and
+# "reply OK to proceed", which is fatal in a single-shot `run`: no OK ever comes, the stage
+# produces nothing, and the gate escalates. Appended only on the opencode path; the shared
+# stage prompts stay CLI-neutral.
+_OPENCODE_HEADLESS = (
+    "\n\n---\nExecution mode: you are running FULLY HEADLESS in one non-interactive turn. "
+    "Do NOT ask for confirmation, do NOT reply with only a plan, do NOT wait for approval. "
+    "Perform every required file edit and shell command now, in this turn, then stop."
+)
+
+
+def _opencode_cmd(prompt: str, *, allow_edits: bool, cwd: str | None = None,
+                  images: list[str] = (), model: str | None = None) -> list[str]:
+    # opencode run streams NDJSON events on stdout; the final message is the text parts.
+    # No turn cap (like codex) — the stage timeout is the autonomy bound. The read-only vs
+    # write decision is NOT in argv: it rides OPENCODE_CONFIG (set by the runner) so it is a
+    # hard, operator-config-independent guarantee. --format json keeps the reply machine-clean.
+    cmd = [OPENCODE_BIN, "run", "--format", "json"]
+    if cwd:
+        # opencode resolves its project dir from --dir, NOT the subprocess cwd (a headless
+        # `run` can attach to a server whose dir differs). Without this the stage agent reads
+        # the wrong tree entirely — it must be pinned to the per-request workspace.
+        cmd += ["--dir", cwd]
+    # opencode ids are "provider/model"; a foreign id (a claude/codex model handed in by a
+    # brain step) has no "/", so fall back to the configured opencode default rather than
+    # feed opencode an id it cannot resolve.
+    m = model if (model and "/" in model) else OPENCODE_MODEL
+    if m:
+        cmd += ["--model", m]
+    for img in images:
+        cmd += ["--file", img]  # attach image(s) to the message (opencode's file-attach)
+    cmd.append(prompt + _OPENCODE_HEADLESS)  # the message rides last, never swallowed by a flag
+    return cmd
+
+
+def _communicate(cmd: list[str], cwd: str | None, timeout: int, env: dict | None = None):
     """Spawn → wait → kill-the-whole-tree on timeout. Returns (rc, out, err);
-    rc is None when the binary is missing, 124 on timeout."""
+    rc is None when the binary is missing, 124 on timeout. `env` (opencode's
+    OPENCODE_CONFIG) fully replaces the child env when given."""
     try:
         # own session so a timeout can kill the WHOLE tree — the CLI spawns its
         # own bash/pytest children, and killing only the parent leaves orphans
         # holding the pipes open (the timeout would not actually bound the stage)
         proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True)
+                                text=True, start_new_session=True, env=env)
     except FileNotFoundError:
         return None, "", ""
     try:
@@ -124,11 +166,15 @@ def run_agent(prompt: str, *, cwd: str | None = None, allow_edits: bool = False,
     images attach to codex via --image (ADR 0022); the claude path ignores them.
     `model` overrides the CLI's default model for this call (the prototype step runs a
     higher-taste model than the fast interview one); pass a model id matching the active CLI."""
-    if agent_cli() == "claude":
+    cli = agent_cli()
+    if cli == "claude":
         return _run_claude_cli(prompt, cwd=cwd, allow_edits=allow_edits,
                                timeout=timeout, max_turns=max_turns, model=model)
-    return _run_codex_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout,
-                          images=images, model=model)
+    if cli == "codex":
+        return _run_codex_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout,
+                              images=images, model=model)
+    return _run_opencode_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout,
+                             images=images, model=model)
 
 
 def _run_claude_cli(prompt: str, *, cwd: str | None, allow_edits: bool,
@@ -174,6 +220,44 @@ def _run_codex_cli(prompt: str, *, cwd: str | None, allow_edits: bool,
         return AgentResult(ok=True, text=last or out)
     finally:
         Path(last_path).unlink(missing_ok=True)
+
+
+def _parse_opencode_json(out: str) -> str:
+    """opencode --format json streams one JSON event per line; the agent's final message is
+    the concatenation of its text parts. Tolerant of non-JSON noise (banner lines, blanks)."""
+    parts: list[str] = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if ev.get("type") == "text":
+            text = (ev.get("part") or {}).get("text") or ""
+            if text:
+                parts.append(text)
+    return "".join(parts).strip()
+
+
+def _run_opencode_cli(prompt: str, *, cwd: str | None, allow_edits: bool,
+                      timeout: int, images: list[str] = (), model: str | None = None) -> AgentResult:
+    cmd = _opencode_cmd(prompt, allow_edits=allow_edits, cwd=cwd, images=images, model=model)
+    # OPENCODE_CONFIG is the read-only/write sandbox — a factory file, not the operator's
+    # global agents. Passing our own env means the guarantee cannot be weakened by config drift.
+    config = settings.OPENCODE_RW_CONFIG if allow_edits else settings.OPENCODE_RO_CONFIG
+    env = {**os.environ, "OPENCODE_CONFIG": str(config)}
+    rc, out, err = _communicate(cmd, cwd, timeout, env=env)
+    if rc is None:
+        return AgentResult(ok=False, text="", error="opencode CLI not found")
+    if rc == 124:
+        return AgentResult(ok=False, text="", error=f"stage exceeded its {timeout}s bound")
+    if rc != 0:
+        log.error("opencode exited rc=%s\nstderr: %s\nstdout: %s",
+                  rc, (err or "")[-800:], (out or "")[-800:])
+        return AgentResult(ok=False, text=out, error=(err or out)[-500:])
+    return AgentResult(ok=True, text=_parse_opencode_json(out) or out)
 
 
 def extract_json(text: str) -> dict | list | None:

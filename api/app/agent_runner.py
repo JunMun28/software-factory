@@ -1,7 +1,7 @@
-"""AgentRunner — Stages 2–5 executed for real by an agent CLI (ADR 0011, 0021).
+"""AgentRunner — Stages 2–5 executed for real by an agent CLI (ADR 0011, 0021, 0024).
 
 Enabled with FACTORY_RUNNER=agent. Which CLI actually runs is FACTORY_CLI's call
-(codex by default, claude optional) — the runner never names a vendor. Each
+(opencode by default; codex and claude optional) — the runner never names a vendor. Each
 approved Request gets a git workspace copied from `sample/`; the stage agents run
 headless inside it and the GATES ARE MACHINE-CHECKED, not taken on the agent's word:
 

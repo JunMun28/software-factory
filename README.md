@@ -8,7 +8,7 @@ domain language and [docs/adr/](docs/adr/) for the decisions.
 This repo is a monorepo (ADR 0017): one backend, **two Angular apps** (the Intake
 form + Control center) over a shared library, implemented from the hi-fi design and
 runnable fully offline — plus an opt-in **real agent runtime** (ADR 0011) driven by
-the Codex CLI (default, for now) or Claude Code:
+the opencode CLI (default), Codex, or Claude Code:
 
 - `api/` — FastAPI + SQLite engine: Request lifecycle, gates, the two-axis
   `progress_event` log (ADR 0008), scripted intake brain, and a factory simulator
@@ -21,16 +21,20 @@ the Codex CLI (default, for now) or Claude Code:
   human merge gate merges the work branch to main.
 
   The value `agent` means "the real LLM brain/runner" (vs `scripted`/`sim`).
-  Which CLI actually runs is chosen by `FACTORY_CLI`: **`codex`
-  (default, for now)** — needs a logged-in [Codex CLI](https://github.com/openai/codex);
-  no-edit stages run under its `read-only` OS sandbox — or `claude` (Claude Code).
+  Which CLI actually runs is chosen by `FACTORY_CLI`: **`opencode`
+  (default)** — needs a logged-in [opencode CLI](https://opencode.ai) with an authed
+  provider; no-edit stages run under a factory-owned deny config (ADR 0024) — or `codex`
+  ([Codex CLI](https://github.com/openai/codex), `read-only` OS sandbox) or `claude`
+  (Claude Code).
 
   ```bash
-  # real factory on the Codex CLI (default)
+  # real factory on the opencode CLI (default); FACTORY_OPENCODE_MODEL pins the model
   cd api && FACTORY_BRAIN=agent FACTORY_RUNNER=agent \
     uv run uvicorn app.main:app --port 8000
 
-  # same, on Claude Code instead
+  # same, on Codex or Claude Code instead
+  cd api && FACTORY_BRAIN=agent FACTORY_RUNNER=agent FACTORY_CLI=codex \
+    uv run uvicorn app.main:app --port 8000
   cd api && FACTORY_BRAIN=agent FACTORY_RUNNER=agent FACTORY_CLI=claude \
     FACTORY_CLAUDE_MODEL=haiku uv run uvicorn app.main:app --port 8000
   ```
