@@ -210,8 +210,9 @@ SCRIPTS: dict[str, list[Question]] = {
         ),
     ],
     "new": [
-        # headcount is no longer asked here — the Describe step's reach chip captures it
-        _q("Who will use this day-to-day, and for what?"),
+        # who + headcount already come from the basics (the reach chip) — don't re-ask them here;
+        # this question is about the functional job the app must do, in plain non-technical terms
+        _q("What are the main things people should be able to do in it?"),
         _q(
             "Last thing — what single outcome would make this a clear win?",
             sub="One sentence is plenty.",
