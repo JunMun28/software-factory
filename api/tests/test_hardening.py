@@ -41,7 +41,7 @@ def test_oversize_interview_answer_rejected(client):
 
 def test_empty_comment_rejected(client):
     r = _new_request(client)
-    resp = client.post(f"/api/requests/{r['id']}/comments", json={"body": ""})
+    resp = client.post(f"/api/requests/{r['id']}/comments", json={"body": "", "operator_id": 1})
     assert resp.status_code == 422
 
 
@@ -77,22 +77,22 @@ def test_respond_requires_sent_back(client):
 
 def test_send_back_requires_pending(client):
     r = _new_request(client)  # still draft
-    resp = client.post(f"/api/requests/{r['id']}/send-back", json={"note": "too early"})
+    resp = client.post(f"/api/requests/{r['id']}/send-back", json={"note": "too early", "operator_id": 1})
     assert resp.status_code == 409
 
 
 def test_cancel_clears_gate_and_leaves_inbox(client):
     d = _submitted(client)
     assert any(i["id"] == d["id"] for i in client.get("/api/inbox").json())
-    c = client.post(f"/api/requests/{d['id']}/cancel", json={"actor": "Kim P."}).json()
+    c = client.post(f"/api/requests/{d['id']}/cancel", json={"operator_id": 1}).json()
     assert c["status"] == "cancelled" and c["gate"] is None and c["needs_human"] is False
     assert not any(i["id"] == d["id"] for i in client.get("/api/inbox").json())
 
 
 def test_tick_ignores_cancelled_items(client):
     d = _submitted(client)
-    client.post(f"/api/requests/{d['id']}/approve", json={"actor": "Kim P."})
-    client.post(f"/api/requests/{d['id']}/cancel", json={"actor": "Kim P."})
+    client.post(f"/api/requests/{d['id']}/approve", json={"operator_id": 1})
+    client.post(f"/api/requests/{d['id']}/cancel", json={"operator_id": 1})
     before = len(client.get("/api/events", params={"request_id": d["id"]}).json())
     client.post("/api/simulator/tick")
     after = len(client.get("/api/events", params={"request_id": d["id"]}).json())
@@ -101,7 +101,7 @@ def test_tick_ignores_cancelled_items(client):
 
 def test_stage_clock_advances_with_stages(client):
     d = _submitted(client)
-    a = client.post(f"/api/requests/{d['id']}/approve", json={"actor": "Kim P."}).json()
+    a = client.post(f"/api/requests/{d['id']}/approve", json={"operator_id": 1}).json()
     clock_arch = a["stage_entered_at"]
     for _ in range(4):  # architecture is a 4-step plan → advance to build
         client.post("/api/simulator/tick")
@@ -120,7 +120,7 @@ def test_events_limit_respected(client):
 
 def test_unknown_request_404(client):
     assert client.get("/api/requests/999999").status_code == 404
-    assert client.post("/api/requests/999999/approve", json={}).status_code == 404
+    assert client.post("/api/requests/999999/approve", json={"operator_id": 1}).status_code == 404
 
 
 def test_workspace_for_rejects_malformed_ref():

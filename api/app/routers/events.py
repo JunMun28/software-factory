@@ -10,14 +10,16 @@ Routes:
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..api_helpers import get_request, to_out
 from ..db import get_db
 from ..events import emit
 from ..models import App, AuditEvent, Comment, ProgressEvent, Request
+from ..revision import current_revision
 from ..schemas import CommentIn, CommentOut, EventOut, FeedPage, RequestOut
+from .operators import resolve_operator
 
 router = APIRouter()
 
@@ -51,7 +53,10 @@ def joined_events(db: Session):
 def events_cursor(db: Session = Depends(get_db)):
     """Where 'now' is. New clients start polling from here instead of
     replaying the whole event log from id 0 (ADR 0013)."""
-    return {"cursor": db.query(func.max(ProgressEvent.id)).scalar() or 0}
+    return {
+        "cursor": db.scalar(select(func.max(ProgressEvent.id))) or 0,
+        "revision": current_revision(),
+    }
 
 
 @router.get("/api/events", response_model=list[EventOut])
@@ -111,14 +116,15 @@ def request_trace(rid: int, after: int = 0, limit: int = 200, db: Session = Depe
 @router.post("/api/requests/{rid}/comments", response_model=CommentOut, status_code=201)
 def add_comment(rid: int, body: CommentIn, db: Session = Depends(get_db)):
     r = get_request(db, rid)
-    c = Comment(request=r, author=body.author, initials=body.initials, color=body.color, body=body.body)
+    operator = resolve_operator(db, body.operator_id)
+    c = Comment(request=r, author=operator.name, initials=operator.initials, color=operator.hue, body=body.body)
     db.add(c)
-    db.add(AuditEvent(request_id=r.id, actor=body.author, action="commented"))
+    db.add(AuditEvent(request_id=r.id, actor=operator.name, action="commented"))
     db.flush()  # assign the comment id before the event references it
     # the comment also rides the one progress_event rail (ADR 0012) so feeds
     # update through the same keyset cursor as every other entry
-    emit(db, r, "comment", body.body[:300], actor=body.author, bot=False,
-         payload={"comment_id": c.id, "initials": body.initials, "color": body.color, "body": body.body})
+    emit(db, r, "comment", body.body[:300], actor=operator.name, bot=False,
+         payload={"comment_id": c.id, "initials": operator.initials, "color": operator.hue, "body": body.body})
     db.commit()
     return c
 

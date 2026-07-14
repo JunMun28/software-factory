@@ -460,6 +460,7 @@ describe('missionSummary — the Mission control aria-live summary', () => {
     gates: [],
     runs: [],
     stalled: [],
+    human_owned: [],
     recent: [],
     cursor: 0,
     ...over,
@@ -468,6 +469,7 @@ describe('missionSummary — the Mission control aria-live summary', () => {
   const runItem = () => ({
     request: req(),
     run: { label: 'x', step: 1, of: 4, health: 'healthy' as const, seconds_since_event: 1 },
+    steer: null,
   });
 
   it('says all clear when nothing needs the admin', () => {
@@ -501,6 +503,7 @@ describe('missionSubtitle — the Mission header counts', () => {
     gates: [],
     runs: [],
     stalled: [],
+    human_owned: [],
     recent: [],
     cursor: 0,
     ...over,
@@ -509,6 +512,7 @@ describe('missionSubtitle — the Mission header counts', () => {
   const runItem = () => ({
     request: req(),
     run: { label: 'x', step: 1, of: 4, health: 'healthy' as const, seconds_since_event: 1 },
+    steer: null,
   });
 
   it('keeps the existing wording when nothing is stalled', () => {

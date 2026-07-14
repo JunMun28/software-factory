@@ -2,8 +2,8 @@
 id: 007
 title: "Slice 1: new shell + read-only Floor"
 labels: [ready-for-agent, wayfinder:task]
-status: open
-assignee:
+status: closed
+assignee: claude+codex
 blocked-by: []
 user-stories: "1, 5-8, 15-16, 24-25, 32, 34-39"
 ---
@@ -31,3 +31,26 @@ Hard invariants: progress_event is append-only (ADR 0008); single uvicorn worker
 ## Blocked by
 
 None - can start immediately
+
+## Resolution (2026-07-12)
+
+Implemented by codex gpt-5.6-sol, reviewed and fixed by fable-5, committed on
+`console-redesign`. New shell (slim top bar, ⌘K palette with typed filter,
+G-chords F/L/S + legacy M/O/T/I/R aliases, C new-request, `?` opens palette)
+plus The Floor at `/`: greeting + needs-you count, stat chips (median cycle and
+wait-on-human show an honest em dash until the API provides them), spec/merge
+gate cards (evidence facts incl. assumptions, plain-language consequence,
+approve/send-back wired to existing endpoints), triage cards, lanes with
+step m/n + shape+word health, Recently, all-clear + empty-line states.
+Legacy /admin/* routes redirect (client-side; true 301 is a hosting concern).
+Library/Studio/Dossier are stubs for later slices.
+
+Review fixes on top of the codex pass: routerLink instead of raw hrefs,
+tests fact never renders failures green, palette regained type-to-filter,
+C works on the Floor, first J lands on the first row, assumptions fact added,
+mobile keeps primary nav, all-clear restyled to the mockup's tint+hairline.
+
+Verified live: approve and send-back returned 200 and moved cards off the
+Floor; redirects, J/K/A/Esc, G L, ⌘K filter all exercised in the browser;
+light+dark at 1440 and 390 screenshotted. 48 vitest green; console lint and
+build green.

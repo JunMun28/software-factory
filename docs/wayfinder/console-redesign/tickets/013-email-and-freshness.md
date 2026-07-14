@@ -2,8 +2,8 @@
 id: 013
 title: "Slice 7: email pings + freshness"
 labels: [ready-for-agent, wayfinder:task]
-status: open
-assignee:
+status: closed
+assignee: claude+codex
 blocked-by: [008]
 user-stories: "2-4, 30, 33"
 ---
@@ -29,3 +29,33 @@ Hard invariants: progress_event is append-only (ADR 0008); single uvicorn worker
 ## Blocked by
 
 [Slice 2](008-operator-identity.md)
+
+## Resolution (2026-07-13)
+
+Implemented by codex gpt-5.6-sol, reviewed and fixed by fable-5, committed on
+`console-redesign`. Per-operator subscriptions via an `OperatorAppMute` table
+(a row = muted; absence = subscribed, so default is all apps) with
+GET/PUT `/api/operators/{id}/subscriptions[/{app_id}]`. `notifications.py` sends
+one email per subscribed operator on gate-raised (spec + merge) and
+escalation/stall, each with a Dossier deep link; escalation is centralized in
+`lifecycle.escalate` so the real runner, simulator, and startup orphan-recovery
+all notify, while `finish_done`/healthy steps/cancel never do. SMTP via env with
+a safe log-only fallback (every send wrapped so email failure can't break a
+gate); `/api/health` reports `smtp: configured | log-only`. A process-local
+revision counter bumps on operator/registry/subscription changes (only when
+something actually changed) and rides `/api/events/cursor`; the poll forkJoins
+events+cursor each tick and bumps `version` on a revision change with zero new
+events, so a registry/preference edit converges to other browsers within one
+cycle. Studio gained per-app toggles + an honest SMTP-status line.
+
+Review fix on top of the codex pass:
+- The Dossier deep-link default was `http://localhost:4201` (the INTAKE app);
+  `/requests/:id` lives on the console. Changed the default to `:4202`. Tests
+  set CONSOLE_BASE_URL explicitly so they were unaffected.
+
+Verified live against the running API: health smtp=log-only; cursor returns
+`{cursor, revision}`; muting an app for an operator returns 200 and bumps the
+revision (idempotent PUT does not); recipient resolution for a northwind gate
+returns exactly the subscribed operator and excludes the muted one; Studio
+renders the toggle list (Northwind = Muted) + the log-only note. pytest 185,
+console 59, shared 86 green; console + intake build green; lint green.

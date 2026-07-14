@@ -1,5 +1,7 @@
 # The Factory map is a spatial pipeline lens with a deliberate "cockpit" visual exception
 
+> Superseded by ADR 0025.
+
 **Status:** accepted (complements ADR 0015; the map is an alternate lens, not the default landing)
 
 The Factory map (`/admin/map`) is a spatial overview of every live Work item laid

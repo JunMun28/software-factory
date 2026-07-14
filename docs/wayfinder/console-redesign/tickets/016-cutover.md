@@ -2,8 +2,8 @@
 id: 016
 title: "Slice 10: cutover — delete old console, ADR, verify, merge"
 labels: [ready-for-agent, wayfinder:task]
-status: open
-assignee:
+status: closed
+assignee: claude+codex
 blocked-by: [009, 011, 012, 013, 014, 015]
 user-stories: "38, 40"
 ---
@@ -29,3 +29,37 @@ Hard invariants: progress_event is append-only (ADR 0008); single uvicorn worker
 ## Blocked by
 
 [Slice 3](009-conflict-safe-actions.md), [Slice 5](011-honest-steering.md), [Slice 6](012-real-run-visibility.md), [Slice 7](013-email-and-freshness.md), [Slice 8](014-dossier.md), [Slice 9](015-library-and-studio.md)
+
+## Resolution (2026-07-13)
+
+Implemented by codex gpt-5.6-sol, reviewed + verified by fable-5, committed on
+`console-redesign` (NOT merged — awaiting the user's go-ahead). Deleted the old
+eight surfaces: the entire `apps/console/src/app/admin/` dir (mission, map,
+queue, inbox, feed, list, registry, settings, request-detail, admin-shell + its
+spec) and `core/map-view.ts` + spec (grep-confirmed orphaned). Removed ~1,628
+lines of dead admin/board/list/queue/feed/settings CSS from styles.css
+(2994 → 1366 lines), keeping all Micron Atlas tokens and the shared atoms the
+kit components use. Legacy `/admin/*` redirects preserved. Added ADR 0025
+(four-surface IA) with "Superseded by ADR 0025" notes atop ADR 0015 and 0016.
+
+Review fixes on top of the codex pass:
+- `task verify` initially failed on LINT (codex's sandbox can't run ruff/prettier
+  and I'd only run eslint per slice): ruff flagged an unused `emit` import in
+  startup.py (dead after slice-13 routed escalation through lifecycle.escalate)
+  + unsorted imports in two test files; prettier flagged 5 files (some from MY
+  manual review edits that never went through prettier). Auto-fixed both.
+
+Verification (all green, shown to the user before merge):
+- `task verify` → ✓ VERIFY PASSED: lint (ruff + eslint×3 + prettier) + pytest 185
+  + vitest (console 46, shared 86) + build×2 + smoke (full lifecycle: submit →
+  spec gate → approve → stages 2-5 → merge gate → deploy → event log).
+- Visual matrix (post-cutover): Floor, Dossier, Library, Studio each at 1440
+  light + dark + Floor 390 + Dossier 375 — all render cleanly (CSS deletion
+  broke nothing).
+- Keyboard: ⌘K palette, Escape, J focus, A approve-modal, G-chord hints all live.
+- Reduced-motion: global + per-component prefers-reduced-motion rules present.
+
+Known residual (non-blocking): styles.css still carries ~600 lines of dead
+SUBMITTER (intake) CSS (.sub*/.stepper/.typecard/.qpanel/…) that predates this
+redesign (monorepo-split legacy, not one of the eight surfaces). Harmless unused
+CSS; a separate cleanup, not removed at the merge gate to avoid last-minute risk.

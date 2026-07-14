@@ -13,7 +13,7 @@ def test_tick_emits_step_summary(client):
     hero = approved_request(client, title="Step summary probe")
     client.post("/api/simulator/tick")
     steps = _events(client, hero["id"], "step_summary")
-    assert steps, "first tick after approval must emit a step_summary"
+    assert len(steps) == 1, "one simulator tick must still emit exactly one step_summary"
     p = steps[0]["payload"]
     assert p["step"] == 1 and p["of"] == 4
     assert p["label"] == "reading SPEC.md"
@@ -136,18 +136,37 @@ def test_steer_appends_and_is_acked_next_step(client):
     client.post("/api/simulator/tick")  # step 1 done, run clearly in flight
 
     resp = client.post(f"/api/requests/{hero['id']}/steer",
-                       json={"note": "Prefer the existing CSV parser", "actor": "Kim P."})
+                       json={"note": "Prefer the existing CSV parser", "operator_id": 1})
     assert resp.status_code == 201
     note_id = resp.json()["id"]
 
     notes = _events(client, hero["id"], "steer_note")
-    assert len(notes) == 1 and notes[0]["actor"] == "Kim P." and notes[0]["bot"] is False
+    assert len(notes) == 1 and notes[0]["actor"] == "Kim Park" and notes[0]["bot"] is False
 
     client.post("/api/simulator/tick")  # the very next step must acknowledge
     steps = _events(client, hero["id"], "step_summary")
     last = steps[-1]["payload"]
     assert note_id in last["acked_steer_ids"]
     assert "honoring note" in last["why"]
+
+    from app.db import SessionLocal
+    from app.models import Request
+    from app.supervision import pending_steer_notes
+
+    with SessionLocal() as db:
+        req = db.get(Request, hero["id"])
+        assert pending_steer_notes(db, req) == []
+
+    run = next(
+        item for item in client.get("/api/mission").json()["runs"]
+        if item["request"]["id"] == hero["id"]
+    )
+    assert run["steer"] == {
+        "state": "heard",
+        "note": "Prefer the existing CSV parser",
+        "at_step": last["step"],
+        "acked_at": steps[-1]["created_at"],
+    }
 
     client.post("/api/simulator/tick")  # acked notes are not re-acked
     steps = _events(client, hero["id"], "step_summary")
@@ -156,13 +175,13 @@ def test_steer_appends_and_is_acked_next_step(client):
 
 def test_steer_409_when_not_in_flight(client):
     gated = submitted_request(client, title="Steer gate probe")  # spec gate
-    resp = client.post(f"/api/requests/{gated['id']}/steer", json={"note": "x"})
+    resp = client.post(f"/api/requests/{gated['id']}/steer", json={"note": "x", "operator_id": 1})
     assert resp.status_code == 409
 
     hero = approved_request(client, title="Steer merge-gate probe")
     for _ in range(16):
         client.post("/api/simulator/tick")  # park it at the merge gate
-    resp = client.post(f"/api/requests/{hero['id']}/steer", json={"note": "x"})
+    resp = client.post(f"/api/requests/{hero['id']}/steer", json={"note": "x", "operator_id": 1})
     assert resp.status_code == 409, "at a gate = waiting on a human, not steerable"
 
 
@@ -207,7 +226,7 @@ def test_mission_aggregate(client):
     client.post("/api/simulator/tick")
 
     m = client.get("/api/mission").json()
-    assert set(m) == {"gates", "runs", "stalled", "recent", "cursor"}
+    assert set(m) == {"gates", "runs", "stalled", "human_owned", "recent", "cursor"}
     assert m["cursor"] > 0
 
     gate = next(g for g in m["gates"] if g["request"]["id"] == gated["id"])
@@ -218,10 +237,10 @@ def test_mission_aggregate(client):
     assert run["run"]["step"] >= 1 and run["run"]["health"] in ("healthy", "slow")
 
     assert all(s["needs_human"] for s in m["stalled"])
+    assert all(h["request"]["status"] == "human_owned" for h in m["human_owned"])
     assert all(g["request"]["needs_human"] is False for g in m["gates"])
-    open_ids = {g["request"]["id"] for g in m["gates"]} | {r["request"]["id"] for r in m["runs"]}
-    recent_ids = {r["id"] for r in m["recent"]}
-    assert not (open_ids & recent_ids), "an item appears in exactly one band"
+    recent_ids = {r["request"]["id"] for r in m["recent"]}
+    assert running["id"] in recent_ids, "Recently is an outcome history, independent of live bands"
     stalled_ids = {s["id"] for s in m["stalled"]}
     assert not (stalled_ids & recent_ids), "stalled and recent are exclusive too"
 
@@ -261,7 +280,7 @@ def test_send_back_clears_escalation(client):
         db.commit()
 
     d = client.post(f"/api/requests/{gated['id']}/send-back",
-                    json={"note": "Which CSV source?", "actor": "Kim P."}).json()
+                    json={"note": "Which CSV source?", "operator_id": 1}).json()
     assert d["needs_human"] is False and d["needs_human_reason"] is None
 
 
@@ -286,7 +305,7 @@ def test_steer_unconsumed_when_run_reaches_gate(client):
     hero = approved_request(client, title="Steer race probe")
     for _ in range(13):
         client.post("/api/simulator/tick")
-    resp = client.post(f"/api/requests/{hero['id']}/steer", json={"note": "too late"})
+    resp = client.post(f"/api/requests/{hero['id']}/steer", json={"note": "too late", "operator_id": 1})
     assert resp.status_code == 201
     note_id = resp.json()["id"]
 

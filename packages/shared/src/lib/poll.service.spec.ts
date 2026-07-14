@@ -16,7 +16,7 @@ describe('Poll', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     api = {
-      eventsCursor: vi.fn(() => of({ cursor: 100 })),
+      eventsCursor: vi.fn(() => of({ cursor: 100, revision: 7 })),
       events: vi.fn(() => of([])),
     };
     TestBed.configureTestingModule({
@@ -85,6 +85,21 @@ describe('Poll', () => {
     expect(poll.version()).toBe(versionAfterSeed);
     // lastSync advances after the empty-response tick
     expect(poll.lastSync()).toBeGreaterThanOrEqual(syncMid);
+  });
+
+  it('bumps version when revision changes with zero new events', () => {
+    api.eventsCursor
+      .mockReturnValueOnce(of({ cursor: 100, revision: 7 }))
+      .mockReturnValueOnce(of({ cursor: 100, revision: 8 }));
+    poll.start(1000);
+    const versionAfterSeed = poll.version();
+
+    vi.advanceTimersByTime(1000);
+
+    expect(api.events).toHaveBeenCalledWith({ after: 100 });
+    expect(api.eventsCursor).toHaveBeenCalledTimes(2);
+    expect(poll.delta()).toEqual([]);
+    expect(poll.version()).toBe(versionAfterSeed + 1);
   });
 
   it('start() is idempotent — second call is a no-op', () => {

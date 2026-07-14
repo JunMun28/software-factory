@@ -97,6 +97,70 @@ def test_full_pipeline_to_merge(client, ws_root):
     assert "merge (approved by Kim P.)" in log
 
 
+def test_real_runner_injects_and_acks_pending_steer_at_stage_boundary(client, ws_root):
+    d = _approved_request(client, "Steered real runner")
+    steer_text = "Keep the export compatible with the legacy payroll importer"
+    steer = client.post(
+        f"/api/requests/{d['id']}/steer",
+        json={"note": steer_text, "operator_id": 1},
+    )
+    assert steer.status_code == 201
+    note_id = steer.json()["id"]
+    prompts: list[str] = []
+
+    def recording_executor(prompt: str, **kwargs) -> AgentResult:
+        prompts.append(prompt)
+        return honest_executor(prompt, **kwargs)
+
+    AgentRunner(executor=recording_executor).run_pipeline(d["id"])
+
+    assert steer_text in prompts[0]
+    steps = [
+        event for event in client.get("/api/events", params={"request_id": d["id"]}).json()
+        if event["kind"] == "step_summary"
+    ]
+    assert steps[0]["payload"]["acked_steer_ids"] == [note_id]
+    assert steps[0]["payload"]["step"] == 1
+
+
+def test_real_runner_emits_fresh_stage_signal_before_executor_completes(client, ws_root):
+    from app.supervision import run_state
+
+    d = _approved_request(client, "Visible real runner")
+    steer = client.post(
+        f"/api/requests/{d['id']}/steer",
+        json={"note": "Keep the public export name stable", "operator_id": 1},
+    )
+    assert steer.status_code == 201
+    note_id = steer.json()["id"]
+    observed: dict[str, object] = {}
+
+    def observing_executor(prompt: str, **kwargs) -> AgentResult:
+        # This callback is the long-running stage boundary: anything observed
+        # here was persisted before, and independently of, executor completion.
+        steps = [
+            event
+            for event in client.get("/api/events", params={"request_id": d["id"]}).json()
+            if event["kind"] == "step_summary" and event["stage"] == "architecture"
+        ]
+        observed["steps"] = steps
+        with SessionLocal() as db:
+            observed["run"] = run_state(db, db.get(Request, d["id"]))
+        return AgentResult(ok=False, text="", error="stop after observing stage start")
+
+    AgentRunner(executor=observing_executor).run_pipeline(d["id"])
+
+    steps = observed["steps"]
+    assert isinstance(steps, list) and len(steps) == 1
+    assert steps[0]["payload"]["step"] == 1
+    assert steps[0]["payload"]["of"] == 1
+    assert steps[0]["payload"]["acked_steer_ids"] == [note_id]
+    run = observed["run"]
+    assert isinstance(run, dict)
+    assert run["step"] > 0 and run["of"] == 1
+    assert run["health"] != "no_signal"
+
+
 def test_isolation_gate_catches_cheating_implementer(client, ws_root):
     d = _approved_request(client, "Cheater detection")
     AgentRunner(executor=cheating_executor).run_pipeline(d["id"])
@@ -172,7 +236,7 @@ def test_retry_resumes_at_build_with_clean_workspace(client, ws_root):
     assert out["stage"] == "build"
 
     # Retry clears the flag; the re-run resumes at build, not architecture
-    client.post(f"/api/requests/{d['id']}/retry", json={"note": "fixed the agent"})
+    client.post(f"/api/requests/{d['id']}/retry", json={"note": "fixed the agent", "operator_id": 1})
     AgentRunner(executor=honest_executor).run_pipeline(d["id"])
 
     out = client.get(f"/api/requests/{d['id']}").json()

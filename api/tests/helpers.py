@@ -28,6 +28,6 @@ def submitted_request(client, **over):
 def approved_request(client, **over):
     """Spec approved: status=approved, stage=architecture."""
     r = submitted_request(client, **over)
-    d = client.post(f"/api/requests/{r['id']}/approve", json={"actor": "Kim P."}).json()
+    d = client.post(f"/api/requests/{r['id']}/approve", json={"operator_id": 1}).json()
     assert d["status"] == "approved", d
     return d

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import App, Request
+from ..revision import bump_revision
 from ..schemas import AppIn, AppOut
 
 router = APIRouter()
@@ -42,6 +43,7 @@ def create_app_entry(body: AppIn, db: Session = Depends(get_db)):
     a = App(key=key, name=body.name, owner=body.owner, repo=body.repo, provisioning=body.provisioning, muted=body.muted)
     db.add(a)
     db.commit()
+    bump_revision()
     return AppOut.model_validate(a, from_attributes=True)
 
 
@@ -50,6 +52,10 @@ def update_app(app_id: int, body: AppIn, db: Session = Depends(get_db)):
     a = db.get(App, app_id)
     if not a:
         raise HTTPException(404, "App not found")
-    a.name, a.owner, a.repo, a.provisioning, a.muted = body.name, body.owner, body.repo, body.provisioning, body.muted
-    db.commit()
+    values = (body.name, body.owner, body.repo, body.provisioning, body.muted)
+    changed = values != (a.name, a.owner, a.repo, a.provisioning, a.muted)
+    if changed:
+        a.name, a.owner, a.repo, a.provisioning, a.muted = values
+        db.commit()
+        bump_revision()
     return AppOut.model_validate(a, from_attributes=True)

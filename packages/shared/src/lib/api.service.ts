@@ -4,12 +4,14 @@ import { Observable } from 'rxjs';
 
 import {
   AppEntry,
+  AppSubscription,
   Attachment,
   ClassifyResult,
   CommentItem,
   FactoryRequest,
   InterviewState,
   MissionOut,
+  Operator,
   ProgressEvent,
   PrototypeAnnotation,
   PrototypeState,
@@ -25,7 +27,13 @@ export class Api {
   private http = inject(HttpClient);
 
   health() {
-    return this.http.get<{ status: string; brain: string; runner: string }>(`${BASE}/health`);
+    return this.http.get<{
+      status: string;
+      brain: string;
+      runner: 'agent' | 'sim';
+      cli: 'codex' | 'claude';
+      smtp: 'configured' | 'log-only';
+    }>(`${BASE}/health`);
   }
   apps(): Observable<AppEntry[]> {
     return this.http.get<AppEntry[]>(`${BASE}/apps`);
@@ -35,6 +43,21 @@ export class Api {
   }
   updateApp(id: number, body: Partial<AppEntry>) {
     return this.http.patch<AppEntry>(`${BASE}/apps/${id}`, body);
+  }
+  operators(): Observable<Operator[]> {
+    return this.http.get<Operator[]>(`${BASE}/operators`);
+  }
+  createOperator(body: Pick<Operator, 'name' | 'initials' | 'hue' | 'email'>) {
+    return this.http.post<Operator>(`${BASE}/operators`, body);
+  }
+  operatorSubscriptions(operatorId: number) {
+    return this.http.get<AppSubscription[]>(`${BASE}/operators/${operatorId}/subscriptions`);
+  }
+  updateOperatorSubscription(operatorId: number, appId: number, subscribed: boolean) {
+    return this.http.put<AppSubscription>(
+      `${BASE}/operators/${operatorId}/subscriptions/${appId}`,
+      { subscribed },
+    );
   }
 
   requests(opts: { mine?: string; active?: boolean } = {}): Observable<FactoryRequest[]> {
@@ -127,26 +150,60 @@ export class Api {
   submit(id: number, note = '') {
     return this.http.post<RequestDetail>(`${BASE}/requests/${id}/submit`, { note });
   }
-  approve(id: number, actor: string) {
-    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/approve`, { actor });
+  approve(id: number, actorOrOperatorId: string | number, operatorId?: number) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/approve`, {
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
   }
-  sendBack(id: number, note: string, actor: string) {
-    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/send-back`, { note, actor });
+  sendBack(id: number, note: string, actorOrOperatorId: string | number, operatorId?: number) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/send-back`, {
+      note,
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
   }
   respond(id: number, note: string, actor: string) {
     return this.http.post<RequestDetail>(`${BASE}/requests/${id}/respond`, { note, actor });
   }
-  cancel(id: number, actor: string) {
-    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/cancel`, { actor });
+  cancel(id: number, actorOrOperatorId: string | number, operatorId?: number) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/cancel`, {
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
   }
-  retry(id: number, actor: string, note = '') {
-    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/retry`, { note, actor });
+  retry(id: number, actorOrOperatorId: string | number, note = '', operatorId?: number) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/retry`, {
+      note,
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
   }
-  comment(id: number, body: string, author: string, initials: string) {
+  takeOver(id: number, actorOrOperatorId: string | number, note = '', operatorId?: number) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/take-over`, {
+      note,
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
+  }
+  sendBackToStage(
+    id: number,
+    stage: 'architecture' | 'build' | 'review',
+    reason: string,
+    actorOrOperatorId: string | number,
+    operatorId?: number,
+  ) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/send-back-to-stage`, {
+      stage,
+      reason,
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
+    });
+  }
+  comment(
+    id: number,
+    body: string,
+    authorOrOperatorId: string | number,
+    _initials?: string,
+    operatorId?: number,
+  ) {
     return this.http.post<CommentItem>(`${BASE}/requests/${id}/comments`, {
       body,
-      author,
-      initials,
+      operator_id: typeof authorOrOperatorId === 'number' ? authorOrOperatorId : operatorId,
     });
   }
   comments(id: number) {
@@ -155,7 +212,7 @@ export class Api {
 
   /** Where "now" is — new clients start polling from here, never replaying history. */
   eventsCursor() {
-    return this.http.get<{ cursor: number }>(`${BASE}/events/cursor`);
+    return this.http.get<{ cursor: number; revision: number }>(`${BASE}/events/cursor`);
   }
 
   events(
@@ -179,10 +236,10 @@ export class Api {
   mission() {
     return this.http.get<MissionOut>(`${BASE}/mission`);
   }
-  steer(id: number, note: string, actor: string) {
+  steer(id: number, note: string, actorOrOperatorId: string | number, operatorId?: number) {
     return this.http.post<{ id: number; status: string }>(`${BASE}/requests/${id}/steer`, {
       note,
-      actor,
+      operator_id: typeof actorOrOperatorId === 'number' ? actorOrOperatorId : operatorId,
     });
   }
   trace(id: number, after = 0, limit = 200) {

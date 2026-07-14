@@ -19,6 +19,22 @@ export interface User {
   role: 'submitter' | 'admin';
 }
 
+export interface Operator {
+  id: number;
+  name: string;
+  initials: string;
+  hue: string;
+  email: string;
+  created_at: string;
+}
+
+export interface AppSubscription {
+  app_id: number;
+  key: string;
+  name: string;
+  subscribed: boolean;
+}
+
 export interface Turn {
   order: number;
   question: string;
@@ -75,6 +91,7 @@ export interface FactoryRequest {
     | 'submitted'
     | 'pending_approval'
     | 'approved'
+    | 'human_owned'
     | 'sent_back'
     | 'cancelled'
     | 'done';
@@ -246,6 +263,20 @@ export interface MissionGate {
 export interface MissionRun {
   request: FactoryRequest;
   run: RunState;
+  steer: SteerState | null;
+}
+
+export interface SteerState {
+  state: 'queued' | 'heard';
+  note: string;
+  at_step: number | null;
+  acked_at: string | null;
+}
+
+export interface MissionHumanOwned {
+  request: FactoryRequest;
+  taken_over_by: string;
+  taken_over_at: string;
 }
 
 /** One poll for the Mission control home (spec §6). */
@@ -253,6 +284,14 @@ export interface MissionOut {
   gates: MissionGate[];
   runs: MissionRun[];
   stalled: FactoryRequest[];
-  recent: FactoryRequest[];
+  human_owned: MissionHumanOwned[];
+  recent: MissionRecent[];
   cursor: number;
+}
+
+export interface MissionRecent {
+  request: FactoryRequest;
+  outcome: string;
+  decided_by: string;
+  decided_at: string;
 }

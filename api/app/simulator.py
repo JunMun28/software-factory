@@ -7,12 +7,17 @@ the real agents would post as PR comments (ADR 0004, ADR 0014).
 The Review→Done boundary is a human gate (approve_merge) — the simulator
 emits its verification report, raises the gate, and waits for an Admin.
 """
+import logging
+
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import lifecycle, verification
 from .events import emit
 from .models import PIPELINE_STAGES, STEP_PLANS, Request, utcnow
 from .supervision import pending_steer_notes
+
+log = logging.getLogger("factory.simulator")
 
 # Legacy milestone summaries (feed content) — unchanged text, now fired at a
 # fixed checkpoint: MILESTONE_AFTER[stage][sim_step reached] = script index.
@@ -46,52 +51,70 @@ def emit_verification(db: Session, req: Request) -> None:
     verification.emit_verification(db, req)
 
 
+def _tick_request(db: Session, req: Request, moved: list[str]) -> None:
+    plan = STEP_PLANS[req.stage]
+    step = req.sim_step
+    if req.stage == "review" and step >= len(plan):
+        # verification report, then raise the merge gate once, then wait for a human
+        if req.gate != "approve_merge":
+            emit_verification(db, req)
+            lifecycle.raise_merge_gate(db, req)
+            moved.append(f"{req.ref}: merge gate raised")
+        return
+    if step < len(plan):
+        label, why = plan[step]
+        payload = {"step": step + 1, "of": len(plan), "label": label,
+                   "why": why, "Ref": req.ref}
+        notes = pending_steer_notes(db, req)
+        if notes:
+            payload["acked_steer_ids"] = [n.id for n in notes]
+            payload["why"] = f"{why} — honoring note: {notes[-1].body[:80]}"
+        emit(db, req, "step_summary", f"{label} ({step + 1}/{len(plan)})",
+             payload=payload)
+        req.sim_step += 1
+        moved.append(f"{req.ref}: {req.stage} · {label}")
+        mi = MILESTONE_AFTER[req.stage].get(req.sim_step)
+        if mi is not None:
+            title, fields = STAGE_SCRIPTS[req.stage][mi]
+            emit(db, req, "milestone_summary", title,
+                 payload={"fields": fields, "Ref": req.ref})
+    if req.sim_step >= len(plan) and req.stage != "review":
+        nxt = {"architecture": "build", "build": "review"}[req.stage]
+        req.stage = nxt
+        req.sim_step = 0
+        req.stage_entered_at = utcnow()
+        emit(db, req, "milestone_summary", f"Stage advanced — now in {nxt.capitalize()}",
+             payload={"Stage": nxt.capitalize(), "Ref": req.ref})
+        moved.append(f"{req.ref}: advanced to {nxt}")
+
+
+def _escalate(db: Session, req: Request, reason: str) -> None:
+    db.rollback()
+    db.refresh(req)
+    if req.status in ("cancelled", "done"):
+        return
+    lifecycle.escalate(db, req, reason)
+
+
 def tick(db: Session) -> list[str]:
-    """Advance every in-flight Work item one step. Returns human-readable log lines."""
+    """Advance each in-flight item; one broken simulation stalls only that item."""
     moved: list[str] = []
-    items = (
-        db.query(Request)
-        .filter(Request.status == "approved", Request.needs_human.is_(False))
-        .filter(Request.stage.in_(PIPELINE_STAGES))
+    items = db.scalars(
+        select(Request)
+        .where(Request.status == "approved", Request.needs_human.is_(False))
+        .where(Request.stage.in_(PIPELINE_STAGES))
         .order_by(Request.id)
-        .all()
-    )
+    ).all()
     for req in items:
-        plan = STEP_PLANS[req.stage]
-        step = req.sim_step
-        if req.stage == "review" and step >= len(plan):
-            # verification report, then raise the merge gate once, then wait for a human
-            if req.gate != "approve_merge":
-                emit_verification(db, req)
-                lifecycle.raise_merge_gate(db, req)
-                moved.append(f"{req.ref}: merge gate raised")
-            continue
-        if step < len(plan):
-            label, why = plan[step]
-            payload = {"step": step + 1, "of": len(plan), "label": label,
-                       "why": why, "Ref": req.ref}
-            notes = pending_steer_notes(db, req)
-            if notes:
-                payload["acked_steer_ids"] = [n.id for n in notes]
-                payload["why"] = f"{why} — honoring note: {notes[-1].body[:80]}"
-            emit(db, req, "step_summary", f"{label} ({step + 1}/{len(plan)})",
-                 payload=payload)
-            req.sim_step += 1
-            moved.append(f"{req.ref}: {req.stage} · {label}")
-            mi = MILESTONE_AFTER[req.stage].get(req.sim_step)
-            if mi is not None:
-                title, fields = STAGE_SCRIPTS[req.stage][mi]
-                emit(db, req, "milestone_summary", title,
-                     payload={"fields": fields, "Ref": req.ref})
-        if req.sim_step >= len(plan) and req.stage != "review":
-            nxt = {"architecture": "build", "build": "review"}[req.stage]
-            req.stage = nxt
-            req.sim_step = 0
-            req.stage_entered_at = utcnow()
-            emit(db, req, "milestone_summary", f"Stage advanced — now in {nxt.capitalize()}",
-                 payload={"Stage": nxt.capitalize(), "Ref": req.ref})
-            moved.append(f"{req.ref}: advanced to {nxt}")
-    db.commit()
+        item_moved: list[str] = []
+        try:
+            _tick_request(db, req, item_moved)
+            db.commit()
+            moved.extend(item_moved)
+        except Exception as exc:
+            log.exception("simulator stalled for %s", req.ref)
+            _escalate(db, req, f"Simulator stalled: {exc}")
+            moved.append(f"{req.ref}: escalated — simulator stalled")
     return moved
 
 
