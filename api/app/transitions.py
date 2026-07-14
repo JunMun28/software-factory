@@ -419,8 +419,13 @@ def apply(
 
     Wins are UNCOMMITTED — the caller commits, then calls ``Win.notify()``.
     Losses have already rolled back (including any pending session state).
+    Staged sibling writes on any row are safe across ``apply()``: they are
+    flushed before the CAS and survive a Win, while a Loss rolls them back.
+    Callers must not stage a write to a precondition column of the transition
+    they are about to apply.
     ``req`` must belong to ``db``; it is refreshed on both outcomes.
     """
+    db.flush()
     row = TABLE[transition]
     params = params or {}
     clauses = _where(req.id, row.pre, params)

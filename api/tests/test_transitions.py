@@ -254,6 +254,20 @@ def test_loss_rolls_back_callers_staged_session_writes():
         assert req.title == original_title
 
 
+def test_win_preserves_callers_staged_request_write():
+    migrate()
+    with SessionLocal() as db:
+        req = _request(db, status=PENDING_APPROVAL)
+        rid = req.id
+        req.spec_open_note = "Staged before the transition"
+
+        assert isinstance(apply(db, req, "raise_spec_gate", actor=RILEY), Win)
+        db.commit()
+
+    with SessionLocal() as db2:
+        assert db2.get(Request, rid).spec_open_note == "Staged before the transition"
+
+
 def test_resolve_loss_replays_for_same_non_none_operator_id():
     migrate()
     with SessionLocal() as db:
@@ -276,6 +290,27 @@ def test_resolve_loss_replays_for_same_non_none_operator_id():
         assert isinstance(res, Loss)
         assert res.replay is True
         assert res.winner is not None and res.winner.operator_id == operator.id
+
+
+def test_resolve_loss_conflicts_for_different_non_none_operator_id():
+    migrate()
+    with SessionLocal() as db:
+        winner = Operator(name="Winner", initials="WI", hue="#123456",
+                          email=f"winner-{uuid.uuid4().hex[:8]}@example.com")
+        replayer = Operator(name="Replayer", initials="RE", hue="#654321",
+                            email=f"replayer-{uuid.uuid4().hex[:8]}@example.com")
+        db.add_all([winner, replayer])
+        db.commit()
+        req = _request(db, status=PENDING_APPROVAL)
+        assert isinstance(apply(db, req, "cancel", actor=Actor(
+            name=winner.name, operator_id=winner.id)), Win)
+        db.commit()
+
+        res = transitions.resolve_loss(db, req, "cancel", Actor(
+            name=replayer.name, operator_id=replayer.id))
+
+        assert isinstance(res, Loss)
+        assert res.replay is False
 
 
 def test_race_pair_cancel_vs_approve_both_orders():
