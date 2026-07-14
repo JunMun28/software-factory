@@ -29,12 +29,14 @@ from typing import Callable
 
 from sqlalchemy.orm import Session
 
-from . import lifecycle, settings
+from . import settings, transitions
 from .agent_exec import AgentResult, run_agent
 from .db import SessionLocal
 from .events import emit
-from .models import Request, utcnow
+from .leader import get_elector
+from .models import Request
 from .supervision import pending_steer_notes
+from .transitions import FACTORY
 from .verification import build_payload, emit_verification
 from .ws_exec import _git, _pytest
 
@@ -170,17 +172,24 @@ class AgentRunner:
                     return
             log.info("pipeline %s waiting at the merge gate", req.ref)
 
-    def _advance(self, db: Session, req: Request, stage: str) -> None:
-        req.stage = stage
-        req.stage_entered_at = utcnow()
+    def _advance(self, db: Session, req: Request, stage: str) -> bool:
+        """Machine transition: epoch-fenced so a deposed leader's thread stops here."""
+        res = transitions.apply(db, req, "advance_stage", actor=FACTORY,
+                                params={"stage": stage}, epoch=get_elector().epoch)
+        if isinstance(res, transitions.Loss):
+            log.info("%s: advance to %s lost (%s) — pipeline stops", req.ref, stage, res.detail)
+            return False
         db.commit()
+        return True
 
     def _escalate(self, db: Session, req: Request, reason: str) -> None:
-        db.refresh(req)
-        if req.status in ("cancelled", "done"):  # a Cancel raced us — it wins, nothing to flag
+        res = transitions.apply(db, req, "escalate", actor=FACTORY,
+                                params={"reason": reason}, epoch=get_elector().epoch)
+        if isinstance(res, transitions.Loss):  # a Cancel raced us — it wins, nothing to flag
             log.info("escalation for %s dropped — request is %s", req.ref, req.status)
             return
-        lifecycle.escalate(db, req, reason)
+        db.commit()
+        res.notify()
         log.error("escalated %s: %s", req.ref, reason)
 
     def _commit_ws(self, ws: Path, message: str) -> None:
@@ -225,7 +234,8 @@ class AgentRunner:
 
     # ---------- stages ----------
     def _architecture(self, db: Session, req: Request, ws: Path) -> bool:
-        self._advance(db, req, "architecture")
+        if not self._advance(db, req, "architecture"):
+            return False
         prompt, steer_ids = self._stage_prompt(
             db, req,
             "You are the architect stage of a software factory. Read SPEC.md and the code under src/. "
@@ -251,7 +261,8 @@ class AgentRunner:
         return True
 
     def _red(self, db: Session, req: Request, ws: Path) -> bool:
-        self._advance(db, req, "build")
+        if not self._advance(db, req, "build"):
+            return False
         prompt, steer_ids = self._stage_prompt(
             db, req,
             "You are the test-author stage. Read SPEC.md and PLAN.md. Write failing pytest tests under "
@@ -326,7 +337,8 @@ class AgentRunner:
         return True
 
     def _review(self, db: Session, req: Request, ws: Path) -> bool:
-        self._advance(db, req, "review")
+        if not self._advance(db, req, "review"):
+            return False
         diff = _git(ws, "diff", "main...HEAD", "--stat").stdout[-1500:]
         prompt, steer_ids = self._stage_prompt(
             db, req,
@@ -365,8 +377,13 @@ class AgentRunner:
         # emit through the single source of truth, passing the payload the guard
         # above already vetted so the guard and the event never diverge
         emit_verification(db, req, ws, payload=vpayload)
-        lifecycle.raise_merge_gate(db, req)
+        res = transitions.apply(db, req, "raise_merge_gate", actor=FACTORY,
+                                epoch=get_elector().epoch)
+        if isinstance(res, transitions.Loss):
+            log.info("%s: merge gate raise lost (%s)", req.ref, res.detail)
+            return False
         db.commit()
+        res.notify()
         log.info("%s: review committed, verification emitted, merge gate raised", req.ref)
         return True
 
@@ -386,9 +403,12 @@ class AgentRunner:
             _git(ws, "checkout", "-q", f"work/{req.ref.lower()}")
             self._escalate(db, req, f"Merge failed: {(merge.stderr or merge.stdout).strip()[:200] or 'git merge error'}")
             return
-        lifecycle.finish_done(db, req, actor,
-                              merge_note="work branch merged to main",
-                              deploy_title="Deployed — main updated in the Subject workspace",
-                              payload_extra={"merged": True, "workspace": str(ws)})
+        res = transitions.apply(db, req, "finish_done", actor=transitions.Actor(name=actor),
+                                params={"merge_note": "work branch merged to main",
+                                        "deploy_title": "Deployed — main updated in the Subject workspace",
+                                        "payload_extra": {"merged": True, "workspace": str(ws)}})
+        if isinstance(res, transitions.Loss):  # closed between claim and merge — endpoint records the failure
+            log.info("%s: finish_done lost (%s)", req.ref, res.detail)
+            return
         db.commit()
         log.info("%s merged to main by %s", req.ref, actor)
