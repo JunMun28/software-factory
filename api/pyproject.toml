@@ -3,6 +3,7 @@ name = "software-factory-api"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.18.5",
     "anthropic>=0.116.0",
     "fastapi>=0.136.3",
     # pytest is a RUNTIME dependency: the claude runner shells out to it for
