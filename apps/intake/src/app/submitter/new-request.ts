@@ -30,6 +30,7 @@ import { SubShell } from './sub-shell';
     <sub-shell active="new">
       <div class="sub-col pop-in" style="max-width:820px">
         <section class="hero-screen">
+          <div class="hero-fx" aria-hidden="true"></div>
           <h1 class="hero__t">What should we build?</h1>
           <p class="hero__s">Put your idea into words. We’ll help turn it into a clear plan.</p>
           <div class="glow" [class.glow--over]="dragOver()">
@@ -137,6 +138,8 @@ import { SubShell } from './sub-shell';
       border: 0;
     }
     .hero-screen {
+      position: relative;
+      isolation: isolate;
       min-height: calc(100dvh - 160px);
       display: flex;
       flex-direction: column;
@@ -144,6 +147,33 @@ import { SubShell } from './sub-shell';
       align-items: center;
       text-align: center;
       padding: 8px 0 26px;
+    }
+    /* Ambient depth behind the composer: a faint dot-grid texture with a soft
+       accent glow pooled behind the chat card. Static, decorative, masked to
+       dissolve outward so it reads as texture, not a panel. */
+    .hero-fx {
+      position: absolute;
+      inset: -40px -8px 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(
+          ellipse 44% 40% at 50% 47%,
+          color-mix(in srgb, var(--accent) 20%, transparent),
+          transparent 70%
+        ),
+        radial-gradient(
+          circle at center,
+          color-mix(in srgb, var(--fg1) 8%, transparent) 1px,
+          transparent 1.6px
+        );
+      background-size:
+        auto,
+        22px 22px;
+      background-position: center, center;
+      background-repeat: no-repeat, repeat;
+      -webkit-mask-image: radial-gradient(72% 64% at 50% 47%, #000 18%, transparent 80%);
+      mask-image: radial-gradient(72% 64% at 50% 47%, #000 18%, transparent 80%);
     }
     .hero__t {
       font-size: clamp(32px, 4.8vw, 50px);
