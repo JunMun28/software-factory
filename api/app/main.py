@@ -11,7 +11,7 @@ from . import api_helpers, settings, simulator, startup
 from .agent_exec import runner_mode
 from .agent_runner import AgentRunner
 from .db import SessionLocal, migrate
-from .leader import get_elector
+from .leader import LeaderElector, get_elector
 from .routers import attachments as attachments_router
 from .routers import events as events_router
 from .routers import gates, operators, registry, system
@@ -20,6 +20,13 @@ from .routers import requests as requests_router
 from .seed import seed
 
 log = logging.getLogger("factory")
+
+
+def _tick_once(elector: LeaderElector) -> None:
+    if not (elector.verify() or elector.try_acquire()):
+        return
+    with SessionLocal() as db:
+        simulator.tick(db)
 
 
 def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = None) -> FastAPI:
@@ -52,10 +59,7 @@ def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = N
         if interval > 0:
             def safe_tick():
                 try:
-                    if not (elector.verify() or elector.try_acquire()):
-                        return
-                    with SessionLocal() as db:
-                        simulator.tick(db)
+                    _tick_once(elector)
                 except Exception:  # one bad tick must never kill the factory's heartbeat
                     log.exception("simulator tick failed — loop continues")
 
