@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app import transitions
 from app.db import SessionLocal, migrate
-from app.models import AuditEvent, Intent, ProgressEvent, Request
+from app.models import AuditEvent, Intent, Operator, ProgressEvent, Request
 from app.transitions import (
     ANY,
     APPROVED,
@@ -234,6 +234,48 @@ def test_loss_with_no_decisive_winner_keeps_the_fallback_detail():
         assert isinstance(res, Loss)
         assert res.winner is None
         assert res.detail == "Request is not escalated"
+
+
+def test_loss_rolls_back_callers_staged_session_writes():
+    migrate()
+    with SessionLocal() as db:
+        req = _request(db, status=PENDING_APPROVAL, gate=GATE_APPROVE_SPEC)
+        original_title = req.title
+        winner = Actor(name="Winning Operator", operator_id=None)
+        assert isinstance(apply(db, req, "cancel", actor=winner), Win)
+        db.commit()
+
+        req.title = "staged but not committed"
+        loser = Actor(name="Losing Operator", operator_id=None)
+        res = apply(db, req, "approve_spec", actor=loser, params={"repo": "micron/x"})
+
+        assert isinstance(res, Loss) and res.winner is not None
+        assert res.winner.action == "cancelled"
+        assert req.title == original_title
+
+
+def test_resolve_loss_replays_for_same_non_none_operator_id():
+    migrate()
+    with SessionLocal() as db:
+        operator = Operator(
+            name="Riley",
+            initials="RT",
+            hue="#123456",
+            email=f"riley-{uuid.uuid4().hex[:8]}@example.com",
+        )
+        db.add(operator)
+        db.commit()
+        req = _request(db, status=PENDING_APPROVAL)
+        winner = Actor(name="Riley Before Rename", operator_id=operator.id)
+        assert isinstance(apply(db, req, "cancel", actor=winner), Win)
+        db.commit()
+
+        replayer = Actor(name="Riley After Rename", operator_id=operator.id)
+        res = transitions.resolve_loss(db, req, "cancel", replayer)
+
+        assert isinstance(res, Loss)
+        assert res.replay is True
+        assert res.winner is not None and res.winner.operator_id == operator.id
 
 
 def test_race_pair_cancel_vs_approve_both_orders():
