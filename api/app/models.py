@@ -305,3 +305,22 @@ class LeaderEpoch(Base):
     __tablename__ = "leader_epochs"
     id: Mapped[int] = mapped_column(primary_key=True)  # always 1
     epoch: Mapped[int] = mapped_column(nullable=False, default=0)
+
+
+class Intent(Base):
+    """Intent log for external side effects (spec §3.3). Written in the SAME
+    transaction as the state change that implies the effect; completed after
+    the external call returns. Recovery replays `pending` rows idempotently —
+    the crash window between 'we decided' and 'we recorded the outcome' is
+    therefore observable instead of silent."""
+
+    __tablename__ = "intents"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)  # idempotency key
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    request_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")  # pending|done|failed
+    outcome_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
