@@ -215,21 +215,27 @@ export class Icon {
   template: `<svg
     [attr.width]="size()"
     [attr.height]="size()"
-    viewBox="0 0 18 18"
+    viewBox="0 0 48 48"
     style="flex:0 0 auto;display:block"
     aria-hidden="true"
   >
-    @for (x of g; track x) {
-      @for (y of g; track y) {
-        <circle [attr.cx]="x" [attr.cy]="y" r="1.55" [attr.fill]="color()" />
-      }
-    }
+    <path
+      d="M38 11 H17 a5.5 5.5 0 0 0 0 11 h14 a5.5 5.5 0 0 1 0 11 H10"
+      fill="none"
+      [attr.stroke]="color() || 'currentColor'"
+      stroke-width="6"
+      stroke-linecap="round"
+    />
+    <circle cx="10" cy="33" r="4.5" [attr.fill]="color() || 'var(--a500)'" />
   </svg>`,
 })
+/** "Stacked S" brand mark: one continuous production line bent into the initial,
+ *  with the accent dot as the part coming off the end. `color` is a mono override
+ *  (e.g. #fff inside accent chips); left empty the S inherits currentColor and the
+ *  dot stays accent. */
 export class Mark {
   size = input<number>(20);
-  color = input<string>('var(--a500)');
-  g = [3.5, 9, 14.5];
+  color = input<string>('');
 }
 
 @Component({
