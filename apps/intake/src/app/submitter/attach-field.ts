@@ -103,7 +103,7 @@ import { IntakeDraft } from './intake-draft.service';
     .zone:hover,
     .zone--over {
       border-color: var(--a400);
-      background: var(--a50);
+      background: var(--surface-2);
       color: var(--accent-tx);
     }
     .zone__t {

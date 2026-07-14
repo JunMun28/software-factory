@@ -577,55 +577,61 @@ input.input {
   flex-direction: column;
   background: var(--bg);
 }
+/* island top bar: brand | floating glass nav pill | controls */
 .sub-top {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
-  padding: 0 26px;
-  height: 58px;
-  flex: 0 0 58px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  padding: 12px 26px;
+  flex: 0 0 auto;
 }
 .sub-brand {
+  justify-self: start;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   font-family: var(--display);
   font-weight: 700;
-  font-size: 17px;
+  font-size: 18px;
   letter-spacing: -0.01em;
 }
 .sub-nav {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  padding: 4px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  box-shadow: 0 8px 24px -14px rgba(0, 0, 0, 0.45);
 }
 .sub-nav button {
   background: none;
   border: none;
   cursor: pointer;
   font-family: var(--body);
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 500;
   color: var(--muted);
-  padding: 7px 12px;
-  border-radius: var(--r);
+  padding: 7px 16px;
+  border-radius: var(--r-pill);
 }
 .sub-nav button:hover {
-  background: var(--surface-2);
   color: var(--fg1);
 }
 .sub-nav button.on {
-  color: #fff;
+  background: var(--surface-2);
+  color: var(--fg1);
   font-weight: 600;
-  background: linear-gradient(135deg, var(--a700), var(--a400));
-  box-shadow: 0 5px 16px -8px rgba(189, 3, 247, 0.7);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
-.sub-nav button.on:hover {
-  color: #fff;
-  background: linear-gradient(135deg, var(--a600), var(--a300));
+.sub-top-right {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 /* world switcher — flips the reviewer between the Factory and the request world.
@@ -667,20 +673,10 @@ input.input {
   color: var(--fg1);
 }
 .wswitch__seg.on {
-  background: var(--a50);
-  color: var(--accent-tx);
+  background: var(--surface-2);
+  color: var(--fg1);
   font-weight: 600;
   cursor: default;
-}
-.sub-id {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--muted);
-  padding: 5px 10px 5px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
 }
 .sub-body {
   flex: 1;
@@ -842,7 +838,7 @@ input.input {
 }
 .typecard.on {
   border-color: var(--a500);
-  background: var(--a50);
+  background: var(--surface);
   box-shadow: 0 0 0 3px rgba(189, 3, 247, 0.16);
 }
 .typecard__t {
@@ -1287,8 +1283,8 @@ input.input {
   background: var(--surface-2);
 }
 .navrow.on {
-  background: linear-gradient(90deg, var(--a50), transparent);
-  color: var(--accent-tx);
+  background: var(--surface-2);
+  color: var(--fg1);
   font-weight: 600;
 }
 .navrow.on::before {
@@ -1524,8 +1520,8 @@ input.input {
   background: var(--surface-3);
 }
 .pop__opt.on {
-  background: var(--a50);
-  color: var(--accent-tx);
+  background: var(--surface-2);
+  color: var(--fg1);
   font-weight: 600;
 }
 .pop__group {
@@ -1577,8 +1573,8 @@ input.input {
   color: var(--fg1);
 }
 .seg button.on {
-  background: var(--a50);
-  color: var(--accent-tx);
+  background: var(--surface-2);
+  color: var(--fg1);
   font-weight: 600;
 }
 
@@ -1901,7 +1897,7 @@ input.input {
   background: var(--surface-2);
 }
 .qitem.on {
-  background: var(--a50);
+  background: var(--surface-2);
   box-shadow: inset 2px 0 0 var(--a500);
 }
 .qitem__app {
@@ -2048,7 +2044,7 @@ input.input {
 .attach-drop:hover {
   border-color: var(--a400);
   color: var(--accent-tx);
-  background: var(--a50);
+  background: var(--surface-2);
 }
 /* attach-field component (ADR 0022) */
 sf-attach-field .attach {
@@ -2516,7 +2512,7 @@ sf-attach-field .attach:hover {
   background: var(--surface-2);
 }
 .palette__row.on {
-  background: var(--a50);
+  background: var(--surface-2);
   box-shadow: inset 0 0 0 2px rgba(189, 3, 247, 0.45);
 }
 .palette__lbl {
@@ -2680,8 +2676,8 @@ sf-attach-field .attach:hover {
   background: var(--surface-2);
 }
 .chrow.on {
-  background: var(--a50);
-  color: var(--accent-tx);
+  background: var(--surface-2);
+  color: var(--fg1);
   font-weight: 600;
   box-shadow: inset 2px 0 0 var(--a500);
 }
@@ -2887,9 +2883,9 @@ sf-attach-field .attach:hover {
   cursor: pointer;
 }
 .sreact.on {
-  color: var(--accent-tx);
-  background: var(--a50);
-  border-color: var(--accent-tint-bd);
+  color: var(--fg1);
+  background: var(--surface-2);
+  border-color: var(--border-strong);
 }
 .sreact:hover {
   border-color: var(--faint);

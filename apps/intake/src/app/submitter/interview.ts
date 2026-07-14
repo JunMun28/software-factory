@@ -720,7 +720,7 @@ import { IntakeDraft } from './intake-draft.service';
     .comp--over {
       border-color: var(--a400);
       border-style: dashed;
-      background: var(--a50);
+      background: var(--surface-2);
     }
     .comp__files {
       padding: 2px 2px 8px;

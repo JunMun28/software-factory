@@ -614,9 +614,10 @@ input.input {
   color: var(--fg1);
 }
 .sub-nav button.on {
-  color: var(--accent-tx);
+  color: var(--fg1);
   font-weight: 600;
-  background: var(--a50);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
 
 /* world switcher — flips the reviewer between the Factory and the request world.
@@ -658,8 +659,8 @@ input.input {
   color: var(--fg1);
 }
 .wswitch__seg.on {
-  background: var(--a50);
-  color: var(--accent-tx);
+  background: var(--surface-2);
+  color: var(--fg1);
   font-weight: 600;
   cursor: default;
 }
@@ -833,7 +834,7 @@ input.input {
 }
 .typecard.on {
   border-color: var(--a500);
-  background: var(--a50);
+  background: var(--surface);
   box-shadow: 0 0 0 3px rgba(189, 3, 247, 0.16);
 }
 .typecard__t {
@@ -1263,8 +1264,8 @@ input.input {
   background: var(--surface-3);
 }
 .pop__opt.on {
-  background: var(--a50);
-  color: var(--accent-tx);
+  background: var(--surface-2);
+  color: var(--fg1);
   font-weight: 600;
 }
 .pop__group {

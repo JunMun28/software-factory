@@ -14,7 +14,8 @@ import { Avatar, Icon, Mark, Theme } from '@sf/shared';
 import { Session } from '../core/session.service';
 import { IntakeDraft } from './intake-draft.service';
 
-/** Submitter shell: top navigation and a Lenis-smoothed content area. Intake is
+/** Submitter shell: an "island" top bar — brand left, floating glass nav pill
+ *  centered, controls right — over a Lenis-smoothed content area. Intake is
  *  submitter-only since the app split (ADR 0017 Phase 2). */
 @Component({
   selector: 'sub-shell',
@@ -23,13 +24,14 @@ import { IntakeDraft } from './intake-draft.service';
     <div class="sub">
       <div class="sub-top">
         <button class="sub-brand" type="button" (click)="home()" title="New request">
-          <sf-mark [size]="20" /> Software Factory
+          <sf-mark [size]="23" />
+          <span>Stream</span>
         </button>
-        <div class="row" style="gap:16px">
-          <nav class="sub-nav">
-            <button [class.on]="active() === 'new'" (click)="startNew()">New request</button>
-            <button [class.on]="active() === 'list'" (click)="go('/requests')">My requests</button>
-          </nav>
+        <nav class="sub-nav">
+          <button [class.on]="active() === 'new'" (click)="startNew()">New request</button>
+          <button [class.on]="active() === 'list'" (click)="go('/requests')">My requests</button>
+        </nav>
+        <div class="sub-top-right">
           <button
             class="adm-iconbtn"
             type="button"
@@ -39,17 +41,10 @@ import { IntakeDraft } from './intake-draft.service';
             "
             [title]="theme.resolved() === 'dark' ? 'Light mode' : 'Dark mode'"
           >
-            <sf-icon [name]="theme.resolved() === 'dark' ? 'sun' : 'moon'" [size]="16" />
+            <sf-icon [name]="theme.resolved() === 'dark' ? 'sun' : 'moon'" [size]="18" />
           </button>
-          <span
-            class="sub-id"
-            style="font-family:var(--body);font-size:13px"
-            [title]="session.user().email"
-          >
-            <sf-avatar [sm]="true" [color]="session.user().color">{{
-              session.user().initials
-            }}</sf-avatar>
-            {{ session.user().name }}
+          <span [title]="session.user().name + ' — ' + session.user().email">
+            <sf-avatar [color]="session.user().color">{{ session.user().initials }}</sf-avatar>
           </span>
         </div>
       </div>
@@ -73,15 +68,20 @@ import { IntakeDraft } from './intake-draft.service';
       border-color: transparent;
       background: transparent;
     }
-    /* the identity chip is the first thing to go on narrow screens */
-    @media (max-width: 560px) {
-      .sub-id {
-        display: none;
-      }
-    }
     .adm-iconbtn:hover {
       border-color: transparent;
       background: var(--surface-2);
+    }
+    /* inline/block line boxes would push the avatar below center */
+    .sub-top-right > span,
+    .sub-top-right sf-avatar {
+      display: inline-flex;
+    }
+    /* the brand wordmark is the first thing to go on narrow screens */
+    @media (max-width: 560px) {
+      .sub-brand span {
+        display: none;
+      }
     }
   `,
 })
