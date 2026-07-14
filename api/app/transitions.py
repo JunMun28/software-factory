@@ -10,7 +10,13 @@ def cas_status(
     new: str,
     epoch: int,
 ) -> bool:
-    """Move one request only when its status and the leader epoch still match."""
+    """Move one request only when its status and the leader epoch still match.
+
+    The caller owns the transaction: commit on ``True`` and roll back on
+    ``False`` so intent rows, event appends, and this CAS land atomically or not
+    at all. Because sessions use ``expire_on_commit=False``, callers must call
+    ``db.refresh(obj)`` to see the new status on already-loaded objects.
+    """
     result = db.execute(
         text(
             "UPDATE requests SET status = :new "
@@ -25,5 +31,4 @@ def cas_status(
             "epoch": epoch,
         },
     )
-    db.commit()
     return result.rowcount == 1

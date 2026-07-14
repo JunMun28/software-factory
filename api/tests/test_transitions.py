@@ -29,9 +29,11 @@ def test_cas_moves_exactly_once():
         assert cas_status(
             db, request.id, "queued_for_pipeline", "running", elector.epoch
         ) is True
+        db.commit()
         assert cas_status(
             db, request.id, "queued_for_pipeline", "running", elector.epoch
         ) is False
+        db.rollback()
 
 
 def test_stale_epoch_cannot_write():
@@ -46,6 +48,19 @@ def test_stale_epoch_cannot_write():
         assert cas_status(
             db, request.id, "queued_for_pipeline", "running", stale
         ) is False
+        db.rollback()
         assert cas_status(
             db, request.id, "queued_for_pipeline", "running", elector.epoch
         ) is True
+        db.commit()
+
+
+def test_cas_missing_row_returns_false():
+    migrate()
+    elector = LeaderElector(engine)
+    elector.try_acquire()
+    with SessionLocal() as db:
+        assert cas_status(
+            db, -1, "queued_for_pipeline", "running", elector.epoch
+        ) is False
+        db.rollback()
