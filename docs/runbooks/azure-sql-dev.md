@@ -12,7 +12,8 @@
    the public IP changes.
 5. **User action (Azure portal or `az` CLI):** Add a $20/mo subscription budget
    alert under Cost Management → Budgets.
-6. Put the connection string in `api/.env`; never commit it:
+6. Put the connection string in `api/.env`; never commit it. Nothing loads this
+   file automatically, so commands must load it explicitly:
 
    ```dotenv
    FACTORY_DB_URL="mssql+pyodbc://sffactory:<pw>@sf-dev-sql-<suffix>.database.windows.net:1433/factory?driver=ODBC+Driver+18+for+SQL+Server"
@@ -22,7 +23,7 @@
 7. Run the migrations for the first time:
 
    ```bash
-   cd api && uv run alembic upgrade head
+   cd api && uv run --env-file .env alembic upgrade head
    ```
 
 8. Smoke-test the leader, transition, and intent paths against Azure SQL:
@@ -30,7 +31,7 @@
    **Warning:** Never point the full test suite at a database you care about; the `CI` environment variable gates destructive cleanup.
 
    ```bash
-   FACTORY_DB_URL="mssql+pyodbc://..." uv run pytest tests/test_leader.py tests/test_transitions.py tests/test_intents.py -v
+   FACTORY_TEST_USE_ENV_DB=1 uv run --env-file .env pytest tests/test_leader.py tests/test_transitions.py tests/test_intents.py -v
    ```
 
    The leader tests against real Azure SQL exercise `sp_getapplock` for real.

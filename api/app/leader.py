@@ -5,6 +5,8 @@ the lock lives and dies with that connection, so it must never come from the
 pool (spec §3.2, review F-D1). SQLite: single process by definition (AGENTS.md
 "single uvicorn worker"), so acquisition always succeeds; the epoch mechanics
 stay identical so the fencing contract is exercised by every test run.
+Only writes routed through transitions.cas_status are fenced today; Plan B
+wires pipeline state changes through it.
 """
 import threading
 

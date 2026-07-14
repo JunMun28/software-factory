@@ -17,6 +17,9 @@ def cas_status(
     at all. Because sessions use ``expire_on_commit=False``, callers must call
     ``db.refresh(obj)`` to see the new status on already-loaded objects.
     """
+    # Under MSSQL READ COMMITTED/RCSI, a stale leader's in-flight statement can
+    # commit just after an epoch bump. The status CAS still serializes conflicting
+    # transitions; revisit with UPDLOCK/HOLDLOCK once cas_status carries production traffic.
     result = db.execute(
         text(
             "UPDATE requests SET status = :new "

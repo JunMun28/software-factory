@@ -298,9 +298,12 @@ class AuditEvent(Base):
 
 
 class LeaderEpoch(Base):
-    """Single-row fencing counter (spec §3.2). Every state-mutating write is
-    guarded by `AND epoch = :mine` — a stalled ex-leader that resumes after
-    losing sp_getapplock cannot advance anything."""
+    """Single-row fencing counter (spec §3.2).
+
+    Writes that go through transitions.cas_status are guarded by
+    ``AND epoch = :mine``. Pipeline state changes are wired through cas_status
+    in Plan B (Job execution).
+    """
 
     __tablename__ = "leader_epochs"
     id: Mapped[int] = mapped_column(primary_key=True)  # always 1
@@ -310,9 +313,10 @@ class LeaderEpoch(Base):
 class Intent(Base):
     """Intent log for external side effects (spec §3.3). Written in the SAME
     transaction as the state change that implies the effect; completed after
-    the external call returns. Recovery replays `pending` rows idempotently —
-    the crash window between 'we decided' and 'we recorded the outcome' is
-    therefore observable instead of silent."""
+    the external call returns. Recovery (a startup scan replaying pending rows
+    idempotently) lands with the Plan B orchestrator; open_intents() is the
+    query it will use.
+    """
 
     __tablename__ = "intents"
 

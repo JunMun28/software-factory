@@ -25,6 +25,8 @@ COPY api/pyproject.toml api/uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
 COPY api/app ./app
+COPY api/alembic.ini ./
+COPY api/alembic ./alembic
 COPY sample /srv/sample
 
 # data lives outside the image; compose mounts a named volume here
