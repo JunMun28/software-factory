@@ -33,7 +33,9 @@ class LeaderElector:
                     # a dedicated lifetime outside the pool.
                     self._conn = self._engine.raw_connection()
                     self._conn.detach()
-                    self._conn.autocommit = True
+                    # must target the DBAPI connection: the pool fairy has no
+                    # __setattr__ delegation, so setting it on self._conn is a no-op
+                    self._conn.driver_connection.autocommit = True
                     cur = self._conn.cursor()
                     try:
                         cur.execute(
