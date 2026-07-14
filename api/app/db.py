@@ -6,7 +6,13 @@ from . import settings
 
 DB_URL = settings.DB_URL
 
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False} if DB_URL.startswith("sqlite") else {})
+if DB_URL.startswith("sqlite"):
+    engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
+else:
+    # Azure SQL: the gateway kills idle connections (~30 min) and reconfigures
+    # under you — pre-ping detects dead pooled connections, recycle beats the
+    # gateway's idle timeout (spec §3.1, review F-D10)
+    engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=1800)
 
 if DB_URL.startswith("sqlite"):
     @event.listens_for(engine, "connect")
