@@ -27,27 +27,34 @@ class LeaderElector:
         with self._guard:
             if self._leader:
                 return True
-            if self._sqlite:
-                self._leader = True
-            else:
-                # non-pooled: engine.connect() would borrow from the pool and
-                # a recycle would silently drop the lock
-                self._conn = self._engine.pool._creator()  # raw DBAPI conn
-                cur = self._conn.cursor()
-                cur.execute(
-                    "DECLARE @r int; "
-                    "EXEC @r = sp_getapplock @Resource=?, @LockMode='Exclusive', "
-                    "@LockOwner='Session', @LockTimeout=0; SELECT @r",
-                    (_LOCK_NAME,),
-                )
-                got = cur.fetchone()[0] >= 0
-                cur.close()
-                if not got:
-                    self._conn.close()
-                    self._conn = None
-                    return False
-                self._leader = True
-            self.epoch = self._bump_epoch()
+            try:
+                if not self._sqlite:
+                    # Detach the raw connection so the session-owned lock has
+                    # a dedicated lifetime outside the pool.
+                    self._conn = self._engine.raw_connection()
+                    self._conn.detach()
+                    self._conn.autocommit = True
+                    cur = self._conn.cursor()
+                    try:
+                        cur.execute(
+                            "SET NOCOUNT ON; DECLARE @r int; "
+                            "EXEC @r = sp_getapplock @Resource=?, "
+                            "@LockMode='Exclusive', @LockOwner='Session', "
+                            "@LockTimeout=0; SELECT @r",
+                            (_LOCK_NAME,),
+                        )
+                        got = cur.fetchone()[0] >= 0
+                    finally:
+                        cur.close()
+                    if not got:
+                        self._demote()
+                        return False
+                epoch = self._bump_epoch()
+            except Exception:
+                self._demote()
+                raise
+            self.epoch = epoch
+            self._leader = True
             return True
 
     def _bump_epoch(self) -> int:

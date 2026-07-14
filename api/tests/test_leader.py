@@ -36,3 +36,21 @@ def test_verify_true_while_held():
     assert e.verify() is True
     e.release()
     assert e.is_leader() is False
+
+
+def test_reacquire_same_instance_bumps_epoch():
+    migrate()
+    e = LeaderElector(engine)
+    e.try_acquire()
+    first = e.epoch
+    e.release()
+    e.try_acquire()
+    assert e.epoch == first + 1
+
+
+def test_verify_false_after_release():
+    migrate()
+    e = LeaderElector(engine)
+    e.try_acquire()
+    e.release()
+    assert e.verify() is False
