@@ -16,6 +16,7 @@
 
    ```dotenv
    FACTORY_DB_URL="mssql+pyodbc://sffactory:<pw>@sf-dev-sql-<suffix>.database.windows.net:1433/factory?driver=ODBC+Driver+18+for+SQL+Server"
+   (URL-encode special characters in the password — a raw @, /, #, or : silently breaks the URL; e.g. p@ss → p%40ss)
    ```
 
 7. Run the migrations for the first time:
