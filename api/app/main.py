@@ -11,6 +11,7 @@ from . import api_helpers, settings, simulator, startup
 from .agent_exec import runner_mode
 from .agent_runner import AgentRunner
 from .db import SessionLocal, migrate
+from .leader import get_elector
 from .routers import attachments as attachments_router
 from .routers import events as events_router
 from .routers import gates, operators, registry, system
@@ -29,6 +30,8 @@ def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = N
         added = migrate()  # generic models-vs-schema diff — new columns never 500 existing DBs
         if added:
             log.info("migrated: added %s", ", ".join(added))
+        elector = get_elector()
+        elector.try_acquire()
         startup.backfill_stage_clock()
         with SessionLocal() as db:
             if settings.SEED_DEMO:
@@ -49,6 +52,8 @@ def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = N
         if interval > 0:
             def safe_tick():
                 try:
+                    if not (elector.verify() or elector.try_acquire()):
+                        return
                     with SessionLocal() as db:
                         simulator.tick(db)
                 except Exception:  # one bad tick must never kill the factory's heartbeat
