@@ -17,7 +17,7 @@ from .agent_exec import (
     run_agent,
 )
 from .attachments import build_workdir
-from .interview import Question, ScriptedBrain, answered_count, question_budget
+from .interview import HOST_APP_PALETTE, Question, ScriptedBrain, answered_count, question_budget
 from .models import Request, SpecLine
 
 TYPE_LABEL = {"bug": "bug report", "enh": "enhancement", "new": "new app", "other": "request"}
@@ -222,11 +222,17 @@ content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inlin
 data:; font-src data:; connect-src 'none'">
 
 DESIGN CRAFT:
-- Pick a subject-specific palette (4-6 hues) and a deliberate type pairing; avoid the AI-slop \
-cluster (gradient-heavy heroes, emoji section markers, rounded-card + left-accent-rail, Inter/\
-Roboto as the safe face, everything centered). Spend boldness in one place; keep the rest quiet.
-- Design BOTH themes with tokens: CSS custom properties on :root, overridden under \
-[data-theme="dark"] — a single attribute flip, no per-node ternaries.
+- Use the HOST APP'S design tokens VERBATIM so the mock looks like part of this product — a \
+Micron-purple accent on a near-neutral canvas, NOT a bespoke palette. Put this exact block in your \
+<style> and theme everything (bg, text, borders, buttons) from it; invent no other hues:
+""" + HOST_APP_PALETTE + """
+  Spend the purple accent in ONE place (the primary action or a single focal accent); everything \
+else stays quiet neutrals. Pair a grotesk display with a grotesk body ('Space Grotesk', system-ui \
+for display; 'Hanken Grotesk', system-ui for body). Avoid the AI-slop cluster (gradient-heavy \
+heroes, emoji section markers, everything centered).
+- Both light and dark come from that block — light on :root, dark under its \
+@media (prefers-color-scheme: dark) override (the mock renders in a sandbox with no theme toggle). \
+No per-node ternaries.
 - Real content from the request — never lorem. The filed request IS the brief.
 - Canonical, edit-safe HTML: close every non-void element, double-quote attributes, don't \
 self-close non-void elements, lay siblings out with flex/grid + gap (not inline whitespace).
