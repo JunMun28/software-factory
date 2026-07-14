@@ -3,9 +3,11 @@ import tempfile
 
 import pytest
 
-# point the app at a throwaway DB before anything imports app.db
+# point the app at a throwaway DB before anything imports app.db — setdefault so a
+# pre-set URL (the test-mssql CI job's mssql+pyodbc URL) survives and the suite
+# actually runs against that database instead of silently falling back to SQLite
 _tmp = tempfile.mkdtemp()
-os.environ["FACTORY_DB_URL"] = f"sqlite:///{_tmp}/test.db"
+os.environ.setdefault("FACTORY_DB_URL", f"sqlite:///{_tmp}/test.db")
 # generate interview questions inline (no background thread) so tests are deterministic
 os.environ.setdefault("FACTORY_INTERVIEW_PREGEN", "sync")
 

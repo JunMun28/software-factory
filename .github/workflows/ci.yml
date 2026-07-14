@@ -72,13 +72,22 @@ jobs:
           curl -sSL -O https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
           sudo dpkg -i packages-microsoft-prod.deb
           sudo apt-get update && sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
+      - name: Install python deps
+        working-directory: api
+        run: uv sync
+      # Create the database over the same driver stack the tests use (pyodbc +
+      # ODBC Driver 18) — no docker exec into the service container, whose id
+      # lookup is brittle ($(docker ps -q --filter ...) empty-substitutes).
       - name: Create database
-        run: docker exec $(docker ps -q --filter ancestor=mcr.microsoft.com/mssql/server:2022-latest) /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Factory-CI-Passw0rd -Q "CREATE DATABASE factory"
+        working-directory: api
+        run: |
+          uv run python -c "import pyodbc; cn=pyodbc.connect('DRIVER={ODBC Driver 18 for SQL Server};SERVER=localhost,1433;UID=sa;PWD=Factory-CI-Passw0rd;TrustServerCertificate=yes', autocommit=True); cn.execute(\"IF DB_ID('factory') IS NULL CREATE DATABASE factory\")"
       - name: Run suite against MSSQL
         working-directory: api
         env:
           FACTORY_DB_URL: "mssql+pyodbc://sa:Factory-CI-Passw0rd@localhost:1433/factory?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
         run: |
-          uv sync
+          # upgrade must run BEFORE pytest: conftest's _truncate_all() executes
+          # before the app lifespan migrates, so the tables must already exist
           uv run alembic upgrade head
           uv run pytest -q
