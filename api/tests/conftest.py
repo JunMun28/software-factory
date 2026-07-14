@@ -34,7 +34,11 @@ def _truncate_all():
 @pytest.fixture(scope="session")
 def client():
     app = create_app(auto_tick=0)
-    if not os.environ["FACTORY_DB_URL"].startswith("sqlite"):
+    # gate on the engine's real dialect, not os.environ — test modules mutate the
+    # env var at import time, but the engine's URL was frozen when app.settings loaded
+    from app.db import engine
+
+    if engine.dialect.name != "sqlite":
         _truncate_all()
     with TestClient(app) as c:
         yield c

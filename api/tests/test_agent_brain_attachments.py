@@ -2,7 +2,8 @@ import os
 import tempfile
 
 _tmp = tempfile.mkdtemp()
-os.environ["FACTORY_DB_URL"] = f"sqlite:///{_tmp}/test.db"
+# setdefault: conftest.py already guarantees a value (and a pre-set CI MSSQL URL must win)
+os.environ.setdefault("FACTORY_DB_URL", f"sqlite:///{_tmp}/test.db")
 os.environ["FACTORY_UPLOADS"] = f"{_tmp}/uploads"
 
 import pytest  # noqa: E402
