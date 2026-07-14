@@ -330,6 +330,20 @@ def test_race_pair_cancel_vs_approve_both_orders():
         assert isinstance(apply(db, b, "approve_spec", actor=RILEY, params={"repo": "r"}), Loss)
 
 
+def test_release_submit_claim_loses_after_cancel_wins():
+    migrate()
+    assert "release_submit_claim" in TABLE
+    with SessionLocal() as db:
+        req = _request(db, status=PENDING_APPROVAL)
+        assert isinstance(apply(db, req, "cancel", actor=RILEY), Win)
+        db.commit()
+
+        res = apply(db, req, "release_submit_claim", actor=RILEY)
+
+        assert isinstance(res, Loss)
+        assert req.status == CANCELLED
+
+
 def test_race_pair_retry_vs_stale_escalate(make_elector):
     """After a human Retry, a deposed runner's escalate must be fenced out."""
     migrate()

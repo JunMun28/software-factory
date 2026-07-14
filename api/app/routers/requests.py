@@ -545,8 +545,13 @@ def submit(rid: int, extra: Note | None = None, db: Session = Depends(get_db)):
         gate.notify()
     except Exception:
         db.rollback()
-        r.status = transitions.DRAFT  # hand the claim back — a failed brain must not strand the request
-        db.commit()
+        release = transitions.apply(
+            db, r, "release_submit_claim", actor=reporter, epoch=None
+        )
+        if isinstance(release, transitions.Win):
+            db.commit()  # hand the claim back — a failed brain must not strand the request
+        else:
+            db.rollback()  # Cancel won during the brain call; never resurrect the request
         raise
     return to_out(r, RequestDetail)
 

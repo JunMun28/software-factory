@@ -60,15 +60,15 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
 ## Lifecycle transitions — final wrap-up (2026-07-15)
 
 - **Branch:** `lifecycle-transitions`
-- **Seven-task commit series:** six implementation commits are present; Task 7 remains
-  uncommitted per the coordinator's explicit instruction.
+- **Seven-task commit series:** all seven implementation commits are present; the
+  coordinator committed Task 7 as `9eeb068`.
   1. `acee7de` — transition table + `apply()`, the legal lifecycle write path
   2. `919ecce` — gate endpoints through `apply()`
   3. `903bb37` — submit/create through `apply()` with flush-first semantics
   4. `1e3703b` — simulator transitions, epoch fencing, commit-per-item
   5. `58c007b` — runner/startup transitions; `lifecycle.py` absorbed and deleted
   6. `8077a95` — shared `classify()` projection for mission, inbox, and detail
-  7. **Uncommitted** — Task 7 terminology, documentation, architecture assertion,
+  7. `9eeb068` — Task 7 terminology, documentation, architecture assertion,
      characterization test, implementation notes, and final report
 - **Verification:** `263 passed, 2 warnings`; `uv run ruff check .` passed. The
   full `task verify` chain passed lint, API tests, all 188 frontend tests, and both
@@ -83,4 +83,4 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   winner refresh while `Loss` still rolls the transaction back.
 - Simulator merge-gate notification now fires through `Win.notify()` after commit;
   recipients and exactly-once behavior are unchanged, and rolled-back gates are not announced.
-- Task 7's commit steps were skipped because the coordinator explicitly required no commit.
+- Task 7 was subsequently committed by the coordinator as `9eeb068`.

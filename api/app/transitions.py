@@ -224,6 +224,12 @@ TABLE: dict[str, Transition] = {
         effects=lambda p: {"status": PENDING_APPROVAL},
         conflict_detail=lambda r: "Already submitted",
     ),
+    "release_submit_claim": Transition(
+        name="release_submit_claim",
+        pre=Pre(status_in=(PENDING_APPROVAL,)),
+        effects=lambda p: {"status": DRAFT},
+        conflict_detail=lambda r: f"Cannot release submit claim from status '{r.status}'",
+    ),
     "raise_spec_gate": Transition(
         name="raise_spec_gate",
         pre=Pre(status_in=(PENDING_APPROVAL,), gate=None),
