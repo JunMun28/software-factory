@@ -293,14 +293,6 @@ export class TypeChip {
   label = computed(() => TYPE_LABEL[this.t()] ?? this.t());
 }
 
-/** Qualitative Track weight — never minutes/step-counts (ADR 0023). */
-export const TRACK_WEIGHT: Record<string, string> = {
-  bug: 'quick path',
-  enh: 'short path',
-  new: 'full session',
-  other: 'short path',
-};
-
 @Component({
   selector: 'sf-track-chip',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -322,7 +314,6 @@ export const TRACK_WEIGHT: Record<string, string> = {
       } @else {
         <sf-icon [name]="icon()" [size]="12" />
         <span class="tchip__t">{{ label() }}</span>
-        <span class="tchip__w">· {{ weight() }}</span>
       }
       <span class="tchip__edit">change</span>
     </button>
@@ -351,9 +342,6 @@ export const TRACK_WEIGHT: Record<string, string> = {
       background: var(--surface-2);
       border-color: var(--border-strong);
       color: var(--muted);
-    }
-    .tchip__w {
-      color: var(--accent-tx);
     }
     .tchip__edit {
       font-family: var(--mono);
@@ -388,7 +376,6 @@ export class TrackChip {
       ] ?? 'help',
   );
   label = computed(() => TYPE_LABEL[this.t()] ?? this.t());
-  weight = computed(() => TRACK_WEIGHT[this.t()] ?? 'short path');
 }
 
 /* signal badge — the loud gate / needs-human marker */

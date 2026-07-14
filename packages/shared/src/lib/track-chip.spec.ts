@@ -16,19 +16,20 @@ class Host {
 describe('TrackChip', () => {
   beforeEach(() => TestBed.configureTestingModule({ imports: [Host] }));
 
-  it('shows the type label and the qualitative weight for a bug', () => {
+  it('shows the type label for a bug', () => {
     const f = TestBed.createComponent(Host);
     f.detectChanges();
     const text = (f.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Bug'); // TYPE_LABEL
-    expect(text.toLowerCase()).toContain('quick path');
   });
 
-  it('shows the full-session weight for a new app', () => {
+  it('shows the type label for a new app without a weight', () => {
     const f = TestBed.createComponent(Host);
     f.componentInstance.t.set('new');
     f.detectChanges();
-    expect((f.nativeElement as HTMLElement).textContent?.toLowerCase()).toContain('full session');
+    const text = (f.nativeElement as HTMLElement).textContent?.toLowerCase() ?? '';
+    expect(text).toContain('new app'); // TYPE_LABEL
+    expect(text).not.toContain('full session');
   });
 
   it('carries an unsure prompt in the unsure state', () => {

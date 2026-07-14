@@ -3,8 +3,8 @@ import { Injectable, signal } from '@angular/core';
 import { User, loadStoredUser } from '@sf/shared';
 
 export const SUBMITTER: User = {
-  name: 'Jordan D.',
-  initials: 'JD',
+  name: 'Jun Mun Wong',
+  initials: 'JW',
   color: 'var(--avatar)',
   email: 'jordan.diaz@micron.com',
   role: 'submitter',

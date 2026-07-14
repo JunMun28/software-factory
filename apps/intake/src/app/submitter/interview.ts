@@ -39,10 +39,9 @@ import { IntakeDraft } from './intake-draft.service';
           <span class="intro__badge blurin"
             ><i class="intro__pulse"></i>Preparing your questions…</span
           >
-          <h1 class="intro__t blurin blurin--2">A few details will help us get this right.</h1>
-          <p class="intro__s blurin blurin--2">
-            Point at what fits — no typing needed. The interview handles the rest.
-          </p>
+          <h1 class="intro__t blurin blurin--2">
+            A few quick questions while the agent digs into your request.
+          </h1>
           @if (req(); as r) {
             <div class="intro__card blurin blurin--3">
               <sf-basics-card
@@ -343,13 +342,7 @@ import { IntakeDraft } from './intake-draft.service';
       font-weight: 800;
       letter-spacing: -0.02em;
       line-height: 1.1;
-      margin: 18px 0 6px;
-    }
-    .intro__s {
-      margin: 0 0 26px;
-      font-size: 14.5px;
-      color: var(--muted);
-      max-width: 46ch;
+      margin: 18px 0 26px;
     }
     .intro__card {
       width: 100%;
@@ -436,12 +429,12 @@ import { IntakeDraft } from './intake-draft.service';
       }
     }
     .cl {
-      max-width: 1200px;
+      max-width: min(1600px, 94vw);
       margin: 0 auto;
       padding: 20px 26px;
       height: calc(100dvh - 58px);
       display: grid;
-      grid-template-columns: minmax(400px, 520px) 1fr;
+      grid-template-columns: minmax(380px, 460px) 1fr;
       gap: 22px;
       align-items: stretch;
     }

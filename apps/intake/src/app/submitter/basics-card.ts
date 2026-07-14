@@ -1247,7 +1247,7 @@ export class BasicsCard implements OnInit {
     { v: 'me', label: 'Just me', count: '1' },
     { v: 'team', label: 'My team', count: '2–10' },
     { v: 'dept', label: 'A department', count: '10–50' },
-    { v: 'wider', label: 'The whole org', count: '50+' },
+    { v: 'wider', label: 'The whole site', count: '50+' },
   ];
   private AUD: Record<string, { scope: string; count: string; unit: string; hint: string }> = {
     me: {
@@ -1356,14 +1356,15 @@ export class BasicsCard implements OnInit {
   audienceLabel() {
     return {
       enh: 'Who benefits?',
-      new: 'Who feels it if this works?',
+      new: 'Who is this for?',
       other: 'Who is this for?',
     }[this.rtype() ?? 'new'];
   }
   benefitLabel() {
-    return this.rtype() === 'other'
-      ? 'What would a good outcome be?'
-      : 'What would winning look like?';
+    const t = this.rtype() ?? 'new';
+    if (t === 'other') return 'What would a good outcome be?';
+    if (t === 'new') return 'What is the business value?';
+    return 'What would winning look like?';
   }
   freqLabel() {
     return this.freqs.find((f) => f[0] === this.draft.bugFreq)?.[1] ?? '';

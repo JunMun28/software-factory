@@ -14,16 +14,23 @@ import { Icon } from '@sf/shared';
     <div class="fs" role="dialog" aria-modal="true" aria-label="Prototype full screen">
       <div class="fs__bar">
         <span class="fs__title">{{ title() }}</span>
+        <!-- optional bar actions (e.g. a Select-to-edit toggle); absent in Review -->
+        <ng-content select="[fs-actions]" />
         <button class="fs__close" #closeBtn (click)="closed.emit()">
           <sf-icon name="x" [size]="15" /> Close
         </button>
       </div>
       <iframe
+        #fsFrame
         class="fs__frame"
         [srcdoc]="doc()"
         sandbox="allow-scripts"
         title="Prototype full screen"
+        (load)="frameReady.emit(fsFrame)"
       ></iframe>
+      <!-- optional footer (e.g. a follow-up composer); hidden when nothing is projected,
+           so Review's full-screen stays chrome-only -->
+      <div class="fs__footer"><ng-content select="[fs-footer]" /></div>
     </div>
   `,
   styles: `
@@ -69,12 +76,24 @@ import { Icon } from '@sf/shared';
       border: 0;
       background: #fff;
     }
+    .fs__footer {
+      flex: 0 0 auto;
+      padding: 14px 18px;
+      border-top: 1px solid var(--hairline);
+      background: var(--surface);
+    }
+    /* no footer projected (e.g. Review) → no empty bar */
+    .fs__footer:empty {
+      display: none;
+    }
   `,
 })
 export class ProtoFullscreen {
   doc = input.required<SafeHtml>();
   title = input('Prototype · full screen');
   closed = output<void>();
+  /** the overlay's iframe, emitted on every (re)load so the host can wire point-to-edit to it */
+  frameReady = output<HTMLIFrameElement>();
 
   private closeBtn = viewChild<ElementRef<HTMLButtonElement>>('closeBtn');
 

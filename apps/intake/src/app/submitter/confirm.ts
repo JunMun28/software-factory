@@ -5,7 +5,7 @@ import { Api, Glyph, RequestDetail, TypeChip } from '@sf/shared';
 import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';
 
-const STAGES = ['Submitted', 'Spec drafted', 'Approved', 'Building', 'In review', 'Deployed'];
+const STAGES = ['Submitted', 'Architecture design', 'Building', 'In review', 'Deployed'];
 
 /** S3 — Submission confirmation: receipt stub + primed plain-stage tracker. */
 @Component({
@@ -36,9 +36,10 @@ const STAGES = ['Submitted', 'Spec drafted', 'Approved', 'Building', 'In review'
             <div style="flex:1">
               <div style="font-size:15px;font-weight:600">{{ r.title }}</div>
               <div class="row" style="gap:8px;margin-top:6px">
-                <sf-type-chip [t]="r.type" /><span style="font-size:12.5px;color:var(--muted)">{{
-                  r.app_name
-                }}</span>
+                <sf-type-chip [t]="r.type" />
+                @if (r.app_name && r.app_name !== 'No app yet') {
+                  <span style="font-size:12.5px;color:var(--muted)">{{ r.app_name }}</span>
+                }
               </div>
             </div>
             <span
