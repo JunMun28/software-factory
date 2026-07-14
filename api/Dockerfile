@@ -14,6 +14,13 @@ ENV UV_COMPILE_BYTECODE=1 UV_NO_DEV=1
 RUN apt-get update && apt-get install -y --no-install-recommends git poppler-utils \
   && rm -rf /var/lib/apt/lists/*
 
+# pyodbc uses Microsoft's ODBC Driver 18 when FACTORY_DB_URL targets SQL Server.
+RUN apt-get update && apt-get install -y --no-install-recommends curl gnupg2 \
+    && curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/ms.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/ms.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql.list \
+    && apt-get update && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY api/pyproject.toml api/uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
