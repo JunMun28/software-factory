@@ -213,6 +213,8 @@ def test_migrate_defaults_new_not_null_columns(client):
 
     from app.db import engine, migrate
 
+    if engine.dialect.name != "sqlite":
+        pytest.skip("PRAGMA-differ drift repair is the SQLite path; MSSQL schema is alembic-owned")
     with engine.connect() as conn:  # simulate a DB from before the column existed
         conn.execute(text("ALTER TABLE requests DROP COLUMN repo_ready"))
         conn.commit()

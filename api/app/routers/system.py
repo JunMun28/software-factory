@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from .. import simulator
 from ..agent_exec import agent_cli, brain_mode, runner_mode
 from ..db import get_db
+from ..leader import get_elector
 from ..notifications import smtp_status
 
 log = logging.getLogger("factory")
@@ -29,8 +30,12 @@ def health(db: Session = Depends(get_db)):
         log.exception("health check: database unavailable")
         from fastapi import HTTPException
         raise HTTPException(503, "database unavailable")
-    return {"status": "ok", "db": "ok", "brain": brain_mode(), "runner": runner_mode(),
-            "cli": agent_cli(), "smtp": smtp_status()}
+    elector = get_elector()
+    return {
+        "status": "ok", "db": "ok", "brain": brain_mode(), "runner": runner_mode(),
+        "cli": agent_cli(), "smtp": smtp_status(),
+        "leader": elector.is_leader(), "epoch": elector.epoch,
+    }
 
 
 @router.post("/api/simulator/tick")

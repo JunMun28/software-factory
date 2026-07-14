@@ -3,8 +3,10 @@ name = "software-factory-api"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.18.5",
     "anthropic>=0.116.0",
     "fastapi>=0.136.3",
+    "pyodbc>=5.3.0",  # mssql+pyodbc dialect (Azure SQL) — not imported by application runtime code; used by the mssql URL driver and the CI bootstrap
     # pytest is a RUNTIME dependency: the claude runner shells out to it for
     # the RED/GREEN gates, including inside the --no-dev container image
     "pytest>=9.0.3",

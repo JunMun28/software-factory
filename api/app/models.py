@@ -295,3 +295,36 @@ class AuditEvent(Base):
     action: Mapped[str] = mapped_column(String(40))  # submitted | approved | sent_back | cancelled | responded | commented
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class LeaderEpoch(Base):
+    """Single-row fencing counter (spec §3.2).
+
+    Writes that go through transitions.cas_status are guarded by
+    ``AND epoch = :mine``. Pipeline state changes are wired through cas_status
+    in Plan B (Job execution).
+    """
+
+    __tablename__ = "leader_epochs"
+    id: Mapped[int] = mapped_column(primary_key=True)  # always 1
+    epoch: Mapped[int] = mapped_column(nullable=False, default=0)
+
+
+class Intent(Base):
+    """Intent log for external side effects (spec §3.3). Written in the SAME
+    transaction as the state change that implies the effect; completed after
+    the external call returns. Recovery (a startup scan replaying pending rows
+    idempotently) lands with the Plan B orchestrator; open_intents() is the
+    query it will use.
+    """
+
+    __tablename__ = "intents"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)  # idempotency key
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    request_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")  # pending|done|failed
+    outcome_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

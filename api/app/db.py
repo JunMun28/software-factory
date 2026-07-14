@@ -6,7 +6,13 @@ from . import settings
 
 DB_URL = settings.DB_URL
 
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False} if DB_URL.startswith("sqlite") else {})
+if DB_URL.startswith("sqlite"):
+    engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
+else:
+    # Azure SQL: the gateway kills idle connections (~30 min) and reconfigures
+    # under you — pre-ping detects dead pooled connections, recycle beats the
+    # gateway's idle timeout (spec §3.1, review F-D10)
+    engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=1800)
 
 if DB_URL.startswith("sqlite"):
     @event.listens_for(engine, "connect")
@@ -51,18 +57,29 @@ def _default_literal(col) -> str | None:
 
 
 def migrate() -> list[str]:
-    """create_all never adds columns to existing tables, so diff every model
-    against PRAGMA table_info and ALTER TABLE ADD COLUMN whatever is missing.
-    Generic on purpose: the next model change must not need a hand-written
-    branch here to avoid 500ing existing DBs at runtime (ADR 0013).
+    """SQLite: create_all + PRAGMA differ (fast test/dev path).
+    Anything else (Azure SQL): versioned Alembic migrations only —
+    the schema now outlives deployments (spec §3.1).
+
+    SQLite path: create_all never adds columns to existing tables, so diff
+    every model against PRAGMA table_info and ALTER TABLE ADD COLUMN whatever
+    is missing. Generic on purpose: the next model change must not need a
+    hand-written branch here to avoid 500ing existing DBs at runtime (ADR 0013).
 
     Columns with a scalar default carry it into the DDL, so pre-existing rows
     take the model's default instead of NULL — a new NOT NULL column must
     never make the response models choke on old rows."""
+    if not DB_URL.startswith("sqlite"):
+        from pathlib import Path
+
+        from alembic.config import Config
+
+        from alembic import command
+        cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+        command.upgrade(cfg, "head")
+        return []
     Base.metadata.create_all(engine)
     added: list[str] = []
-    if not DB_URL.startswith("sqlite"):
-        return added
     with engine.connect() as conn:
         for table in Base.metadata.sorted_tables:
             have = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table.name})"))}
