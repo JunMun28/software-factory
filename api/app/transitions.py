@@ -7,9 +7,9 @@ the cas_status pattern below — then, still uncommitted, appends the winner's
 AuditEvent, the row's progress events, and an optional intent row. The CALLER owns
 the transaction: commit on Win; a Loss has already rolled back. Sessions run
 expire_on_commit=False, so apply() refreshes ``req`` after a win — callers read
-fresh columns immediately. The claim UPDATE autoflushes pending session state, so a
-caller must only hold writes it is prepared to commit (or roll back) with the
-transition.
+fresh columns immediately. apply() flushes all pending session state before the CAS;
+staged sibling writes survive a Win, while a Loss rolls them back. Callers must not
+stage a write to a precondition column of the transition they are about to apply.
 
 Fencing policy (leadership, spec §3.2):
 - HUMAN-initiated transitions (HTTP endpoints) pass ``epoch=None``. They are raced

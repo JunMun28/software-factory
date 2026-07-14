@@ -37,6 +37,10 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
 
 ## Deviations
 
+- **Simulator merge-gate email is post-commit.** The simulator now carries the
+  table-owned gate notification through `Win.notify()` and fires it only after
+  the per-request tick commit. Recipients and single-send behavior are unchanged,
+  but a failed commit can no longer announce a gate that was rolled back.
 - **`--dir` is mandatory, subprocess cwd is not enough.** The first full-pipeline run
   escalated at the architecture gate: the stage agent read the *software-factory repo root*
   (`api/`, `sample/`) instead of the per-request workspace, despite `Popen(cwd=ws)`. Headless
