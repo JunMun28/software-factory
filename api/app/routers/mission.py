@@ -1,11 +1,12 @@
 """Mission control aggregate (spec 2026-06-12 §5): the home surface polls
-this one endpoint instead of five."""
+this one endpoint instead of five. Bands derive from supervision.classify()."""
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .. import transitions
 from ..api_helpers import to_out
 from ..db import get_db
 from ..models import AuditEvent, ProgressEvent, Request, utcnow
@@ -19,21 +20,20 @@ from ..schemas import (
     RunStateOut,
     SteerStateOut,
 )
-from ..supervision import evidence, run_state, steer_state
+from ..supervision import classify, evidence, run_state, steer_state
 
 router = APIRouter()
-
-CLOSED = ("cancelled", "done")
-
 
 @router.get("/api/mission", response_model=MissionOut)
 def mission(db: Session = Depends(get_db)):
     live = db.scalars(
-        select(Request).where(Request.status.notin_(CLOSED)).order_by(Request.stage_entered_at)
+        select(Request)
+        .where(Request.status.notin_(transitions.CLOSED))
+        .order_by(Request.stage_entered_at)
     ).all()
     gates = []
     for r in live:
-        if r.gate and not r.needs_human:
+        if classify(r)["at_gate"]:
             ev = evidence(db, r)
             gates.append(MissionGate(
                 request=to_out(r),
@@ -49,10 +49,10 @@ def mission(db: Session = Depends(get_db)):
                 run=RunStateOut(**rs),
                 steer=SteerStateOut(**steer) if steer is not None else None,
             ))
-    stalled = [to_out(r) for r in live if r.needs_human]
+    stalled = [to_out(r) for r in live if classify(r)["stalled"]]
     human_owned = []
     for r in live:
-        if r.status != "human_owned":
+        if classify(r)["phase"] != "human_owned":
             continue
         takeover = db.scalar(
             select(AuditEvent)
