@@ -10,6 +10,8 @@ expire_on_commit=False, so apply() refreshes ``req`` after a win — callers rea
 fresh columns immediately. apply() flushes all pending session state before the CAS;
 staged sibling writes survive a Win, while a Loss rolls them back. Callers must not
 stage a write to a precondition column of the transition they are about to apply.
+Callers that know the origin stage pass it through ``expected_stage``; ``params``
+are transition effects/event data only and never add hidden CAS preconditions.
 
 Fencing policy (leadership, spec §3.2):
 - HUMAN-initiated transitions (HTTP endpoints) pass ``epoch=None``. They are raced
@@ -216,21 +218,21 @@ def _notify_escalation(db: Session, req: Request) -> None:
     notifications.notify_escalation(db, req)
 
 
-TABLE: dict[str, Transition] = {
+TABLE: dict[str, Transition] = {t.name: t for t in (
     # -------- intake / approval (HTTP-initiated: epoch=None) --------
-    "submit_claim": Transition(
+    Transition(
         name="submit_claim",
         pre=Pre(status_in=(DRAFT, SUBMITTED)),
         effects=lambda p: {"status": PENDING_APPROVAL},
         conflict_detail=lambda r: "Already submitted",
     ),
-    "release_submit_claim": Transition(
+    Transition(
         name="release_submit_claim",
         pre=Pre(status_in=(PENDING_APPROVAL,)),
-        effects=lambda p: {"status": DRAFT},
+        effects=lambda p: {"status": DRAFT, "gate": None},
         conflict_detail=lambda r: f"Cannot release submit claim from status '{r.status}'",
     ),
-    "raise_spec_gate": Transition(
+    Transition(
         name="raise_spec_gate",
         pre=Pre(status_in=(PENDING_APPROVAL,), gate=None),
         effects=lambda p: {"stage": "spec", "status": PENDING_APPROVAL,
@@ -239,7 +241,7 @@ TABLE: dict[str, Transition] = {
         notify=_notify_gate_raised,
         conflict_detail=lambda r: f"Cannot raise the spec gate on a {r.status} request",
     ),
-    "approve_spec": Transition(
+    Transition(
         name="approve_spec",
         pre=Pre(status_in=(PENDING_APPROVAL,), gate=GATE_APPROVE_SPEC),
         effects=lambda p: {"status": APPROVED, "gate": None, "stage": "architecture",
@@ -250,7 +252,7 @@ TABLE: dict[str, Transition] = {
         replay_actions=("approved",),
         conflict_detail=lambda r: f"Cannot approve from status '{r.status}'",
     ),
-    "claim_merge": Transition(
+    Transition(
         name="claim_merge",
         pre=Pre(status_in=(APPROVED,), gate=GATE_APPROVE_MERGE),
         effects=lambda p: {"gate": None},
@@ -258,7 +260,7 @@ TABLE: dict[str, Transition] = {
         replay_actions=("merge_claimed", "approved_merge", "merge_approval_failed"),
         conflict_detail=lambda r: f"Cannot merge a {r.status} request",
     ),
-    "finish_done": Transition(
+    Transition(
         name="finish_done",
         pre=Pre(status_in=(APPROVED,)),
         effects=lambda p: {"gate": None, "stage": "done", "status": DONE,
@@ -266,7 +268,7 @@ TABLE: dict[str, Transition] = {
         events=_ev_finish_done,
         conflict_detail=lambda r: f"Cannot finish a {r.status} request",
     ),
-    "send_back": Transition(
+    Transition(
         name="send_back",
         pre=Pre(status_in=(PENDING_APPROVAL, SUBMITTED)),
         effects=lambda p: {"status": SENT_BACK, "gate": None,
@@ -280,7 +282,7 @@ TABLE: dict[str, Transition] = {
         replay_actions=("sent_back",),
         conflict_detail=lambda r: f"Cannot send back from status '{r.status}'",
     ),
-    "respond": Transition(
+    Transition(
         name="respond",
         pre=Pre(status_in=(SENT_BACK,)),
         effects=lambda p: {"send_back_response": p["note"], "status": PENDING_APPROVAL,
@@ -291,7 +293,7 @@ TABLE: dict[str, Transition] = {
         notify=_notify_gate_raised,
         conflict_detail=lambda r: "Nothing to respond to",
     ),
-    "cancel": Transition(
+    Transition(
         name="cancel",
         pre=Pre(status_not_in=CLOSED),
         effects=lambda p: {"status": CANCELLED, "gate": None,
@@ -303,11 +305,11 @@ TABLE: dict[str, Transition] = {
         conflict_detail=lambda r: f"Cannot cancel a {r.status} request",
     ),
     # -------- recovery actions (HTTP-initiated: epoch=None) --------
-    "retry": Transition(
-        name="retry",
+    Transition(
+        name="retry_spec",
         pre=Pre(needs_human=True),
         effects=lambda p: {"needs_human": False, "needs_human_reason": None,
-                           "status": p["status"], "gate": p["gate"],
+                           "status": PENDING_APPROVAL, "gate": GATE_APPROVE_SPEC,
                            "sim_step": 0, "stage_entered_at": utcnow()},
         events=_ev_retry,
         audit_action="retried",
@@ -315,7 +317,19 @@ TABLE: dict[str, Transition] = {
         replay_actions=("retried",),
         conflict_detail=lambda r: "Request is not escalated",
     ),
-    "take_over": Transition(
+    Transition(
+        name="retry_pipeline",
+        pre=Pre(needs_human=True),
+        effects=lambda p: {"needs_human": False, "needs_human_reason": None,
+                           "status": APPROVED, "gate": None,
+                           "sim_step": 0, "stage_entered_at": utcnow()},
+        events=_ev_retry,
+        audit_action="retried",
+        audit_note=lambda p: p.get("note"),
+        replay_actions=("retried",),
+        conflict_detail=lambda r: "Request is not escalated",
+    ),
+    Transition(
         name="take_over",
         pre=Pre(needs_human=True),
         effects=lambda p: {"status": HUMAN_OWNED, "needs_human": False,
@@ -326,7 +340,7 @@ TABLE: dict[str, Transition] = {
         replay_actions=("taken_over",),
         conflict_detail=lambda r: "Request is not escalated",
     ),
-    "send_back_to_stage": Transition(
+    Transition(
         name="send_back_to_stage",
         pre=Pre(needs_human=True),
         effects=lambda p: {"stage": p["stage"], "status": APPROVED, "gate": None,
@@ -339,7 +353,7 @@ TABLE: dict[str, Transition] = {
         conflict_detail=lambda r: "Request is not escalated",
     ),
     # -------- machine transitions (tick loop / pipeline threads: pass epoch=) --------
-    "escalate": Transition(
+    Transition(
         name="escalate",
         pre=Pre(status_not_in=CLOSED),
         effects=lambda p: {"needs_human": True, "needs_human_reason": p["reason"][:300]},
@@ -347,7 +361,7 @@ TABLE: dict[str, Transition] = {
         notify=_notify_escalation,
         conflict_detail=lambda r: f"Cannot escalate a {r.status} request",
     ),
-    "raise_merge_gate": Transition(
+    Transition(
         name="raise_merge_gate",
         pre=Pre(status_in=(APPROVED,), gate=None),
         effects=lambda p: {"gate": GATE_APPROVE_MERGE, "stage_entered_at": utcnow()},
@@ -355,19 +369,19 @@ TABLE: dict[str, Transition] = {
         notify=_notify_gate_raised,
         conflict_detail=lambda r: f"Cannot raise the merge gate (status={r.status!r}, gate={r.gate!r})",
     ),
-    "advance_stage": Transition(
+    Transition(
         name="advance_stage",
         pre=Pre(status_in=(APPROVED,), needs_human=False),
         effects=lambda p: {"stage": p["stage"], "sim_step": 0, "stage_entered_at": utcnow()},
         events=_ev_advance_stage,
         conflict_detail=lambda r: f"Cannot advance (status={r.status!r}, needs_human={r.needs_human})",
     ),
-}
+)}
 
 
 # ---------- apply ----------
 
-def _where(req_id: int, pre: Pre, params: dict) -> list:
+def _where(req_id: int, pre: Pre, expected_stage: str | None) -> list:
     clauses = [Request.id == req_id]
     if pre.status_in is not None:
         clauses.append(Request.status.in_(pre.status_in))
@@ -377,16 +391,26 @@ def _where(req_id: int, pre: Pre, params: dict) -> list:
         clauses.append(Request.gate.is_(None) if pre.gate is None else Request.gate == pre.gate)
     if pre.needs_human is not None:
         clauses.append(Request.needs_human.is_(pre.needs_human))
-    if "from_stage" in params:  # strict stage CAS where the caller knows the origin
-        clauses.append(Request.stage == params["from_stage"])
+    if expected_stage is not None:
+        clauses.append(Request.stage == expected_stage)
     return clauses
 
 
-def resolve_loss(db: Session, req: Request, transition: str, actor: Actor) -> Loss:
+def resolve_loss(
+    db: Session,
+    req: Request,
+    transition: str,
+    actor: Actor,
+    *,
+    epoch: int | None = None,
+) -> Loss:
     """Resolve a consumed precondition against its persisted winning action (ADR 0006)."""
     row = TABLE[transition]
     db.rollback()
     db.refresh(req)
+    current_epoch = None
+    if epoch is not None:
+        current_epoch = db.scalar(select(LeaderEpoch.epoch).where(LeaderEpoch.id == 1))
     winner = db.scalar(
         select(AuditEvent)
         .where(AuditEvent.request_id == req.id, AuditEvent.action.in_(DECISIVE_ACTIONS))
@@ -402,12 +426,17 @@ def resolve_loss(db: Session, req: Request, transition: str, actor: Actor) -> Lo
             winner.operator_id is not None and winner.operator_id == actor.operator_id
         ) or (winner.operator_id is None and winner.actor == actor.name)
         replay = same_operator and winner.action in row.replay_actions
+    detail = (
+        f"fenced: stale leader epoch (mine={epoch}, current={current_epoch})"
+        if epoch is not None and epoch != current_epoch
+        else row.conflict_detail(req)
+    )
     return Loss(
         transition=transition,
         replay=replay,
         winner=winner,
         resulting_state=req.gate or req.status,
-        detail=row.conflict_detail(req),
+        detail=detail,
     )
 
 
@@ -420,6 +449,7 @@ def apply(
     params: dict | None = None,
     intent: IntentSpec | None = None,
     epoch: int | None = None,
+    expected_stage: str | None = None,
 ) -> Win | Loss:
     """Apply one named transition atomically: CAS claim + audit + events (+ intent).
 
@@ -428,13 +458,14 @@ def apply(
     Staged sibling writes on any row are safe across ``apply()``: they are
     flushed before the CAS and survive a Win, while a Loss rolls them back.
     Callers must not stage a write to a precondition column of the transition
-    they are about to apply.
+    they are about to apply. Pass ``expected_stage`` for a first-class stage
+    precondition; ``params`` never changes the CAS predicate.
     ``req`` must belong to ``db``; it is refreshed on both outcomes.
     """
     db.flush()
     row = TABLE[transition]
     params = params or {}
-    clauses = _where(req.id, row.pre, params)
+    clauses = _where(req.id, row.pre, expected_stage)
     if epoch is not None:  # machine actor — fence against a deposed leader (spec §3.2)
         clauses.append(
             select(LeaderEpoch.id)
@@ -447,11 +478,11 @@ def apply(
         # A consumed precondition is a Loss even when the winning transition's
         # effects require params the losing caller did not need to provide.
         if db.scalar(select(Request.id).where(*clauses).limit(1)) is None:
-            return resolve_loss(db, req, transition, actor)
+            return resolve_loss(db, req, transition, actor, epoch=epoch)
         raise
     claimed = db.execute(update(Request).where(*clauses).values(**effects)).rowcount
     if claimed != 1:
-        return resolve_loss(db, req, transition, actor)
+        return resolve_loss(db, req, transition, actor, epoch=epoch)
     db.refresh(req)
     if row.audit_action:
         db.add(AuditEvent(

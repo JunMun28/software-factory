@@ -25,16 +25,18 @@ def classify(r: Request) -> dict:
     """The ONE derivation of a Request's supervision phase from its composite
     lifecycle state (spec 2026-07-14 D6) — the read-side twin of transitions.TABLE.
     phase: closed | human_owned | stalled | at_gate | in_flight | intake.
-    The flags are independent of phase precedence (mission bands read the flags)."""
-    stalled = bool(r.needs_human)
-    at_gate = r.gate is not None and not stalled
+    Closed requests zero every flag, so adopters do not need a CLOSED prefilter
+    for correctness (the SQL prefilter remains useful for efficiency)."""
+    closed = r.status in transitions.CLOSED
+    stalled = bool(r.needs_human) and not closed
+    at_gate = r.gate is not None and not stalled and not closed
     flight = (
         r.status == transitions.APPROVED
         and r.stage in PIPELINE_STAGES
         and not stalled
         and r.gate is None
     )
-    if r.status in transitions.CLOSED:
+    if closed:
         phase = "closed"
     elif r.status == transitions.HUMAN_OWNED:
         phase = "human_owned"

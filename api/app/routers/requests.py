@@ -291,7 +291,7 @@ def request_detail(rid: int, db: Session = Depends(get_db)):
         words = {w.lower().strip(",.") for w in r.title.split() if len(w) > 4}
         recent = (db.query(Request)
                   .filter(Request.app_id == r.app_id, Request.id != r.id,
-                          Request.status != "cancelled")
+                          Request.status != transitions.CANCELLED)
                   .order_by(Request.id.desc()).limit(200).all())
         for other in recent:
             ow = {w.lower().strip(",.") for w in other.title.split() if len(w) > 4}
@@ -545,9 +545,7 @@ def submit(rid: int, extra: Note | None = None, db: Session = Depends(get_db)):
         gate.notify()
     except Exception:
         db.rollback()
-        release = transitions.apply(
-            db, r, "release_submit_claim", actor=reporter, epoch=None
-        )
+        release = transitions.apply(db, r, "release_submit_claim", actor=reporter)
         if isinstance(release, transitions.Win):
             db.commit()  # hand the claim back — a failed brain must not strand the request
         else:

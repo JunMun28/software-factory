@@ -91,7 +91,8 @@ def _tick_request(db: Session, req: Request, moved: list[str],
     if req.sim_step >= len(plan) and req.stage != "review":
         nxt = {"architecture": "build", "build": "review"}[req.stage]
         res = transitions.apply(db, req, "advance_stage", actor=FACTORY,
-                                params={"stage": nxt, "from_stage": req.stage, "announce": True},
+                                params={"stage": nxt, "announce": True},
+                                expected_stage=req.stage,
                                 epoch=get_elector().epoch)
         if isinstance(res, transitions.Win):
             moved.append(f"{req.ref}: advanced to {nxt}")

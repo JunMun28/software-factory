@@ -50,10 +50,10 @@ def test_closed_phases():
     assert classify(_req(status=t.CANCELLED))["phase"] == "closed"
 
 
-def test_closed_phase_keeps_status_blind_flags():
-    """Flags are status-blind; adopters must CLOSED-prefilter before using them."""
-    c = classify(_req(status=t.CANCELLED, gate=t.GATE_APPROVE_MERGE))
-    assert c == {"phase": "closed", "at_gate": True, "in_flight": False, "stalled": False}
+def test_closed_phase_zeroes_all_flags():
+    """Adopters no longer need a CLOSED prefilter for correctness."""
+    c = classify(_req(status=t.CANCELLED, gate=t.GATE_APPROVE_MERGE, needs_human=True))
+    assert c == {"phase": "closed", "at_gate": False, "in_flight": False, "stalled": False}
 
 
 def test_intake_phase():

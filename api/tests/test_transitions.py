@@ -1,4 +1,5 @@
 """Epoch-fenced compare-and-swap transition tests."""
+import inspect
 import uuid
 
 import pytest
@@ -146,6 +147,8 @@ RILEY = Actor(name="Riley Test", operator_id=None)
 ROW_CASES = [
     ("submit_claim", dict(status=DRAFT), {},
      dict(status=PENDING_APPROVAL), None),
+    ("release_submit_claim", dict(status=PENDING_APPROVAL, gate=GATE_APPROVE_SPEC), {},
+     dict(status=DRAFT, gate=None), None),
     ("raise_spec_gate", dict(status=PENDING_APPROVAL), {},
      dict(stage="spec", status=PENDING_APPROVAL, gate=GATE_APPROVE_SPEC), None),
     ("approve_spec", dict(status=PENDING_APPROVAL, gate=GATE_APPROVE_SPEC), {"repo": "micron/x"},
@@ -162,9 +165,14 @@ ROW_CASES = [
      dict(status=PENDING_APPROVAL, gate=GATE_APPROVE_SPEC, send_back_response="because"), "responded"),
     ("cancel", dict(status=PENDING_APPROVAL, gate=GATE_APPROVE_SPEC), {},
      dict(status=CANCELLED, gate=None, needs_human=False), "cancelled"),
-    ("retry", dict(status=APPROVED, stage="build", needs_human=True, needs_human_reason="x"),
-     {"status": APPROVED, "gate": None},
-     dict(needs_human=False, needs_human_reason=None, status=APPROVED, sim_step=0), "retried"),
+    ("retry_spec", dict(status=APPROVED, stage="spec", gate=None,
+                        needs_human=True, needs_human_reason="x"), {},
+     dict(needs_human=False, needs_human_reason=None, status=PENDING_APPROVAL,
+          gate=GATE_APPROVE_SPEC, sim_step=0), "retried"),
+    ("retry_pipeline", dict(status=APPROVED, stage="build", gate=GATE_APPROVE_MERGE,
+                            needs_human=True, needs_human_reason="x"), {},
+     dict(needs_human=False, needs_human_reason=None, status=APPROVED,
+          gate=None, sim_step=0), "retried"),
     ("take_over", dict(status=APPROVED, stage="build", needs_human=True), {},
      dict(status=HUMAN_OWNED, needs_human=False, gate=None), "taken_over"),
     ("send_back_to_stage", dict(status=APPROVED, stage="review", needs_human=True),
@@ -175,7 +183,7 @@ ROW_CASES = [
     ("raise_merge_gate", dict(status=APPROVED, stage="review"), {},
      dict(gate=GATE_APPROVE_MERGE, status=APPROVED), None),
     ("advance_stage", dict(status=APPROVED, stage="architecture"),
-     {"stage": "build", "from_stage": "architecture", "announce": True},
+     {"stage": "build", "announce": True},
      dict(stage="build", sim_step=0), None),
 ]
 
@@ -196,14 +204,25 @@ def test_every_row_wins_from_its_precondition_state(name, start, params, expecte
         res.notify()  # must never raise (no-op when the row has no notification)
 
 
-def test_table_names_match_and_every_row_guards_composite_state():
+def test_every_row_guards_composite_state():
     assert transitions.TABLE is TABLE
     assert SUBMITTED in TABLE["submit_claim"].pre.status_in
     for name, row in TABLE.items():
-        assert row.name == name
         pre = row.pre
         assert (pre.status_in or pre.status_not_in or pre.gate is not ANY
                 or pre.needs_human is not None), f"{name} has no composite-state guard"
+
+
+def test_expected_stage_is_a_first_class_precondition():
+    assert "expected_stage" in inspect.signature(apply).parameters
+    migrate()
+    with SessionLocal() as db:
+        req = _request(db, status=APPROVED, stage="build", needs_human=False)
+        res = apply(db, req, "advance_stage", actor=FACTORY,
+                    params={"stage": "review"}, expected_stage="architecture")
+
+        assert isinstance(res, Loss)
+        assert req.stage == "build"
 
 
 def test_loss_resolves_winner_conflict_and_self_replay():
@@ -230,7 +249,7 @@ def test_loss_with_no_decisive_winner_keeps_the_fallback_detail():
     migrate()
     with SessionLocal() as db:
         req = _request(db, status=DRAFT)  # never acted on
-        res = apply(db, req, "retry", actor=RILEY)
+        res = apply(db, req, "retry_pipeline", actor=RILEY)
         assert isinstance(res, Loss)
         assert res.winner is None
         assert res.detail == "Request is not escalated"
@@ -353,13 +372,16 @@ def test_race_pair_retry_vs_stale_escalate(make_elector):
     with SessionLocal() as db:
         req = _request(db, status=APPROVED, stage="build", needs_human=True)
         assert isinstance(
-            apply(db, req, "retry", actor=RILEY, params={"status": APPROVED, "gate": None}), Win)
+            apply(db, req, "retry_pipeline", actor=RILEY), Win)
         db.commit()
         elector.release()
         elector.try_acquire()  # new leadership term — `stale` is now behind
         res = apply(db, req, "escalate", actor=FACTORY,
                     params={"reason": "late"}, epoch=stale)
         assert isinstance(res, Loss)
+        assert res.detail == (
+            f"fenced: stale leader epoch (mine={stale}, current={elector.epoch})"
+        )
         assert req.needs_human is False
         res2 = apply(db, req, "escalate", actor=FACTORY,
                      params={"reason": "fresh"}, epoch=elector.epoch)

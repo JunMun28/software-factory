@@ -113,10 +113,9 @@ def retry(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
     """Recovery action: re-run the stuck Stage fresh (CONTEXT.md: Retry)."""
     r = get_request(db, rid)
     actor = _operator_actor(db, body.operator_id)
-    retry_status = transitions.PENDING_APPROVAL if r.stage == "spec" else transitions.APPROVED
-    retry_gate = transitions.GATE_APPROVE_SPEC if r.stage == "spec" else r.gate
-    res = transitions.apply(db, r, "retry", actor=actor,
-                            params={"status": retry_status, "gate": retry_gate, "note": body.note})
+    retry_transition = "retry_spec" if r.stage == "spec" else "retry_pipeline"
+    res = transitions.apply(db, r, retry_transition, actor=actor,
+                            params={"note": body.note})
     if isinstance(res, transitions.Loss):
         return conflict_response(r, res)
     db.commit()
