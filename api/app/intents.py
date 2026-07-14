@@ -2,8 +2,10 @@
 
 The caller composes ``begin()`` with ``cas_status()`` and progress events in
 one transaction, committing on success or rolling back on failure. Neither
-``begin()`` nor ``cas_status()`` commits. After the external call returns,
-``complete()`` or ``fail()`` records its outcome and commits independently.
+``begin()`` nor ``cas_status()`` commits. Duplicate intent inserts are isolated
+with a savepoint so they do not roll back sibling writes in the caller's
+transaction. After the external call returns, ``complete()`` or ``fail()``
+records its outcome and commits independently.
 """
 
 import json
@@ -18,17 +20,19 @@ from .models import Intent
 
 def begin(db: Session, key: str, kind: str, request_id: int, payload: dict) -> Intent | None:
     row = Intent(key=key, kind=kind, request_id=request_id, payload_json=json.dumps(payload))
-    db.add(row)
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(row)
+            db.flush()
     except IntegrityError:
-        db.rollback()
         return None
     return row
 
 
 def complete(db: Session, key: str, outcome: dict) -> None:
     row = db.get(Intent, key)
+    if row is None:
+        raise ValueError(f"no intent {key!r}")
     row.status = "done"
     row.outcome_json = json.dumps(outcome)
     row.completed_at = datetime.now(timezone.utc)
@@ -37,6 +41,8 @@ def complete(db: Session, key: str, outcome: dict) -> None:
 
 def fail(db: Session, key: str, outcome: dict) -> None:
     row = db.get(Intent, key)
+    if row is None:
+        raise ValueError(f"no intent {key!r}")
     row.status = "failed"
     row.outcome_json = json.dumps(outcome)
     row.completed_at = datetime.now(timezone.utc)
@@ -46,6 +52,8 @@ def fail(db: Session, key: str, outcome: dict) -> None:
 def open_intents(db: Session) -> list[Intent]:
     return list(
         db.execute(
-            select(Intent).where(Intent.status == "pending").order_by(Intent.created_at)
+            select(Intent)
+            .where(Intent.status == "pending")
+            .order_by(Intent.created_at, Intent.key)
         ).scalars()
     )
