@@ -55,6 +55,23 @@ def test_stale_epoch_cannot_write():
         db.commit()
 
 
+def test_true_cas_is_not_durable_until_caller_commits():
+    """The regression pin for caller-owned transactions: this test FAILS if
+    cas_status ever commits internally again (the write would survive the
+    caller's rollback and the fence could be bypassed via committed intents)."""
+    migrate()
+    elector = LeaderElector(engine)
+    elector.try_acquire()
+    with SessionLocal() as db:
+        request = _fresh_request(db)
+        assert cas_status(
+            db, request.id, "queued_for_pipeline", "running", elector.epoch
+        ) is True
+        db.rollback()  # caller aborts — e.g. a sibling intent insert failed
+    with SessionLocal() as db2:
+        assert db2.get(Request, request.id).status == "queued_for_pipeline"
+
+
 def test_cas_missing_row_returns_false():
     migrate()
     elector = LeaderElector(engine)
