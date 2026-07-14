@@ -295,3 +295,13 @@ class AuditEvent(Base):
     action: Mapped[str] = mapped_column(String(40))  # submitted | approved | sent_back | cancelled | responded | commented
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class LeaderEpoch(Base):
+    """Single-row fencing counter (spec §3.2). Every state-mutating write is
+    guarded by `AND epoch = :mine` — a stalled ex-leader that resumes after
+    losing sp_getapplock cannot advance anything."""
+
+    __tablename__ = "leader_epochs"
+    id: Mapped[int] = mapped_column(primary_key=True)  # always 1
+    epoch: Mapped[int] = mapped_column(nullable=False, default=0)
