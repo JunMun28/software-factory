@@ -64,12 +64,13 @@ def test_true_cas_is_not_durable_until_caller_commits():
     elector.try_acquire()
     with SessionLocal() as db:
         request = _fresh_request(db)
+        req_id = request.id  # capture before rollback expires the instance
         assert cas_status(
-            db, request.id, "queued_for_pipeline", "running", elector.epoch
+            db, req_id, "queued_for_pipeline", "running", elector.epoch
         ) is True
         db.rollback()  # caller aborts — e.g. a sibling intent insert failed
     with SessionLocal() as db2:
-        assert db2.get(Request, request.id).status == "queued_for_pipeline"
+        assert db2.get(Request, req_id).status == "queued_for_pipeline"
 
 
 def test_cas_missing_row_returns_false():
