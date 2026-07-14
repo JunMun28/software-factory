@@ -30,6 +30,14 @@ A checkpoint between Stages that must pass before the next Stage runs. Two kinds
   diff touched no test files). Automated gates are where machine-enforced rules live.
 _Avoid_: approval (only one kind of gate), check (too generic).
 
+**Transition**:
+A named, table-declared move of a Request's lifecycle state — the composite
+`(status, stage, gate, needs_human)` — applied atomically with its audit and event
+record via `transitions.apply()`; the only legal way to mutate lifecycle columns.
+Human-initiated Transitions are raced by their state precondition; machine-initiated
+ones (tick loop, pipeline threads) are additionally fenced by the leader epoch.
+_Avoid_: status change, state update (ad-hoc ORM writes are exactly what this term forbids).
+
 **Merge gate** (Stage 5 human gate):
 The approval that lets a Work item's PR merge into `main`. A native GitHub protected-branch
 required approval: an **Admin** approves the PR as themselves (from the Control center), and

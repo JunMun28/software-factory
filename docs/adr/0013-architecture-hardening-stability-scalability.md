@@ -52,8 +52,10 @@ copies of the lifecycle transitions that had already drifted.
 5. **One owner per rule.** All env knobs live in `settings.py` with absolute
    path defaults (wrong-CWD launches can no longer create a second DB);
    shared transitions live in `lifecycle.py` (the simulator and ClaudeRunner
-   had drifted); schema migration is a generic models-vs-PRAGMA diff in
-   `db.py` (a new column never again 500s an existing DB); the demo seed is
+   had drifted).
+   (Superseded 2026-07-15: transitions live in `api/app/transitions.py` — table + `apply()`; `lifecycle.py` absorbed and deleted.)
+   Schema migration is a generic models-vs-PRAGMA diff in `db.py` (a new
+   column never again 500s an existing DB); the demo seed is
    gated by `FACTORY_SEED_DEMO` (off in the compose stack — production DBs
    start empty).
 

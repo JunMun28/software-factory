@@ -54,3 +54,33 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   short "you are headless, act in one turn, never ask for confirmation" directive (`_OPENCODE_HEADLESS`),
   the counterpart to claude's `--safe-mode`. Shared stage prompts stay CLI-neutral; only the
   opencode branch appends it.
+
+---
+
+## Lifecycle transitions — final wrap-up (2026-07-15)
+
+- **Branch:** `lifecycle-transitions`
+- **Seven-task commit series:** six implementation commits are present; Task 7 remains
+  uncommitted per the coordinator's explicit instruction.
+  1. `acee7de` — transition table + `apply()`, the legal lifecycle write path
+  2. `919ecce` — gate endpoints through `apply()`
+  3. `903bb37` — submit/create through `apply()` with flush-first semantics
+  4. `1e3703b` — simulator transitions, epoch fencing, commit-per-item
+  5. `58c007b` — runner/startup transitions; `lifecycle.py` absorbed and deleted
+  6. `8077a95` — shared `classify()` projection for mission, inbox, and detail
+  7. **Uncommitted** — Task 7 terminology, documentation, architecture assertion,
+     characterization test, implementation notes, and final report
+- **Verification:** `263 passed, 2 warnings`; `uv run ruff check .` passed. The
+  full `task verify` chain passed lint, API tests, all 188 frontend tests, and both
+  production builds, but this managed sandbox forbids the smoke server from binding
+  `127.0.0.1:8911` (`Errno 1`), so it could not reach `✓ VERIFY PASSED` here.
+
+### Deviations
+
+- `apply()` guards parameter-dependent effect construction so a consumed precondition
+  resolves as `Loss`, while an eligible call with missing parameters still raises.
+- `apply()` flushes staged sibling writes before its CAS, preserving them across the
+  winner refresh while `Loss` still rolls the transaction back.
+- Simulator merge-gate notification now fires through `Win.notify()` after commit;
+  recipients and exactly-once behavior are unchanged, and rolled-back gates are not announced.
+- Task 7's commit steps were skipped because the coordinator explicitly required no commit.

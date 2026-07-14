@@ -180,6 +180,7 @@ no silent stranding (ADR 0013).
 | `api/app/agent_runner.py` | Real Stage 2–5 runner — `AgentRunner`, gate logic |
 | `api/app/agent_brain.py` | Real intake brain — `AgentBrain` |
 | `api/app/simulator.py` | Offline stand-in for Stages 2–5 |
+| `api/app/transitions.py` | Lifecycle transition table + `apply()` — the one legal write path for Request lifecycle state (status/stage/gate/needs_human) |
 | `api/app/events.py` | Append-only helpers for `progress_event` log |
 | `api/app/db.py` | SQLite WAL setup, session factory |
 | `api/app/models.py` | Domain model — Request, stages, gates, `progress_event` |
