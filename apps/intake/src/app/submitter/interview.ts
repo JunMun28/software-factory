@@ -12,8 +12,9 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
-import { Api, Icon, InterviewState, Mark, RequestDetail, streamState, TrackChip } from '@sf/shared';
+import { Api, Icon, InterviewState, Mark, RequestDetail, TrackChip } from '@sf/shared';
 import { BasicsCard, basicsAnswered } from './basics-card';
+import { GenerationStream } from './generation-stream';
 import { PlanPanel } from './plan-panel';
 import { SubShell } from './sub-shell';
 import { IntakeDraft } from './intake-draft.service';
@@ -811,7 +812,27 @@ export class Interview implements OnInit {
   id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
   private router = inject(Router);
 
-  st = signal<InterviewState | null>(null);
+  /** the generation loop: 1500 ms thinking-poll + SSE-with-fallback (GenerationStream) */
+  private gen = new GenerationStream<InterviewState>(
+    (kick) => this.api.interview(this.id, kick),
+    () => this.api.interviewStreamUrl(this.id),
+    (s) => s.thinking,
+    inject(DestroyRef),
+    {
+      isValidEvent: (s) => !!s && typeof s.asked === 'number',
+      onState: (_s, source) => {
+        if (source === 'poll') return; // poll ticks update silently, as before
+        this.busy.set(false);
+        this.scrollToEnd();
+      },
+      onLoadError: () => this.busy.set(false),
+      onPollError: () => this.busy.set(false), // give up quietly; the read stays retryable
+    },
+  );
+  /** the interview state — the stream's writable state signal */
+  st = this.gen.state;
+  /** the question is streaming in over SSE */
+  streaming = this.gen.streaming;
   req = signal<RequestDetail | null>(null);
   busy = signal(false);
   msg = signal('');
@@ -824,16 +845,11 @@ export class Interview implements OnInit {
   /** a file is being dragged over the composer */
   dragOver = signal(false);
 
-  /** the question text streaming in token-by-token (empty when not streaming) */
-  streaming = signal(false);
-
   /** a request is in flight, the server is generating, or the question is streaming
    *  in — the composer holds and the thinking/streaming row shows for all three */
-  working = computed(() => this.busy() || !!this.st()?.thinking || this.streaming());
+  working = computed(() => this.busy() || this.gen.thinking() || this.streaming());
 
   private destroyed = false;
-  private pollTimer: ReturnType<typeof setTimeout> | null = null;
-  private closeStreamFn: (() => void) | null = null;
   /** the interview was live in this session (a question was asked) — so when it finishes
    *  we advance to Review. Stays false when we merely land on an already-finished interview
    *  (returned via "Add more detail"), so we don't bounce straight back to Review. */
@@ -969,9 +985,7 @@ export class Interview implements OnInit {
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
-      this.destroyed = true;
-      if (this.pollTimer) clearTimeout(this.pollTimer);
-      this.closeStream();
+      this.destroyed = true; // guards the auto-advance effect below
     });
     // decide the arrival phase once the request/interview state land
     effect(() => {
@@ -998,78 +1012,7 @@ export class Interview implements OnInit {
     void this.draft.loadAttachments(this.id);
     this.api.request(this.id).subscribe((r) => this.req.set(r));
     this.busy.set(true); // show the thinking row until the first question lands
-    this.load(true);
-  }
-
-  /** Read the current state (without kicking pre-generation); if a question still
-   *  needs generating, open the SSE stream so it types in live. */
-  private load(initial = false) {
-    this.api.interview(this.id, false).subscribe({
-      next: (s) => {
-        this.st.set(s);
-        this.busy.set(false);
-        if (initial) this.scrollToEnd();
-        if (s.thinking) this.openStream();
-      },
-      error: () => this.busy.set(false),
-    });
-  }
-
-  /** Drive the next-question generation over SSE: the terminal `state` event carries the
-   *  finished InterviewState. Falls back to polling on error. */
-  private openStream() {
-    this.closeStream();
-    if (this.destroyed) return;
-    this.streaming.set(true);
-    this.closeStreamFn = streamState<InterviewState>(
-      this.api.interviewStreamUrl(this.id),
-      (s) => {
-        this.closeStream();
-        this.busy.set(false);
-        if (s && typeof s.asked === 'number') this.st.set(s);
-        else this.poll(); // empty state → recover via the poll fallback
-        this.scrollToEnd();
-      },
-      () => {
-        this.closeStream();
-        this.poll(); // network/SSE hiccup → fall back to polling (which kicks pre-gen)
-      },
-    );
-  }
-
-  private closeStream() {
-    if (this.closeStreamFn) {
-      this.closeStreamFn();
-      this.closeStreamFn = null;
-    }
-    this.streaming.set(false);
-  }
-
-  /** Fallback when SSE is unavailable: GET with gen=1 (kicks background pre-gen), then
-   *  re-poll every ~1.5s while the server is thinking. */
-  private poll() {
-    if (this.destroyed) return;
-    this.api.interview(this.id, true).subscribe({
-      next: (s) => {
-        this.st.set(s);
-        this.scheduleNextPoll(s);
-      },
-      error: () => this.busy.set(false), // give up quietly; the batch GET stays retryable
-    });
-  }
-
-  /** Keep exactly one pending poll: re-fetch in ~1.5s while the server is thinking. */
-  private scheduleNextPoll(s: InterviewState) {
-    if (this.pollTimer) {
-      clearTimeout(this.pollTimer);
-      this.pollTimer = null;
-    }
-    if (s.thinking && !this.destroyed) {
-      this.pollTimer = setTimeout(() => {
-        this.pollTimer = null;
-        this.poll();
-      }, 1500);
-    }
+    this.gen.refresh();
   }
 
   composerPlaceholder() {
@@ -1116,14 +1059,13 @@ export class Interview implements OnInit {
     this.scrollToEnd(); // the just-sent answer + typing row
     this.api.answer(this.id, body).subscribe({
       next: (s) => {
-        this.st.set(s);
+        this.gen.ingest(s, s.thinking); // adopt; stream the next question in as it generates
         this.msg.set('');
         this.elseText.set('');
         this.hi.set(0);
         this.dismissed.set(false);
         this.busy.set(false);
         this.scrollToEnd();
-        if (s.thinking) this.openStream(); // stream the next question in as it generates
         this.planPanel()?.refresh(); // the answer changes the plan — let it catch up
       },
       error: () => this.busy.set(false),
@@ -1166,7 +1108,7 @@ export class Interview implements OnInit {
     this.busy.set(true);
     this.api.escalate(this.id, true, toType).subscribe({
       next: (s) => {
-        this.st.set(s);
+        this.gen.ingest(s);
         this.busy.set(false);
         this.api.request(this.id).subscribe((r) => this.req.set(r)); // type/rows re-shape
         this.planPanel()?.refresh();
@@ -1176,7 +1118,7 @@ export class Interview implements OnInit {
   }
   /** Decline the proposal: the type stands and the interview continues (the proposal clears). */
   declineEscalation(toType: string) {
-    this.api.escalate(this.id, false, toType).subscribe((s) => this.st.set(s));
+    this.api.escalate(this.id, false, toType).subscribe((s) => this.gen.ingest(s));
   }
 
   /** the basics Type row changed the request — refresh req (rows, stepper,
@@ -1207,10 +1149,9 @@ export class Interview implements OnInit {
     this.api.reopenInterview(this.id, text).subscribe({
       next: (s) => {
         this.msg.set('');
-        this.st.set(s);
+        this.gen.ingest(s, s.thinking); // stream the follow-up (or resolve to done → advance)
         this.busy.set(false);
         this.scrollToEnd();
-        if (s.thinking) this.openStream(); // stream the follow-up (or resolve to done → advance)
         this.planPanel()?.refresh();
       },
       error: () => this.busy.set(false),
