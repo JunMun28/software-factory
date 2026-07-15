@@ -381,7 +381,5 @@ class StageJob(Base):
     completed_at: Mapped[datetime | None] = mapped_column(TZDateTime(), nullable=True)
 
 
-def job_name(ref: str, stage: str, attempt: int, gate: bool = False) -> str:
-    """Return the stable Kubernetes Job name used to re-attach after restart."""
-    suffix = "-gate" if gate else ""
-    return f"sf-{ref.lower()}-{stage.lower()}-{attempt}{suffix}"
+# The deterministic Kubernetes Job name lives in kube_jobs.job_name — one
+# definition; StageJob rows store its output in job_name (column above).
