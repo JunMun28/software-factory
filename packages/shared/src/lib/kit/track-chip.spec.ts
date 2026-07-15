@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TrackChip } from './kit';
+import { TrackChip } from './track-chip';
 
 @Component({
   imports: [TrackChip],
