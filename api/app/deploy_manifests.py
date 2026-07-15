@@ -125,8 +125,15 @@ def build_job_manifest(ref: str, slug: str, sha: str) -> dict:
                             ),
                         ],
                         "volumeMounts": [{"name": "workspace", "mountPath": "/workspace"}],
-                        "securityContext": {"allowPrivilegeEscalation": False,
-                                            "capabilities": {"drop": ["ALL"]}},
+                        # kaniko MUST be in-container root to unpack base
+                        # rootfs layers (chown) — proven live: UID 10101 dies
+                        # with "chown /: operation not permitted". Still
+                        # unprivileged: no privileged mode, no escalation.
+                        # Restricted-SCC profiles use BuildConfig instead
+                        # (plan deviation, pre-recorded fallback).
+                        "securityContext": {"runAsNonRoot": False,
+                                            "runAsUser": 0,
+                                            "allowPrivilegeEscalation": False},
                         "resources": {"requests": {"cpu": "500m", "memory": "1Gi"},
                                       "limits": {"cpu": "2", "memory": "4Gi"}},
                         "terminationMessagePolicy": "File",

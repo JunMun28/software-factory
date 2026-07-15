@@ -18,10 +18,15 @@ def test_build_job_is_backofflimit0_nonroot_no_llm():
     pod = spec["template"]["spec"]
     assert pod["automountServiceAccountToken"] is False
     assert pod["securityContext"]["runAsNonRoot"] is True
-    # kaniko is NOT privileged (its whole point) — prove no privilege escalation
+    # kaniko is NOT privileged (its whole point) — no privileged mode, no
+    # escalation. It IS in-container root: rootfs unpacking chowns files
+    # (proven live; the clone init and every other tier stay non-root).
     kaniko = next(c for c in pod["containers"] if c["name"] == "build")
     assert kaniko["securityContext"]["allowPrivilegeEscalation"] is False
     assert "privileged" not in kaniko["securityContext"]
+    assert kaniko["securityContext"]["runAsUser"] == 0
+    clone = next(c for c in pod["initContainers"] if c["name"] == "clone")
+    assert "runAsUser" not in clone.get("securityContext", {})  # inherits 10101
     # a clone init-container (git) precedes kaniko; kaniko never clones over the LLM path
     assert any(c["name"] == "clone" for c in pod["initContainers"])
 
