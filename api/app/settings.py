@@ -81,3 +81,8 @@ KUBE_MAX_ATTEMPTS = int(
 )
 # Concurrent Jobs the orchestrator will run (spec §2).
 KUBE_JOB_CAP = int(os.environ.get("FACTORY_JOB_CAP", "10"))
+
+# ---------- git-as-workspace + cluster profile (Plan B2, spec §2/§5/§6) ----------
+# Base URL agent/gate Jobs clone from (the git-daemon sidecar). Empty = no git
+# backbone configured: the kube runner behaves exactly like B1 (unit tests).
+GIT_REMOTE_BASE = os.environ.get("FACTORY_GIT_REMOTE_BASE", "").rstrip("/")
