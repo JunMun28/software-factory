@@ -12,9 +12,9 @@ Orchestrator-owned hard lines (spec §5/§6):
   * wall clock per (stage, attempt) — a partitioned node cannot strand a request;
   * only StageJob rows with status='running' are ever polled or graded — late
     completions of superseded attempts are discarded;
-  * the orchestrator attempts output capture before Job deletion; terminal-pod
-    capture is complete, while running-pod capture is best-effort until the
-    client seam can read running pod output;
+  * the orchestrator attempts output capture before every Job deletion,
+    including timeout, reap, and supersede paths; running-pod capture is best-effort
+    because log transfer itself can still fail;
   * a missing gate verdict re-runs the same attempt, but three consecutive infra outcomes
     consume that attempt as a gate failure instead of churning forever;
   * frozen surface: green's gate must report exactly the surface_hash red's
@@ -90,13 +90,27 @@ class KubeJobRunner:
     # ---------- tick ----------
     def tick(self, db: Session) -> list[str]:
         moved: list[str] = []
+        defer_spawn: set[int] = set()
         self._reap_dead_requests(db, moved)
         for sj in db.scalars(
             select(StageJob).where(StageJob.status == "running").order_by(StageJob.id)
         ).all():
             req = db.get(Request, sj.request_id)
+            all_rows = db.scalars(
+                select(StageJob)
+                .where(StageJob.request_id == req.id)
+                .order_by(StageJob.attempt, StageJob.id)
+            ).all()
+            self._supersede_rewound_rows(db, req, all_rows)
+            if sj.status != "running":
+                continue
             try:
                 self._observe(db, req, sj, moved)
+                if sj.status in ("failed", "timed_out", "infra"):
+                    # Failure and infra recovery are next-tick work. This is
+                    # especially important for deterministic-name 409s: the
+                    # predecessor may still be terminating in this tick.
+                    defer_spawn.add(req.id)
             except Exception as exc:  # one broken Job stalls only its request (ADR 0013)
                 db.rollback()
                 failures = self._observe_failures.get(sj.job_name, 0) + 1
@@ -109,7 +123,7 @@ class KubeJobRunner:
                 req = db.get(Request, sj.request_id)
                 self._escalate(db, req, f"Job observation failed for {sj.job_name}: {exc}")
         running = db.scalars(select(StageJob).where(StageJob.status == "running")).all()
-        busy = {r.request_id for r in running}
+        busy = {r.request_id for r in running} | defer_spawn
         capacity = settings.KUBE_JOB_CAP - len(running)
         runnable = db.scalars(
             select(Request)
@@ -163,6 +177,14 @@ class KubeJobRunner:
     def _observe(self, db: Session, req: Request, sj: StageJob, moved: list[str]) -> None:
         view = self.client.get_job(sj.job_name)
         self._observe_failures.pop(sj.job_name, None)
+        if view.phase != "absent" and sj.job_uid and view.uid and view.uid != sj.job_uid:
+            # Same name, different Job — not ours (out-of-band recreate).
+            # Never grade a stranger: infra, re-run (spec §5 stale-discard).
+            sj.status = "infra"
+            sj.completed_at = utcnow()
+            db.commit()
+            moved.append(f"{req.ref}: {sj.job_name} uid changed under us — will re-run")
+            return
         now = utcnow()
         if view.phase == "running":
             if now < sj.deadline_at:
@@ -440,9 +462,8 @@ class KubeJobRunner:
             self._finish_review(db, req, review.envelope or {}, moved)
         return None
 
-    @staticmethod
     def _supersede_rewound_rows(
-        db: Session, req: Request, rows: list[StageJob]
+        self, db: Session, req: Request, rows: list[StageJob]
     ) -> None:
         target = next(
             (stage for stage in KUBE_STAGES if REQUEST_STAGE[stage] == req.stage),
@@ -466,6 +487,20 @@ class KubeJobRunner:
                 and row.created_at < req.stage_entered_at
                 and KUBE_STAGES.index(row.stage) >= target_index
             ):
+                if row.status == "running":
+                    # A superseded running row must be captured and deleted, or
+                    # it continues to run (and bill) after the rewind.
+                    try:
+                        view = self.client.get_job(row.job_name, capture=True)
+                        row.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+                        row.envelope = row.envelope or parse_envelope(
+                            view.termination_message
+                        )
+                        self.client.delete_job(row.job_name)
+                        row.completed_at = utcnow()
+                    except Exception:
+                        log.exception("supersede reap failed for %s", row.job_name)
+                        continue  # stays running; the next tick retries
                 row.status = "superseded"
         db.commit()
 
@@ -519,17 +554,16 @@ class KubeJobRunner:
         if isinstance(res, transitions.Loss):
             log.info("%s: spawn of %s lost (%s)", req.ref, name, res.detail)
             return False
-        db.add(
-            StageJob(
-                request_id=req.id,
-                stage=stage,
-                attempt=attempt,
-                role="stage",
-                job_name=name,
-                epoch=get_elector().epoch,
-                deadline_at=utcnow() + timedelta(seconds=settings.STAGE_WALL_CLOCK),
-            )
+        row = StageJob(
+            request_id=req.id,
+            stage=stage,
+            attempt=attempt,
+            role="stage",
+            job_name=name,
+            epoch=get_elector().epoch,
+            deadline_at=utcnow() + timedelta(seconds=settings.STAGE_WALL_CLOCK),
         )
+        db.add(row)
         emit(
             db,
             req,
@@ -549,7 +583,7 @@ class KubeJobRunner:
         return self._create(
             db,
             req,
-            name,
+            row,
             stage_job_manifest(req.ref, stage, attempt, feedback=feedback),
             moved,
         )
@@ -568,17 +602,16 @@ class KubeJobRunner:
         # raise_merge_gate or escalation is epoch-fenced. The intent row records
         # the side effect (idempotent begin: a replay is None).
         intents.begin(db, f"spawn:{name}", intents.SPAWN_GATE_JOB, req.id, {"job": name})
-        db.add(
-            StageJob(
-                request_id=req.id,
-                stage=stage,
-                attempt=attempt,
-                role="gate",
-                job_name=name,
-                epoch=get_elector().epoch,
-                deadline_at=utcnow() + timedelta(seconds=settings.GATE_WALL_CLOCK),
-            )
+        row = StageJob(
+            request_id=req.id,
+            stage=stage,
+            attempt=attempt,
+            role="gate",
+            job_name=name,
+            epoch=get_elector().epoch,
+            deadline_at=utcnow() + timedelta(seconds=settings.GATE_WALL_CLOCK),
         )
+        db.add(row)
         emit(
             db,
             req,
@@ -597,7 +630,7 @@ class KubeJobRunner:
         return self._create(
             db,
             req,
-            name,
+            row,
             gate_job_manifest(req.ref, stage, attempt),
             moved,
         )
@@ -606,24 +639,48 @@ class KubeJobRunner:
         self,
         db: Session,
         req: Request,
-        name: str,
+        row: StageJob,
         manifest: dict,
         moved: list[str],
     ) -> bool:
+        name = row.job_name
         try:
-            self.client.create_job(manifest)
+            uid = self.client.create_job(manifest)
         except Exception as exc:
             log.exception("create_job %s failed", name)
             intents.fail(db, f"spawn:{name}", {"error": str(exc)[:300]})
-            row = db.scalar(
-                select(StageJob)
-                .where(StageJob.job_name == name, StageJob.status == "running")
-                .order_by(StageJob.id.desc())
-            )
-            if row:
-                row.status = "infra"
+            row.status = "infra"
+            row.completed_at = utcnow()
             self._escalate(db, req, f"Could not create Job {name}: {exc}")
             return False
-        intents.complete(db, f"spawn:{name}", {"job": name})
+        if uid is None:
+            # 409: adopt our own unrecorded intent replay, but park when the
+            # live object belongs to an earlier completed same-name row.
+            view = self.client.get_job(name)
+            prior_uids = {
+                prior.job_uid
+                for prior in db.scalars(
+                    select(StageJob).where(
+                        StageJob.job_name == name, StageJob.id != row.id
+                    )
+                ).all()
+                if prior.job_uid
+            }
+            if view.phase != "absent" and view.uid and view.uid in prior_uids:
+                intents.fail(
+                    db,
+                    f"spawn:{name}",
+                    {"error": "same-name Job from a prior attempt still terminating"},
+                )
+                row.status = "infra"
+                row.completed_at = utcnow()
+                db.commit()
+                moved.append(f"{req.ref}: {name} blocked by a dying predecessor — will re-run")
+                return False
+            row.job_uid = view.uid or None
+        else:
+            row.job_uid = uid
+        intents.complete(db, f"spawn:{name}", {"job": name, "uid": row.job_uid})
+        db.commit()
         moved.append(f"{req.ref}: spawned {name}")
         return True

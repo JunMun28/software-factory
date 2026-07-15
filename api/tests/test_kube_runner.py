@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 from fake_kube import (
@@ -26,7 +27,7 @@ from sqlalchemy import select
 from app import settings, transitions
 from app.db import SessionLocal
 from app.kube_runner import KubeJobRunner
-from app.models import Request, StageJob
+from app.models import Request, StageJob, utcnow
 
 
 def make_runner() -> tuple[KubeJobRunner, FakeKubeClient]:
@@ -574,3 +575,161 @@ def test_kube_runner_module_contract_documents_actual_limits():
     assert "three consecutive infra outcomes" in doc
     assert "running-pod capture is best-effort" in doc
     assert "grades themselves are not epoch-fenced" in doc
+
+
+# ---------- B2 task 2: uid tracking, capture-before-delete, supersede leak ----------
+
+
+def test_create_records_uid_and_replay_adopts(client):
+    """Intent replay: our own earlier create landed (409) — adopt its uid."""
+    runner, fake = make_runner()
+    d = _approved(client, "Kube uid adopt")
+    name = f"sf-{d['ref'].lower()}-architecture-1"
+    # a previous leader's create landed, then it crashed before recording it
+    from app.kube_jobs import stage_job_manifest
+
+    pre_uid = fake.create_job(stage_job_manifest(d["ref"], "architecture", 1))
+    fake.conflicts.add(name)  # our create will 409 against it
+    with SessionLocal() as db:
+        runner.tick(db)
+        row = db.scalar(
+            select(StageJob)
+            .where(StageJob.job_name == name)
+            .order_by(StageJob.id.desc())
+        )
+        assert row.status == "running" and row.job_uid == pre_uid  # adopted
+
+
+def test_create_conflict_with_dying_predecessor_parks_infra(client, monkeypatch):
+    """A prior attempt's same-name Job is still terminating: never adopt it —
+    park as infra and re-run once the name frees up (B1 ledger: 409s)."""
+    monkeypatch.setattr(settings, "STAGE_WALL_CLOCK", -1)  # attempt 1 times out instantly
+    runner, fake = make_runner()
+    d = _approved(client, "Kube dying predecessor")
+    with SessionLocal() as db:
+        runner.tick(db)  # spawn attempt 1
+        runner.tick(db)  # wall clock fires: row1 timed_out, job deleted, retry queued
+    monkeypatch.setattr(settings, "STAGE_WALL_CLOCK", 2100)
+    # the kubelet is slow: the old attempt-1 Job object is STILL there when the
+    # infra path recreates the same deterministic name for attempt... (attempt 2
+    # has its own name; force the same-name case via an infra vanish instead)
+    name2 = f"sf-{d['ref'].lower()}-architecture-2"
+    with SessionLocal() as db:
+        runner.tick(db)  # spawns attempt 2 (name2)
+    fake.jobs[name2].deleted = True  # vanishes under us → infra re-run, SAME name
+    with SessionLocal() as db:
+        runner.tick(db)  # observes absent → row infra
+    old_uid = fake.jobs[name2].uid
+    fake.jobs[name2].deleted = False  # ...but the object lingers, dying
+    fake.conflicts.add(name2)
+    with SessionLocal() as db:
+        runner.tick(db)  # re-create 409s against the dying predecessor
+        rows = db.scalars(
+            select(StageJob).where(StageJob.job_name == name2).order_by(StageJob.id)
+        ).all()
+        assert rows[-1].status == "infra" and rows[-1].job_uid is None
+    out = client.get(f"/api/requests/{d['id']}").json()
+    assert out["needs_human"] is False  # parked, not escalated
+    fake.jobs[name2].deleted = True  # predecessor finally reaped
+    with SessionLocal() as db:
+        runner.tick(db)
+        fresh = db.scalar(
+            select(StageJob)
+            .where(StageJob.job_name == name2)
+            .order_by(StageJob.id.desc())
+        )
+        assert fresh.status == "running" and fresh.job_uid not in (None, old_uid)
+
+
+def test_observe_discards_same_name_stranger(client):
+    """A same-name Job with a DIFFERENT uid is not ours: infra, re-run,
+    never graded (B1 ledger: uid tracking)."""
+    runner, fake = make_runner()
+    d = _approved(client, "Kube uid stranger")
+    name = f"sf-{d['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+    # someone deleted + recreated the job out-of-band
+    from fake_kube import FakeJob
+
+    from app.kube_jobs import stage_job_manifest
+
+    fake.jobs[name] = FakeJob(
+        manifest=stage_job_manifest(d["ref"], "architecture", 1),
+        uid="uid-stranger",
+    )
+    fake.finish(name, stage_ok())  # the stranger even "succeeds"
+    with SessionLocal() as db:
+        runner.tick(db)
+        row = db.scalar(
+            select(StageJob).where(StageJob.job_name == name).order_by(StageJob.id)
+        )
+        assert row.status == "infra"  # discarded, not graded
+    out = client.get(f"/api/requests/{d['id']}").json()
+    assert out["needs_human"] is False
+
+
+def test_wall_clock_timeout_captures_running_logs(client, monkeypatch):
+    monkeypatch.setattr(settings, "STAGE_WALL_CLOCK", -1)
+    runner, fake = make_runner()
+    d = _approved(client, "Kube timeout capture")
+    name = f"sf-{d['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+    fake.jobs[name].logs = '{"type":"note","text":"i was mid-flight"}\n'
+    with SessionLocal() as db:
+        runner.tick(db)
+        row = db.scalar(select(StageJob).where(StageJob.job_name == name))
+        assert row.status == "timed_out"
+        assert "mid-flight" in (row.logs_tail or "")  # captured BEFORE delete
+    assert name in fake.deletions
+
+
+def test_reap_captures_running_logs(client):
+    runner, fake = make_runner()
+    d = _approved(client, "Kube reap capture")
+    name = f"sf-{d['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+    fake.jobs[name].logs = '{"type":"note","text":"cancelled mid-run"}\n'
+    client.post(f"/api/requests/{d['id']}/cancel", json={"operator_id": 1})
+    with SessionLocal() as db:
+        runner.tick(db)
+        row = db.scalar(select(StageJob).where(StageJob.job_name == name))
+        assert row.status == "reaped" and "cancelled mid-run" in (row.logs_tail or "")
+
+
+def test_supersede_deletes_running_job(client):
+    """B1 ledger: a rewound request superseded LATER rows but left their live
+    Jobs running forever. Superseding a running row now captures + deletes."""
+    runner, fake = make_runner()
+    d = _approved(client, "Kube supersede leak")
+    with SessionLocal() as db:
+        req = db.get(Request, d["id"])
+        # fabricate a running review-stage job from BEFORE an operator rewind
+        from app.kube_jobs import stage_job_manifest
+
+        name = f"sf-{req.ref.lower()}-review-1"
+        uid = fake.create_job(stage_job_manifest(req.ref, "review", 1))
+        fake.jobs[name].logs = '{"type":"note","text":"stale reviewer"}\n'
+        db.add(
+            StageJob(
+                request_id=req.id,
+                stage="review",
+                attempt=1,
+                role="stage",
+                job_name=name,
+                job_uid=uid,
+                epoch=1,
+                deadline_at=utcnow() + timedelta(seconds=2100),
+                created_at=utcnow() - timedelta(hours=1),
+            )
+        )
+        req.stage = "architecture"  # the rewind target
+        req.stage_entered_at = utcnow()  # newer than the row above
+        db.commit()
+        runner.tick(db)
+        row = db.scalar(select(StageJob).where(StageJob.job_name == name))
+        assert row.status == "superseded"
+        assert "stale reviewer" in (row.logs_tail or "")
+    assert name in fake.deletions  # the leak is closed
