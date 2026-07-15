@@ -7,6 +7,7 @@ import importlib.util
 import inspect
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import timedelta
@@ -24,10 +25,11 @@ from fake_kube import (
 from helpers import approved_request
 from sqlalchemy import select
 
-from app import settings, transitions
+from app import settings, transitions, workspace
 from app.db import SessionLocal
 from app.kube_runner import KubeJobRunner
 from app.models import Request, StageJob, utcnow
+from app.ws_exec import _git
 
 
 def make_runner() -> tuple[KubeJobRunner, FakeKubeClient]:
@@ -733,3 +735,158 @@ def test_supersede_deletes_running_job(client):
         assert row.status == "superseded"
         assert "stale reviewer" in (row.logs_tail or "")
     assert name in fake.deletions  # the leak is closed
+
+
+# ---------- B2 task 5: git-backed grading, resets, merge ----------
+
+def _git_mode(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "GIT_REMOTE_BASE", "git://api:9418")
+    monkeypatch.setattr(settings, "WORKSPACES", tmp_path / "kube-ws")
+
+
+def _commit_all(ws, msg):
+    _git(ws, "add", "-A")
+    _git(ws, "commit", "-q", "-m", msg)
+    return _git(ws, "rev-parse", "HEAD").stdout.strip()
+
+
+def git_backed_cluster(fake, ws_root, *, green_cheats=False):
+    """Agents that REALLY commit: each stage job writes to the request's
+    workspace (standing in for the pod's clone+push) and reports its sha;
+    gates pass verdicts whose envelope hashes are junk — proving the
+    orchestrator now trusts only its OWN git computation."""
+    import json as _json
+
+    def run(name, job):
+        if job.phase != "running":
+            return
+        if name.endswith("-gate"):
+            v = pass_verdict(surface_hash="junk-" + name[-12:])  # untrusted + inconsistent
+            job.phase = "succeeded"
+            job.termination_message = _json.dumps(v)
+            return
+        env = {e["name"]: e["value"] for e in job.manifest["spec"]["template"]["spec"]["containers"][0]["env"]}
+        ref, stage = env["SF_REF"], env["SF_STAGE"]
+        ws = ws_root / ref.lower()
+        if stage == "architecture":
+            (ws / "PLAN.md").write_text("# plan\n")
+        elif stage == "red":
+            (ws / "tests" / "test_b2.py").write_text("def test_b2():\n    assert False\n")
+        elif stage == "green":
+            (ws / "src" / "b2.py").write_text("done = True\n")
+            if green_cheats:
+                (ws / "tests" / "test_b2.py").write_text("def test_b2():\n    assert True\n")
+        sha = _commit_all(ws, f"{ref}: {stage}") if stage != "review" else \
+            _git(ws, "rev-parse", "HEAD").stdout.strip()
+        job.phase = "succeeded"
+        job.termination_message = _json.dumps(
+            {"v": 1, "outcome": "ok",
+             "detail": "APPROVE — looks right" if stage == "review" else "stage complete",
+             "sha": sha})
+
+    fake.on_observe = run
+
+
+def test_git_grading_passes_an_honest_run_and_pins_shas(client, monkeypatch, tmp_path):
+    _git_mode(monkeypatch, tmp_path)
+    runner, fake = make_runner()
+    git_backed_cluster(fake, tmp_path / "kube-ws")
+    d = _approved(client, "Kube git honest")
+    out = tick_until(client, runner, d["id"], lambda o: o["gate"] == "approve_merge")
+    assert out["stage"] == "review" and not out["needs_human"]
+    ref = out["ref"].lower()
+    ws = tmp_path / "kube-ws" / ref
+    assert (ws / ".git").exists() and (ws / "PLAN.md").exists()
+    # gates were spawned WITH the pinned SHA of the stage they grade
+    red_gate = next(m for m in fake.creations
+                    if m["metadata"]["name"] == f"sf-{ref}-red-1-gate")
+    env = {e["name"]: e["value"] for e in red_gate["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert len(env["SF_SHA"]) == 40
+    review_gate = next(m for m in fake.creations
+                       if m["metadata"]["name"] == f"sf-{ref}-review-1-gate")
+    renv = {e["name"]: e["value"] for e in review_gate["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert renv["SF_REVIEW_VERDICT"].startswith("APPROVE")
+
+
+def test_git_grading_catches_a_cheating_implementer(client, monkeypatch, tmp_path):
+    """The gate pod says PASS with a junk hash both times; only the
+    orchestrator's own git computation catches the frozen-surface change."""
+    _git_mode(monkeypatch, tmp_path)
+    runner, fake = make_runner()
+    git_backed_cluster(fake, tmp_path / "kube-ws", green_cheats=True)
+    d = _approved(client, "Kube git cheater")
+    out = tick_until(client, runner, d["id"], lambda o: o["needs_human"])
+    assert "Test-isolation gate" in out["needs_human_reason"]
+
+
+def test_retry_resets_the_branch_to_the_last_graded_sha(client, monkeypatch, tmp_path):
+    """Attempt 2 must not inherit attempt 1's half-pushed commit (spec §5)."""
+    _git_mode(monkeypatch, tmp_path)
+    runner, fake = make_runner()
+    stray_holder = {}
+
+    import json as _json
+
+    def run(name, job):
+        if job.phase != "running":
+            return
+        env = {e["name"]: e["value"] for e in job.manifest["spec"]["template"]["spec"]["containers"][0]["env"]}
+        ref = env.get("SF_REF", "")
+        ws = tmp_path / "kube-ws" / ref.lower()
+        if name.endswith("-gate"):
+            if "-architecture-1-gate" in name:
+                v = fail_verdict("architecture gate: PLAN.md missing")
+            else:
+                v = pass_verdict()
+            job.phase = "succeeded"
+            job.termination_message = _json.dumps(v)
+            return
+        if name.endswith("-architecture-1"):
+            (ws / "HALFDONE.md").write_text("junk\n")     # half-pushed work
+            sha = _commit_all(ws, "half done")
+            stray_holder["sha"] = sha
+        else:
+            (ws / "PLAN.md").write_text("# plan\n")
+            sha = _commit_all(ws, "plan")
+        job.phase = "succeeded"
+        job.termination_message = _json.dumps({"v": 1, "outcome": "ok", "detail": "d", "sha": sha})
+
+    fake.on_observe = run
+    d = _approved(client, "Kube git reset")
+    ref = d["ref"].lower()
+    tick_until(client, runner, d["id"],
+               lambda o: any(f"sf-{ref}-architecture-2" == m["metadata"]["name"]
+                             for m in fake.creations), limit=12)
+    ws = tmp_path / "kube-ws" / ref
+    assert not (ws / "HALFDONE.md").exists()               # reset to sf-baseline
+    assert workspace.head_sha(ws) != stray_holder["sha"]
+
+
+def test_kube_approve_merge_merges_the_graded_sha(client, monkeypatch, tmp_path):
+    _git_mode(monkeypatch, tmp_path)
+    monkeypatch.setenv("FACTORY_RUNNER", "kube")
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    fake = FakeKubeClient()
+    runner = KubeJobRunner(client=fake)
+    git_backed_cluster(fake, tmp_path / "kube-ws")
+    app = create_app(auto_tick=0, runner=runner)
+    with TestClient(app) as c:
+        d = approved_request(
+            c, title="Kube git merge",
+            description="Add a monthly_export function that returns the export format name.")
+        out = d
+        for _ in range(40):
+            if out["gate"] == "approve_merge":
+                break
+            c.post("/api/simulator/tick")
+            out = c.get(f"/api/requests/{d['id']}").json()
+        assert out["gate"] == "approve_merge"
+        ws = tmp_path / "kube-ws" / d["ref"].lower()
+        graded = workspace.head_sha(ws, f"work/{d['ref'].lower()}")
+        done = c.post(f"/api/requests/{d['id']}/approve", json={"operator_id": 1}).json()
+        assert done["status"] == "done" and done["stage"] == "done"
+        assert _git(ws, "merge-base", "--is-ancestor", graded, "main").returncode == 0
+    shutil.rmtree(tmp_path / "kube-ws", ignore_errors=True)

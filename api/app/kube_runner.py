@@ -33,7 +33,7 @@ from datetime import timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import intents, settings, transitions, verification
+from . import intents, settings, simulator, transitions, verification, workspace
 from .events import emit
 from .kube_client import KubeClient
 from .kube_jobs import (
@@ -298,26 +298,35 @@ class KubeJobRunner:
             return
         verdict = envelope.get("outcome")
         if verdict == "pass" and sj.stage == "green":
-            red = db.scalar(
-                select(StageJob)
-                .where(
-                    StageJob.request_id == req.id,
-                    StageJob.stage == "red",
-                    StageJob.role == "gate",
-                    StageJob.status == "succeeded",
-                )
-                .order_by(StageJob.id.desc())
-            )
-            red_hash = (red.envelope or {}).get("surface_hash") if red else None
-            if not red_hash or envelope.get("surface_hash") != red_hash:
-                # the load-bearing rule, enforced on the RECORD the trusted side
-                # holds — an untrusted gate pod's "pass" cannot override it
+            source = self._surface_check(db, req, sj)
+            if source == "violated":
                 verdict = "fail"
                 envelope = {
                     **envelope,
                     "reason": "Test-isolation gate: the frozen test surface changed after RED — change rejected",
                 }
                 sj.envelope = envelope
+            elif source == "unavailable":
+                # B1 fallback: no git backbone/SHAs — compare the (untrusted)
+                # gate-envelope hashes, better than nothing
+                red = db.scalar(
+                    select(StageJob)
+                    .where(
+                        StageJob.request_id == req.id,
+                        StageJob.stage == "red",
+                        StageJob.role == "gate",
+                        StageJob.status == "succeeded",
+                    )
+                    .order_by(StageJob.id.desc())
+                )
+                red_hash = (red.envelope or {}).get("surface_hash") if red else None
+                if not red_hash or envelope.get("surface_hash") != red_hash:
+                    verdict = "fail"
+                    envelope = {
+                        **envelope,
+                        "reason": "Test-isolation gate: the frozen test surface changed after RED — change rejected",
+                    }
+                    sj.envelope = envelope
         if verdict == "pass" and sj.stage == "review":
             # evidence that can't be derived would be a lie — treat it as a
             # gate failure (retry machinery, then a human) rather than raising
@@ -367,6 +376,42 @@ class KubeJobRunner:
             return
         moved.append(f"{req.ref}: merge gate raised")
 
+    # ---------- the human merge gate (kube mode) ----------
+    def approve_merge(self, db: Session, req: Request, actor: str) -> None:
+        """SHA-precondition merge (spec §6, local edition): merge exactly the
+        last graded SHA into main, or escalate. Without a git workspace (no
+        GIT_REMOTE_BASE — B1-shaped runs) delegate to the simulator's
+        finish_done, which was B1's contract."""
+        ws = workspace.workspace_for(req)
+        sha = self._last_graded_sha(db, req)
+        if not settings.GIT_REMOTE_BASE or not (ws / ".git").exists() or not sha:
+            simulator.approve_merge(db, req, actor)
+            return
+        err = workspace.merge_graded(ws, req.ref, sha, actor)
+        if err:
+            self._escalate(db, req, f"Merge failed: {err}")
+            return
+        res = transitions.apply(
+            db,
+            req,
+            "finish_done",
+            actor=transitions.Actor(name=actor),
+            params={
+                "merge_note": "work branch merged to main",
+                "deploy_title": "Deployed — main updated in the Subject workspace",
+                "payload_extra": {
+                    "merged": True,
+                    "workspace": str(ws),
+                    "sha": sha,
+                },
+            },
+        )
+        if isinstance(res, transitions.Loss):
+            log.info("%s: finish_done lost (%s)", req.ref, res.detail)
+            return
+        db.commit()
+        log.info("%s merged to main at %s by %s", req.ref, sha[:12], actor)
+
     # ---------- failure policy: retry-with-feedback (N=2), then a human ----------
     def _after_failure(
         self,
@@ -410,6 +455,82 @@ class KubeJobRunner:
             log.info("escalation for %s dropped — %s", req.ref, res.detail)
             return
         log.error("escalated %s: %s", req.ref, reason)
+
+    # ---------- git-as-workspace (B2): the trusted side of the pipeline ----------
+    def _last_graded_sha(self, db: Session, req: Request) -> str | None:
+        """The newest stage SHA whose gate succeeded — the only safe branch
+        state for a fresh attempt (spec §5 attempt semantics)."""
+        rows = db.scalars(
+            select(StageJob)
+            .where(StageJob.request_id == req.id)
+            .order_by(StageJob.id)
+        ).all()
+        for gate in reversed(rows):
+            if gate.role != "gate" or gate.status != "succeeded":
+                continue
+            stage_row = next(
+                (
+                    r
+                    for r in reversed(rows)
+                    if r.role == "stage"
+                    and r.status == "succeeded"
+                    and r.stage == gate.stage
+                    and r.attempt == gate.attempt
+                ),
+                None,
+            )
+            sha = (stage_row.envelope or {}).get("sha") if stage_row else None
+            if sha:
+                return sha
+        return None
+
+    def _prepare_workspace(self, db: Session, req: Request) -> None:
+        """Before an agent Job clones: the repo exists and the work branch
+        sits at the last graded SHA (or the SPEC baseline). A no-op between
+        clean stages; the reset that matters happens on retries."""
+        if not settings.GIT_REMOTE_BASE:
+            return  # no git backbone configured: B1 behavior (unit fakes)
+        ws = workspace.ensure_repo(req, workspace.spec_md(req))
+        target = self._last_graded_sha(db, req) or workspace.BASELINE_TAG
+        if not workspace.reset_branch(ws, req.ref, target):
+            raise RuntimeError(f"could not reset {req.ref} work branch to {target}")
+
+    def _surface_check(self, db: Session, req: Request, sj: StageJob) -> str:
+        """'ok' | 'violated' | 'unavailable'. The orchestrator computes the
+        frozen-surface hash at red's and green's PUSHED SHAs on its own repo
+        (spec §6) — the gate pod's claimed hash is never load-bearing here.
+        A SHA that does not resolve is a violation, never a pass."""
+        if not settings.GIT_REMOTE_BASE:
+            return "unavailable"
+        ws = workspace.workspace_for(req)
+        if not (ws / ".git").exists():
+            return "unavailable"
+
+        def _stage_sha(stage: str, attempt: int | None) -> str | None:
+            q = (
+                select(StageJob)
+                .where(
+                    StageJob.request_id == req.id,
+                    StageJob.stage == stage,
+                    StageJob.role == "stage",
+                    StageJob.status == "succeeded",
+                )
+                .order_by(StageJob.id.desc())
+            )
+            if attempt is not None:
+                q = q.where(StageJob.attempt == attempt)
+            row = db.scalar(q)
+            return (row.envelope or {}).get("sha") if row else None
+
+        red_sha = _stage_sha("red", None)
+        green_sha = _stage_sha("green", sj.attempt)
+        if not red_sha or not green_sha:
+            return "unavailable"
+        red_hash = workspace.surface_hash_at(ws, red_sha)
+        green_hash = workspace.surface_hash_at(ws, green_sha)
+        if red_hash is None or green_hash is None:
+            return "violated"  # an agent claiming an unknown SHA never passes
+        return "ok" if red_hash == green_hash else "violated"
 
     # ---------- decide + spawn the next Job for a runnable request ----------
     def _next_work(self, db: Session, req: Request, moved: list[str]):
@@ -535,6 +656,7 @@ class KubeJobRunner:
         feedback: str,
         moved: list[str],
     ) -> bool:
+        self._prepare_workspace(db, req)
         name = job_name(req.ref, stage, attempt)
         # the fenced CAS + intent + StageJob row + heartbeat event land in ONE
         # transaction (spec §3.3); the external create happens after commit
@@ -597,6 +719,22 @@ class KubeJobRunner:
         moved: list[str],
     ) -> bool:
         name = job_name(req.ref, stage, attempt, gate=True)
+        stage_row = db.scalar(
+            select(StageJob)
+            .where(
+                StageJob.request_id == req.id,
+                StageJob.stage == stage,
+                StageJob.attempt == attempt,
+                StageJob.role == "stage",
+                StageJob.status == "succeeded",
+            )
+            .order_by(StageJob.id.desc())
+        )
+        stage_env = (stage_row.envelope or {}) if stage_row else {}
+        pinned_sha = stage_env.get("sha") or ""
+        review_verdict = (
+            (stage_env.get("detail") or "") if stage == "review" else ""
+        )
         # No Request-lifecycle CAS fits "spawn a gate" (the stage column does
         # not move). StageJob grades are deliberately unfenced; only a later
         # raise_merge_gate or escalation is epoch-fenced. The intent row records
@@ -631,7 +769,13 @@ class KubeJobRunner:
             db,
             req,
             row,
-            gate_job_manifest(req.ref, stage, attempt),
+            gate_job_manifest(
+                req.ref,
+                stage,
+                attempt,
+                sha=pinned_sha,
+                review_verdict=review_verdict,
+            ),
             moved,
         )
 
