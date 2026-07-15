@@ -1,0 +1,32 @@
+# *.localtest.me resolves to 127.0.0.1; kind maps host:8081 → ingress :80.
+#   intake:  http://intake.localtest.me:8081
+#   console: http://console.localtest.me:8081
+#   api:     http://api.localtest.me:8081/api/health
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: factory
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: intake.localtest.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: intake, port: {number: 80}}
+    - host: console.localtest.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: console, port: {number: 80}}
+    - host: api.localtest.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: api, port: {number: 8000}}

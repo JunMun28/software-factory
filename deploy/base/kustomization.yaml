@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: software-factory
+resources:
+  - namespace.yaml
+  - serviceaccounts.yaml
+  - rbac.yaml
+  - configmap.yaml
+  - factory-api.yaml
+  - intake.yaml
+  - console.yaml
+  - networkpolicies.yaml

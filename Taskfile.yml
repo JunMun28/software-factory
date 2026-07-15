@@ -160,3 +160,49 @@ tasks:
     cmds:
       - rm -f api/factory.db api/factory.db-wal api/factory.db-shm
       - echo "factory.db removed — fresh seed on next 'task api'"
+
+  # ---------- Kubernetes local profile (Plan B2, spec §2/§9 Phase 1) ----------
+  # kind + Calico (kindnet does NOT enforce NetworkPolicy) + ingress-nginx.
+  kind-up:
+    desc: Create the software-factory kind cluster (Calico CNI + ingress-nginx) and PROVE policy enforcement
+    cmds:
+      - kind get clusters | grep -qx software-factory || kind create cluster --config deploy/kind/cluster.yaml
+      # server-side apply: calico.yaml's CRDs overflow the client-side last-applied annotation
+      - kubectl apply --server-side --force-conflicts -f https://raw.githubusercontent.com/projectcalico/calico/v3.30.3/manifests/calico.yaml
+      - kubectl -n kube-system rollout status daemonset/calico-node --timeout=300s
+      - kubectl wait --for=condition=Ready nodes --all --timeout=300s
+      - kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.13.0/deploy/static/provider/kind/deploy.yaml
+      - kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=300s
+      - ./scripts/calico-probe.sh
+
+  kind-load:
+    desc: Build all four images and load them into the kind cluster
+    cmds:
+      - docker build -t sf-api:dev -f api/Dockerfile .
+      - docker build -t sf-intake:dev -f apps/intake/Dockerfile .
+      - docker build -t sf-console:dev -f apps/console/Dockerfile .
+      - docker build -t sf-agent:dev -f docker/sf-agent/Dockerfile .
+      - kind load docker-image sf-api:dev sf-intake:dev sf-console:dev sf-agent:dev --name software-factory
+
+  kind-down:
+    desc: Delete the software-factory kind cluster
+    cmds:
+      - kind delete cluster --name software-factory
+
+  kind-deploy:
+    desc: Apply deploy/overlays/local and wait for every rollout
+    cmds:
+      - kubectl apply -k deploy/overlays/local
+      - kubectl -n software-factory rollout status deployment/factory-api --timeout=300s
+      - kubectl -n software-factory rollout status deployment/intake --timeout=180s
+      - kubectl -n software-factory rollout status deployment/console --timeout=180s
+
+  sync-codex-auth:
+    desc: Sync ~/.codex/auth.json into the sf-codex-auth Secret (single-developer, spec §2)
+    cmds:
+      - kubectl -n software-factory create secret generic sf-codex-auth --from-file=auth.json=$HOME/.codex/auth.json --dry-run=client -o yaml | kubectl apply -f -
+
+  kind-smoke:
+    desc: "One request end-to-end on kind (needs codex auth secret; ~10-25 min, spends codex usage)"
+    cmds:
+      - ./scripts/kind-smoke.sh

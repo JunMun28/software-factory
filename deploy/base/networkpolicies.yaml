@@ -1,0 +1,126 @@
+# The walls (spec §2), enforced by Calico and PROVEN by scripts/netpol-smoke.sh.
+# Vanilla NetworkPolicy cannot express "github.com only" (FQDN rules are a
+# Calico Enterprise/Cilium feature) — the local profile uses CIDR-shaped
+# walls instead: stage pods may reach the internet (the LLM) but nothing
+# in-cluster except git; gate pods reach ONLY git (no LLM, spec §6).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-walls
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:                             # the console door: ingress controller + SPAs
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app: intake
+        - podSelector:
+            matchLabels:
+              app: console
+      ports:
+        - {protocol: TCP, port: 8000}
+    - from:                             # the git door: agent tier ONLY, 9418 ONLY
+        - podSelector:
+            matchLabels:
+              sf/tier: agent
+      ports:
+        - {protocol: TCP, port: 9418}
+  egress:
+    - {}                                # trusted control plane: kube API, Azure SQL, GitHub (B3)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spa-walls
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app, operator: In, values: [intake, console]}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - {protocol: TCP, port: 80}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: api
+      ports:
+        - {protocol: TCP, port: 8000}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-stage-walls
+spec:
+  podSelector:
+    matchLabels:
+      sf/role: stage
+  policyTypes: [Ingress, Egress]        # no ingress rules = nothing may dial in
+  egress:
+    - to:                               # git (clone + push)
+        - podSelector:
+            matchLabels:
+              app: api
+      ports:
+        - {protocol: TCP, port: 9418}
+    - to:                               # the LLM endpoint — internet yes, cluster no
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 192.168.0.0/16          # pod CIDR (deploy/kind/cluster.yaml)
+              - 10.96.0.0/12            # service CIDR
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gate-walls
+spec:
+  podSelector:
+    matchLabels:
+      sf/role: gate
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:                               # gates reach git and NOTHING else — no LLM (spec §6)
+        - podSelector:
+            matchLabels:
+              app: api
+      ports:
+        - {protocol: TCP, port: 9418}

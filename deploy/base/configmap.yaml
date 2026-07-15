@@ -1,0 +1,18 @@
+# The factory's env (spec §3.5). Azure SQL: once provisioned, override
+# FACTORY_DB_URL via a Secret-backed patch in the overlay — one env swap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: factory-config
+data:
+  FACTORY_RUNNER: "kube"
+  FACTORY_CLI: "codex"                # local profile: codex on the subscription (spec §2)
+  FACTORY_KUBE_NAMESPACE: "software-factory"
+  FACTORY_AGENT_IMAGE: "sf-agent:dev"
+  FACTORY_GIT_REMOTE_BASE: "git://api.software-factory.svc.cluster.local:9418"
+  FACTORY_DB_URL: "sqlite:////data/factory.db"
+  FACTORY_WORKSPACES: "/data/workspaces"
+  FACTORY_UPLOADS: "/data/uploads"
+  FACTORY_SEED_DEMO: "1"              # the smoke drives the seeded northwind app
+  FACTORY_INTERVIEW_PREGEN: "sync"
+  FACTORY_LOG_LEVEL: "INFO"
