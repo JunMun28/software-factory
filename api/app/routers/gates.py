@@ -39,7 +39,7 @@ def approve(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
     actor = _operator_actor(db, body.operator_id)
     # A consumed merge gate has gate=None; stage/status retain enough context
     # to route a replay back to the merge action family.
-    if r.gate == transitions.GATE_APPROVE_MERGE or r.stage in ("review", "done"):
+    if r.gate == transitions.GATE_APPROVE_MERGE or r.stage in ("review", "deploy", "done"):
         res = transitions.apply(db, r, "claim_merge", actor=actor)
         if isinstance(res, transitions.Loss):
             return conflict_response(r, res)
@@ -49,8 +49,7 @@ def approve(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
             pipeline().approve_merge(db, r, actor.name)
         else:
             simulator.approve_merge(db, r, actor.name)
-        outcome = ("approved_merge" if r.status == transitions.DONE  # the merge can escalate instead
-                   else "merge_approval_failed")
+        outcome = "merge_approval_failed" if r.needs_human else "approved_merge"
         db.add(AuditEvent(request_id=r.id, operator_id=body.operator_id,
                           actor=actor.name, action=outcome))
         db.commit()
