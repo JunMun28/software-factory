@@ -7,12 +7,34 @@ from datetime import datetime, timezone
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 from .db import Base
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class TZDateTime(TypeDecorator[datetime]):
+    """Store datetimes as naive UTC and always return aware UTC values."""
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("TZDateTime requires a timezone-aware datetime")
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+    def process_result_value(self, value: datetime | None, dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
 
 class App(Base):
@@ -41,7 +63,7 @@ class Operator(Base):
     initials: Mapped[str] = mapped_column(String(4))
     hue: Mapped[str] = mapped_column(String(12))
     email: Mapped[str] = mapped_column(String(200), unique=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
 
 class OperatorAppMute(Base):
@@ -146,10 +168,10 @@ class Request(Base):
     prototype_status: Mapped[str] = mapped_column(String(10), default="none")  # none|draft|edited|skipped
     # when the Work item entered its current stage (or its current gate was raised) —
     # powers the Pipeline view's time-in-stage / "is it stuck?" readout
-    stage_entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    stage_entered_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow, onupdate=utcnow)
 
     app: Mapped[App | None] = relationship(back_populates="requests")
     turns: Mapped[list["InterviewTurn"]] = relationship(
@@ -209,7 +231,7 @@ class PrototypeTurn(Base):
     mode: Mapped[str] = mapped_column(String(8), default="pending")  # pending | rewrite | patch | chat
     note: Mapped[str | None] = mapped_column(Text, nullable=True)  # assistant prose preamble (the streamed part)
     html: Mapped[str | None] = mapped_column(Text, nullable=True)  # resulting document; null on chat/pending
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
     request: Mapped[Request] = relationship(back_populates="prototype_turns")
 
@@ -248,7 +270,7 @@ class ProgressEvent(Base):
     title: Mapped[str] = mapped_column(String(300))
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
 
 class Comment(Base):
@@ -260,7 +282,7 @@ class Comment(Base):
     initials: Mapped[str] = mapped_column(String(4))
     color: Mapped[str] = mapped_column(String(12), default="#6E5A8A")
     body: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
     request: Mapped[Request] = relationship(back_populates="comments")
 
@@ -280,7 +302,7 @@ class Attachment(Base):
     size: Mapped[int] = mapped_column(Integer)
     stored: Mapped[str] = mapped_column(String(72))     # on-disk name: <uuid4hex><ext>
     source: Mapped[str] = mapped_column(String(10), default="describe")  # describe | interview
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
     request: Mapped["Request"] = relationship(back_populates="attachments")
 
@@ -294,7 +316,7 @@ class AuditEvent(Base):
     actor: Mapped[str] = mapped_column(String(80))
     action: Mapped[str] = mapped_column(String(40))  # submitted | approved | sent_back | cancelled | responded | commented
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
 
 class LeaderEpoch(Base):
@@ -326,5 +348,5 @@ class Intent(Base):
     payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")  # pending|done|failed
     outcome_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(TZDateTime(), nullable=True)

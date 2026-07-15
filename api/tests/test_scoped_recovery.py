@@ -115,7 +115,7 @@ def test_send_back_to_stage_restarts_earlier_stage_with_reason_and_fresh_clock(c
     assert body["stage"] == "architecture"
     assert body["status"] == "approved"
     assert body["needs_human"] is False
-    assert datetime.fromisoformat(body["stage_entered_at"]) > before.replace(tzinfo=None)
+    assert datetime.fromisoformat(body["stage_entered_at"]) > before
     events = client.get("/api/events", params={"request_id": request["id"]}).json()
     recovery = next(event for event in events if event["kind"] == "recovery_action")
     assert "Architecture" in recovery["title"]
