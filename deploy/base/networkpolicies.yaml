@@ -156,6 +156,13 @@ spec:
               app: registry-proxy
       ports:
         - {protocol: TCP, port: 5000}
+    - to:                               # package registries (pip/npm) — FQDN
+        - ipBlock:                      # allowlists need Calico EE/EgressFirewall;
+            cidr: 0.0.0.0/0             # the local wall is internet-except-cluster,
+            except:                     # same trade-off as stage pods' LLM egress
+              - 192.168.0.0/16          # pod CIDR
+              - 10.96.0.0/12            # service CIDR
+              - 169.254.0.0/16          # link-local/IMDS
 ---
 # produced-app pods (Plan B3, spec §2): ingress from ingress-nginx ONLY;
 # egress nothing (DNS rides the shared allow-dns). No factory, no peers.
@@ -169,10 +176,13 @@ spec:
       sf/tier: app
   policyTypes: [Ingress, Egress]
   ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
+    - from:                             # users come through the ingress; the
+        - namespaceSelector:            # factory-api's deploy-verify health
+            matchLabels:                # probe is the one in-cluster caller
               kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app: api
       ports:
         - {protocol: TCP, port: 8000}
   egress: []

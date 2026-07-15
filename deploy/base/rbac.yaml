@@ -41,6 +41,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["create", "get", "list", "watch", "patch", "delete", "deletecollection"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/status"]   # rollout_ready reads the status subresource
+    verbs: ["get"]
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["create", "get", "list", "patch", "delete"]

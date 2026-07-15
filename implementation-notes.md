@@ -173,3 +173,39 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   unschedulable probe fails loudly instead of reading as "blocked";
   calico-probe cleans its namespace on the failure path too; the review
   verdict grep is line-anchored so prose mentions can't count as a verdict.
+
+## Plan B3 — produced-app build + deploy (2026-07-16)
+
+- **Registry:** in-cluster `sf-registry` (registry:2) + containerd NodePort
+  mirror — ONE image name (`sf-registry:5000/sf-app-<slug>`) for kaniko push
+  (cluster DNS) and kubelet pull (mirror → localhost:30500). Both directions
+  probed before the smoke: build-tier pod got HTTP 200 on /v2/, node crictl
+  pull resolved through the mirror (404 manifest, not DNS failure).
+- **Build:** kaniko (gcr.io/kaniko-project/executor:latest), non-privileged
+  (allowPrivilegeEscalation false, drop ALL), clone init-container reuses
+  sf-agent (`SF_ROLE=clone`); digest captured via
+  `--digest-file=/dev/termination-log` on the existing capture-before-delete
+  machinery.
+- **Review wave (opus, 1 HIGH + 1 MEDIUM, both fixed + pinned):** a timed-out
+  deploy row dead-ended the request after a human Retry (driver now re-applies
+  when the last deploy row is dead — apply is create-or-update, the intent key
+  is idempotent); an absent build Job (crash between row commit and create)
+  escalated instead of re-running (now re-spawns, bounded at 3 consecutive
+  infra rounds).
+- **Deviations:** none beyond the plan; docker builds must run from a CLEAN
+  worktree when the main checkout has another session's uncommitted edits
+  (`git worktree add --detach`), and `.dockerignore` now exists because the
+  intake build once copied `.claude/worktrees/` and filled the disk.
+- **Live findings (first real build+deploy run, each fixed + re-proven):**
+  (1) kaniko as UID 10101 dies unpacking rootfs ("chown /") — kaniko container
+  now in-container root (no privileged mode, no escalation; the pre-recorded
+  plan fallback); (2) `pip install` inside the build needs package indexes —
+  FQDN allowlists don't exist in vanilla NetworkPolicy, so build-walls egress
+  is internet-except-cluster+IMDS (stage-pod shape; office/AKS profiles put
+  Artifactory/EgressFirewall behind the same seam); (3) `rollout_ready` reads
+  the deployments/status SUBRESOURCE — its own RBAC rule; (4) app-walls must
+  admit the factory-api pod on :8000 — the runner's deploy-verify health probe
+  is the one in-cluster caller besides the ingress. The escalate → Retry →
+  re-drive loop recovered the same request through all four fixes with no
+  rebuild of anything but the failed leg — the review-wave re-drive path,
+  exercised live.
