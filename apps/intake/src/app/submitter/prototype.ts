@@ -13,15 +13,8 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
-import {
-  Api,
-  Icon,
-  Mark,
-  PrototypeAnnotation,
-  PrototypeState,
-  prototypeSrcdoc,
-  streamState,
-} from '@sf/shared';
+import { Api, Icon, Mark, PrototypeAnnotation, PrototypeState, prototypeSrcdoc } from '@sf/shared';
+import { GenerationStream } from './generation-stream';
 import { INSPECTOR } from './proto-inspector';
 import { ProtoFullscreen } from './proto-fullscreen';
 import { SubShell } from './sub-shell';
@@ -606,8 +599,25 @@ export class Prototype implements OnInit {
   id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
   private router = inject(Router);
 
-  st = signal<PrototypeState | null>(null);
-  streaming = signal(false);
+  /** the generation loop: 1500 ms thinking-poll + SSE-with-fallback (GenerationStream) */
+  private gen = new GenerationStream<PrototypeState>(
+    (kick) => this.api.prototype(this.id, kick),
+    () => this.api.prototypeStreamUrl(this.id),
+    (s) => s.thinking,
+    inject(DestroyRef),
+    {
+      isValidEvent: (s) => !!s && typeof s.status === 'string',
+      // drive on load when a first draft is owed or a revision is in flight
+      needsStreamOnLoad: (s) =>
+        s.status !== 'skipped' && (!s.html || s.thinking || this.hasPending(s)),
+      needsStreamAfterEvent: (s) => this.hasPending(s), // a queued edit is still owed
+      onState: () => this.scrollToEnd(),
+    },
+  );
+  /** the prototype state — the stream's writable state signal */
+  st = this.gen.state;
+  /** a revision is streaming in over SSE */
+  streaming = this.gen.streaming;
   msg = signal('');
   annotations = signal<PrototypeAnnotation[]>([]); // point-to-edit selection (multi)
   inspecting = signal(false);
@@ -624,13 +634,10 @@ export class Prototype implements OnInit {
 
   private frame = viewChild<ElementRef<HTMLIFrameElement>>('frame');
   private thread = viewChild<ElementRef<HTMLElement>>('thread');
-  private closeStreamFn: (() => void) | null = null;
-  private destroyed = false;
-  private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private onMsg = (ev: MessageEvent) => this.handleMessage(ev);
 
   turns = computed(() => this.st()?.turns ?? []);
-  working = computed(() => this.streaming() || !!this.st()?.thinking);
+  working = computed(() => this.streaming() || this.gen.thinking());
   canUndo = computed(() => this.turns().filter((t) => t.revision).length >= 2);
   // rebuild the iframe doc only when the html string actually changes (a stable identity keeps the
   // iframe from reloading — and losing the point-to-edit selection — on unrelated state updates).
@@ -640,17 +647,12 @@ export class Prototype implements OnInit {
   });
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => {
-      this.destroyed = true;
-      if (this.pollTimer) clearTimeout(this.pollTimer);
-      this.closeStream();
-      window.removeEventListener('message', this.onMsg);
-    });
+    inject(DestroyRef).onDestroy(() => window.removeEventListener('message', this.onMsg));
     window.addEventListener('message', this.onMsg);
   }
 
   ngOnInit() {
-    this.load();
+    this.gen.refresh();
   }
 
   chipLabel(a: PrototypeAnnotation) {
@@ -672,62 +674,6 @@ export class Prototype implements OnInit {
 
   private hasPending(s: PrototypeState) {
     return s.turns.some((t) => t.mode === 'pending');
-  }
-
-  /** Read state (no generation kick); if a draft is owed or in flight, open the stream to drive it. */
-  private load() {
-    this.api.prototype(this.id, false).subscribe({
-      next: (s) => {
-        this.st.set(s);
-        this.scrollToEnd();
-        if (s.status !== 'skipped' && (!s.html || s.thinking || this.hasPending(s))) {
-          this.openStream();
-        }
-      },
-      error: () => {
-        /* a transient initial-read error just leaves the empty state; a revisit retries */
-      },
-    });
-  }
-
-  private openStream() {
-    this.closeStream();
-    if (this.destroyed) return;
-    this.streaming.set(true);
-    this.closeStreamFn = streamState<PrototypeState>(
-      this.api.prototypeStreamUrl(this.id),
-      (s) => {
-        this.closeStream();
-        if (s && typeof s.status === 'string') {
-          this.st.set(s);
-          this.scrollToEnd();
-          if (this.hasPending(s)) this.openStream(); // a queued edit is still owed
-        } else {
-          this.poll(); // empty state → recover via the poll fallback
-        }
-      },
-      () => {
-        this.closeStream();
-        this.poll(); // network/SSE hiccup → fall back to polling (which kicks generation)
-      },
-    );
-  }
-
-  private poll() {
-    if (this.destroyed) return;
-    this.api.prototype(this.id, true).subscribe((s) => {
-      this.st.set(s);
-      this.scrollToEnd();
-      if (s.thinking && !this.destroyed) this.pollTimer = setTimeout(() => this.poll(), 1500);
-    });
-  }
-
-  private closeStream() {
-    if (this.closeStreamFn) {
-      this.closeStreamFn();
-      this.closeStreamFn = null;
-    }
-    this.streaming.set(false);
   }
 
   onEnter(e: Event) {
@@ -756,11 +702,10 @@ export class Prototype implements OnInit {
     const picked = this.annotations();
     const annotation = picked.length === 0 ? null : picked.length === 1 ? picked[0] : picked;
     this.api.instructPrototype(this.id, instruction, annotation).subscribe((s) => {
-      this.st.set(s);
+      this.gen.ingest(s, s.thinking || this.hasPending(s)); // stream the revision (async brain)
       this.msg.set('');
       this.clearAnnots();
       this.scrollToEnd();
-      if (s.thinking || this.hasPending(s)) this.openStream(); // stream the revision (async brain)
     });
   }
 
@@ -769,7 +714,7 @@ export class Prototype implements OnInit {
     if (revs.length < 2) return;
     const target = revs[revs.length - 2]; // revert to the revision before the current
     this.api.restorePrototype(this.id, target.order).subscribe((s) => {
-      this.st.set(s);
+      this.gen.ingest(s);
       this.scrollToEnd();
     });
   }

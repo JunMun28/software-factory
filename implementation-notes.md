@@ -84,3 +84,20 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
 - Simulator merge-gate notification now fires through `Win.notify()` after commit;
   recipients and exactly-once behavior are unchanged, and rolled-back gates are not announced.
 - Task 7 was subsequently committed by the coordinator as `9eeb068`.
+
+## Deviations — generation-stream branch (2026-07-15)
+
+- **GenerationStream constructor gained an optional 5th `opts` bag** beyond design
+  D14's four positional args: the real per-component variance (three distinct
+  "should I stream" decision points, two payload validators, onState side effects,
+  error handlers) cannot ride four positionals. Documented in the plan; pinned by
+  the class spec.
+- **Four pre-approved micro-normalizations** (from the plan): prototype's poll gains
+  clear-timer-before-re-arm; interview loses scroll-on-invalid-SSE-payload (its
+  `busy` clear there was unreachable — verified); review/plan-panel gain
+  clear-before-arm; all four share one teardown shape.
+- **Final-review fix**: `drive()` now clears any pending poll tick first — a stale
+  poll response could transiently overwrite an SSE terminal state (unreachable
+  through the current four components; hardened because the class is a public
+  surface). Garbled-SSE-payload fallback test ported from the deleted streamState
+  spec.

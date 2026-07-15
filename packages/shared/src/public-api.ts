@@ -61,7 +61,6 @@ export {
   plainActivity,
   plainStage,
   prototypeSrcdoc,
-  streamState,
   timeAgo,
   utc,
 } from './lib/util';

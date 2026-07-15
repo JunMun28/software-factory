@@ -119,4 +119,9 @@ describe('Interview escalation (consent-gated type change)', () => {
     expect(chip).not.toBeNull();
     expect(chip.classList).toContain('tchip--pulse');
   });
+
+  it('wires the stream: the initial read does not kick generation (gen=false)', () => {
+    render();
+    expect(api.interview).toHaveBeenCalledWith(71, false);
+  });
 });
