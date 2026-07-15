@@ -229,8 +229,18 @@ def test_stage_job_uid_column_roundtrip():
 
     migrate()
     with SessionLocal() as db:
+        # a real parent row: MSSQL enforces the FK that SQLite lets slide
+        req = Request(
+            ref=f"REQ-{uuid.uuid4().hex[:8]}",
+            title="uid roundtrip fixture",
+            description="StageJob.job_uid column roundtrip.",
+            type="enh",
+            status="approved",
+        )
+        db.add(req)
+        db.commit()
         row = StageJob(
-            request_id=1,
+            request_id=req.id,
             stage="red",
             attempt=1,
             role="stage",
