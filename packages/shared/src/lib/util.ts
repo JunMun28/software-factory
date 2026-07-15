@@ -247,32 +247,6 @@ export function prototypeSrcdoc(html: string, extra = ''): string {
   return doc;
 }
 
-/** One-shot SSE lifecycle for the intake wizard's interview + prototype streams. Opens an
- *  EventSource to `url`; the server drives a slow generation and emits a single terminal `state`
- *  event, whose JSON payload is handed to `onState`. Any connection error (or a payload that won't
- *  parse) calls `onError` so the caller can fall back to polling. Returns a close fn — the caller
- *  invokes it in its own teardown; the handlers do not self-close, leaving that to the component so
- *  its `streaming` flag stays in sync. */
-export function streamState<T>(
-  url: string,
-  onState: (data: T) => void,
-  onError: () => void,
-): () => void {
-  const es = new EventSource(url);
-  es.addEventListener('state', (e) => {
-    let data: T;
-    try {
-      data = JSON.parse((e as MessageEvent).data) as T;
-    } catch {
-      onError();
-      return;
-    }
-    onState(data);
-  });
-  es.onerror = onError;
-  return () => es.close();
-}
-
 /** A concise, screen-reader-friendly status line for the submitter's live region.
  *  Pairs the plain stage label with the live activity while a build is in flight,
  *  so SR users hear progress as polling updates the page. Submitter-safe by
