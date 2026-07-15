@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intake
+  labels:
+    app: intake
+    sf/tier: factory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: intake
+  template:
+    metadata:
+      labels:
+        app: intake
+        sf/tier: factory
+    spec:
+      containers:
+        - name: web
+          image: sf-intake:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: intake
+spec:
+  selector:
+    app: intake
+  ports:
+    - port: 80
+      targetPort: 80
