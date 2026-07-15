@@ -227,3 +227,15 @@ kind-load kind-deploy`), `docker/sf-agent/` (the stage/gate image), and
 frozen-surface hash and merges the graded SHA on its own repo). Cluster tests
 are opt-in (`FACTORY_KUBE_ITEST=1` for the integration suite, `task kind-smoke`
 for the end-to-end run) — `task verify` stays cluster-free.
+
+Plan B3 made the produced app run: after the merge gate the runner drives a
+kaniko build Job (`sf/role: build`; git + registry egress only) at the merged
+SHA, captures the pushed image digest from the termination message, and applies
+factory-owned digest-pinned manifests (`api/app/deploy_manifests.py` — only
+slug/digest/replicas are ever interpolated; the app repo's own `deploy/` is
+never input). The in-cluster `sf-registry` serves kaniko-push via cluster DNS
+and kubelet-pull via a containerd mirror (one image name both sides). All of it
+gates on `FACTORY_REGISTRY` + `FACTORY_APP_DEPLOY` (+ the git backbone) —
+unset means merge still ends at `done`, exactly B2. `scripts/build-smoke.sh`
+proves the golden template containerizes locally; the kind smoke ends at a
+live pod answering `/health` through the ingress.

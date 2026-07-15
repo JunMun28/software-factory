@@ -20,3 +20,12 @@ nodes:
       - containerPort: 80       # ingress-nginx hostPort
         hostPort: 8081          # http://<host>.localtest.me:8081
         protocol: TCP
+# Plan B3: the produced-app image name is sf-registry:5000/... for BOTH kaniko
+# (push, via cluster DNS) and the kubelet (pull). The node cannot do cluster DNS,
+# so redirect that host to the registry's NodePort on localhost.
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."sf-registry:5000"]
+      endpoint = ["http://localhost:30500"]
+    [plugins."io.containerd.grpc.v1.cri".registry.configs."sf-registry:5000".tls]
+      insecure_skip_verify = true

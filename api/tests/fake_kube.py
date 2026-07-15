@@ -2,8 +2,10 @@
 
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from app.kube_client import JobView
+from app.ws_exec import _git
 
 SURFACE = "a" * 64
 GOOD_METRICS = {
@@ -62,6 +64,11 @@ class FakeKubeClient:
     conflicts: set[str] = field(default_factory=set)  # next create of NAME → 409 (None)
     on_observe = None
     _uid_seq: int = 0
+    # --- Plan B3 additions: apply / rollout / label teardown ---
+    applied: list = field(default_factory=list)
+    objects: dict = field(default_factory=dict)  # "Kind/name" -> manifest
+    _ready: set = field(default_factory=set)
+    label_deletions: list[str] = field(default_factory=list)
 
     def _next_uid(self) -> str:
         self._uid_seq += 1
@@ -107,6 +114,24 @@ class FakeKubeClient:
         if job and (uid is None or job.uid == uid):
             job.deleted = True
 
+    def apply(self, manifest: dict) -> None:
+        key = f"{manifest['kind']}/{manifest['metadata']['name']}"
+        self.applied.append(manifest)
+        self.objects[key] = manifest
+
+    def rollout_ready(self, name: str) -> bool:
+        return f"Deployment/{name}" in self.objects and name in self._ready
+
+    def delete_by_label(self, selector: str) -> None:
+        self.label_deletions.append(selector)
+        k, _, v = selector.partition("=")
+        for key in list(self.objects):
+            if self.objects[key].get("metadata", {}).get("labels", {}).get(k) == v:
+                self.objects.pop(key)
+
+    def mark_ready(self, name: str) -> None:  # test helper (a rolled-out Deployment)
+        self._ready.add(name)
+
     def finish(
         self,
         name: str,
@@ -135,5 +160,52 @@ def honest_cluster(fake: FakeKubeClient) -> None:
         if job.phase != "running":
             return
         _complete(job, pass_verdict() if name.endswith("-gate") else stage_ok())
+
+    fake.on_observe = run
+
+
+def honest_build(fake: FakeKubeClient, workspace_root: Path) -> None:
+    """Make the git-backed stage Jobs commit and every gate pass."""
+
+    def commit_all(ws: Path, message: str) -> str:
+        _git(ws, "add", "-A")
+        _git(ws, "commit", "-q", "-m", message)
+        return _git(ws, "rev-parse", "HEAD").stdout.strip()
+
+    def run(name: str, job: FakeJob) -> None:
+        if job.phase != "running":
+            return
+        role = job.manifest["metadata"]["labels"]["sf/role"]
+        if role == "build":
+            return
+        if role == "gate":
+            _complete(job, pass_verdict())
+            return
+        container = job.manifest["spec"]["template"]["spec"]["containers"][0]
+        env = {item["name"]: item["value"] for item in container["env"]}
+        ref, stage = env["SF_REF"], env["SF_STAGE"]
+        ws = workspace_root / ref.lower()
+        if stage == "architecture":
+            (ws / "PLAN.md").write_text("# plan\n")
+        elif stage == "red":
+            (ws / "tests" / "test_b3.py").write_text(
+                "def test_b3():\n    assert False\n"
+            )
+        elif stage == "green":
+            (ws / "src" / "b3.py").write_text("done = True\n")
+        sha = (
+            commit_all(ws, f"{ref}: {stage}")
+            if stage != "review"
+            else _git(ws, "rev-parse", "HEAD").stdout.strip()
+        )
+        _complete(
+            job,
+            {
+                "v": 1,
+                "outcome": "ok",
+                "detail": "APPROVE — looks right" if stage == "review" else "stage complete",
+                "sha": sha,
+            },
+        )
 
     fake.on_observe = run

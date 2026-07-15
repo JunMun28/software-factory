@@ -151,6 +151,13 @@ def _ev_approve_spec(db: Session, req: Request, actor: Actor, params: dict) -> N
          payload={"gate": GATE_APPROVE_SPEC, "repo": params["repo"], "Ref": req.ref})
 
 
+def _ev_begin_deploy(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    emit(db, req, "milestone_summary",
+         "Merged to main — building and deploying the app",
+         stage="deploy",
+         payload={"Stage": "Deploy", "Ref": req.ref, "sha": params.get("sha")})
+
+
 def _ev_finish_done(db: Session, req: Request, actor: Actor, params: dict) -> None:
     emit(db, req, "gate_event", f"Merge approved by {actor.name} — {params['merge_note']}",
          actor=actor.name, bot=False, broadcast=True,
@@ -259,6 +266,17 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
         audit_action="merge_claimed",
         replay_actions=("merge_claimed", "approved_merge", "merge_approval_failed"),
         conflict_detail=lambda r: f"Cannot merge a {r.status} request",
+    ),
+    Transition(
+        # Plan B3: after a real merge, the request builds+deploys before done.
+        # Only taken when settings.app_deploy_enabled(); otherwise approve_merge
+        # goes straight to finish_done (B2 behavior).
+        name="begin_deploy",
+        pre=Pre(status_in=(APPROVED,)),
+        effects=lambda p: {"gate": None, "stage": "deploy", "status": APPROVED,
+                           "stage_entered_at": utcnow()},
+        events=_ev_begin_deploy,
+        conflict_detail=lambda r: f"Cannot begin deploy from status '{r.status}'",
     ),
     Transition(
         name="finish_done",

@@ -240,3 +240,15 @@ def ndjson_events(logs: str) -> list[dict]:
         if isinstance(event, dict):
             events.append(event)
     return events
+
+
+_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+
+
+def parse_digest(msg: str) -> str | None:
+    """A build Job's termination message is kaniko's --digest-file output: a bare
+    `sha256:<64hex>` (kaniko may append a trailing newline). Returns the digest or
+    None for garbage (missing-digest is its own escalation reason, like a missing
+    envelope for stage Jobs)."""
+    m = _DIGEST.search(msg or "")
+    return m.group(0) if m else None

@@ -182,7 +182,11 @@ tasks:
       - docker build -t sf-intake:dev -f apps/intake/Dockerfile .
       - docker build -t sf-console:dev -f apps/console/Dockerfile .
       - docker build -t sf-agent:dev -f docker/sf-agent/Dockerfile .
-      - kind load docker-image sf-api:dev sf-intake:dev sf-console:dev sf-agent:dev --name software-factory
+      # B3: kaniko + registry are pre-pulled and loaded so build pods never need
+      # image-pull egress (build-walls allow only git + registry)
+      - docker pull gcr.io/kaniko-project/executor:latest
+      - docker pull registry:2
+      - kind load docker-image sf-api:dev sf-intake:dev sf-console:dev sf-agent:dev gcr.io/kaniko-project/executor:latest registry:2 --name software-factory
 
   kind-down:
     desc: Delete the software-factory kind cluster

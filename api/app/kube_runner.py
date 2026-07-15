@@ -29,12 +29,21 @@ work oldest-first under the Job cap.
 """
 import logging
 import re
+import urllib.request
 from datetime import timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import intents, settings, simulator, transitions, verification, workspace
+from . import (
+    deploy_manifests,
+    intents,
+    settings,
+    simulator,
+    transitions,
+    verification,
+    workspace,
+)
 from .events import emit
 from .kube_client import KubeClient
 from .kube_jobs import (
@@ -42,6 +51,7 @@ from .kube_jobs import (
     REQUEST_STAGE,
     gate_job_manifest,
     job_name,
+    parse_digest,
     parse_envelope,
     stage_job_manifest,
 )
@@ -54,6 +64,14 @@ log = logging.getLogger("factory.kube")
 LOGS_TAIL = 20_000  # chars of captured NDJSON persisted per Job
 GATE_INFRA_LIMIT = 3
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _http_ok(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(url, timeout=5) as response:  # nosec: in-cluster probe
+            return 200 <= response.status < 400
+    except Exception:
+        return False
 
 # feed parity with AgentRunner's milestone texts (test_agent_runner asserts these prefixes)
 MILESTONES = {
@@ -94,8 +112,14 @@ class KubeJobRunner:
         moved: list[str] = []
         defer_spawn: set[int] = set()
         self._reap_dead_requests(db, moved)
+        self._drive_deploys(db, moved)
         for sj in db.scalars(
-            select(StageJob).where(StageJob.status == "running").order_by(StageJob.id)
+            select(StageJob)
+            .where(
+                StageJob.status == "running",
+                StageJob.role.in_(("stage", "gate")),
+            )
+            .order_by(StageJob.id)
         ).all():
             req = db.get(Request, sj.request_id)
             all_rows = db.scalars(
@@ -124,7 +148,12 @@ class KubeJobRunner:
                 self._observe_failures.pop(sj.job_name, None)
                 req = db.get(Request, sj.request_id)
                 self._escalate(db, req, f"Job observation failed for {sj.job_name}: {exc}")
-        running = db.scalars(select(StageJob).where(StageJob.status == "running")).all()
+        running = db.scalars(
+            select(StageJob).where(
+                StageJob.status == "running",
+                StageJob.role.in_(("stage", "gate")),
+            )
+        ).all()
         busy = {r.request_id for r in running} | defer_spawn
         capacity = settings.KUBE_JOB_CAP - len(running)
         runnable = db.scalars(
@@ -158,7 +187,12 @@ class KubeJobRunner:
         Capture is attempted before deletion, including logs from a pod whose
         Job is still reported as running.
         """
-        for sj in db.scalars(select(StageJob).where(StageJob.status == "running")).all():
+        for sj in db.scalars(
+            select(StageJob).where(
+                StageJob.status == "running",
+                StageJob.role.in_(("stage", "gate")),
+            )
+        ).all():
             req = db.get(Request, sj.request_id)
             if req and req.status == transitions.APPROVED and not req.needs_human:
                 continue
@@ -397,6 +431,20 @@ class KubeJobRunner:
         if err:
             self._escalate(db, req, f"Merge failed: {err}")
             return
+        if settings.app_deploy_enabled():
+            res = transitions.apply(
+                db,
+                req,
+                "begin_deploy",
+                actor=transitions.Actor(name=actor),
+                params={"sha": sha},
+            )
+            if isinstance(res, transitions.Loss):
+                log.info("%s: begin_deploy lost (%s)", req.ref, res.detail)
+                return
+            db.commit()
+            log.info("%s merged; build+deploy queued at %s", req.ref, sha[:12])
+            return
         res = transitions.apply(
             db,
             req,
@@ -417,6 +465,274 @@ class KubeJobRunner:
             return
         db.commit()
         log.info("%s merged to main at %s by %s", req.ref, sha[:12], actor)
+
+    # ---------- produced-app build + deploy (B3) ----------
+    @staticmethod
+    def _app_slug(req: Request) -> str:
+        return req.app.key if req.app else req.ref.lower()
+
+    def _drive_deploys(self, db: Session, moved: list[str]) -> None:
+        if not settings.app_deploy_enabled():
+            return
+        requests = db.scalars(select(Request).where(Request.stage == "deploy")).all()
+        for req in requests:
+            try:
+                self._drive_one_deploy(db, req, moved)
+            except Exception as exc:
+                db.rollback()
+                log.exception("deploy driver failed for %s", req.ref)
+                self._escalate(db, req, f"Build/deploy failed: {exc}")
+
+    def _drive_one_deploy(
+        self, db: Session, req: Request, moved: list[str]
+    ) -> None:
+        slug = self._app_slug(req)
+        if req.status != transitions.APPROVED or req.needs_human:
+            self._teardown_app(db, req, slug)
+            return
+        rows = db.scalars(
+            select(StageJob)
+            .where(
+                StageJob.request_id == req.id,
+                StageJob.role.in_(("build", "deploy")),
+            )
+            .order_by(StageJob.id)
+        ).all()
+        build = next((row for row in reversed(rows) if row.role == "build"), None)
+        deploy = next((row for row in reversed(rows) if row.role == "deploy"), None)
+        if build is None or build.status in ("failed", "timed_out", "infra"):
+            # bounded like the stage machinery: 3 consecutive infra rounds end
+            # in a human, never a silent create/observe loop
+            tail_infra = 0
+            for row in reversed([r for r in rows if r.role == "build"]):
+                if row.status != "infra":
+                    break
+                tail_infra += 1
+            if tail_infra >= 3:
+                self._escalate(
+                    db, req,
+                    "Build re-ran 3 times without completing — infra loop",
+                )
+                return
+            self._spawn_build(db, req, slug, moved)
+            return
+        if build.status == "running":
+            self._observe_build(db, req, build, slug, moved)
+            return
+        # a dead deploy row (timed_out/infra) must not dead-end the request:
+        # after a human Retry the manifests are re-applied — intents.begin is
+        # idempotent on the deterministic key and apply is create-or-update
+        deploy_live = deploy is not None and deploy.status in ("running", "succeeded")
+        if build.status == "succeeded" and not deploy_live:
+            self._apply_deploy(db, req, slug, build.envelope["digest"], moved)
+            return
+        if deploy is not None and deploy.status == "running":
+            self._observe_deploy(db, req, deploy, slug, moved)
+
+    def _spawn_build(
+        self, db: Session, req: Request, slug: str, moved: list[str]
+    ) -> None:
+        ws = workspace.workspace_for(req)
+        sha = workspace.head_sha(ws, "main")
+        if not (isinstance(sha, str) and SHA40.fullmatch(sha)):
+            self._escalate(db, req, "Build source SHA could not be read from merged main")
+            return
+        name = deploy_manifests.build_job_name(req.ref)
+        intent_key = f"build:{req.ref}:{sha}"
+        intents.begin(
+            db,
+            intent_key,
+            intents.TRIGGER_BUILD,
+            req.id,
+            {"job": name, "sha": sha},
+        )
+        row = StageJob(
+            request_id=req.id,
+            stage="deploy",
+            attempt=1,
+            role="build",
+            job_name=name,
+            epoch=get_elector().epoch,
+            deadline_at=utcnow() + timedelta(seconds=settings.BUILD_WALL_CLOCK),
+            envelope={"sha": sha},
+        )
+        db.add(row)
+        db.commit()
+        self._create(
+            db,
+            req,
+            row,
+            deploy_manifests.build_job_manifest(req.ref, slug, sha),
+            moved,
+            intent_key=intent_key,
+        )
+
+    def _observe_build(
+        self,
+        db: Session,
+        req: Request,
+        build: StageJob,
+        slug: str,
+        moved: list[str],
+    ) -> None:
+        view = self.client.get_job(build.job_name)
+        now = utcnow()
+        if view.phase == "running" and now < build.deadline_at:
+            return
+        view = self.client.get_job(build.job_name, capture=True)
+        build.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+        if view.phase != "absent" and build.job_uid and view.uid and view.uid != build.job_uid:
+            build.status = "infra"
+            build.completed_at = now
+            self.client.delete_job(build.job_name, uid=build.job_uid)
+            db.commit()
+            self._escalate(db, req, f"Build Job {build.job_name} uid changed under us")
+            return
+        self.client.delete_job(build.job_name, uid=build.job_uid)
+        build.completed_at = now
+        if view.phase == "running":
+            build.status = "timed_out"
+            db.commit()
+            self._escalate(db, req, f"Build Job {build.job_name} exceeded its wall clock")
+            return
+        if view.phase == "absent":
+            # crash between the row commit and create_job, or an external
+            # delete: benign — re-spawn next tick (deterministic name, digest
+            # pin), bounded by the consecutive-infra guard in the driver
+            build.status = "infra"
+            db.commit()
+            moved.append(f"{req.ref}: build Job absent — re-running")
+            return
+        if view.phase != "succeeded":
+            build.status = "failed"
+            db.commit()
+            self._escalate(db, req, f"Build Job {build.job_name} failed")
+            return
+        digest = parse_digest(view.termination_message)
+        if digest is None:
+            build.status = "infra"
+            db.commit()
+            self._escalate(db, req, "build image digest could not be captured")
+            return
+        build.status = "succeeded"
+        build.envelope = {**(build.envelope or {}), "digest": digest}
+        db.commit()
+        moved.append(f"{req.ref}: build image captured at {digest}")
+        self._apply_deploy(db, req, slug, digest, moved)
+
+    def _apply_deploy(
+        self,
+        db: Session,
+        req: Request,
+        slug: str,
+        digest: str,
+        moved: list[str],
+    ) -> None:
+        name = deploy_manifests.app_name(slug)
+        image = f"{settings.REGISTRY}/sf-app-{slug}@{digest}"
+        intent_key = f"deploy:{slug}:{digest}"
+        intents.begin(
+            db,
+            intent_key,
+            intents.APPLY_DEPLOY,
+            req.id,
+            {"app": name, "digest": digest},
+        )
+        row = StageJob(
+            request_id=req.id,
+            stage="deploy",
+            attempt=1,
+            role="deploy",
+            job_name=name,
+            epoch=get_elector().epoch,
+            deadline_at=utcnow() + timedelta(seconds=settings.DEPLOY_WALL_CLOCK),
+            envelope={"digest": digest, "image": image},
+        )
+        db.add(row)
+        db.commit()
+        try:
+            for manifest in deploy_manifests.app_deploy_manifests(slug, digest, 1):
+                self.client.apply(manifest)
+        except Exception as exc:
+            row.status = "infra"
+            row.completed_at = utcnow()
+            intents.fail(db, intent_key, {"error": str(exc)[:300]})
+            self._escalate(db, req, f"Could not apply produced app {name}: {exc}")
+            return
+        intents.complete(db, intent_key, {"app": name, "digest": digest})
+        moved.append(f"{req.ref}: applied {name} at {digest}")
+
+    def _observe_deploy(
+        self,
+        db: Session,
+        req: Request,
+        deploy: StageJob,
+        slug: str,
+        moved: list[str],
+    ) -> None:
+        name = deploy_manifests.app_name(slug)
+        probe_url = f"http://{name}.{settings.KUBE_NAMESPACE}.svc:80/health"
+        rollout_ready = self.client.rollout_ready(name)
+        probe_ok = rollout_ready and _http_ok(probe_url)
+        now = utcnow()
+        if rollout_ready and probe_ok:
+            url = f"http://{slug}.{settings.APP_INGRESS_DOMAIN}"
+            deploy.status = "succeeded"
+            deploy.completed_at = now
+            res = transitions.apply_committed(
+                db,
+                req,
+                "finish_done",
+                actor=FACTORY,
+                params={
+                    "merge_note": "PR merged to main",
+                    "deploy_title": f"Deployed — {url} is live",
+                    "payload_extra": {"digest": deploy.envelope["digest"], "url": url},
+                },
+                epoch=get_elector().epoch,
+            )
+            if isinstance(res, transitions.Loss):
+                log.info("%s: finish_done lost (%s)", req.ref, res.detail)
+                return
+            moved.append(f"{req.ref}: deployed {url}")
+            return
+        if now < deploy.deadline_at:
+            return
+        deploy.status = "timed_out"
+        deploy.completed_at = now
+        db.commit()
+        reason = (
+            f"Produced app {name} health probe failed before the deploy deadline"
+            if rollout_ready
+            else f"Produced app {name} rollout was not ready before the deploy deadline"
+        )
+        self._escalate(db, req, reason)
+
+    def _teardown_app(self, db: Session, req: Request, slug: str) -> None:
+        build = db.scalar(
+            select(StageJob)
+            .where(StageJob.request_id == req.id, StageJob.role == "build")
+            .order_by(StageJob.id.desc())
+        )
+        if build is not None:
+            try:
+                self.client.delete_job(build.job_name, uid=build.job_uid)
+            except Exception:
+                log.exception("build teardown failed for %s", build.job_name)
+        try:
+            self.client.delete_by_label(f"sf/instance={slug}")
+        except Exception:
+            log.exception("app teardown failed for %s", slug)
+        for row in db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == req.id,
+                StageJob.role.in_(("build", "deploy")),
+                StageJob.status == "running",
+            )
+        ).all():
+            row.status = "reaped"
+            row.completed_at = utcnow()
+        db.commit()
 
     # ---------- failure policy: retry-with-feedback (N=2), then a human ----------
     def _after_failure(
@@ -812,13 +1128,16 @@ class KubeJobRunner:
         row: StageJob,
         manifest: dict,
         moved: list[str],
+        *,
+        intent_key: str | None = None,
     ) -> bool:
         name = row.job_name
+        intent_key = intent_key or f"spawn:{name}"
         try:
             uid = self.client.create_job(manifest)
         except Exception as exc:
             log.exception("create_job %s failed", name)
-            intents.fail(db, f"spawn:{name}", {"error": str(exc)[:300]})
+            intents.fail(db, intent_key, {"error": str(exc)[:300]})
             row.status = "infra"
             row.completed_at = utcnow()
             self._escalate(db, req, f"Could not create Job {name}: {exc}")
@@ -840,7 +1159,7 @@ class KubeJobRunner:
                 stranger = bool(view.uid and view.uid not in prior_uids)
                 intents.fail(
                     db,
-                    f"spawn:{name}",
+                    intent_key,
                     {
                         "error": (
                             "same-name Job has an unrecognized uid"
@@ -858,7 +1177,7 @@ class KubeJobRunner:
             row.job_uid = view.uid or None
         else:
             row.job_uid = uid
-        intents.complete(db, f"spawn:{name}", {"job": name, "uid": row.job_uid})
+        intents.complete(db, intent_key, {"job": name, "uid": row.job_uid})
         db.commit()
         moved.append(f"{req.ref}: spawned {name}")
         return True

@@ -27,3 +27,39 @@ subjects:
   - kind: ServiceAccount
     name: sf-api
     namespace: software-factory   # required for SA subjects — kustomize does not inject it
+---
+# Plan B3: factory-owned deploy of produced apps. k8s RBAC cannot restrict
+# `create` by label — scoping is namespace + resource type; teardown uses
+# deletecollection WITH a labelSelector (sf/instance=<slug>), which is
+# label-scoped. The factory only applies sf-app-<slug> names from
+# deploy_manifests (allowlist by construction).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sf-api-deploy
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "get", "list", "watch", "patch", "delete", "deletecollection"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/status"]   # rollout_ready reads the status subresource
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "get", "list", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["create", "get", "list", "patch", "delete", "deletecollection"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sf-api-deploy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sf-api-deploy
+subjects:
+  - kind: ServiceAccount
+    name: sf-api
+    namespace: software-factory

@@ -1,0 +1,16 @@
+# Keep image build contexts small and deterministic: no worktrees, no local
+# deps (images run npm ci / uv sync themselves), no caches. Found the hard way:
+# the intake build copied .claude/worktrees/ and filled the disk.
+.git
+.claude
+.superpowers
+node_modules
+**/node_modules
+**/.angular
+api/.venv
+api/factory.db*
+api/workspaces
+api/uploads
+backups
+mockups
+dist
