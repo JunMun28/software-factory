@@ -62,6 +62,10 @@ class FakeKubeClient:
     conflicts: set[str] = field(default_factory=set)  # next create of NAME → 409 (None)
     on_observe = None
     _uid_seq: int = 0
+    # --- Plan B3 additions: apply / rollout / label teardown ---
+    applied: list = field(default_factory=list)
+    objects: dict = field(default_factory=dict)  # "Kind/name" -> manifest
+    _ready: set = field(default_factory=set)
 
     def _next_uid(self) -> str:
         self._uid_seq += 1
@@ -106,6 +110,23 @@ class FakeKubeClient:
         job = self.jobs.get(name)
         if job and (uid is None or job.uid == uid):
             job.deleted = True
+
+    def apply(self, manifest: dict) -> None:
+        key = f"{manifest['kind']}/{manifest['metadata']['name']}"
+        self.applied.append(manifest)
+        self.objects[key] = manifest
+
+    def rollout_ready(self, name: str) -> bool:
+        return f"Deployment/{name}" in self.objects and name in self._ready
+
+    def delete_by_label(self, selector: str) -> None:
+        k, _, v = selector.partition("=")
+        for key in list(self.objects):
+            if self.objects[key].get("metadata", {}).get("labels", {}).get(k) == v:
+                self.objects.pop(key)
+
+    def mark_ready(self, name: str) -> None:  # test helper (a rolled-out Deployment)
+        self._ready.add(name)
 
     def finish(
         self,

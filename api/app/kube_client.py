@@ -38,6 +38,13 @@ class KubeClient(Protocol):
 
     def delete_job(self, name: str, *, uid: str | None = None) -> None: ...
 
+    # --- Plan B3: factory-owned deploy of produced apps ---
+    def apply(self, manifest: dict) -> None: ...  # server-side apply, create-or-update
+
+    def rollout_ready(self, name: str) -> bool: ...  # Deployment fully rolled out
+
+    def delete_by_label(self, selector: str) -> None: ...  # produced-app teardown
+
 
 class RealKubeClient:
     """Official python client; in-cluster config first, kubeconfig fallback."""
@@ -52,6 +59,8 @@ class RealKubeClient:
         self.ns = namespace
         self._batch = client.BatchV1Api()
         self._core = client.CoreV1Api()
+        self._apps = client.AppsV1Api()
+        self._net = client.NetworkingV1Api()
         self._types = client
         self._ApiException = client.exceptions.ApiException
 
@@ -114,3 +123,45 @@ class RealKubeClient:
         except self._ApiException as e:
             if e.status != 404:
                 raise
+
+    # ---------- Plan B3: factory-owned deploy of produced apps ----------
+    def apply(self, manifest: dict) -> None:
+        """Server-side apply (create-or-update, factory field-manager) for the
+        kinds the deploy template emits. force=True resolves our own re-applies."""
+        kind = manifest["kind"]
+        name = manifest["metadata"]["name"]
+        patch = {
+            "Deployment": self._apps.patch_namespaced_deployment,
+            "Service": self._core.patch_namespaced_service,
+            "Ingress": self._net.patch_namespaced_ingress,
+            "NetworkPolicy": self._net.patch_namespaced_network_policy,
+        }[kind]
+        patch(
+            name,
+            self.ns,
+            manifest,
+            field_manager="software-factory",
+            force=True,
+            _content_type="application/apply-patch+yaml",
+        )
+
+    def rollout_ready(self, name: str) -> bool:
+        try:
+            d = self._apps.read_namespaced_deployment_status(name, self.ns)
+        except self._ApiException as e:
+            if e.status == 404:
+                return False
+            raise
+        s, spec = d.status, d.spec
+        want = spec.replicas or 0
+        return (
+            (s.updated_replicas or 0) >= want
+            and (s.available_replicas or 0) >= want
+            and (s.observed_generation or 0) >= (d.metadata.generation or 0)
+        )
+
+    def delete_by_label(self, selector: str) -> None:
+        self._apps.delete_collection_namespaced_deployment(self.ns, label_selector=selector)
+        for item in self._core.list_namespaced_service(self.ns, label_selector=selector).items:
+            self._core.delete_namespaced_service(item.metadata.name, self.ns)
+        self._net.delete_collection_namespaced_ingress(self.ns, label_selector=selector)

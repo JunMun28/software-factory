@@ -95,3 +95,25 @@ KUBE_GATE_SA = os.environ.get("FACTORY_KUBE_GATE_SA", "sf-gate")
 # Secret carrying the operator's ~/.codex/auth.json (task sync-codex-auth);
 # mounted ONLY into stage pods — gates hold no LLM credential (spec §6).
 CODEX_AUTH_SECRET = os.environ.get("FACTORY_CODEX_AUTH_SECRET", "sf-codex-auth")
+
+# ---------- produced-app build + deploy (Plan B3, spec §7) ----------
+# Registry the build Job pushes to AND the deploy pulls from — ONE image name for
+# both (kaniko reaches it via cluster DNS; the node reaches it via a containerd
+# mirror to a NodePort). Empty = build/deploy disabled: approve_merge behaves
+# exactly like B2 (merge -> done). This is the B3 env gate, mirroring GIT_REMOTE_BASE.
+REGISTRY = os.environ.get("FACTORY_REGISTRY", "").rstrip("/")
+# Master switch for the post-merge deploy flow. Requires REGISTRY + GIT_REMOTE_BASE.
+APP_DEPLOY = os.environ.get("FACTORY_APP_DEPLOY", "").lower() in ("1", "true", "yes")
+KANIKO_IMAGE = os.environ.get("FACTORY_KANIKO_IMAGE", "gcr.io/kaniko-project/executor:latest")
+APP_INGRESS_DOMAIN = os.environ.get("FACTORY_APP_INGRESS_DOMAIN", "localtest.me")
+KUBE_BUILD_SA = os.environ.get("FACTORY_KUBE_BUILD_SA", "sf-build")
+KUBE_APP_SA = os.environ.get("FACTORY_KUBE_APP_SA", "sf-app")
+BUILD_ACTIVE_DEADLINE = int(os.environ.get("FACTORY_BUILD_ACTIVE_DEADLINE", "900"))
+BUILD_WALL_CLOCK = int(os.environ.get("FACTORY_BUILD_WALL_CLOCK", "1200"))
+DEPLOY_WALL_CLOCK = int(os.environ.get("FACTORY_DEPLOY_WALL_CLOCK", "600"))
+
+
+def app_deploy_enabled() -> bool:
+    """B3 build+deploy is active only with a git backbone AND a registry AND the
+    switch. Any one unset -> B2 behavior (merge ends at main)."""
+    return bool(GIT_REMOTE_BASE and REGISTRY and APP_DEPLOY)
