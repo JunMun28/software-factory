@@ -19,7 +19,6 @@ from app.kube_jobs import (
     stage_job_manifest,
 )
 from app.models import Request, StageJob, utcnow
-from app.kube_jobs import job_name as model_job_name
 
 
 def test_kube_settings_defaults():
@@ -34,10 +33,10 @@ def test_kube_settings_defaults():
 def test_stage_job_row_roundtrip():
     migrate()
     with SessionLocal() as db:
-        generated_name = model_job_name("REQ-9001", "red", 1)
+        generated_name = job_name("REQ-9001", "red", 1)
         assert generated_name == "sf-req-9001-red-1"
-        assert model_job_name("REQ-9001", "red", 1) == generated_name
-        assert model_job_name("REQ-9001", "red", 1, gate=True) == f"{generated_name}-gate"
+        assert job_name("REQ-9001", "red", 1) == generated_name
+        assert job_name("REQ-9001", "red", 1, gate=True) == f"{generated_name}-gate"
         request = Request(
             ref=f"REQ-{uuid.uuid4().hex[:8]}",
             title="Stage Job round trip",
