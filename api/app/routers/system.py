@@ -42,4 +42,9 @@ def health(db: Session = Depends(get_db)):
 def sim_tick(db: Session = Depends(get_db)):
     if runner_mode() == "agent":
         return {"moved": [], "note": "runner=agent — the real agents drive the stages"}
+    elector = get_elector()
+    if not (elector.verify() or elector.try_acquire()):
+        # a manual tick from a standby would advance state with a stale epoch's
+        # un-fenced event appends — only the leader ticks (spec §3.2)
+        return {"moved": [], "note": "not the leader — tick skipped"}
     return {"moved": simulator.tick(db)}

@@ -440,7 +440,7 @@ def test_apply_attaches_intent_in_same_transaction():
         req = _request(db, status=PENDING_APPROVAL)
         key = f"cancel:{req.id}:{uuid.uuid4().hex[:6]}"
         res = apply(db, req, "cancel", actor=RILEY,
-                    intent=IntentSpec(key=key, kind="notify_submitter", payload={"why": "test"}))
+                    intent=IntentSpec(key=key, kind="open_pr", payload={"why": "test"}))
         assert isinstance(res, Win) and res.intent is not None
         db.commit()
         assert db.get(Intent, key).status == "pending"

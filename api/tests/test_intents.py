@@ -82,3 +82,17 @@ def test_complete_and_recovery_scan():
             intents.complete(db, "missing:complete", {})
         with pytest.raises(ValueError, match="no intent 'missing:fail'"):
             intents.fail(db, "missing:fail", {})
+
+
+def test_kinds_cover_the_spec_side_effects():
+    # spec §3.3's external side effects + Plan B1's job spawning
+    assert set(intents.KINDS) == {
+        "create_repo", "open_pr", "merge_pr", "trigger_build",
+        "apply_deploy", "spawn_stage_job", "spawn_gate_job",
+    }
+
+
+def test_begin_rejects_unknown_kind():
+    with SessionLocal() as db:
+        with pytest.raises(ValueError):
+            intents.begin(db, f"k-{uuid.uuid4().hex}", "mystery_kind", 1, {})
