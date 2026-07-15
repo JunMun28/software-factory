@@ -220,3 +220,10 @@ subprocess CLI seam) and `FACTORY_RUNNER=kube` (KubeJobRunner, Kubernetes
 Jobs behind the `KubeClient` seam in `api/app/kube_client.py`; its four
 witness tests live in `api/tests/test_kube_runner.py` against a
 `FakeKubeClient` — no cluster needed).
+
+Plan B2 made the seam real: `deploy/` (kind + Calico + kustomize; `task kind-up
+kind-load kind-deploy`), `docker/sf-agent/` (the stage/gate image), and
+`api/app/workspace.py` (git-as-workspace: the orchestrator computes the
+frozen-surface hash and merges the graded SHA on its own repo). Cluster tests
+are opt-in (`FACTORY_KUBE_ITEST=1` for the integration suite, `task kind-smoke`
+for the end-to-end run) — `task verify` stays cluster-free.

@@ -132,3 +132,20 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   one-tick delay after failed, timed-out, or infra observations so deterministic
   same-name Jobs are not recreated while their predecessors are still terminating.
   Nested gate-spawn failures now propagate the same delay.
+
+## Plan B2 — kind cluster (2026-07-15)
+
+- **Cluster:** kind v0.32.0 (node Kubernetes v1.36.1), Calico v3.30.3
+  (server-side apply; enforcement PROVEN by `scripts/calico-probe.sh` —
+  kindnet's silent NetworkPolicy no-op is the trap this avoids),
+  ingress-nginx controller-v1.13.0 on host port 8081.
+- **sf-agent image:** built on `ghcr.io/astral-sh/uv:python3.13-bookworm-slim`
+  with git 2.39.5, pytest 9.1.1, node 24.18.0, codex-cli 0.144.4,
+  opencode 1.18.1, @angular/cli, jq 1.6. All gate paths verified under
+  `--user 12345:0` (arbitrary-UID proof) against the sample fixture; each
+  printed envelope round-trips through `app.kube_jobs.parse_envelope`.
+- **Manifests:** kustomize base + `overlays/local`; backend Service named
+  `api` so the SPA images' baked `proxy_pass http://api:8000` stays
+  unchanged; git-daemon sidecar exports `/data/workspaces` on 9418;
+  SQLite-on-PVC by default (Azure SQL is a one-env swap, see plan
+  decision 10).
