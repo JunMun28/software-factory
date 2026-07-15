@@ -3,6 +3,8 @@
 # A throwaway namespace gets an nginx pod; traffic works, then a deny-all
 # policy lands and the same traffic must FAIL.
 set -euo pipefail
+# the throwaway namespace must not leak when enforcement FAILS (exit 1 path)
+trap 'kubectl delete ns np-probe --wait=false >/dev/null 2>&1 || true' EXIT
 
 kubectl create ns np-probe --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n np-probe run web --image=nginx:alpine --restart=Never >/dev/null 2>&1 || true

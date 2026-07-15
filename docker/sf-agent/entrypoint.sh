@@ -81,7 +81,9 @@ if [ "$SF_STAGE" = "review" ]; then
   # read-only stage: NOTHING is pushed (spec §5) — the review reaches the
   # event log via captured NDJSON, its verdict via the envelope detail
   jq -cn --arg t "$(tail -c 20000 "$OUT")" '{type:"review",text:$t}'
-  VERDICT="$(grep -m1 -oE 'APPROVE|REQUEST-CHANGES' "$OUT" || echo 'no explicit verdict')"
+  # anchored: the prompt demands the verdict START a line — prose mentions
+  # ("I would not APPROVE") must not count as a verdict
+  VERDICT="$(grep -m1 -oE '^(APPROVE|REQUEST-CHANGES)' "$OUT" || echo 'no explicit verdict')"
   SHA="$(git rev-parse HEAD)"
   write_envelope "$(jq -cn --arg d "$VERDICT" --arg s "$SHA" \
     '{v:1,outcome:"ok",detail:$d,sha:$s}')"

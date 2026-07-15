@@ -167,3 +167,9 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   run 2 clean). Architecture/red/green/review each ran as one codex agent
   Job + one gate Job; merge gate approved via API; workspace main tip =
   merge commit; all Jobs reaped; all 6 netpol walls re-proven in-run.
+- **B2 post-merge review fixes:** stage-pod egress now excepts 169.254.0.0/16
+  (link-local/IMDS — the SSRF wall this template must carry to Azure);
+  netpol-smoke probes print SF_OPEN/SF_BLOCKED from inside the pod so an
+  unschedulable probe fails loudly instead of reading as "blocked";
+  calico-probe cleans its namespace on the failure path too; the review
+  verdict grep is line-anchored so prose mentions can't count as a verdict.
