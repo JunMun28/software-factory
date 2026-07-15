@@ -5,8 +5,9 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import lifecycle
+from . import transitions
 from .db import engine
+from .leader import get_elector
 from .models import PIPELINE_STAGES, Comment, ProgressEvent, Request
 
 log = logging.getLogger("factory")
@@ -37,13 +38,21 @@ def backfill_comment_events(db: Session) -> None:
 def escalate_orphans(db: Session) -> None:
     """A restart kills the pipeline worker threads; anything left mid-stage is
     orphaned — escalate it so it is VISIBLE and Retry can re-drive it
-    (stop + flag, never auto-rerun: CONTEXT.md escalation, ADR 0013)."""
+    (stop + flag, never auto-rerun: CONTEXT.md escalation, ADR 0013).
+    Runs right after this process acquired leadership, so the epoch is ours."""
+    epoch = get_elector().epoch
     orphans = db.query(Request).filter(
-        Request.status == "approved", Request.needs_human.is_(False),
+        Request.status == transitions.APPROVED, Request.needs_human.is_(False),
         Request.gate.is_(None), Request.stage.in_(PIPELINE_STAGES),
     ).all()
     for r in orphans:
-        lifecycle.escalate(
-            db, r, "Pipeline orphaned by a server restart — Retry re-runs the stage"
+        res = transitions.apply(
+            db, r, "escalate", actor=transitions.FACTORY,
+            params={"reason": "Pipeline orphaned by a server restart — Retry re-runs the stage"},
+            epoch=epoch,
         )
+        if isinstance(res, transitions.Loss):
+            continue
+        db.commit()
+        res.notify()
         log.warning("startup: %s was orphaned mid-%s — escalated for Retry", r.ref, r.stage)

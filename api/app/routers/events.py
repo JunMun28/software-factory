@@ -13,12 +13,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from .. import transitions
 from ..api_helpers import get_request, to_out
 from ..db import get_db
 from ..events import emit
 from ..models import App, AuditEvent, Comment, ProgressEvent, Request
 from ..revision import current_revision
 from ..schemas import CommentIn, CommentOut, EventOut, FeedPage, RequestOut
+from ..supervision import classify
 from .operators import resolve_operator
 
 router = APIRouter()
@@ -138,11 +140,13 @@ def list_comments(rid: int, db: Session = Depends(get_db)):
 
 @router.get("/api/inbox", response_model=list[RequestOut])
 def inbox(db: Session = Depends(get_db)):
+    # classify() is the source of truth for "needs a human"; the SQL clauses are
+    # its index-friendly prefilter (identical set — pinned by the Python filter).
     rows = (
         db.query(Request)
         .filter(or_(Request.gate.isnot(None), Request.needs_human.is_(True)))
-        .filter(Request.status.notin_(("cancelled", "done")))  # a stale gate never resurrects dead work
+        .filter(Request.status.notin_(transitions.CLOSED))  # a stale gate never resurrects dead work
         .order_by(Request.needs_human.desc(), Request.created_at.desc())
         .all()
     )
-    return [to_out(r) for r in rows]
+    return [to_out(r) for r in rows if (c := classify(r))["at_gate"] or c["stalled"]]

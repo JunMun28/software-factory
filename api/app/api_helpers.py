@@ -12,10 +12,11 @@ router that fires the runner calls pipeline() inside the endpoint body
 import re
 
 from fastapi import HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from .models import Request
-from .schemas import RequestOut
+from .schemas import ConflictOut, RequestDetail, RequestOut
 
 # ---------- pipeline seam ----------
 _pipeline = None
@@ -55,6 +56,23 @@ def to_out(r: Request, model=RequestOut, **extra):
     for k, v in extra.items():
         setattr(d, k, v)
     return d
+
+
+def conflict_response(r: Request, loss) -> RequestDetail | JSONResponse:
+    """Map a transitions.Loss to ADR 0006 HTTP semantics: the winner's own replay
+    is an idempotent 200; a known other winner is a structured ConflictOut 409;
+    a consumed precondition with no decisive winner is a plain 409."""
+    if loss.replay:
+        return to_out(r, RequestDetail)
+    if loss.winner is None:
+        raise HTTPException(409, loss.detail)
+    conflict = ConflictOut(
+        detail=f"Already acted on by {loss.winner.actor}",
+        acted_by=loss.winner.actor,
+        acted_at=loss.winner.created_at,
+        resulting_state=loss.resulting_state,
+    )
+    return JSONResponse(status_code=409, content=conflict.model_dump(mode="json"))
 
 
 def get_request(db: Session, rid: int) -> Request:

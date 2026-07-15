@@ -6,16 +6,22 @@ the supervision UI reads) plus the same milestone summaries / gate events
 the real agents would post as PR comments (ADR 0004, ADR 0014).
 The Review→Done boundary is a human gate (approve_merge) — the simulator
 emits its verification report, raises the gate, and waits for an Admin.
+
+Lifecycle writes go through transitions.apply() as MACHINE transitions:
+epoch-fenced, so a deposed leader's tick quietly loses (spec §3.2).
 """
 import logging
+from typing import Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import lifecycle, verification
+from . import transitions, verification
 from .events import emit
-from .models import PIPELINE_STAGES, STEP_PLANS, Request, utcnow
+from .leader import get_elector
+from .models import PIPELINE_STAGES, STEP_PLANS, Request
 from .supervision import pending_steer_notes
+from .transitions import FACTORY, GATE_APPROVE_MERGE
 
 log = logging.getLogger("factory.simulator")
 
@@ -51,15 +57,19 @@ def emit_verification(db: Session, req: Request) -> None:
     verification.emit_verification(db, req)
 
 
-def _tick_request(db: Session, req: Request, moved: list[str]) -> None:
+def _tick_request(db: Session, req: Request, moved: list[str],
+                  after_commit: list[Callable[[], None]]) -> None:
     plan = STEP_PLANS[req.stage]
     step = req.sim_step
     if req.stage == "review" and step >= len(plan):
         # verification report, then raise the merge gate once, then wait for a human
-        if req.gate != "approve_merge":
+        if req.gate != GATE_APPROVE_MERGE:
             emit_verification(db, req)
-            lifecycle.raise_merge_gate(db, req)
-            moved.append(f"{req.ref}: merge gate raised")
+            res = transitions.apply(db, req, "raise_merge_gate", actor=FACTORY,
+                                    epoch=get_elector().epoch)
+            if isinstance(res, transitions.Win):
+                moved.append(f"{req.ref}: merge gate raised")
+                after_commit.append(res.notify)
         return
     if step < len(plan):
         label, why = plan[step]
@@ -80,20 +90,22 @@ def _tick_request(db: Session, req: Request, moved: list[str]) -> None:
                  payload={"fields": fields, "Ref": req.ref})
     if req.sim_step >= len(plan) and req.stage != "review":
         nxt = {"architecture": "build", "build": "review"}[req.stage]
-        req.stage = nxt
-        req.sim_step = 0
-        req.stage_entered_at = utcnow()
-        emit(db, req, "milestone_summary", f"Stage advanced — now in {nxt.capitalize()}",
-             payload={"Stage": nxt.capitalize(), "Ref": req.ref})
-        moved.append(f"{req.ref}: advanced to {nxt}")
+        res = transitions.apply(db, req, "advance_stage", actor=FACTORY,
+                                params={"stage": nxt, "announce": True},
+                                expected_stage=req.stage,
+                                epoch=get_elector().epoch)
+        if isinstance(res, transitions.Win):
+            moved.append(f"{req.ref}: advanced to {nxt}")
 
 
 def _escalate(db: Session, req: Request, reason: str) -> None:
     db.rollback()
-    db.refresh(req)
-    if req.status in ("cancelled", "done"):
-        return
-    lifecycle.escalate(db, req, reason)
+    res = transitions.apply(db, req, "escalate", actor=FACTORY,
+                            params={"reason": reason}, epoch=get_elector().epoch)
+    if isinstance(res, transitions.Loss):
+        return  # closed (or fenced) meanwhile — nothing to flag
+    db.commit()
+    res.notify()
 
 
 def tick(db: Session) -> list[str]:
@@ -101,15 +113,18 @@ def tick(db: Session) -> list[str]:
     moved: list[str] = []
     items = db.scalars(
         select(Request)
-        .where(Request.status == "approved", Request.needs_human.is_(False))
+        .where(Request.status == transitions.APPROVED, Request.needs_human.is_(False))
         .where(Request.stage.in_(PIPELINE_STAGES))
         .order_by(Request.id)
     ).all()
     for req in items:
         item_moved: list[str] = []
+        after_commit: list[Callable[[], None]] = []
         try:
-            _tick_request(db, req, item_moved)
+            _tick_request(db, req, item_moved, after_commit)
             db.commit()
+            for notify in after_commit:  # emails only after the gate state is durable
+                notify()
             moved.extend(item_moved)
         except Exception as exc:
             log.exception("simulator stalled for %s", req.ref)
@@ -119,7 +134,11 @@ def tick(db: Session) -> list[str]:
 
 
 def approve_merge(db: Session, req: Request, actor: str) -> None:
-    """The Stage 5/6 human gate: merge + deploy promotion (one protected-branch idea, ADR 0005)."""
-    lifecycle.finish_done(db, req, actor,
-                          merge_note="PR merged to main",
-                          deploy_title="Deployed — production promotion merged")
+    """The Stage 5/6 human gate: merge + deploy promotion (one protected-branch idea, ADR 0005).
+
+    HTTP-initiated (called from the approve endpoint after claim_merge): no epoch.
+    A Loss means the request closed between the claim and here — the endpoint
+    records merge_approval_failed; nothing to do."""
+    transitions.apply(db, req, "finish_done", actor=transitions.Actor(name=actor),
+                      params={"merge_note": "PR merged to main",
+                              "deploy_title": "Deployed — production promotion merged"})

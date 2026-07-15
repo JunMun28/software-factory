@@ -46,7 +46,7 @@ const GUARANTEES = [
   },
   {
     key: 'one-owner',
-    claim: 'One owner per rule: env knobs only in api/app/settings.py (no os.environ reads for those knobs elsewhere except FACTORY_BRAIN/FACTORY_RUNNER in claude_exec.py); merge-gate/done transitions only in api/app/lifecycle.py (simulator and runner call it); schema migration is the generic diff in db.py migrate() with no hand-coded per-column branches in main.py; the demo seed is gated by FACTORY_SEED_DEMO and off in docker-compose.yml.',
+    claim: 'One owner per rule: env knobs only in api/app/settings.py (no os.environ reads for those knobs elsewhere except FACTORY_BRAIN/FACTORY_RUNNER in claude_exec.py); merge-gate/done transitions only in api/app/transitions.py (all writers call apply()); schema migration is the generic diff in db.py migrate() with no hand-coded per-column branches in main.py; the demo seed is gated by FACTORY_SEED_DEMO and off in docker-compose.yml.',
   },
 ]
 

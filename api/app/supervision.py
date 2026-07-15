@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from . import settings
+from . import settings, transitions
 from .models import PIPELINE_STAGES, STEP_PLANS, ProgressEvent, Request, utcnow
 
 
@@ -21,11 +21,40 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt.replace(tzinfo=timezone.utc)
 
 
+def classify(r: Request) -> dict:
+    """The ONE derivation of a Request's supervision phase from its composite
+    lifecycle state (spec 2026-07-14 D6) — the read-side twin of transitions.TABLE.
+    phase: closed | human_owned | stalled | at_gate | in_flight | intake.
+    Closed requests zero every flag, so adopters do not need a CLOSED prefilter
+    for correctness (the SQL prefilter remains useful for efficiency)."""
+    closed = r.status in transitions.CLOSED
+    stalled = bool(r.needs_human) and not closed
+    at_gate = r.gate is not None and not stalled and not closed
+    flight = (
+        r.status == transitions.APPROVED
+        and r.stage in PIPELINE_STAGES
+        and not stalled
+        and r.gate is None
+    )
+    if closed:
+        phase = "closed"
+    elif r.status == transitions.HUMAN_OWNED:
+        phase = "human_owned"
+    elif stalled:
+        phase = "stalled"
+    elif at_gate:
+        phase = "at_gate"
+    elif flight:
+        phase = "in_flight"
+    else:
+        phase = "intake"
+    return {"phase": phase, "at_gate": at_gate, "in_flight": flight, "stalled": stalled}
+
+
 def in_flight(r: Request) -> bool:
     """Running autonomously right now: approved, in a pipeline stage, not
-    parked at a gate, not escalated."""
-    return (r.status == "approved" and r.stage in PIPELINE_STAGES
-            and not r.needs_human and r.gate is None)
+    parked at a gate, not escalated. Derived from classify()."""
+    return classify(r)["in_flight"]
 
 
 def run_state(db: Session, r: Request) -> dict | None:
