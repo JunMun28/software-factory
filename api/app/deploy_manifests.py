@@ -116,6 +116,13 @@ def build_job_manifest(ref: str, slug: str, sha: str) -> dict:
                             "--digest-file=/dev/termination-log",
                             "--insecure", "--skip-tls-verify",
                             "--single-snapshot",
+                            # base images come through the pull-through proxy —
+                            # the only egress build-walls allow besides git+push
+                            *(
+                                [f"--registry-mirror={settings.REGISTRY_PROXY}",
+                                 "--insecure-pull"]
+                                if settings.REGISTRY_PROXY else []
+                            ),
                         ],
                         "volumeMounts": [{"name": "workspace", "mountPath": "/workspace"}],
                         "securityContext": {"allowPrivilegeEscalation": False,

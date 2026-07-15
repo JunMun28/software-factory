@@ -44,3 +44,53 @@ spec:
       port: 5000
       targetPort: 5000
       nodePort: 30500
+---
+# Pull-through proxy cache (Plan B3): the ONLY door out for build pods' base
+# images. kaniko pulls FROM docker.io logically, but --registry-mirror routes
+# every pull through this proxy — build pods themselves never reach the
+# internet (build-walls). registry:2 proxy mode is read-only, so pushes still
+# go to sf-registry. Office/AKS overlays swap this for Artifactory/ACR.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sf-registry-proxy
+  labels:
+    app: registry-proxy
+    sf/tier: factory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry-proxy
+  template:
+    metadata:
+      labels:
+        app: registry-proxy
+        sf/tier: factory
+    spec:
+      containers:
+        - name: registry
+          image: registry:2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REGISTRY_PROXY_REMOTEURL
+              value: "https://registry-1.docker.io"
+          ports:
+            - containerPort: 5000
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sf-registry-proxy
+  labels:
+    app: registry-proxy
+spec:
+  selector:
+    app: registry-proxy
+  ports:
+    - name: registry
+      port: 5000
+      targetPort: 5000

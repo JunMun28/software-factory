@@ -60,12 +60,25 @@ while :; do
 done
 ok "all stages + gates green — waiting at the merge gate (humans gate the irreversible)"
 
-echo "▸ merge gate → done"
+echo "▸ merge gate → build → deploy → done (Plan B3: merge kicks off kaniko + rollout)"
 curl -sf -X POST "$API/requests/$RID/approve" -H 'content-type: application/json' \
   -d '{"operator_id":1}' >/dev/null
-FINAL=$(curl -s "$API/requests/$RID" | jqpy "print(d['status'], d['stage'])")
-[ "$FINAL" = "done done" ] || fail "merge approval did not finish the request ($FINAL)"
-ok "request done"
+DEPLOY_DEADLINE=$(( $(date +%s) + 900 ))   # 15-minute ceiling for build+deploy
+LAST=""
+while :; do
+  OUT=$(curl -s "$API/requests/$RID")
+  STATUS=$(echo "$OUT" | jqpy "print(d['status'])")
+  STAGE=$(echo "$OUT" | jqpy "print(d['stage'])")
+  NH=$(echo "$OUT" | jqpy "print(d['needs_human'])")
+  JOBS=$(kubectl -n $NS get jobs -o name 2>/dev/null | sed 's|job.batch/||' | tr '\n' ' ')
+  STATE="status=$STATUS stage=$STAGE jobs=[ $JOBS]"
+  if [ "$STATE" != "$LAST" ]; then echo "  … $STATE"; LAST="$STATE"; fi
+  [ "$NH" = "True" ] && fail "escalated during build/deploy: $(echo "$OUT" | jqpy "print(d['needs_human_reason'])")"
+  [ "$STATUS" = "done" ] && break
+  [ "$(date +%s)" -gt "$DEPLOY_DEADLINE" ] && fail "build+deploy did not finish in 15 min"
+  sleep 5
+done
+ok "request done (merged, built, deployed)"
 
 echo "▸ the merge is REAL: the workspace repo's main moved"
 POD=$(kubectl -n $NS get pod -l app=api -o jsonpath='{.items[0].metadata.name}')

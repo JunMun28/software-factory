@@ -150,6 +150,12 @@ spec:
               app: registry
       ports:
         - {protocol: TCP, port: 5000}
+    - to:                               # base-image pulls via the proxy cache
+        - podSelector:
+            matchLabels:
+              app: registry-proxy
+      ports:
+        - {protocol: TCP, port: 5000}
 ---
 # produced-app pods (Plan B3, spec §2): ingress from ingress-nginx ONLY;
 # egress nothing (DNS rides the shared allow-dns). No factory, no peers.
@@ -191,3 +197,30 @@ spec:
         - {protocol: TCP, port: 5000}
     - ports:
         - {protocol: TCP, port: 5000}
+---
+# the proxy cache is the controlled egress door for base images: build pods in,
+# upstream registry out. Nothing else in-cluster is reachable from it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: registry-proxy-walls
+spec:
+  podSelector:
+    matchLabels:
+      app: registry-proxy
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              sf/role: build
+      ports:
+        - {protocol: TCP, port: 5000}
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 192.168.0.0/16          # pod CIDR
+              - 10.96.0.0/12            # service CIDR
+              - 169.254.0.0/16          # link-local/IMDS

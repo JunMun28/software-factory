@@ -35,6 +35,10 @@ def test_build_job_destination_pins_registry_and_sha():
     assert f"{dm.settings.REGISTRY}/sf-app-northwind:" in args
     assert "--digest-file=/dev/termination-log" in args
     assert "--no-push" not in args and "--insecure" in args
+    # base images must route through the pull-through proxy (build pods have no
+    # internet); empty REGISTRY_PROXY drops the flag for open-egress profiles
+    assert f"--registry-mirror={dm.settings.REGISTRY_PROXY}" in args
+    assert "--insecure-pull" in args
 
 
 def test_deploy_manifests_are_digest_pinned_app_tier_nonroot():

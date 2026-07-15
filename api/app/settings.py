@@ -105,6 +105,11 @@ REGISTRY = os.environ.get("FACTORY_REGISTRY", "").rstrip("/")
 # Master switch for the post-merge deploy flow. Requires REGISTRY + GIT_REMOTE_BASE.
 APP_DEPLOY = os.environ.get("FACTORY_APP_DEPLOY", "").lower() in ("1", "true", "yes")
 KANIKO_IMAGE = os.environ.get("FACTORY_KANIKO_IMAGE", "gcr.io/kaniko-project/executor:latest")
+# Pull-through proxy for BASE images: build pods have no internet (build-walls),
+# so kaniko's --registry-mirror routes docker.io pulls through this one
+# controlled door. Empty = no mirror flag (kaniko pulls direct — office/AKS
+# profiles with open registry egress).
+REGISTRY_PROXY = os.environ.get("FACTORY_REGISTRY_PROXY", "sf-registry-proxy:5000").rstrip("/")
 APP_INGRESS_DOMAIN = os.environ.get("FACTORY_APP_INGRESS_DOMAIN", "localtest.me")
 KUBE_BUILD_SA = os.environ.get("FACTORY_KUBE_BUILD_SA", "sf-build")
 KUBE_APP_SA = os.environ.get("FACTORY_KUBE_APP_SA", "sf-app")
