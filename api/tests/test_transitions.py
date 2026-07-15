@@ -3,10 +3,12 @@ import inspect
 import uuid
 
 import pytest
+from helpers import approved_request
 from sqlalchemy import select
 
 from app import transitions
 from app.db import SessionLocal, migrate
+from app.leader import get_elector
 from app.models import AuditEvent, Intent, Operator, ProgressEvent, Request
 from app.transitions import (
     ANY,
@@ -457,3 +459,44 @@ def test_win_notify_fires_after_commit(monkeypatch):
         db.commit()
         res.notify()
         assert pinged == [req.id]
+
+
+# ---------- apply_committed (Plan B1 task 1) ----------
+
+@pytest.fixture
+def app_leader_for_apply_committed():
+    """Give these machine-caller tests the current app leadership epoch."""
+    elector = get_elector()
+    assert elector.try_acquire() is True
+    yield
+    elector.release()
+
+
+@pytest.mark.usefixtures("app_leader_for_apply_committed")
+def test_apply_committed_commits_win_and_fires_notify(client, monkeypatch):
+    calls: list[int] = []
+    monkeypatch.setattr("app.notifications.notify_escalation",
+                        lambda db, req: calls.append(req.id))
+    d = approved_request(client, title="apply_committed win")
+    with SessionLocal() as db:
+        req = db.get(Request, d["id"])
+        res = transitions.apply_committed(
+            db, req, "escalate", actor=transitions.FACTORY,
+            params={"reason": "helper witness"}, epoch=get_elector().epoch)
+        assert isinstance(res, transitions.Win)
+    with SessionLocal() as db:  # durable: a FRESH session sees the committed state
+        assert db.get(Request, d["id"]).needs_human is True
+    assert calls == [d["id"]]  # notify fired exactly once, after the commit
+
+
+@pytest.mark.usefixtures("app_leader_for_apply_committed")
+def test_apply_committed_returns_loss_untouched(client):
+    d = approved_request(client, title="apply_committed loss")
+    client.post(f"/api/requests/{d['id']}/cancel", json={"operator_id": 1})
+    with SessionLocal() as db:
+        req = db.get(Request, d["id"])
+        res = transitions.apply_committed(
+            db, req, "escalate", actor=transitions.FACTORY,
+            params={"reason": "should lose"}, epoch=get_elector().epoch)
+        assert isinstance(res, transitions.Loss)
+        assert req.needs_human is False  # rolled back, nothing leaked

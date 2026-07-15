@@ -46,13 +46,11 @@ def escalate_orphans(db: Session) -> None:
         Request.gate.is_(None), Request.stage.in_(PIPELINE_STAGES),
     ).all()
     for r in orphans:
-        res = transitions.apply(
+        res = transitions.apply_committed(
             db, r, "escalate", actor=transitions.FACTORY,
             params={"reason": "Pipeline orphaned by a server restart — Retry re-runs the stage"},
             epoch=epoch,
         )
         if isinstance(res, transitions.Loss):
             continue
-        db.commit()
-        res.notify()
         log.warning("startup: %s was orphaned mid-%s — escalated for Retry", r.ref, r.stage)

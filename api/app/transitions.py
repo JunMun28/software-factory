@@ -509,6 +509,29 @@ def apply(
     return Win(transition=transition, intent=intent_row, _notify=notify)
 
 
+def apply_committed(
+    db: Session,
+    req: Request,
+    transition: str,
+    *,
+    actor: Actor,
+    params: dict | None = None,
+    intent: IntentSpec | None = None,
+    epoch: int | None = None,
+    expected_stage: str | None = None,
+) -> Win | Loss:
+    """apply() for MACHINE callers that own no larger transaction: a Win is
+    committed and its post-commit notification fired before returning; a Loss
+    has already rolled back. Staged sibling writes ride the same commit.
+    Callers composing a bigger transaction keep using apply() directly."""
+    res = apply(db, req, transition, actor=actor, params=params, intent=intent,
+                epoch=epoch, expected_stage=expected_stage)
+    if isinstance(res, Win):
+        db.commit()
+        res.notify()
+    return res
+
+
 # ---------- the Plan A primitive (unchanged; Plan B wires pipeline jobs through it) ----------
 
 def cas_status(
