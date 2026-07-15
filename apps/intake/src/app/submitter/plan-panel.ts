@@ -1,6 +1,7 @@
-import { Component, DestroyRef, computed, inject, input, OnInit, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, input, OnInit } from '@angular/core';
 
 import { Api, ReviewSummary } from '@sf/shared';
+import { GenerationStream } from './generation-stream';
 
 /** The Clarify step's live PLAN: a structured summary ({overview, sections})
  *  that rewrites itself as answers land. Owns its own GET /summary polling;
@@ -234,38 +235,28 @@ export class PlanPanel implements OnInit {
   facts = input<[string, string][]>([]);
 
   private api = inject(Api);
-  plan = signal<ReviewSummary | null>(null);
-  thinking = computed(() => !!this.plan()?.thinking);
+  /** the live plan: poll-only — the summary has no SSE endpoint */
+  private gen = new GenerationStream<ReviewSummary>(
+    () => this.api.summary(this.id()),
+    null,
+    (s) => s.thinking,
+    inject(DestroyRef),
+  );
+  plan = this.gen.state;
+  thinking = this.gen.thinking;
   /** the brain's open questions drive the interview itself — showing them in
    *  the plan reads as homework for the submitter, so they stay hidden */
   sections = computed(() =>
     (this.plan()?.sections ?? []).filter((sec) => !/open question/i.test(sec.title)),
   );
-  private timer: ReturnType<typeof setTimeout> | null = null;
-  private destroyed = false;
-
-  constructor() {
-    inject(DestroyRef).onDestroy(() => {
-      this.destroyed = true;
-      if (this.timer) clearTimeout(this.timer);
-    });
-  }
 
   ngOnInit() {
     this.refresh();
   }
 
-  /** fetch the summary; while the brain is writing, re-poll every ~1.5s */
+  /** fetch the summary; while the brain is writing, re-poll every ~1.5s.
+   *  Public — the Interview parent calls this after anything that changes the spec. */
   refresh() {
-    this.api.summary(this.id()).subscribe((p) => {
-      this.plan.set(p);
-      if (this.timer) clearTimeout(this.timer);
-      if (p.thinking && !this.destroyed) {
-        this.timer = setTimeout(() => {
-          this.timer = null;
-          this.refresh();
-        }, 1500);
-      }
-    });
+    this.gen.refresh();
   }
 }

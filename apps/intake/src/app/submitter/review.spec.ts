@@ -53,6 +53,11 @@ function setup(req: RequestDetail) {
 describe('Review — track-adaptive layout (ADR 0023)', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
+  it('wires the summary poll: one read on init, none after (summary not thinking)', () => {
+    const { api } = setup(detail({ type: 'bug' }));
+    expect(api.summary).toHaveBeenCalledOnce();
+  });
+
   it('renders a compact review for a bug (short track)', () => {
     const { fixture } = setup(detail({ type: 'bug' }));
     const root = fixture.nativeElement as HTMLElement;

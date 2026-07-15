@@ -13,6 +13,7 @@ import {
   prototypeSrcdoc,
 } from '@sf/shared';
 import { IntakeDraft } from './intake-draft.service';
+import { GenerationStream } from './generation-stream';
 import { ProtoFullscreen } from './proto-fullscreen';
 import { SubShell } from './sub-shell';
 
@@ -441,24 +442,22 @@ export class Review implements OnInit {
   private draft = inject(IntakeDraft);
   private sanitizer = inject(DomSanitizer);
   id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
+  /** the AI-written spec: poll-only — the summary has no SSE endpoint */
+  private gen = new GenerationStream<ReviewSummary>(
+    () => this.api.summary(this.id),
+    null,
+    (s) => s.thinking,
+    inject(DestroyRef),
+  );
   private get extra() {
     return this.draft.extra;
   }
 
   req = signal<RequestDetail | null>(null);
-  summary = signal<ReviewSummary | null>(null);
+  summary = this.gen.state;
   protoDoc = signal<SafeHtml | null>(null); // the prototype rendered into the preview iframe
   fullscreen = signal(false);
   submitting = signal(false);
-  private destroyed = false;
-  private pollTimer: ReturnType<typeof setTimeout> | null = null;
-
-  constructor() {
-    inject(DestroyRef).onDestroy(() => {
-      this.destroyed = true;
-      if (this.pollTimer) clearTimeout(this.pollTimer);
-    });
-  }
 
   ngOnInit() {
     this.api.request(this.id).subscribe((r) => {
@@ -471,7 +470,7 @@ export class Review implements OnInit {
           : null,
       );
     });
-    this.loadSummary();
+    this.gen.refresh();
   }
 
   openFull() {
@@ -484,22 +483,6 @@ export class Review implements OnInit {
   /** back to the Prototype step to keep shaping the mock */
   editProto() {
     this.router.navigateByUrl(`/submit/${this.id}/prototype`);
-  }
-
-  /** Fetch the AI spec; poll every ~1.5s while it's still generating. */
-  private loadSummary() {
-    if (this.destroyed) return;
-    this.api.summary(this.id).subscribe({
-      next: (s) => {
-        this.summary.set(s);
-        if (s.thinking && !this.destroyed) {
-          this.pollTimer = setTimeout(() => this.loadSummary(), 1500);
-        }
-      },
-      error: () => {
-        /* leave the skeleton up; a transient error just retries on next visit */
-      },
-    });
   }
 
   reachLabel(reach: RequestDetail['reach']) {
