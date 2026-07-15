@@ -162,3 +162,8 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   review stage stays read-only by construction (nothing pushed; the gate
   grades the pinned SHA on the orchestrator's own repo). Proven by local
   docker repro before rerunning the smoke.
+- **Kind smoke run of record (2026-07-15):** REQ-2046 end-to-end in ~17 min,
+  zero gate retries (run 1 failed on the codex-sandbox deviation above;
+  run 2 clean). Architecture/red/green/review each ran as one codex agent
+  Job + one gate Job; merge gate approved via API; workspace main tip =
+  merge commit; all Jobs reaped; all 6 netpol walls re-proven in-run.
