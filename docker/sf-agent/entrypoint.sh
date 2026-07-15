@@ -53,8 +53,13 @@ case "$CLI" in
     else
       die_stage "SF_CLI=codex but no /secrets/codex/auth.json — run 'task sync-codex-auth'"
     fi
-    SANDBOX=workspace-write
-    [ "$SF_STAGE" = "review" ] && SANDBOX=read-only
+    # THE POD IS THE SANDBOX: codex's own bwrap/landlock cannot create user
+    # namespaces inside an unprivileged container (every exec/apply_patch fails,
+    # codex exits 0 having written nothing — found live on kind). Isolation here
+    # is the pod: non-root arbitrary UID, NetworkPolicy walls, ephemeral clone;
+    # the review stage stays read-only by construction (nothing is pushed, and
+    # the gate grades the pinned SHA on the orchestrator's own repo).
+    SANDBOX=danger-full-access
     codex exec --skip-git-repo-check -s "$SANDBOX" --cd "$REPO" \
       ${SF_MODEL:+-m "$SF_MODEL"} "$PROMPT" > "$OUT" 2>&1 \
       || die_stage "codex exec failed: $(tail -c 400 "$OUT")"

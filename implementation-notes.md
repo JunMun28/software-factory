@@ -149,3 +149,16 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   unchanged; git-daemon sidecar exports `/data/workspaces` on 9418;
   SQLite-on-PVC by default (Azure SQL is a one-env swap, see plan
   decision 10).
+
+### Deviations (B2 cluster half)
+
+- **codex sandbox inside pods:** the plan's `codex exec -s workspace-write`
+  (and `-s read-only` for review) fails inside unprivileged containers —
+  bubblewrap/landlock cannot create user namespaces, so EVERY exec/apply_patch
+  errors and codex exits 0 having written nothing (found live: REQ-2045
+  escalated with "architecture produced no PLAN.md" after 2 honest gate
+  fails). Conservative fix: `-s danger-full-access` in-pod — the POD is the
+  sandbox (non-root arbitrary UID, NetworkPolicy walls, ephemeral clone); the
+  review stage stays read-only by construction (nothing pushed; the gate
+  grades the pinned SHA on the orchestrator's own repo). Proven by local
+  docker repro before rerunning the smoke.
