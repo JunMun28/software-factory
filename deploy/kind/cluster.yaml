@@ -1,0 +1,22 @@
+# kind cluster for the Software Factory (spec §2, local profile).
+# CRITICAL: the default CNI (kindnet) silently DOES NOT enforce NetworkPolicy —
+# it is disabled here and Calico installed by `task kind-up`; enforcement is
+# then PROVEN by scripts/calico-probe.sh, never assumed.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: software-factory
+networking:
+  disableDefaultCNI: true
+  podSubnet: "192.168.0.0/16"   # calico.yaml's default IPv4 pool — keep equal
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80       # ingress-nginx hostPort
+        hostPort: 8081          # http://<host>.localtest.me:8081
+        protocol: TCP
