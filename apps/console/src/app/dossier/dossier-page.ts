@@ -21,11 +21,7 @@ import {
   SendBackModal,
   SendBackStageModal,
 } from '../shared/gate-modals';
-import {
-  FloorActionError,
-  FloorActionVerb,
-  floorActionOutcome,
-} from '../shared/action-outcome';
+import { FloorActionError, FloorActionVerb, floorActionOutcome } from '../shared/action-outcome';
 import { ConsoleShell } from '../shell/console-shell';
 import { DossierChapter, buildDossierChapters } from './dossier-view';
 
