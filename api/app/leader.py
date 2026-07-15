@@ -36,8 +36,10 @@ class LeaderElector:
                     self._conn = self._engine.raw_connection()
                     self._conn.detach()
                     # must target the DBAPI connection: the pool fairy has no
-                    # __setattr__ delegation, so setting it on self._conn is a no-op
-                    self._conn.driver_connection.autocommit = True
+                    # __setattr__ delegation, so setting it on self._conn is a no-op.
+                    # dbapi_connection, not driver_connection — the latter is None
+                    # for detached pyodbc connections (first live mssql CI run).
+                    self._conn.dbapi_connection.autocommit = True
                     cur = self._conn.cursor()
                     try:
                         cur.execute(
