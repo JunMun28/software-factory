@@ -55,6 +55,7 @@ class FakeKubeClient:
     jobs: dict[str, FakeJob] = field(default_factory=dict)
     creations: list[dict] = field(default_factory=list)
     deletions: list[str] = field(default_factory=list)
+    deletion_uids: list[tuple[str, str | None]] = field(default_factory=list)
     observations: list[str] = field(default_factory=list)
     raise_once: set[str] = field(default_factory=set)
     raise_always: set[str] = field(default_factory=set)
@@ -99,10 +100,11 @@ class FakeKubeClient:
             logs=job.logs if (capture or terminal) else "",
         )
 
-    def delete_job(self, name: str) -> None:
+    def delete_job(self, name: str, *, uid: str | None = None) -> None:
         self.deletions.append(name)
+        self.deletion_uids.append((name, uid))
         job = self.jobs.get(name)
-        if job:
+        if job and (uid is None or job.uid == uid):
             job.deleted = True
 
     def finish(

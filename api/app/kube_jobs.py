@@ -14,8 +14,8 @@ Envelope contract (termination message, JSON, kernel-capped at 4 KB):
   gate Job:   {"v": 1, "outcome": "pass"|"fail", "reason": str,
                "surface_hash": str|null, "metrics": {...}|null}
 Large payloads (review summaries, test reports) travel as NDJSON pod logs.
-Terminal output is captured before deletion; running-pod capture is currently
-best-effort because RealKubeClient only reads pod output for terminal Jobs.
+Output capture is attempted before every deletion, including from running pods;
+log transfer failures remain best-effort.
 """
 
 import json

@@ -96,6 +96,19 @@ def test_reset_branch_discards_half_pushed_work(ws_root):
     assert not (ws / "junk.py").exists()
 
 
+def test_reset_branch_missing_work_branch_does_not_reset_main(ws_root):
+    req = _req()
+    ws = workspace.ensure_repo(req, workspace.spec_md(req))
+    _git(ws, "checkout", "-q", "main")
+    (ws / "main-only.txt").write_text("must survive\n")
+    main_sha = _commit_all(ws, "main-only commit")
+    _git(ws, "branch", "-D", workspace.work_branch(req.ref))
+
+    assert workspace.reset_branch(ws, req.ref, workspace.BASELINE_TAG) is False
+    assert workspace.head_sha(ws, "main") == main_sha
+    assert (ws / "main-only.txt").read_text() == "must survive\n"
+
+
 def test_merge_graded_enforces_the_sha_precondition(ws_root):
     req = _req()
     ws = workspace.ensure_repo(req, workspace.spec_md(req))

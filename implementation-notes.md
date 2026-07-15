@@ -101,3 +101,34 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   through the current four components; hardened because the class is a public
   surface). Garbled-SSE-payload fallback test ported from the deleted streamState
   spec.
+
+## Deviations
+
+- **B2 review — reset safety:** `workspace.reset_branch()` now stops immediately
+  when the work-branch checkout fails. It never runs hard reset or clean against
+  whichever branch happened to be checked out (especially `main`).
+- **B2 review — 409 adoption:** same-name Job adoption is now limited to the
+  crash-before-record case where no prior `StageJob` UID exists. Once any UID was
+  recorded, both a lingering known UID and an unknown stranger UID park as infra;
+  neither is adopted or graded.
+- **B2 review — SHA input:** git-backed runs accept agent-supplied stage SHAs only
+  when they match `^[0-9a-f]{40}$`. A malformed SHA becomes a recorded gate
+  failure, while malformed historical graded SHAs are ignored as reset/merge
+  targets.
+- **B2 review — unset remote fallback:** `approve_merge()` delegates to the B1
+  simulator path as soon as `FACTORY_GIT_REMOTE_BASE` is unset, before it computes
+  a workspace path or reads graded git state.
+- **B2 review — UID-safe deletion:** the small client-seam change was made rather
+  than deferred: every runner deletion passes the recorded `StageJob.job_uid`, and
+  `RealKubeClient` sends it as a `V1DeleteOptions` UID precondition. Deletes with no
+  recorded UID retain the prior unconditioned behavior.
+- **B2 review — capture docs:** `kube_jobs.py` now says running-pod output capture
+  is attempted before deletion; only transfer failure remains best-effort.
+- **Prior task-report deviation — wall-clock assertion:** the B1 wall-clock test's
+  envelope assertion changed from the fake termination message to `None`. A pod
+  that is still running has no terminated-container message, even though
+  `capture=True` can already retrieve and persist its live logs.
+- **Prior task-report deviation — retry timing:** `defer_spawn` added a deliberate
+  one-tick delay after failed, timed-out, or infra observations so deterministic
+  same-name Jobs are not recreated while their predecessors are still terminating.
+  Nested gate-spawn failures now propagate the same delay.

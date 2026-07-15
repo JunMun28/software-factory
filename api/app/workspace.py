@@ -120,7 +120,8 @@ def surface_hash_at(ws: Path, sha: str) -> str | None:
 
 def reset_branch(ws: Path, ref: str, to_sha: str) -> bool:
     """Forced: a new attempt starts from the last graded SHA (spec §5)."""
-    _git(ws, "checkout", "-q", work_branch(ref))
+    if _git(ws, "checkout", "-q", work_branch(ref)).returncode != 0:
+        return False
     ok = _git(ws, "reset", "-q", "--hard", to_sha).returncode == 0
     _git(ws, "clean", "-fdq")
     return ok

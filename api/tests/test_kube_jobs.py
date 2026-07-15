@@ -172,6 +172,38 @@ def test_fake_create_returns_uid_and_conflict_returns_none():
     assert fake.get_job("sf-req-2050-red-1").uid == uid
 
 
+def test_real_delete_job_uses_uid_precondition_when_known():
+    from app.kube_client import RealKubeClient
+
+    class DeleteOptions:
+        def __init__(self, *, preconditions):
+            self.preconditions = preconditions
+
+    class Preconditions:
+        def __init__(self, *, uid):
+            self.uid = uid
+
+    class Types:
+        V1DeleteOptions = DeleteOptions
+        V1Preconditions = Preconditions
+
+    class Batch:
+        def delete_namespaced_job(self, name, namespace, **kwargs):
+            self.call = (name, namespace, kwargs)
+
+    real = object.__new__(RealKubeClient)
+    real.ns = "software-factory"
+    real._batch = Batch()
+    real._types = Types
+    real._ApiException = RuntimeError
+
+    real.delete_job("sf-req-2050-red-1", uid="uid-original")
+
+    name, namespace, kwargs = real._batch.call
+    assert (name, namespace) == ("sf-req-2050-red-1", "software-factory")
+    assert kwargs["body"].preconditions.uid == "uid-original"
+
+
 def test_fake_capture_gates_running_pod_logs():
     from fake_kube import FakeKubeClient
 

@@ -36,7 +36,7 @@ class KubeClient(Protocol):
 
     def get_job(self, name: str, *, capture: bool = False) -> JobView: ...
 
-    def delete_job(self, name: str) -> None: ...
+    def delete_job(self, name: str, *, uid: str | None = None) -> None: ...
 
 
 class RealKubeClient:
@@ -52,6 +52,7 @@ class RealKubeClient:
         self.ns = namespace
         self._batch = client.BatchV1Api()
         self._core = client.CoreV1Api()
+        self._types = client
         self._ApiException = client.exceptions.ApiException
 
     def create_job(self, manifest: dict) -> str | None:
@@ -102,11 +103,14 @@ class RealKubeClient:
             logs=logs,
         )
 
-    def delete_job(self, name: str) -> None:
-        try:
-            self._batch.delete_namespaced_job(
-                name, self.ns, propagation_policy="Foreground"
+    def delete_job(self, name: str, *, uid: str | None = None) -> None:
+        kwargs = {"propagation_policy": "Foreground"}
+        if uid:
+            kwargs["body"] = self._types.V1DeleteOptions(
+                preconditions=self._types.V1Preconditions(uid=uid)
             )
+        try:
+            self._batch.delete_namespaced_job(name, self.ns, **kwargs)
         except self._ApiException as e:
             if e.status != 404:
                 raise

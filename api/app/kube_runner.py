@@ -28,6 +28,7 @@ Tick order matters: reap (cancel wins) → observe running Jobs → spawn next
 work oldest-first under the Job cap.
 """
 import logging
+import re
 from datetime import timedelta
 
 from sqlalchemy import func, select
@@ -52,6 +53,7 @@ log = logging.getLogger("factory.kube")
 
 LOGS_TAIL = 20_000  # chars of captured NDJSON persisted per Job
 GATE_INFRA_LIMIT = 3
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 # feed parity with AgentRunner's milestone texts (test_agent_runner asserts these prefixes)
 MILESTONES = {
@@ -105,8 +107,8 @@ class KubeJobRunner:
             if sj.status != "running":
                 continue
             try:
-                self._observe(db, req, sj, moved)
-                if sj.status in ("failed", "timed_out", "infra"):
+                should_defer_spawn = self._observe(db, req, sj, moved)
+                if should_defer_spawn or sj.status in ("failed", "timed_out", "infra"):
                     # Failure and infra recovery are next-tick work. This is
                     # especially important for deterministic-name 409s: the
                     # predecessor may still be terminating in this tick.
@@ -164,7 +166,7 @@ class KubeJobRunner:
                 view = self.client.get_job(sj.job_name, capture=True)
                 sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
                 sj.envelope = parse_envelope(view.termination_message)
-                self.client.delete_job(sj.job_name)
+                self.client.delete_job(sj.job_name, uid=sj.job_uid)
                 sj.status = "reaped"
                 sj.completed_at = utcnow()
                 db.commit()
@@ -174,7 +176,7 @@ class KubeJobRunner:
                 db.rollback()
 
     # ---------- observe one running Job ----------
-    def _observe(self, db: Session, req: Request, sj: StageJob, moved: list[str]) -> None:
+    def _observe(self, db: Session, req: Request, sj: StageJob, moved: list[str]) -> bool:
         view = self.client.get_job(sj.job_name)
         self._observe_failures.pop(sj.job_name, None)
         if view.phase != "absent" and sj.job_uid and view.uid and view.uid != sj.job_uid:
@@ -184,18 +186,18 @@ class KubeJobRunner:
             sj.completed_at = utcnow()
             db.commit()
             moved.append(f"{req.ref}: {sj.job_name} uid changed under us — will re-run")
-            return
+            return False
         now = utcnow()
         if view.phase == "running":
             if now < sj.deadline_at:
-                return
+                return False
             # orchestrator wall clock (spec §5): fires regardless of Job status —
             # a partitioned node cannot strand the request. Capture is attempted
             # first, including logs from a pod whose Job is still running.
             view = self.client.get_job(sj.job_name, capture=True)
             sj.envelope = parse_envelope(view.termination_message)
             sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
-            self.client.delete_job(sj.job_name)
+            self.client.delete_job(sj.job_name, uid=sj.job_uid)
             sj.status = "timed_out"
             sj.completed_at = now
             db.commit()
@@ -207,29 +209,30 @@ class KubeJobRunner:
                 f"{sj.stage} {sj.role} Job exceeded its wall clock (attempt {sj.attempt})",
                 moved,
             )
-            return
+            return True
         if view.phase == "absent":
             # vanished under us (external deletion / create replay that never landed):
             # infra, not a domain failure — the same attempt re-runs
             if sj.role == "gate":
                 self._grade(db, req, sj, view.phase, None, moved)
-                return
+                return sj.status in ("failed", "timed_out", "infra")
             sj.status = "infra"
             sj.completed_at = now
             db.commit()
             moved.append(f"{req.ref}: {sj.job_name} vanished — will re-run")
-            return
+            return True
         # terminal: capture BEFORE deletion — the orchestrator owns the Job
         # lifecycle and never loses an outcome (spec §5, §8)
         envelope = parse_envelope(view.termination_message)
         sj.envelope = envelope
         sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
-        self.client.delete_job(sj.job_name)
+        self.client.delete_job(sj.job_name, uid=sj.job_uid)
         sj.completed_at = now
         if sj.role == "gate":
             self._grade(db, req, sj, view.phase, envelope, moved)
+            return sj.status in ("failed", "timed_out", "infra")
         else:
-            self._finish_stage_job(db, req, sj, view.phase, envelope, moved)
+            return self._finish_stage_job(db, req, sj, view.phase, envelope, moved)
 
     def _finish_stage_job(
         self,
@@ -239,7 +242,7 @@ class KubeJobRunner:
         phase: str,
         envelope: dict | None,
         moved: list[str],
-    ) -> None:
+    ) -> bool:
         if phase == "succeeded" and envelope is None:
             # log/envelope-capture failure is its own escalation reason (spec §5)
             sj.status = "infra"
@@ -250,17 +253,17 @@ class KubeJobRunner:
                 f"Stage output could not be captured for {sj.job_name} — envelope missing",
             )
             moved.append(f"{req.ref}: escalated — capture failed for {sj.job_name}")
-            return
+            return True
         if phase == "succeeded" and envelope.get("outcome") == "ok":
             sj.status = "succeeded"
             db.commit()
             moved.append(f"{req.ref}: {sj.job_name} succeeded")
-            self._spawn_gate(db, req, sj.stage, sj.attempt, moved)
-            return
+            return not self._spawn_gate(db, req, sj.stage, sj.attempt, moved)
         sj.status = "failed"
         db.commit()
         detail = (envelope or {}).get("detail") or f"agent Job {sj.job_name} failed"
         self._after_failure(db, req, sj, detail, moved)
+        return True
 
     # ---------- grade a gate verdict (orchestrator-side, trusted) ----------
     def _grade(
@@ -382,9 +385,12 @@ class KubeJobRunner:
         last graded SHA into main, or escalate. Without a git workspace (no
         GIT_REMOTE_BASE — B1-shaped runs) delegate to the simulator's
         finish_done, which was B1's contract."""
+        if not settings.GIT_REMOTE_BASE:
+            simulator.approve_merge(db, req, actor)
+            return
         ws = workspace.workspace_for(req)
         sha = self._last_graded_sha(db, req)
-        if not settings.GIT_REMOTE_BASE or not (ws / ".git").exists() or not sha:
+        if not (ws / ".git").exists() or not sha:
             simulator.approve_merge(db, req, actor)
             return
         err = workspace.merge_graded(ws, req.ref, sha, actor)
@@ -480,7 +486,7 @@ class KubeJobRunner:
                 None,
             )
             sha = (stage_row.envelope or {}).get("sha") if stage_row else None
-            if sha:
+            if isinstance(sha, str) and SHA40.fullmatch(sha):
                 return sha
         return None
 
@@ -617,7 +623,7 @@ class KubeJobRunner:
                         row.envelope = row.envelope or parse_envelope(
                             view.termination_message
                         )
-                        self.client.delete_job(row.job_name)
+                        self.client.delete_job(row.job_name, uid=row.job_uid)
                         row.completed_at = utcnow()
                     except Exception:
                         log.exception("supersede reap failed for %s", row.job_name)
@@ -732,6 +738,26 @@ class KubeJobRunner:
         )
         stage_env = (stage_row.envelope or {}) if stage_row else {}
         pinned_sha = stage_env.get("sha") or ""
+        if settings.GIT_REMOTE_BASE and not (
+            isinstance(pinned_sha, str) and SHA40.fullmatch(pinned_sha)
+        ):
+            reason = (
+                f"{stage} gate rejected invalid stage SHA — expected 40 lowercase hex "
+                "characters"
+            )
+            row = StageJob(
+                request_id=req.id,
+                stage=stage,
+                attempt=attempt,
+                role="gate",
+                job_name=name,
+                epoch=get_elector().epoch,
+                deadline_at=utcnow() + timedelta(seconds=settings.GATE_WALL_CLOCK),
+                envelope={"outcome": "fail", "reason": reason},
+            )
+            db.add(row)
+            self._grade(db, req, row, "failed", row.envelope, moved)
+            return False
         review_verdict = (
             (stage_env.get("detail") or "") if stage == "review" else ""
         )
@@ -810,16 +836,24 @@ class KubeJobRunner:
                 ).all()
                 if prior.job_uid
             }
-            if view.phase != "absent" and view.uid and view.uid in prior_uids:
+            if prior_uids:
+                stranger = bool(view.uid and view.uid not in prior_uids)
                 intents.fail(
                     db,
                     f"spawn:{name}",
-                    {"error": "same-name Job from a prior attempt still terminating"},
+                    {
+                        "error": (
+                            "same-name Job has an unrecognized uid"
+                            if stranger
+                            else "same-name Job from a prior attempt still terminating"
+                        )
+                    },
                 )
                 row.status = "infra"
                 row.completed_at = utcnow()
                 db.commit()
-                moved.append(f"{req.ref}: {name} blocked by a dying predecessor — will re-run")
+                blocker = "a uid stranger" if stranger else "a dying predecessor"
+                moved.append(f"{req.ref}: {name} blocked by {blocker} — will re-run")
                 return False
             row.job_uid = view.uid or None
         else:

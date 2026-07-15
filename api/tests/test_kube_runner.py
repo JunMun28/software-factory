@@ -25,7 +25,7 @@ from fake_kube import (
 from helpers import approved_request
 from sqlalchemy import select
 
-from app import settings, transitions, workspace
+from app import settings, simulator, transitions, workspace
 from app.db import SessionLocal
 from app.kube_runner import KubeJobRunner
 from app.models import Request, StageJob, utcnow
@@ -671,6 +671,37 @@ def test_observe_discards_same_name_stranger(client):
     assert out["needs_human"] is False
 
 
+def test_post_discard_rerun_parks_same_stranger_instead_of_adopting(client):
+    runner, fake = make_runner()
+    d = _approved(client, "Kube uid stranger replay")
+    name = f"sf-{d['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+
+    from fake_kube import FakeJob
+
+    from app.kube_jobs import stage_job_manifest
+
+    fake.jobs[name] = FakeJob(
+        manifest=stage_job_manifest(d["ref"], "architecture", 1),
+        uid="uid-stranger",
+    )
+    fake.finish(name, stage_ok("stale stranger result"))
+    with SessionLocal() as db:
+        runner.tick(db)  # discard the stranger against the recorded original uid
+
+    fake.conflicts.add(name)
+    with SessionLocal() as db:
+        runner.tick(db)  # re-create 409s against that same stranger
+        rows = db.scalars(
+            select(StageJob).where(StageJob.job_name == name).order_by(StageJob.id)
+        ).all()
+
+    assert [row.status for row in rows] == ["infra", "infra"]
+    assert rows[-1].job_uid is None
+    assert f"{name}-gate" not in fake.jobs
+
+
 def test_wall_clock_timeout_captures_running_logs(client, monkeypatch):
     monkeypatch.setattr(settings, "STAGE_WALL_CLOCK", -1)
     runner, fake = make_runner()
@@ -819,6 +850,65 @@ def test_git_grading_catches_a_cheating_implementer(client, monkeypatch, tmp_pat
     assert "Test-isolation gate" in out["needs_human_reason"]
 
 
+def test_git_mode_rejects_non_hex_40_stage_sha_as_gate_failure(
+    client, monkeypatch, tmp_path
+):
+    _git_mode(monkeypatch, tmp_path)
+    runner, fake = make_runner()
+    d = _approved(client, "Kube invalid stage sha")
+    name = f"sf-{d['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+    fake.finish(name, {"v": 1, "outcome": "ok", "detail": "done", "sha": "--help"})
+
+    with SessionLocal() as db:
+        runner.tick(db)
+        rows = db.scalars(
+            select(StageJob)
+            .where(StageJob.request_id == d["id"])
+            .order_by(StageJob.id)
+        ).all()
+
+    assert [(row.role, row.status) for row in rows] == [
+        ("stage", "succeeded"),
+        ("gate", "failed"),
+    ]
+    assert "40 lowercase hex" in (rows[-1].envelope or {}).get("reason", "")
+    assert f"{name}-gate" not in fake.jobs
+
+
+def test_last_graded_sha_ignores_malformed_recorded_sha(client):
+    runner, _ = make_runner()
+    d = _approved(client, "Kube malformed graded sha")
+    with SessionLocal() as db:
+        stage = StageJob(
+            request_id=d["id"],
+            stage="architecture",
+            attempt=1,
+            role="stage",
+            job_name=f"sf-{d['ref'].lower()}-architecture-1",
+            status="succeeded",
+            envelope={"outcome": "ok", "sha": "--help"},
+            epoch=1,
+            deadline_at=utcnow(),
+        )
+        gate = StageJob(
+            request_id=d["id"],
+            stage="architecture",
+            attempt=1,
+            role="gate",
+            job_name=f"sf-{d['ref'].lower()}-architecture-1-gate",
+            status="succeeded",
+            envelope=pass_verdict(),
+            epoch=1,
+            deadline_at=utcnow(),
+        )
+        db.add_all([stage, gate])
+        db.commit()
+        req = db.get(Request, d["id"])
+        assert runner._last_graded_sha(db, req) is None
+
+
 def test_retry_resets_the_branch_to_the_last_graded_sha(client, monkeypatch, tmp_path):
     """Attempt 2 must not inherit attempt 1's half-pushed commit (spec §5)."""
     _git_mode(monkeypatch, tmp_path)
@@ -890,3 +980,39 @@ def test_kube_approve_merge_merges_the_graded_sha(client, monkeypatch, tmp_path)
         assert done["status"] == "done" and done["stage"] == "done"
         assert _git(ws, "merge-base", "--is-ancestor", graded, "main").returncode == 0
     shutil.rmtree(tmp_path / "kube-ws", ignore_errors=True)
+
+
+def test_kube_approve_merge_without_remote_never_builds_workspace_path(monkeypatch):
+    monkeypatch.setattr(settings, "GIT_REMOTE_BASE", "")
+    monkeypatch.setattr(
+        workspace,
+        "workspace_for",
+        lambda req: (_ for _ in ()).throw(AssertionError("workspace path built")),
+    )
+    called = {}
+    monkeypatch.setattr(
+        simulator,
+        "approve_merge",
+        lambda db, req, actor: called.update(req=req, actor=actor),
+    )
+    req = Request(ref="malformed-on-purpose")
+
+    KubeJobRunner(client=FakeKubeClient()).approve_merge(None, req, "operator")
+
+    assert called == {"req": req, "actor": "operator"}
+
+
+def test_terminal_delete_is_uid_preconditioned(client):
+    runner, fake = make_runner()
+    d = _approved(client, "Kube uid precondition delete")
+    name = f"sf-{d['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+        row = db.scalar(select(StageJob).where(StageJob.job_name == name))
+        recorded_uid = row.job_uid
+    fake.finish(name, stage_ok())
+
+    with SessionLocal() as db:
+        runner.tick(db)
+
+    assert (name, recorded_uid) in fake.deletion_uids
