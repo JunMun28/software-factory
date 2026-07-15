@@ -290,3 +290,86 @@ def test_cancel_during_deploy_tears_down_the_app(client, monkeypatch, tmp_path):
         "sf/instance=northwind",
     ]
     assert not fake.objects
+
+
+def test_retry_after_deploy_timeout_reapplies(client, monkeypatch, tmp_path):
+    # review HIGH: a dead deploy row (timed_out) must not dead-end the request —
+    # after the human Retry the manifests are re-applied and a fresh row drives.
+    monkeypatch.setattr(settings, "DEPLOY_WALL_CLOCK", -1)
+    request, runner, fake, _build_name = _spawn_and_finish_build(
+        client, monkeypatch, tmp_path, "B3 retry after deploy timeout"
+    )
+    monkeypatch.setattr(kube_runner, "_http_ok", lambda _url: False)
+    with SessionLocal() as db:
+        runner.tick(db)  # deploy row times out, escalates
+        req = db.get(Request, request["id"])
+        assert req.needs_human and req.stage == "deploy"
+    with SessionLocal() as db:
+        runner.tick(db)  # escalated -> teardown (app deleted)
+    assert not fake.objects
+
+    monkeypatch.setattr(settings, "DEPLOY_WALL_CLOCK", 600)
+    retried = client.post(
+        f"/api/requests/{request['id']}/retry", json={"operator_id": 1}
+    )
+    assert retried.status_code == 200, retried.text
+    fake.applied.clear()
+    with SessionLocal() as db:
+        runner.tick(db)
+        rows = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == request["id"], StageJob.role == "deploy"
+            ).order_by(StageJob.id)
+        ).all()
+    assert {obj["kind"] for obj in fake.applied} == {"Deployment", "Service", "Ingress"}
+    assert rows[-1].status == "running" and rows[-1].id != rows[0].id
+
+    # and the fresh round can still finish
+    fake.mark_ready(deploy_manifests.app_name("northwind"))
+    monkeypatch.setattr(kube_runner, "_http_ok", lambda _url: True)
+    with SessionLocal() as db:
+        runner.tick(db)
+        req = db.get(Request, request["id"])
+        assert req.status == transitions.DONE and req.stage == "done"
+
+
+def test_build_absent_respawns_bounded(client, monkeypatch, tmp_path):
+    # review MEDIUM: crash-before-create (absent Job) is benign — re-spawn, not
+    # a human interrupt; but 3 consecutive infra rounds DO end in a human.
+    request, approved, runner, fake = _to_merge_gate(
+        client, monkeypatch, tmp_path, "B3 absent build respawns"
+    )
+    assert approved["stage"] == "deploy"
+    monkeypatch.setattr(settings, "BUILD_WALL_CLOCK", -1)  # observe immediately
+
+    def one_absent_round(expected_rows):
+        with SessionLocal() as db:
+            runner.tick(db)  # spawn
+            build_rows = db.scalars(
+                select(StageJob).where(
+                    StageJob.request_id == request["id"], StageJob.role == "build"
+                ).order_by(StageJob.id)
+            ).all()
+            assert len(build_rows) == expected_rows
+            name = build_rows[-1].job_name
+        fake.jobs[name].deleted = True  # the Job vanished (crash window / external delete)
+        with SessionLocal() as db:
+            runner.tick(db)  # observe -> infra, NO escalation
+            req = db.get(Request, request["id"])
+            build_rows = db.scalars(
+                select(StageJob).where(
+                    StageJob.request_id == request["id"], StageJob.role == "build"
+                ).order_by(StageJob.id)
+            ).all()
+            return req.needs_human, build_rows[-1].status
+
+    for round_no in (1, 2, 3):
+        needs_human, status = one_absent_round(round_no)
+        assert status == "infra"
+        assert not needs_human, f"round {round_no} escalated a benign absent Job"
+
+    with SessionLocal() as db:
+        runner.tick(db)  # 3 consecutive infra -> bounded escalation
+        req = db.get(Request, request["id"])
+        assert req.needs_human
+        assert "infra loop" in req.needs_human_reason

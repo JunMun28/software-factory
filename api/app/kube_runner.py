@@ -501,12 +501,29 @@ class KubeJobRunner:
         build = next((row for row in reversed(rows) if row.role == "build"), None)
         deploy = next((row for row in reversed(rows) if row.role == "deploy"), None)
         if build is None or build.status in ("failed", "timed_out", "infra"):
+            # bounded like the stage machinery: 3 consecutive infra rounds end
+            # in a human, never a silent create/observe loop
+            tail_infra = 0
+            for row in reversed([r for r in rows if r.role == "build"]):
+                if row.status != "infra":
+                    break
+                tail_infra += 1
+            if tail_infra >= 3:
+                self._escalate(
+                    db, req,
+                    "Build re-ran 3 times without completing — infra loop",
+                )
+                return
             self._spawn_build(db, req, slug, moved)
             return
         if build.status == "running":
             self._observe_build(db, req, build, slug, moved)
             return
-        if build.status == "succeeded" and deploy is None:
+        # a dead deploy row (timed_out/infra) must not dead-end the request:
+        # after a human Retry the manifests are re-applied — intents.begin is
+        # idempotent on the deterministic key and apply is create-or-update
+        deploy_live = deploy is not None and deploy.status in ("running", "succeeded")
+        if build.status == "succeeded" and not deploy_live:
             self._apply_deploy(db, req, slug, build.envelope["digest"], moved)
             return
         if deploy is not None and deploy.status == "running":
@@ -579,9 +596,12 @@ class KubeJobRunner:
             self._escalate(db, req, f"Build Job {build.job_name} exceeded its wall clock")
             return
         if view.phase == "absent":
+            # crash between the row commit and create_job, or an external
+            # delete: benign — re-spawn next tick (deterministic name, digest
+            # pin), bounded by the consecutive-infra guard in the driver
             build.status = "infra"
             db.commit()
-            self._escalate(db, req, f"Build Job {build.job_name} disappeared")
+            moved.append(f"{req.ref}: build Job absent — re-running")
             return
         if view.phase != "succeeded":
             build.status = "failed"
