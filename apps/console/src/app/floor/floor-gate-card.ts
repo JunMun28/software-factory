@@ -2,7 +2,7 @@ import { Component, computed, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { MissionGate } from '@sf/shared';
 
-import { FloorActionOutcome } from './floor-action-outcome';
+import { FloorActionOutcome } from '../shared/action-outcome';
 
 @Component({
   selector: 'sf-floor-gate-card',

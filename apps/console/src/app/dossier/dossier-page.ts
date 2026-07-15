@@ -23,7 +23,7 @@ import {
   FloorActionError,
   FloorActionVerb,
   floorActionOutcome,
-} from '../floor/floor-action-outcome';
+} from '../shared/action-outcome';
 import { ConsoleShell } from '../shell/console-shell';
 import { DossierChapter, buildDossierChapters } from './dossier-view';
 

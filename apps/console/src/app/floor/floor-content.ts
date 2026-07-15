@@ -2,7 +2,7 @@ import { Component, computed, input, output, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { FactoryRequest, MissionGate, MissionOut, timeAgo } from '@sf/shared';
 
-import { FloorActionOutcome } from './floor-action-outcome';
+import { FloorActionOutcome } from '../shared/action-outcome';
 import { FloorGateCard } from './floor-gate-card';
 import { FLOOR_STAGES, deriveLane } from './floor-view';
 

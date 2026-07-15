@@ -30,7 +30,7 @@ import {
   FloorActionOutcome,
   FloorActionVerb,
   floorActionOutcome,
-} from './floor-action-outcome';
+} from '../shared/action-outcome';
 import { FloorContent } from './floor-content';
 
 @Component({
