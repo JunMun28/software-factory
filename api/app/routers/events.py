@@ -144,7 +144,7 @@ def inbox(db: Session = Depends(get_db)):
     # its index-friendly prefilter (identical set — pinned by the Python filter).
     rows = (
         db.query(Request)
-        .filter(or_(Request.gate.isnot(None), Request.needs_human.is_(True)))
+        .filter(or_(Request.gate.isnot(None), Request.needs_human))
         .filter(Request.status.notin_(transitions.CLOSED))  # a stale gate never resurrects dead work
         .order_by(Request.needs_human.desc(), Request.created_at.desc())
         .all()

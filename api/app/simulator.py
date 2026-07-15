@@ -113,7 +113,7 @@ def tick(db: Session) -> list[str]:
     moved: list[str] = []
     items = db.scalars(
         select(Request)
-        .where(Request.status == transitions.APPROVED, Request.needs_human.is_(False))
+        .where(Request.status == transitions.APPROVED, ~Request.needs_human)
         .where(Request.stage.in_(PIPELINE_STAGES))
         .order_by(Request.id)
     ).all()

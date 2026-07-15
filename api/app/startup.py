@@ -42,7 +42,7 @@ def escalate_orphans(db: Session) -> None:
     Runs right after this process acquired leadership, so the epoch is ours."""
     epoch = get_elector().epoch
     orphans = db.query(Request).filter(
-        Request.status == transitions.APPROVED, Request.needs_human.is_(False),
+        Request.status == transitions.APPROVED, ~Request.needs_human,
         Request.gate.is_(None), Request.stage.in_(PIPELINE_STAGES),
     ).all()
     for r in orphans:

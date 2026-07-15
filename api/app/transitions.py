@@ -390,7 +390,8 @@ def _where(req_id: int, pre: Pre, expected_stage: str | None) -> list:
     if pre.gate is not ANY:
         clauses.append(Request.gate.is_(None) if pre.gate is None else Request.gate == pre.gate)
     if pre.needs_human is not None:
-        clauses.append(Request.needs_human.is_(pre.needs_human))
+        # truthiness, not .is_(bool): SQLAlchemy renders `IS 0/1` on mssql (invalid T-SQL)
+        clauses.append(Request.needs_human if pre.needs_human else ~Request.needs_human)
     if expected_stage is not None:
         clauses.append(Request.stage == expected_stage)
     return clauses
