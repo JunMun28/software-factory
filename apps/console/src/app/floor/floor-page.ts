@@ -9,28 +9,24 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
-import {
-  Api,
-  ApproveModal,
-  CancelConfirm,
-  FactoryRequest,
-  MissionGate,
-  MissionOut,
-  Poll,
-  RecoveryConfirm,
-  SendBackStageModal,
-  SendBackModal,
-} from '@sf/shared';
+import { Api, FactoryRequest, MissionGate, MissionOut, Poll } from '@sf/shared';
 
 import { INTAKE_URL, intakeNewRequestUrl } from '../core/intake-url';
 import { Session } from '../core/session.service';
+import {
+  ApproveModal,
+  CancelConfirm,
+  RecoveryConfirm,
+  SendBackModal,
+  SendBackStageModal,
+} from '../shared/gate-modals';
 import { ConsoleShell } from '../shell/console-shell';
 import {
   FloorActionError,
   FloorActionOutcome,
   FloorActionVerb,
   floorActionOutcome,
-} from './floor-action-outcome';
+} from '../shared/action-outcome';
 import { FloorContent } from './floor-content';
 
 @Component({

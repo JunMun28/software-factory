@@ -4,26 +4,24 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { Observable, map } from 'rxjs';
 import {
   Api,
-  ApproveModal,
-  CancelConfirm,
   CommentItem,
   FactoryRequest,
   Poll,
   ProgressEvent,
-  RecoveryConfirm,
   RequestDetail,
-  SendBackModal,
-  SendBackStageModal,
   clock,
   inFlight,
 } from '@sf/shared';
 
 import { Session } from '../core/session.service';
 import {
-  FloorActionError,
-  FloorActionVerb,
-  floorActionOutcome,
-} from '../floor/floor-action-outcome';
+  ApproveModal,
+  CancelConfirm,
+  RecoveryConfirm,
+  SendBackModal,
+  SendBackStageModal,
+} from '../shared/gate-modals';
+import { FloorActionError, FloorActionVerb, floorActionOutcome } from '../shared/action-outcome';
 import { ConsoleShell } from '../shell/console-shell';
 import { DossierChapter, buildDossierChapters } from './dossier-view';
 
