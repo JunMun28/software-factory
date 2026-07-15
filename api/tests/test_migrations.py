@@ -32,7 +32,7 @@ def test_alembic_upgrade_head_builds_full_schema_on_fresh_db():
         insp = inspect(create_engine(url))
         tables = set(insp.get_table_names())
         # spot-check the load-bearing tables
-        assert {"requests", "progress_events", "leader_epochs"} <= tables, tables
+        assert {"requests", "progress_events", "leader_epochs", "stage_jobs"} <= tables, tables
         with create_engine(url).connect() as conn:
             assert conn.exec_driver_sql("SELECT id, epoch FROM leader_epochs").one() == (1, 0)
 

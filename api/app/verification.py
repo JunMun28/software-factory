@@ -114,6 +114,21 @@ def build_payload(ws: Path, req: Request) -> dict:
     )
 
 
+def payload_from_metrics(req: Request, metrics: dict) -> dict:
+    """Kube path (Plan B1): the review GATE Job's verdict carries the six
+    metrics (spec §6); shape them through the one payload builder so the
+    contract with supervision.evidence() cannot drift here either."""
+    return _payload(
+        req,
+        tests_passed=int(metrics.get("tests_passed") or 0),
+        tests_total=int(metrics.get("tests_total") or 0),
+        diff_added=int(metrics.get("diff_added") or 0),
+        diff_removed=int(metrics.get("diff_removed") or 0),
+        files_changed=int(metrics.get("files_changed") or 0),
+        reviewer_verdict=str(metrics.get("reviewer_verdict") or "no review")[:120],
+    )
+
+
 def emit_verification(
     db: Session,
     req: Request,

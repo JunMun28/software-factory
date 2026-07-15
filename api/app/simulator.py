@@ -100,12 +100,10 @@ def _tick_request(db: Session, req: Request, moved: list[str],
 
 def _escalate(db: Session, req: Request, reason: str) -> None:
     db.rollback()
-    res = transitions.apply(db, req, "escalate", actor=FACTORY,
-                            params={"reason": reason}, epoch=get_elector().epoch)
+    res = transitions.apply_committed(db, req, "escalate", actor=FACTORY,
+                                      params={"reason": reason}, epoch=get_elector().epoch)
     if isinstance(res, transitions.Loss):
         return  # closed (or fenced) meanwhile — nothing to flag
-    db.commit()
-    res.notify()
 
 
 def tick(db: Session) -> list[str]:

@@ -174,22 +174,19 @@ class AgentRunner:
 
     def _advance(self, db: Session, req: Request, stage: str) -> bool:
         """Machine transition: epoch-fenced so a deposed leader's thread stops here."""
-        res = transitions.apply(db, req, "advance_stage", actor=FACTORY,
-                                params={"stage": stage}, epoch=get_elector().epoch)
+        res = transitions.apply_committed(db, req, "advance_stage", actor=FACTORY,
+                                          params={"stage": stage}, epoch=get_elector().epoch)
         if isinstance(res, transitions.Loss):
             log.info("%s: advance to %s lost (%s) — pipeline stops", req.ref, stage, res.detail)
             return False
-        db.commit()
         return True
 
     def _escalate(self, db: Session, req: Request, reason: str) -> None:
-        res = transitions.apply(db, req, "escalate", actor=FACTORY,
-                                params={"reason": reason}, epoch=get_elector().epoch)
+        res = transitions.apply_committed(db, req, "escalate", actor=FACTORY,
+                                          params={"reason": reason}, epoch=get_elector().epoch)
         if isinstance(res, transitions.Loss):  # a Cancel raced us — it wins, nothing to flag
             log.info("escalation for %s dropped — request is %s", req.ref, req.status)
             return
-        db.commit()
-        res.notify()
         log.error("escalated %s: %s", req.ref, reason)
 
     def _commit_ws(self, ws: Path, message: str) -> None:
@@ -377,13 +374,11 @@ class AgentRunner:
         # emit through the single source of truth, passing the payload the guard
         # above already vetted so the guard and the event never diverge
         emit_verification(db, req, ws, payload=vpayload)
-        res = transitions.apply(db, req, "raise_merge_gate", actor=FACTORY,
-                                epoch=get_elector().epoch)
+        res = transitions.apply_committed(db, req, "raise_merge_gate", actor=FACTORY,
+                                          epoch=get_elector().epoch)
         if isinstance(res, transitions.Loss):
             log.info("%s: merge gate raise lost (%s)", req.ref, res.detail)
             return False
-        db.commit()
-        res.notify()
         log.info("%s: review committed, verification emitted, merge gate raised", req.ref)
         return True
 

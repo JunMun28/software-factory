@@ -60,3 +60,24 @@ UPLOADS = Path(os.environ.get("FACTORY_UPLOADS", str(API_DIR / "uploads")))
 ATTACH_MAX_BYTES = int(os.environ.get("FACTORY_ATTACH_MAX_BYTES", str(100 * 1024 * 1024)))  # 100 MB
 ATTACH_MAX_COUNT = int(os.environ.get("FACTORY_ATTACH_MAX_COUNT", "5"))
 ATTACH_MAX_IMAGES = int(os.environ.get("FACTORY_ATTACH_MAX_IMAGES", "4"))  # passed to codex --image
+
+# ---------- Kubernetes runner (Plan B1, spec §2/§5/§6) ----------
+KUBE_NAMESPACE = os.environ.get("FACTORY_KUBE_NAMESPACE", "software-factory")
+# One image for agent AND gate Jobs (spec §5); gates just get no LLM egress/key.
+AGENT_IMAGE = os.environ.get("FACTORY_AGENT_IMAGE", "sf-agent:dev")
+# In-cluster kill switch per Job. The ORCHESTRATOR wall clocks below are the
+# backstop a partitioned node cannot dodge (spec §5 "Bounds") — they MUST
+# exceed the corresponding activeDeadlineSeconds so kubelet gets first shot.
+JOB_ACTIVE_DEADLINE = int(os.environ.get("FACTORY_JOB_ACTIVE_DEADLINE", "1800"))
+GATE_ACTIVE_DEADLINE = int(os.environ.get("FACTORY_GATE_ACTIVE_DEADLINE", "900"))
+STAGE_WALL_CLOCK = int(os.environ.get("FACTORY_STAGE_WALL_CLOCK", "2100"))
+GATE_WALL_CLOCK = int(os.environ.get("FACTORY_GATE_WALL_CLOCK", "1200"))
+# N=2: one retry-with-feedback, then needs_human (spec §4.6).
+KUBE_MAX_ATTEMPTS = int(
+    os.environ.get(
+        "FACTORY_KUBE_MAX_ATTEMPTS",
+        os.environ.get("FACTORY_MAX_ATTEMPTS", "2"),
+    )
+)
+# Concurrent Jobs the orchestrator will run (spec §2).
+KUBE_JOB_CAP = int(os.environ.get("FACTORY_JOB_CAP", "10"))

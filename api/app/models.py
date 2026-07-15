@@ -350,3 +350,36 @@ class Intent(Base):
     outcome_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(TZDateTime(), nullable=True)
+
+
+class StageJob(Base):
+    """One Kubernetes Job the orchestrator spawned (Plan B1; spec §3.4, §5).
+
+    The deterministic job_name is the re-attach key after a leader restart;
+    rows are the durable record of every attempt (what ran, what the envelope
+    said, why it ended). RUNNER INVARIANT: only rows with status='running' are
+    ever polled or graded — a late completion for any other row is a stale
+    attempt and is discarded (spec §5). job_name is indexed, not unique: an
+    infra re-run legitimately recreates the same name in a fresh row.
+    """
+
+    __tablename__ = "stage_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"), index=True)
+    stage: Mapped[str] = mapped_column(String(16))  # architecture | red | green | review
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    role: Mapped[str] = mapped_column(String(8))  # stage | gate
+    job_name: Mapped[str] = mapped_column(String(63), index=True)
+    epoch: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(12), default="running")
+    # running | succeeded | failed | timed_out | infra | reaped | superseded
+    envelope: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    logs_tail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deadline_at: Mapped[datetime] = mapped_column(TZDateTime())
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(TZDateTime(), nullable=True)
+
+
+# The deterministic Kubernetes Job name lives in kube_jobs.job_name — one
+# definition; StageJob rows store its output in job_name (column above).

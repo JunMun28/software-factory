@@ -1,0 +1,155 @@
+"""Kube building blocks: settings, StageJob rows, names, manifests, envelopes."""
+
+import subprocess
+import sys
+import uuid
+from datetime import timezone
+
+import pytest
+
+from app import settings
+from app.db import SessionLocal, migrate
+from app.kube_jobs import (
+    KUBE_STAGES,
+    REQUEST_STAGE,
+    gate_job_manifest,
+    job_name,
+    ndjson_events,
+    parse_envelope,
+    stage_job_manifest,
+)
+from app.models import Request, StageJob, utcnow
+
+
+def test_kube_settings_defaults():
+    assert settings.KUBE_NAMESPACE == "software-factory"
+    assert settings.AGENT_IMAGE == "sf-agent:dev"
+    assert settings.STAGE_WALL_CLOCK > settings.JOB_ACTIVE_DEADLINE
+    assert settings.GATE_WALL_CLOCK > settings.GATE_ACTIVE_DEADLINE
+    assert settings.KUBE_MAX_ATTEMPTS == 2
+    assert settings.KUBE_JOB_CAP == 10
+
+
+def test_stage_job_row_roundtrip():
+    migrate()
+    with SessionLocal() as db:
+        generated_name = job_name("REQ-9001", "red", 1)
+        assert generated_name == "sf-req-9001-red-1"
+        assert job_name("REQ-9001", "red", 1) == generated_name
+        assert job_name("REQ-9001", "red", 1, gate=True) == f"{generated_name}-gate"
+        request = Request(
+            ref=f"REQ-{uuid.uuid4().hex[:8]}",
+            title="Stage Job round trip",
+            description="Exercise the durable Kubernetes Job row.",
+            type="enh",
+        )
+        db.add(request)
+        db.flush()
+        row = StageJob(
+            request_id=request.id,
+            stage="red",
+            attempt=1,
+            role="stage",
+            job_name=generated_name,
+            epoch=3,
+            deadline_at=utcnow(),
+        )
+        db.add(row)
+        db.commit()
+        got = db.get(StageJob, row.id)
+        assert got.status == "running" and got.envelope is None
+        assert got.deadline_at.tzinfo is timezone.utc
+
+
+def test_job_name_is_deterministic_and_validated():
+    assert KUBE_STAGES == ("architecture", "red", "green", "review")
+    assert REQUEST_STAGE == {
+        "architecture": "architecture",
+        "red": "build",
+        "green": "build",
+        "review": "review",
+    }
+    assert job_name("REQ-2045", "red", 1) == "sf-req-2045-red-1"
+    assert job_name("REQ-2045", "red", 2, gate=True) == "sf-req-2045-red-2-gate"
+    with pytest.raises(ValueError):
+        job_name("nope; rm -rf", "red", 1)
+    with pytest.raises(ValueError):
+        job_name("REQ-2045", "deploy", 1)
+
+
+def test_kube_client_import_does_not_load_kubernetes():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import app.kube_client; assert 'kubernetes' not in sys.modules",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_stage_manifest_carries_the_spec_hard_lines():
+    m = stage_job_manifest("REQ-2045", "green", 2, feedback="RED gate said: tests passed")
+    assert m["metadata"]["name"] == "sf-req-2045-green-2"
+    labels = m["metadata"]["labels"]
+    assert labels["sf/tier"] == "agent" and labels["sf/role"] == "stage"
+    assert labels["sf/request"] == "req-2045" and labels["sf/stage"] == "green"
+    spec = m["spec"]
+    assert spec["backoffLimit"] == 0
+    assert spec["activeDeadlineSeconds"] == settings.JOB_ACTIVE_DEADLINE
+    rule = spec["podFailurePolicy"]["rules"][0]
+    assert rule["action"] == "Ignore"
+    assert rule["onPodConditions"] == [{"type": "DisruptionTarget"}]
+    pod = spec["template"]["spec"]
+    assert pod["restartPolicy"] == "Never"
+    assert pod["automountServiceAccountToken"] is False
+    env = {e["name"]: e["value"] for e in pod["containers"][0]["env"]}
+    assert env["SF_GATE_FEEDBACK"] == "RED gate said: tests passed"
+    assert env["SF_STAGE"] == "green" and env["SF_ATTEMPT"] == "2"
+
+
+def test_gate_manifest_differs_where_it_must():
+    m = gate_job_manifest("REQ-2045", "red", 1)
+    assert m["metadata"]["name"] == "sf-req-2045-red-1-gate"
+    assert m["metadata"]["labels"]["sf/role"] == "gate"
+    assert m["spec"]["activeDeadlineSeconds"] == settings.GATE_ACTIVE_DEADLINE
+    env = {
+        e["name"]: e["value"]
+        for e in m["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert env["SF_ROLE"] == "gate"
+    assert "SF_GATE_FEEDBACK" not in env
+
+
+def test_parse_envelope_and_ndjson_are_tolerant():
+    assert parse_envelope('{"v":1,"outcome":"ok","detail":"done"}') == {
+        "v": 1,
+        "outcome": "ok",
+        "detail": "done",
+    }
+    assert parse_envelope("") is None
+    assert parse_envelope("panic: exit 2") is None
+    assert parse_envelope('{"no_outcome": true}') is None
+    logs = 'banner line\n{"type":"note","text":"a"}\nnot json\n{"type":"note","text":"b"}\n'
+    assert [e["text"] for e in ndjson_events(logs)] == ["a", "b"]
+
+
+def test_fake_kube_client_roundtrip():
+    from fake_kube import FakeKubeClient
+
+    fake = FakeKubeClient()
+    fake.create_job(stage_job_manifest("REQ-2045", "architecture", 1))
+    assert fake.get_job("sf-req-2045-architecture-1").phase == "running"
+    fake.finish(
+        "sf-req-2045-architecture-1",
+        {"v": 1, "outcome": "ok", "detail": "done"},
+        logs='{"type":"note","text":"hi"}\n',
+    )
+    view = fake.get_job("sf-req-2045-architecture-1")
+    assert view.phase == "succeeded" and parse_envelope(view.termination_message)["outcome"] == "ok"
+    fake.delete_job("sf-req-2045-architecture-1")
+    assert fake.get_job("sf-req-2045-architecture-1").phase == "absent"
+    assert fake.deletions == ["sf-req-2045-architecture-1"]

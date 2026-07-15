@@ -214,3 +214,9 @@ future possibility):
    - Cancel always wins over a running pipeline.
 4. **Run `task verify`.**  All four gates must pass before the runtime is
    considered wired correctly.
+
+The pattern has been exercised twice: `FACTORY_RUNNER=agent` (AgentRunner,
+subprocess CLI seam) and `FACTORY_RUNNER=kube` (KubeJobRunner, Kubernetes
+Jobs behind the `KubeClient` seam in `api/app/kube_client.py`; its four
+witness tests live in `api/tests/test_kube_runner.py` against a
+`FakeKubeClient` — no cluster needed).

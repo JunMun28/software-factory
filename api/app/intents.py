@@ -17,8 +17,29 @@ from sqlalchemy.orm import Session
 
 from .models import Intent
 
+# The declared vocabulary of external side effects (spec §3.3 + §5). A kind
+# outside this tuple is a programming error, not data — fail loudly at begin().
+CREATE_REPO = "create_repo"
+OPEN_PR = "open_pr"
+MERGE_PR = "merge_pr"
+TRIGGER_BUILD = "trigger_build"
+APPLY_DEPLOY = "apply_deploy"
+SPAWN_STAGE_JOB = "spawn_stage_job"
+SPAWN_GATE_JOB = "spawn_gate_job"
+KINDS = (
+    CREATE_REPO,
+    OPEN_PR,
+    MERGE_PR,
+    TRIGGER_BUILD,
+    APPLY_DEPLOY,
+    SPAWN_STAGE_JOB,
+    SPAWN_GATE_JOB,
+)
+
 
 def begin(db: Session, key: str, kind: str, request_id: int, payload: dict) -> Intent | None:
+    if kind not in KINDS:
+        raise ValueError(f"unknown intent kind {kind!r} — declare it in intents.KINDS")
     row = Intent(key=key, kind=kind, request_id=request_id, payload_json=json.dumps(payload))
     try:
         with db.begin_nested():

@@ -40,19 +40,21 @@ def escalate_orphans(db: Session) -> None:
     orphaned — escalate it so it is VISIBLE and Retry can re-drive it
     (stop + flag, never auto-rerun: CONTEXT.md escalation, ADR 0013).
     Runs right after this process acquired leadership, so the epoch is ours."""
-    epoch = get_elector().epoch
+    elector = get_elector()
+    if not elector.is_leader():
+        log.info("startup: not the leader — orphan escalation skipped")
+        return
+    epoch = elector.epoch
     orphans = db.query(Request).filter(
         Request.status == transitions.APPROVED, ~Request.needs_human,
         Request.gate.is_(None), Request.stage.in_(PIPELINE_STAGES),
     ).all()
     for r in orphans:
-        res = transitions.apply(
+        res = transitions.apply_committed(
             db, r, "escalate", actor=transitions.FACTORY,
             params={"reason": "Pipeline orphaned by a server restart — Retry re-runs the stage"},
             epoch=epoch,
         )
         if isinstance(res, transitions.Loss):
             continue
-        db.commit()
-        res.notify()
         log.warning("startup: %s was orphaned mid-%s — escalated for Retry", r.ref, r.stage)
