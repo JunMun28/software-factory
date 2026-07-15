@@ -523,7 +523,9 @@ def test_wall_clock_captures_available_output_before_delete(client, monkeypatch)
         runner.tick(db)
         row = db.scalar(select(StageJob).where(StageJob.job_name == name))
 
-    assert row.envelope == stage_ok("partial output")
+    # A running pod has no terminated-container message yet; only its logs are
+    # available through capture=True under the seam-v2 contract.
+    assert row.envelope is None
     assert row.logs_tail == "partial running log"
     assert name in fake.deletions
 

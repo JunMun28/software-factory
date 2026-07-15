@@ -153,3 +153,60 @@ def test_fake_kube_client_roundtrip():
     fake.delete_job("sf-req-2045-architecture-1")
     assert fake.get_job("sf-req-2045-architecture-1").phase == "absent"
     assert fake.deletions == ["sf-req-2045-architecture-1"]
+
+
+# ---------- seam v2 (Plan B2 task 1): uid, 409, running-pod capture ----------
+
+
+def test_fake_create_returns_uid_and_conflict_returns_none():
+    from fake_kube import FakeKubeClient
+
+    fake = FakeKubeClient()
+    uid = fake.create_job(stage_job_manifest("REQ-2050", "red", 1))
+    assert uid and fake.get_job("sf-req-2050-red-1").uid == uid
+    fake.delete_job("sf-req-2050-red-1")
+    fake.conflicts.add("sf-req-2050-red-1")
+    fake.jobs["sf-req-2050-red-1"].deleted = False  # a dying predecessor lingers
+    assert fake.create_job(stage_job_manifest("REQ-2050", "red", 1)) is None
+    # the live job is still the OLD one — same uid
+    assert fake.get_job("sf-req-2050-red-1").uid == uid
+
+
+def test_fake_capture_gates_running_pod_logs():
+    from fake_kube import FakeKubeClient
+
+    fake = FakeKubeClient()
+    fake.create_job(stage_job_manifest("REQ-2051", "red", 1))
+    fake.jobs["sf-req-2051-red-1"].logs = '{"type":"note","text":"live"}\n'
+    # running + no capture: cheap poll, no log transfer (mirrors RealKubeClient)
+    assert fake.get_job("sf-req-2051-red-1").logs == ""
+    assert fake.get_job("sf-req-2051-red-1", capture=True).logs != ""
+    # terminal: capture is implicit
+    fake.finish(
+        "sf-req-2051-red-1",
+        {"v": 1, "outcome": "ok", "detail": "d"},
+        logs='{"type":"note","text":"done"}\n',
+    )
+    view = fake.get_job("sf-req-2051-red-1")
+    assert view.logs != "" and view.termination_message != ""
+
+
+def test_stage_job_uid_column_roundtrip():
+    from app.db import SessionLocal, migrate
+    from app.models import StageJob, utcnow
+
+    migrate()
+    with SessionLocal() as db:
+        row = StageJob(
+            request_id=1,
+            stage="red",
+            attempt=1,
+            role="stage",
+            job_name="sf-req-9002-red-1",
+            epoch=1,
+            job_uid="uid-abc",
+            deadline_at=utcnow(),
+        )
+        db.add(row)
+        db.commit()
+        assert db.get(StageJob, row.id).job_uid == "uid-abc"

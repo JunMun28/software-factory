@@ -139,17 +139,15 @@ class KubeJobRunner:
     def _reap_dead_requests(self, db: Session, moved: list[str]) -> None:
         """Close running Jobs whose requests left the runnable set.
 
-        Capture is attempted before deletion, but RealKubeClient currently reads
-        pod output only once Kubernetes marks a Job terminal. A cancelled Job
-        still reported as running therefore has best-effort (usually empty)
-        capture until the client seam grows running-pod capture support.
+        Capture is attempted before deletion, including logs from a pod whose
+        Job is still reported as running.
         """
         for sj in db.scalars(select(StageJob).where(StageJob.status == "running")).all():
             req = db.get(Request, sj.request_id)
             if req and req.status == transitions.APPROVED and not req.needs_human:
                 continue
             try:
-                view = self.client.get_job(sj.job_name)
+                view = self.client.get_job(sj.job_name, capture=True)
                 sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
                 sj.envelope = parse_envelope(view.termination_message)
                 self.client.delete_job(sj.job_name)
@@ -171,7 +169,8 @@ class KubeJobRunner:
                 return
             # orchestrator wall clock (spec §5): fires regardless of Job status —
             # a partitioned node cannot strand the request. Capture is attempted
-            # first, though production running-pod output is currently unavailable.
+            # first, including logs from a pod whose Job is still running.
+            view = self.client.get_job(sj.job_name, capture=True)
             sj.envelope = parse_envelope(view.termination_message)
             sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
             self.client.delete_job(sj.job_name)
