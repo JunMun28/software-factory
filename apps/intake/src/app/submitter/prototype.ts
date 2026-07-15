@@ -13,14 +13,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
-import {
-  Api,
-  Icon,
-  Mark,
-  PrototypeAnnotation,
-  PrototypeState,
-  prototypeSrcdoc,
-} from '@sf/shared';
+import { Api, Icon, Mark, PrototypeAnnotation, PrototypeState, prototypeSrcdoc } from '@sf/shared';
 import { GenerationStream } from './generation-stream';
 import { INSPECTOR } from './proto-inspector';
 import { ProtoFullscreen } from './proto-fullscreen';
