@@ -73,12 +73,33 @@ kubectl -n $NS exec "$POD" -c api -- git -C "/data/workspaces/$LREF" log --oneli
   | grep -qi merge || fail "workspace main does not end in a merge commit"
 ok "main's tip is the merge commit ('deployed' in the B2 sense; app deploy is B3)"
 
+echo "▸ the produced app was built and deployed (Plan B3)"
+SLUG=northwind
+# the app Deployment rolled out from the kaniko-built image
+kubectl -n $NS rollout status deploy/sf-app-$SLUG --timeout=180s >/dev/null \
+  || fail "produced-app Deployment did not become available"
+kubectl -n $NS get pod -l sf/instance=$SLUG \
+  -o jsonpath='{.items[0].status.phase}' | grep -qx Running \
+  || fail "produced-app pod is not Running"
+# it answers HTTP THROUGH THE INGRESS
+for _ in $(seq 1 30); do
+  curl -sf "http://$SLUG.localtest.me:8081/health" >/dev/null && break || sleep 2
+done
+curl -sf "http://$SLUG.localtest.me:8081/health" | grep -q '"status":"ok"' \
+  || fail "produced app /health did not answer through the ingress"
+ok "produced app pod Running and /health answers through the ingress"
+# the image is digest-pinned to what the factory built
+kubectl -n $NS get deploy/sf-app-$SLUG -o jsonpath='{.spec.template.spec.containers[0].image}' \
+  | grep -q "sf-registry:5000/sf-app-$SLUG@sha256:" \
+  || fail "app image is not digest-pinned to the local registry"
+ok "app image is digest-pinned (sf-registry:5000/sf-app-$SLUG@sha256:…)"
+
 echo "▸ the orchestrator owned the Job lifecycle: nothing left behind"
 LEFT=$(kubectl -n $NS get jobs -o name 2>/dev/null | grep "sf-$LREF" || true)
-[ -z "$LEFT" ] || fail "Jobs left behind: $LEFT"
-ok "every sf-$LREF Job was reaped after capture"
+[ -z "$LEFT" ] || fail "Jobs left behind (incl. build): $LEFT"
+ok "every sf-$LREF Job (stages, gates, build) was reaped after capture"
 
 ./scripts/netpol-smoke.sh
 
 echo ""
-echo "✓ KIND SMOKE PASSED — one request end-to-end on the cluster (Plan B2 milestone)"
+echo "✓ KIND SMOKE PASSED — one request end-to-end: intake → merged main → built image → live pod (Plan B3 / spec §9 Phase-1 milestone)"

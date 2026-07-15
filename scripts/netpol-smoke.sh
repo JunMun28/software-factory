@@ -50,4 +50,17 @@ expect_ok "gate pod → git :9418 is allowed" \
   np-g-git "sf/tier=agent,sf/role=gate" 5 api 9418
 expect_blocked "gate pod → factory-api:8000 is BLOCKED" \
   np-g-api "sf/tier=agent,sf/role=gate" 5 api 8000
+# Plan B3 tiers: build pods reach ONLY git + registry; app pods reach nothing.
+expect_blocked "build pod → factory-api:8000 is BLOCKED" \
+  np-b-api "sf/tier=agent,sf/role=build" 5 api 8000
+expect_blocked "build pod → LLM endpoint :443 is BLOCKED (no LLM in builds)" \
+  np-b-llm "sf/tier=agent,sf/role=build" 10 api.openai.com 443
+expect_ok "build pod → registry :5000 is allowed (kaniko push door)" \
+  np-b-reg "sf/tier=agent,sf/role=build" 5 sf-registry 5000
+expect_ok "build pod → git :9418 is allowed (clone door)" \
+  np-b-git "sf/tier=agent,sf/role=build" 5 api 9418
+expect_blocked "app pod → factory-api:8000 is BLOCKED (apps never dial the factory)" \
+  np-a-api "sf/tier=app,sf/instance=np-probe" 5 api 8000
+expect_blocked "app pod → git :9418 is BLOCKED" \
+  np-a-git "sf/tier=app,sf/instance=np-probe" 5 api 9418
 echo "✓ NETPOL SMOKE PASSED — the tier walls hold"

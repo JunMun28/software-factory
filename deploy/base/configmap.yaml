@@ -16,3 +16,7 @@ data:
   FACTORY_SEED_DEMO: "1"              # the smoke drives the seeded northwind app
   FACTORY_INTERVIEW_PREGEN: "sync"
   FACTORY_LOG_LEVEL: "INFO"
+  FACTORY_REGISTRY: "sf-registry:5000"
+  FACTORY_APP_DEPLOY: "1"
+  FACTORY_KANIKO_IMAGE: "gcr.io/kaniko-project/executor:latest"
+  FACTORY_APP_INGRESS_DOMAIN: "localtest.me"

@@ -7,6 +7,7 @@ resources:
   - rbac.yaml
   - configmap.yaml
   - factory-api.yaml
+  - registry.yaml
   - intake.yaml
   - console.yaml
   - networkpolicies.yaml
