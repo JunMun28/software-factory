@@ -26,7 +26,10 @@ def _tick_once(elector: LeaderElector) -> None:
     if not (elector.verify() or elector.try_acquire()):
         return
     with SessionLocal() as db:
-        simulator.tick(db)
+        if runner_mode() == "kube":
+            api_helpers.pipeline().tick(db)
+        else:
+            simulator.tick(db)
 
 
 def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = None) -> FastAPI:
@@ -50,6 +53,8 @@ def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = N
         interval = auto_tick if auto_tick is not None else settings.SIM_INTERVAL
         if runner_mode() == "agent":
             interval = 0  # the real runner drives itself; the simulator stands down
+        if runner_mode() == "kube" and auto_tick is None and interval <= 0:
+            interval = 5.0  # kube is tick-driven: without a heartbeat nothing ever runs
         workers = os.environ.get("WEB_CONCURRENCY", "1")
         if workers not in ("", "1"):
             # the tick loop and the pipeline threads assume ONE process; two workers
@@ -80,7 +85,14 @@ def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = N
         allow_headers=["*"],
     )
 
-    agent_pipeline = runner or AgentRunner()
+    if runner is not None:
+        agent_pipeline = runner
+    elif runner_mode() == "kube":
+        from .kube_runner import KubeJobRunner
+
+        agent_pipeline = KubeJobRunner()  # client is lazy: kubeconfig loads on first tick, not import
+    else:
+        agent_pipeline = AgentRunner()
     api_helpers.set_pipeline(agent_pipeline)
 
     app.include_router(system.router)

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from .. import simulator
 from ..agent_exec import agent_cli, brain_mode, runner_mode
+from ..api_helpers import pipeline
 from ..db import get_db
 from ..leader import get_elector
 from ..notifications import smtp_status
@@ -47,4 +48,6 @@ def sim_tick(db: Session = Depends(get_db)):
         # a manual tick from a standby would advance state with a stale epoch's
         # un-fenced event appends — only the leader ticks (spec §3.2)
         return {"moved": [], "note": "not the leader — tick skipped"}
+    if runner_mode() == "kube":
+        return {"moved": pipeline().tick(db)}
     return {"moved": simulator.tick(db)}
