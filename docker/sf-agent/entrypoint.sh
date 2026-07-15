@@ -26,6 +26,16 @@ cd "$REPO"
 git config user.email agent@sf.local
 git config user.name "sf-agent"
 
+if [ "$SF_ROLE" = "clone" ]; then
+  # Build-Job init (Plan B3): place the pinned SHA of main at /workspace/repo for
+  # kaniko. No LLM, no push credential — a pure checkout (spec §7 build input =
+  # repo + SHA).
+  : "${SF_SHA:?}"
+  git -C "$REPO" checkout -q "$SF_SHA" || die_stage "build clone: SHA $SF_SHA not found"
+  note "build clone ready at $SF_SHA"
+  exit 0
+fi
+
 if [ "$SF_ROLE" = "gate" ]; then
   exec /opt/sf/gate.sh
 fi
