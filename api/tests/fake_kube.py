@@ -43,6 +43,7 @@ def stage_ok(detail: str = "stage complete") -> dict:
 @dataclass
 class FakeJob:
     manifest: dict
+    uid: str
     phase: str = "running"
     termination_message: str = ""
     logs: str = ""
@@ -54,19 +55,31 @@ class FakeKubeClient:
     jobs: dict[str, FakeJob] = field(default_factory=dict)
     creations: list[dict] = field(default_factory=list)
     deletions: list[str] = field(default_factory=list)
+    deletion_uids: list[tuple[str, str | None]] = field(default_factory=list)
     observations: list[str] = field(default_factory=list)
     raise_once: set[str] = field(default_factory=set)
     raise_always: set[str] = field(default_factory=set)
+    conflicts: set[str] = field(default_factory=set)  # next create of NAME → 409 (None)
     on_observe = None
+    _uid_seq: int = 0
 
-    def create_job(self, manifest: dict) -> None:
+    def _next_uid(self) -> str:
+        self._uid_seq += 1
+        return f"uid-{self._uid_seq}"
+
+    def create_job(self, manifest: dict) -> str | None:
         name = manifest["metadata"]["name"]
+        if name in self.conflicts:
+            self.conflicts.remove(name)
+            return None  # 409: a live same-name Job exists (self.jobs[name])
         existing = self.jobs.get(name)
         assert existing is None or existing.deleted, f"duplicate live job {name}"
-        self.jobs[name] = FakeJob(manifest=manifest)
+        job = FakeJob(manifest=manifest, uid=self._next_uid())
+        self.jobs[name] = job
         self.creations.append(manifest)
+        return job.uid
 
-    def get_job(self, name: str) -> JobView:
+    def get_job(self, name: str, *, capture: bool = False) -> JobView:
         self.observations.append(name)
         if name in self.raise_once:
             self.raise_once.remove(name)
@@ -78,17 +91,20 @@ class FakeKubeClient:
             return JobView(name=name, phase="absent")
         if self.on_observe:
             self.on_observe(name, job)
+        terminal = job.phase in ("succeeded", "failed")
         return JobView(
             name=name,
             phase=job.phase,
-            termination_message=job.termination_message,
-            logs=job.logs,
+            uid=job.uid,
+            termination_message=job.termination_message if terminal else "",
+            logs=job.logs if (capture or terminal) else "",
         )
 
-    def delete_job(self, name: str) -> None:
+    def delete_job(self, name: str, *, uid: str | None = None) -> None:
         self.deletions.append(name)
+        self.deletion_uids.append((name, uid))
         job = self.jobs.get(name)
-        if job:
+        if job and (uid is None or job.uid == uid):
             job.deleted = True
 
     def finish(

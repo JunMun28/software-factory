@@ -12,9 +12,9 @@ Orchestrator-owned hard lines (spec §5/§6):
   * wall clock per (stage, attempt) — a partitioned node cannot strand a request;
   * only StageJob rows with status='running' are ever polled or graded — late
     completions of superseded attempts are discarded;
-  * the orchestrator attempts output capture before Job deletion; terminal-pod
-    capture is complete, while running-pod capture is best-effort until the
-    client seam can read running pod output;
+  * the orchestrator attempts output capture before every Job deletion,
+    including timeout, reap, and supersede paths; running-pod capture is best-effort
+    because log transfer itself can still fail;
   * a missing gate verdict re-runs the same attempt, but three consecutive infra outcomes
     consume that attempt as a gate failure instead of churning forever;
   * frozen surface: green's gate must report exactly the surface_hash red's
@@ -28,12 +28,13 @@ Tick order matters: reap (cancel wins) → observe running Jobs → spawn next
 work oldest-first under the Job cap.
 """
 import logging
+import re
 from datetime import timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import intents, settings, transitions, verification
+from . import intents, settings, simulator, transitions, verification, workspace
 from .events import emit
 from .kube_client import KubeClient
 from .kube_jobs import (
@@ -52,6 +53,7 @@ log = logging.getLogger("factory.kube")
 
 LOGS_TAIL = 20_000  # chars of captured NDJSON persisted per Job
 GATE_INFRA_LIMIT = 3
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 # feed parity with AgentRunner's milestone texts (test_agent_runner asserts these prefixes)
 MILESTONES = {
@@ -90,13 +92,27 @@ class KubeJobRunner:
     # ---------- tick ----------
     def tick(self, db: Session) -> list[str]:
         moved: list[str] = []
+        defer_spawn: set[int] = set()
         self._reap_dead_requests(db, moved)
         for sj in db.scalars(
             select(StageJob).where(StageJob.status == "running").order_by(StageJob.id)
         ).all():
             req = db.get(Request, sj.request_id)
+            all_rows = db.scalars(
+                select(StageJob)
+                .where(StageJob.request_id == req.id)
+                .order_by(StageJob.attempt, StageJob.id)
+            ).all()
+            self._supersede_rewound_rows(db, req, all_rows)
+            if sj.status != "running":
+                continue
             try:
-                self._observe(db, req, sj, moved)
+                should_defer_spawn = self._observe(db, req, sj, moved)
+                if should_defer_spawn or sj.status in ("failed", "timed_out", "infra"):
+                    # Failure and infra recovery are next-tick work. This is
+                    # especially important for deterministic-name 409s: the
+                    # predecessor may still be terminating in this tick.
+                    defer_spawn.add(req.id)
             except Exception as exc:  # one broken Job stalls only its request (ADR 0013)
                 db.rollback()
                 failures = self._observe_failures.get(sj.job_name, 0) + 1
@@ -109,7 +125,7 @@ class KubeJobRunner:
                 req = db.get(Request, sj.request_id)
                 self._escalate(db, req, f"Job observation failed for {sj.job_name}: {exc}")
         running = db.scalars(select(StageJob).where(StageJob.status == "running")).all()
-        busy = {r.request_id for r in running}
+        busy = {r.request_id for r in running} | defer_spawn
         capacity = settings.KUBE_JOB_CAP - len(running)
         runnable = db.scalars(
             select(Request)
@@ -139,20 +155,18 @@ class KubeJobRunner:
     def _reap_dead_requests(self, db: Session, moved: list[str]) -> None:
         """Close running Jobs whose requests left the runnable set.
 
-        Capture is attempted before deletion, but RealKubeClient currently reads
-        pod output only once Kubernetes marks a Job terminal. A cancelled Job
-        still reported as running therefore has best-effort (usually empty)
-        capture until the client seam grows running-pod capture support.
+        Capture is attempted before deletion, including logs from a pod whose
+        Job is still reported as running.
         """
         for sj in db.scalars(select(StageJob).where(StageJob.status == "running")).all():
             req = db.get(Request, sj.request_id)
             if req and req.status == transitions.APPROVED and not req.needs_human:
                 continue
             try:
-                view = self.client.get_job(sj.job_name)
+                view = self.client.get_job(sj.job_name, capture=True)
                 sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
                 sj.envelope = parse_envelope(view.termination_message)
-                self.client.delete_job(sj.job_name)
+                self.client.delete_job(sj.job_name, uid=sj.job_uid)
                 sj.status = "reaped"
                 sj.completed_at = utcnow()
                 db.commit()
@@ -162,19 +176,28 @@ class KubeJobRunner:
                 db.rollback()
 
     # ---------- observe one running Job ----------
-    def _observe(self, db: Session, req: Request, sj: StageJob, moved: list[str]) -> None:
+    def _observe(self, db: Session, req: Request, sj: StageJob, moved: list[str]) -> bool:
         view = self.client.get_job(sj.job_name)
         self._observe_failures.pop(sj.job_name, None)
+        if view.phase != "absent" and sj.job_uid and view.uid and view.uid != sj.job_uid:
+            # Same name, different Job — not ours (out-of-band recreate).
+            # Never grade a stranger: infra, re-run (spec §5 stale-discard).
+            sj.status = "infra"
+            sj.completed_at = utcnow()
+            db.commit()
+            moved.append(f"{req.ref}: {sj.job_name} uid changed under us — will re-run")
+            return False
         now = utcnow()
         if view.phase == "running":
             if now < sj.deadline_at:
-                return
+                return False
             # orchestrator wall clock (spec §5): fires regardless of Job status —
             # a partitioned node cannot strand the request. Capture is attempted
-            # first, though production running-pod output is currently unavailable.
+            # first, including logs from a pod whose Job is still running.
+            view = self.client.get_job(sj.job_name, capture=True)
             sj.envelope = parse_envelope(view.termination_message)
             sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
-            self.client.delete_job(sj.job_name)
+            self.client.delete_job(sj.job_name, uid=sj.job_uid)
             sj.status = "timed_out"
             sj.completed_at = now
             db.commit()
@@ -186,29 +209,30 @@ class KubeJobRunner:
                 f"{sj.stage} {sj.role} Job exceeded its wall clock (attempt {sj.attempt})",
                 moved,
             )
-            return
+            return True
         if view.phase == "absent":
             # vanished under us (external deletion / create replay that never landed):
             # infra, not a domain failure — the same attempt re-runs
             if sj.role == "gate":
                 self._grade(db, req, sj, view.phase, None, moved)
-                return
+                return sj.status in ("failed", "timed_out", "infra")
             sj.status = "infra"
             sj.completed_at = now
             db.commit()
             moved.append(f"{req.ref}: {sj.job_name} vanished — will re-run")
-            return
+            return True
         # terminal: capture BEFORE deletion — the orchestrator owns the Job
         # lifecycle and never loses an outcome (spec §5, §8)
         envelope = parse_envelope(view.termination_message)
         sj.envelope = envelope
         sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
-        self.client.delete_job(sj.job_name)
+        self.client.delete_job(sj.job_name, uid=sj.job_uid)
         sj.completed_at = now
         if sj.role == "gate":
             self._grade(db, req, sj, view.phase, envelope, moved)
+            return sj.status in ("failed", "timed_out", "infra")
         else:
-            self._finish_stage_job(db, req, sj, view.phase, envelope, moved)
+            return self._finish_stage_job(db, req, sj, view.phase, envelope, moved)
 
     def _finish_stage_job(
         self,
@@ -218,7 +242,7 @@ class KubeJobRunner:
         phase: str,
         envelope: dict | None,
         moved: list[str],
-    ) -> None:
+    ) -> bool:
         if phase == "succeeded" and envelope is None:
             # log/envelope-capture failure is its own escalation reason (spec §5)
             sj.status = "infra"
@@ -229,17 +253,17 @@ class KubeJobRunner:
                 f"Stage output could not be captured for {sj.job_name} — envelope missing",
             )
             moved.append(f"{req.ref}: escalated — capture failed for {sj.job_name}")
-            return
+            return True
         if phase == "succeeded" and envelope.get("outcome") == "ok":
             sj.status = "succeeded"
             db.commit()
             moved.append(f"{req.ref}: {sj.job_name} succeeded")
-            self._spawn_gate(db, req, sj.stage, sj.attempt, moved)
-            return
+            return not self._spawn_gate(db, req, sj.stage, sj.attempt, moved)
         sj.status = "failed"
         db.commit()
         detail = (envelope or {}).get("detail") or f"agent Job {sj.job_name} failed"
         self._after_failure(db, req, sj, detail, moved)
+        return True
 
     # ---------- grade a gate verdict (orchestrator-side, trusted) ----------
     def _grade(
@@ -277,26 +301,35 @@ class KubeJobRunner:
             return
         verdict = envelope.get("outcome")
         if verdict == "pass" and sj.stage == "green":
-            red = db.scalar(
-                select(StageJob)
-                .where(
-                    StageJob.request_id == req.id,
-                    StageJob.stage == "red",
-                    StageJob.role == "gate",
-                    StageJob.status == "succeeded",
-                )
-                .order_by(StageJob.id.desc())
-            )
-            red_hash = (red.envelope or {}).get("surface_hash") if red else None
-            if not red_hash or envelope.get("surface_hash") != red_hash:
-                # the load-bearing rule, enforced on the RECORD the trusted side
-                # holds — an untrusted gate pod's "pass" cannot override it
+            source = self._surface_check(db, req, sj)
+            if source == "violated":
                 verdict = "fail"
                 envelope = {
                     **envelope,
                     "reason": "Test-isolation gate: the frozen test surface changed after RED — change rejected",
                 }
                 sj.envelope = envelope
+            elif source == "unavailable":
+                # B1 fallback: no git backbone/SHAs — compare the (untrusted)
+                # gate-envelope hashes, better than nothing
+                red = db.scalar(
+                    select(StageJob)
+                    .where(
+                        StageJob.request_id == req.id,
+                        StageJob.stage == "red",
+                        StageJob.role == "gate",
+                        StageJob.status == "succeeded",
+                    )
+                    .order_by(StageJob.id.desc())
+                )
+                red_hash = (red.envelope or {}).get("surface_hash") if red else None
+                if not red_hash or envelope.get("surface_hash") != red_hash:
+                    verdict = "fail"
+                    envelope = {
+                        **envelope,
+                        "reason": "Test-isolation gate: the frozen test surface changed after RED — change rejected",
+                    }
+                    sj.envelope = envelope
         if verdict == "pass" and sj.stage == "review":
             # evidence that can't be derived would be a lie — treat it as a
             # gate failure (retry machinery, then a human) rather than raising
@@ -346,6 +379,45 @@ class KubeJobRunner:
             return
         moved.append(f"{req.ref}: merge gate raised")
 
+    # ---------- the human merge gate (kube mode) ----------
+    def approve_merge(self, db: Session, req: Request, actor: str) -> None:
+        """SHA-precondition merge (spec §6, local edition): merge exactly the
+        last graded SHA into main, or escalate. Without a git workspace (no
+        GIT_REMOTE_BASE — B1-shaped runs) delegate to the simulator's
+        finish_done, which was B1's contract."""
+        if not settings.GIT_REMOTE_BASE:
+            simulator.approve_merge(db, req, actor)
+            return
+        ws = workspace.workspace_for(req)
+        sha = self._last_graded_sha(db, req)
+        if not (ws / ".git").exists() or not sha:
+            simulator.approve_merge(db, req, actor)
+            return
+        err = workspace.merge_graded(ws, req.ref, sha, actor)
+        if err:
+            self._escalate(db, req, f"Merge failed: {err}")
+            return
+        res = transitions.apply(
+            db,
+            req,
+            "finish_done",
+            actor=transitions.Actor(name=actor),
+            params={
+                "merge_note": "work branch merged to main",
+                "deploy_title": "Deployed — main updated in the Subject workspace",
+                "payload_extra": {
+                    "merged": True,
+                    "workspace": str(ws),
+                    "sha": sha,
+                },
+            },
+        )
+        if isinstance(res, transitions.Loss):
+            log.info("%s: finish_done lost (%s)", req.ref, res.detail)
+            return
+        db.commit()
+        log.info("%s merged to main at %s by %s", req.ref, sha[:12], actor)
+
     # ---------- failure policy: retry-with-feedback (N=2), then a human ----------
     def _after_failure(
         self,
@@ -389,6 +461,82 @@ class KubeJobRunner:
             log.info("escalation for %s dropped — %s", req.ref, res.detail)
             return
         log.error("escalated %s: %s", req.ref, reason)
+
+    # ---------- git-as-workspace (B2): the trusted side of the pipeline ----------
+    def _last_graded_sha(self, db: Session, req: Request) -> str | None:
+        """The newest stage SHA whose gate succeeded — the only safe branch
+        state for a fresh attempt (spec §5 attempt semantics)."""
+        rows = db.scalars(
+            select(StageJob)
+            .where(StageJob.request_id == req.id)
+            .order_by(StageJob.id)
+        ).all()
+        for gate in reversed(rows):
+            if gate.role != "gate" or gate.status != "succeeded":
+                continue
+            stage_row = next(
+                (
+                    r
+                    for r in reversed(rows)
+                    if r.role == "stage"
+                    and r.status == "succeeded"
+                    and r.stage == gate.stage
+                    and r.attempt == gate.attempt
+                ),
+                None,
+            )
+            sha = (stage_row.envelope or {}).get("sha") if stage_row else None
+            if isinstance(sha, str) and SHA40.fullmatch(sha):
+                return sha
+        return None
+
+    def _prepare_workspace(self, db: Session, req: Request) -> None:
+        """Before an agent Job clones: the repo exists and the work branch
+        sits at the last graded SHA (or the SPEC baseline). A no-op between
+        clean stages; the reset that matters happens on retries."""
+        if not settings.GIT_REMOTE_BASE:
+            return  # no git backbone configured: B1 behavior (unit fakes)
+        ws = workspace.ensure_repo(req, workspace.spec_md(req))
+        target = self._last_graded_sha(db, req) or workspace.BASELINE_TAG
+        if not workspace.reset_branch(ws, req.ref, target):
+            raise RuntimeError(f"could not reset {req.ref} work branch to {target}")
+
+    def _surface_check(self, db: Session, req: Request, sj: StageJob) -> str:
+        """'ok' | 'violated' | 'unavailable'. The orchestrator computes the
+        frozen-surface hash at red's and green's PUSHED SHAs on its own repo
+        (spec §6) — the gate pod's claimed hash is never load-bearing here.
+        A SHA that does not resolve is a violation, never a pass."""
+        if not settings.GIT_REMOTE_BASE:
+            return "unavailable"
+        ws = workspace.workspace_for(req)
+        if not (ws / ".git").exists():
+            return "unavailable"
+
+        def _stage_sha(stage: str, attempt: int | None) -> str | None:
+            q = (
+                select(StageJob)
+                .where(
+                    StageJob.request_id == req.id,
+                    StageJob.stage == stage,
+                    StageJob.role == "stage",
+                    StageJob.status == "succeeded",
+                )
+                .order_by(StageJob.id.desc())
+            )
+            if attempt is not None:
+                q = q.where(StageJob.attempt == attempt)
+            row = db.scalar(q)
+            return (row.envelope or {}).get("sha") if row else None
+
+        red_sha = _stage_sha("red", None)
+        green_sha = _stage_sha("green", sj.attempt)
+        if not red_sha or not green_sha:
+            return "unavailable"
+        red_hash = workspace.surface_hash_at(ws, red_sha)
+        green_hash = workspace.surface_hash_at(ws, green_sha)
+        if red_hash is None or green_hash is None:
+            return "violated"  # an agent claiming an unknown SHA never passes
+        return "ok" if red_hash == green_hash else "violated"
 
     # ---------- decide + spawn the next Job for a runnable request ----------
     def _next_work(self, db: Session, req: Request, moved: list[str]):
@@ -441,9 +589,8 @@ class KubeJobRunner:
             self._finish_review(db, req, review.envelope or {}, moved)
         return None
 
-    @staticmethod
     def _supersede_rewound_rows(
-        db: Session, req: Request, rows: list[StageJob]
+        self, db: Session, req: Request, rows: list[StageJob]
     ) -> None:
         target = next(
             (stage for stage in KUBE_STAGES if REQUEST_STAGE[stage] == req.stage),
@@ -467,6 +614,20 @@ class KubeJobRunner:
                 and row.created_at < req.stage_entered_at
                 and KUBE_STAGES.index(row.stage) >= target_index
             ):
+                if row.status == "running":
+                    # A superseded running row must be captured and deleted, or
+                    # it continues to run (and bill) after the rewind.
+                    try:
+                        view = self.client.get_job(row.job_name, capture=True)
+                        row.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+                        row.envelope = row.envelope or parse_envelope(
+                            view.termination_message
+                        )
+                        self.client.delete_job(row.job_name, uid=row.job_uid)
+                        row.completed_at = utcnow()
+                    except Exception:
+                        log.exception("supersede reap failed for %s", row.job_name)
+                        continue  # stays running; the next tick retries
                 row.status = "superseded"
         db.commit()
 
@@ -501,6 +662,7 @@ class KubeJobRunner:
         feedback: str,
         moved: list[str],
     ) -> bool:
+        self._prepare_workspace(db, req)
         name = job_name(req.ref, stage, attempt)
         # the fenced CAS + intent + StageJob row + heartbeat event land in ONE
         # transaction (spec §3.3); the external create happens after commit
@@ -520,17 +682,16 @@ class KubeJobRunner:
         if isinstance(res, transitions.Loss):
             log.info("%s: spawn of %s lost (%s)", req.ref, name, res.detail)
             return False
-        db.add(
-            StageJob(
-                request_id=req.id,
-                stage=stage,
-                attempt=attempt,
-                role="stage",
-                job_name=name,
-                epoch=get_elector().epoch,
-                deadline_at=utcnow() + timedelta(seconds=settings.STAGE_WALL_CLOCK),
-            )
+        row = StageJob(
+            request_id=req.id,
+            stage=stage,
+            attempt=attempt,
+            role="stage",
+            job_name=name,
+            epoch=get_elector().epoch,
+            deadline_at=utcnow() + timedelta(seconds=settings.STAGE_WALL_CLOCK),
         )
+        db.add(row)
         emit(
             db,
             req,
@@ -550,7 +711,7 @@ class KubeJobRunner:
         return self._create(
             db,
             req,
-            name,
+            row,
             stage_job_manifest(req.ref, stage, attempt, feedback=feedback),
             moved,
         )
@@ -564,13 +725,27 @@ class KubeJobRunner:
         moved: list[str],
     ) -> bool:
         name = job_name(req.ref, stage, attempt, gate=True)
-        # No Request-lifecycle CAS fits "spawn a gate" (the stage column does
-        # not move). StageJob grades are deliberately unfenced; only a later
-        # raise_merge_gate or escalation is epoch-fenced. The intent row records
-        # the side effect (idempotent begin: a replay is None).
-        intents.begin(db, f"spawn:{name}", intents.SPAWN_GATE_JOB, req.id, {"job": name})
-        db.add(
-            StageJob(
+        stage_row = db.scalar(
+            select(StageJob)
+            .where(
+                StageJob.request_id == req.id,
+                StageJob.stage == stage,
+                StageJob.attempt == attempt,
+                StageJob.role == "stage",
+                StageJob.status == "succeeded",
+            )
+            .order_by(StageJob.id.desc())
+        )
+        stage_env = (stage_row.envelope or {}) if stage_row else {}
+        pinned_sha = stage_env.get("sha") or ""
+        if settings.GIT_REMOTE_BASE and not (
+            isinstance(pinned_sha, str) and SHA40.fullmatch(pinned_sha)
+        ):
+            reason = (
+                f"{stage} gate rejected invalid stage SHA — expected 40 lowercase hex "
+                "characters"
+            )
+            row = StageJob(
                 request_id=req.id,
                 stage=stage,
                 attempt=attempt,
@@ -578,8 +753,29 @@ class KubeJobRunner:
                 job_name=name,
                 epoch=get_elector().epoch,
                 deadline_at=utcnow() + timedelta(seconds=settings.GATE_WALL_CLOCK),
+                envelope={"outcome": "fail", "reason": reason},
             )
+            db.add(row)
+            self._grade(db, req, row, "failed", row.envelope, moved)
+            return False
+        review_verdict = (
+            (stage_env.get("detail") or "") if stage == "review" else ""
         )
+        # No Request-lifecycle CAS fits "spawn a gate" (the stage column does
+        # not move). StageJob grades are deliberately unfenced; only a later
+        # raise_merge_gate or escalation is epoch-fenced. The intent row records
+        # the side effect (idempotent begin: a replay is None).
+        intents.begin(db, f"spawn:{name}", intents.SPAWN_GATE_JOB, req.id, {"job": name})
+        row = StageJob(
+            request_id=req.id,
+            stage=stage,
+            attempt=attempt,
+            role="gate",
+            job_name=name,
+            epoch=get_elector().epoch,
+            deadline_at=utcnow() + timedelta(seconds=settings.GATE_WALL_CLOCK),
+        )
+        db.add(row)
         emit(
             db,
             req,
@@ -598,8 +794,14 @@ class KubeJobRunner:
         return self._create(
             db,
             req,
-            name,
-            gate_job_manifest(req.ref, stage, attempt),
+            row,
+            gate_job_manifest(
+                req.ref,
+                stage,
+                attempt,
+                sha=pinned_sha,
+                review_verdict=review_verdict,
+            ),
             moved,
         )
 
@@ -607,24 +809,56 @@ class KubeJobRunner:
         self,
         db: Session,
         req: Request,
-        name: str,
+        row: StageJob,
         manifest: dict,
         moved: list[str],
     ) -> bool:
+        name = row.job_name
         try:
-            self.client.create_job(manifest)
+            uid = self.client.create_job(manifest)
         except Exception as exc:
             log.exception("create_job %s failed", name)
             intents.fail(db, f"spawn:{name}", {"error": str(exc)[:300]})
-            row = db.scalar(
-                select(StageJob)
-                .where(StageJob.job_name == name, StageJob.status == "running")
-                .order_by(StageJob.id.desc())
-            )
-            if row:
-                row.status = "infra"
+            row.status = "infra"
+            row.completed_at = utcnow()
             self._escalate(db, req, f"Could not create Job {name}: {exc}")
             return False
-        intents.complete(db, f"spawn:{name}", {"job": name})
+        if uid is None:
+            # 409: adopt our own unrecorded intent replay, but park when the
+            # live object belongs to an earlier completed same-name row.
+            view = self.client.get_job(name)
+            prior_uids = {
+                prior.job_uid
+                for prior in db.scalars(
+                    select(StageJob).where(
+                        StageJob.job_name == name, StageJob.id != row.id
+                    )
+                ).all()
+                if prior.job_uid
+            }
+            if prior_uids:
+                stranger = bool(view.uid and view.uid not in prior_uids)
+                intents.fail(
+                    db,
+                    f"spawn:{name}",
+                    {
+                        "error": (
+                            "same-name Job has an unrecognized uid"
+                            if stranger
+                            else "same-name Job from a prior attempt still terminating"
+                        )
+                    },
+                )
+                row.status = "infra"
+                row.completed_at = utcnow()
+                db.commit()
+                blocker = "a uid stranger" if stranger else "a dying predecessor"
+                moved.append(f"{req.ref}: {name} blocked by {blocker} — will re-run")
+                return False
+            row.job_uid = view.uid or None
+        else:
+            row.job_uid = uid
+        intents.complete(db, f"spawn:{name}", {"job": name, "uid": row.job_uid})
+        db.commit()
         moved.append(f"{req.ref}: spawned {name}")
         return True

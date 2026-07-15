@@ -45,7 +45,7 @@ def approve(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
             return conflict_response(r, res)
         # apply() flushed the merge_claimed audit: AgentRunner may commit internally
         # after the git merge, and that commit must include the winner's identity.
-        if runner_mode() == "agent":
+        if runner_mode() in ("agent", "kube"):
             pipeline().approve_merge(db, r, actor.name)
         else:
             simulator.approve_merge(db, r, actor.name)

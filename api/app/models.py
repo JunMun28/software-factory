@@ -371,6 +371,10 @@ class StageJob(Base):
     attempt: Mapped[int] = mapped_column(Integer, default=1)
     role: Mapped[str] = mapped_column(String(8))  # stage | gate
     job_name: Mapped[str] = mapped_column(String(63), index=True)
+    # uid of the Kubernetes Job object this row spawned/adopted. Deterministic
+    # names are REUSED across infra re-runs; the uid says which incarnation is
+    # ours, so a same-name stranger is never polled or graded (B2, spec §5).
+    job_uid: Mapped[str | None] = mapped_column(String(36), nullable=True)
     epoch: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(12), default="running")
     # running | succeeded | failed | timed_out | infra | reaped | superseded

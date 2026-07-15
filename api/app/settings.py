@@ -81,3 +81,17 @@ KUBE_MAX_ATTEMPTS = int(
 )
 # Concurrent Jobs the orchestrator will run (spec §2).
 KUBE_JOB_CAP = int(os.environ.get("FACTORY_JOB_CAP", "10"))
+
+# ---------- git-as-workspace + cluster profile (Plan B2, spec §2/§5/§6) ----------
+# Base URL agent/gate Jobs clone from (the git-daemon sidecar). Empty = no git
+# backbone configured: the kube runner behaves exactly like B1 (unit tests).
+GIT_REMOTE_BASE = os.environ.get("FACTORY_GIT_REMOTE_BASE", "").rstrip("/")
+# Forced non-root UID for agent/gate pods — restricted-SCC behavior is proven
+# locally, not discovered at the office (spec §2). Any high UID works; the
+# image is built to arbitrary-UID conventions (root group, g=u, HOME=/workspace).
+KUBE_RUN_AS_UID = int(os.environ.get("FACTORY_KUBE_RUN_AS_UID", "10101"))
+KUBE_AGENT_SA = os.environ.get("FACTORY_KUBE_AGENT_SA", "sf-agent")
+KUBE_GATE_SA = os.environ.get("FACTORY_KUBE_GATE_SA", "sf-gate")
+# Secret carrying the operator's ~/.codex/auth.json (task sync-codex-auth);
+# mounted ONLY into stage pods — gates hold no LLM credential (spec §6).
+CODEX_AUTH_SECRET = os.environ.get("FACTORY_CODEX_AUTH_SECRET", "sf-codex-auth")

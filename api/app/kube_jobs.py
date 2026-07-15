@@ -14,14 +14,26 @@ Envelope contract (termination message, JSON, kernel-capped at 4 KB):
   gate Job:   {"v": 1, "outcome": "pass"|"fail", "reason": str,
                "surface_hash": str|null, "metrics": {...}|null}
 Large payloads (review summaries, test reports) travel as NDJSON pod logs.
-Terminal output is captured before deletion; running-pod capture is currently
-best-effort because RealKubeClient only reads pod output for terminal Jobs.
+Output capture is attempted before every deletion, including from running pods;
+log transfer failures remain best-effort.
 """
 
 import json
 import re
 
 from . import settings
+from .agent_exec import agent_cli
+
+
+def _agent_model() -> str:
+    cli = agent_cli()
+    if cli == "codex":
+        return settings.CODEX_MODEL
+    if cli == "opencode":
+        return settings.OPENCODE_MODEL
+    if cli == "claude":
+        return settings.CLAUDE_MODEL
+    return ""
 
 KUBE_STAGES = ("architecture", "red", "green", "review")
 REQUEST_STAGE = {
@@ -54,6 +66,31 @@ def _base_job(
     deadline: int,
     env: dict,
 ) -> dict:
+    env = {"HOME": "/workspace", **env}
+    if settings.GIT_REMOTE_BASE:
+        env.setdefault("SF_REPO_URL", f"{settings.GIT_REMOTE_BASE}/{ref.lower()}")
+        env.setdefault("SF_BRANCH", f"work/{ref.lower()}")
+    volumes: list[dict] = [{"name": "workspace", "emptyDir": {}}]
+    mounts: list[dict] = [{"name": "workspace", "mountPath": "/workspace"}]
+    if role == "stage":
+        # optional: environments without the secret still schedule; the
+        # entrypoint fails LOUDLY if the chosen CLI needs it and it is absent
+        volumes.append(
+            {
+                "name": "codex-auth",
+                "secret": {
+                    "secretName": settings.CODEX_AUTH_SECRET,
+                    "optional": True,
+                },
+            }
+        )
+        mounts.append(
+            {
+                "name": "codex-auth",
+                "mountPath": "/secrets/codex",
+                "readOnly": True,
+            }
+        )
     return {
         "apiVersion": "batch/v1",
         "kind": "Job",
@@ -89,14 +126,35 @@ def _base_job(
                 "spec": {
                     "restartPolicy": "Never",
                     "automountServiceAccountToken": False,
+                    "serviceAccountName": (
+                        settings.KUBE_AGENT_SA
+                        if role == "stage"
+                        else settings.KUBE_GATE_SA
+                    ),
+                    "securityContext": {
+                        # restricted-SCC emulation (spec §2): forced non-root
+                        # UID + root group (the image is chmod g=u)
+                        "runAsNonRoot": True,
+                        "runAsUser": settings.KUBE_RUN_AS_UID,
+                        "runAsGroup": 0,
+                        "fsGroup": 0,
+                        "seccompProfile": {"type": "RuntimeDefault"},
+                    },
+                    "volumes": volumes,
                     "containers": [
                         {
                             "name": "main",
                             "image": settings.AGENT_IMAGE,
+                            "imagePullPolicy": "IfNotPresent",
+                            "securityContext": {
+                                "allowPrivilegeEscalation": False,
+                                "capabilities": {"drop": ["ALL"]},
+                            },
                             "env": [
                                 {"name": key, "value": str(value)}
                                 for key, value in env.items()
                             ],
+                            "volumeMounts": mounts,
                             "resources": {
                                 "requests": {"cpu": "500m", "memory": "1Gi"},
                                 "limits": {"cpu": "2", "memory": "4Gi"},
@@ -118,6 +176,8 @@ def stage_job_manifest(
         "SF_STAGE": stage,
         "SF_ATTEMPT": attempt,
         "SF_ROLE": "stage",
+        "SF_CLI": agent_cli(),
+        "SF_MODEL": _agent_model(),
     }
     if feedback:
         env["SF_GATE_FEEDBACK"] = feedback[:_FEEDBACK_CAP]
@@ -132,13 +192,20 @@ def stage_job_manifest(
     )
 
 
-def gate_job_manifest(ref: str, stage: str, attempt: int) -> dict:
+def gate_job_manifest(
+    ref: str, stage: str, attempt: int, *, sha: str = "", review_verdict: str = ""
+) -> dict:
     env = {
         "SF_REF": ref,
         "SF_STAGE": stage,
         "SF_ATTEMPT": attempt,
         "SF_ROLE": "gate",
+        "SF_SHA": sha,  # the PINNED SHA the gate grades (spec §6); "" = branch head
     }
+    if stage == "review" and review_verdict:
+        # the read-only review stage pushes nothing; its verdict reaches the
+        # review gate's metrics via the orchestrator (spec §5)
+        env["SF_REVIEW_VERDICT"] = review_verdict[:500]
     return _base_job(
         job_name(ref, stage, attempt, gate=True),
         role="gate",
