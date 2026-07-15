@@ -69,7 +69,8 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
-            "tsConfig": "apps/intake/tsconfig.spec.json"
+            "tsConfig": "apps/intake/tsconfig.spec.json",
+            "setupFiles": ["apps/intake/src/test-setup.ts"]
           }
         },
         "lint": {

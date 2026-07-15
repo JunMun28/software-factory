@@ -306,7 +306,7 @@ class LeaderEpoch(Base):
     """
 
     __tablename__ = "leader_epochs"
-    id: Mapped[int] = mapped_column(primary_key=True)  # always 1
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)  # always 1
     epoch: Mapped[int] = mapped_column(nullable=False, default=0)
 
 
