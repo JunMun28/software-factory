@@ -467,9 +467,16 @@ def test_win_notify_fires_after_commit(monkeypatch):
 def app_leader_for_apply_committed():
     """Give these machine-caller tests the current app leadership epoch."""
     elector = get_elector()
-    assert elector.try_acquire() is True
-    yield
-    elector.release()
+    was_leader = elector.verify()
+    if not was_leader:
+        assert elector.try_acquire() is True
+    try:
+        yield
+    finally:
+        if was_leader and not elector.verify():
+            assert elector.try_acquire() is True
+        elif not was_leader:
+            elector.release()
 
 
 @pytest.mark.usefixtures("app_leader_for_apply_committed")
