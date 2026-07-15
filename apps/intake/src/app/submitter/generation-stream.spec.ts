@@ -158,6 +158,19 @@ describe('GenerationStream', () => {
     expect(gen.streaming()).toBe(false);
   });
 
+  it('a garbled (unparseable) SSE payload falls back to the poll loop', () => {
+    // ported from the deleted streamState spec: JSON.parse failure is a live
+    // recovery path — the stream closes and polling takes over
+    read.mockReturnValue(of(busy));
+    const gen = make(() => '/s');
+    gen.refresh();
+    expect(FakeES.instances).toHaveLength(1);
+    es().emit('state', 'not json{');
+    expect(gen.streaming()).toBe(false); // stream abandoned
+    vi.advanceTimersByTime(1500); // …and the poll loop is driving
+    expect(read.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('poll-only mode (null streamUrl) never opens an EventSource and polls at 1500 ms', () => {
     read.mockReturnValue(of(busy));
     const gen = make(null);

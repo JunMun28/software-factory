@@ -94,6 +94,9 @@ export class GenerationStream<T> {
   }
 
   private drive(): void {
+    // a pending poll tick must never race the driver we are about to start —
+    // a stale poll response could transiently overwrite an SSE terminal state
+    this.clearPoll();
     if (this.streamUrlFn) this.openStream();
     else this.schedulePoll();
   }
