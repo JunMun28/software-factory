@@ -1,9 +1,12 @@
 """Leader election: sqlite = always-leader with real epochs; the fencing
 contract (stale epoch loses) is dialect-independent and tested here."""
+from unittest.mock import Mock
+
 import pytest
 from sqlalchemy import select
 
 from app.db import SessionLocal, migrate
+from app.leader import LeaderElector
 from app.models import LeaderEpoch
 
 
@@ -53,9 +56,21 @@ def test_reacquire_same_instance_bumps_epoch(make_elector):
     assert e.epoch == first + 1
 
 
-def test_verify_false_after_release(make_elector):
+def test_mssql_release_explicitly_drops_the_session_lock():
     migrate()
-    e = make_elector()
-    e.try_acquire()
+    engine = Mock()
+    engine.url.get_backend_name.return_value = "mssql"
+    conn = Mock()
+
+    e = LeaderElector(engine)
+    e._conn = conn
+    e._leader = True
     e.release()
+
+    sql, params = conn.cursor.return_value.execute.call_args.args
+    assert "sp_releaseapplock" in sql
+    assert "@LockOwner='Session'" in sql
+    assert params == ("sf_leader",)
+    conn.cursor.return_value.close.assert_called_once_with()
+    conn.close.assert_called_once_with()
     assert e.verify() is False

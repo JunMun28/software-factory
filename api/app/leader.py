@@ -1,8 +1,9 @@
 """Leadership: exactly one process runs the tick loop + orchestration.
 
 MSSQL: sp_getapplock (Session owner) on a DEDICATED non-pooled connection —
-the lock lives and dies with that connection, so it must never come from the
-pool (spec §3.2, review F-D1). SQLite: single process by definition (AGENTS.md
+the lock follows that SQL session, so it must never come from SQLAlchemy's
+pool and release must be explicit before ODBC can pool the closed handle
+(spec §3.2, review F-D1). SQLite: single process by definition (AGENTS.md
 "single uvicorn worker"), so acquisition always succeeds; the epoch mechanics
 stay identical so the fencing contract is exercised by every test run.
 Only writes routed through transitions.cas_status are fenced today; Plan B
@@ -100,7 +101,28 @@ class LeaderElector:
         self._leader = False
         if self._conn is not None:
             try:
+                if not self._sqlite:
+                    # SQLDisconnect may return the still-live SQL session to
+                    # ODBC's pool, so closing alone cannot release a Session
+                    # lock — a demoted leader would silently keep it until the
+                    # pool recycles. Best-effort explicit release; harmless
+                    # (error code, no raise semantics we rely on) if the lock
+                    # is not actually held on this session.
+                    try:
+                        cur = self._conn.cursor()
+                        try:
+                            cur.execute(
+                                "EXEC sp_releaseapplock @Resource=?, "
+                                "@LockOwner='Session'",
+                                (_LOCK_NAME,),
+                            )
+                        finally:
+                            cur.close()
+                    except Exception:
+                        pass  # releasing a lock we lost/never held — fine
                 self._conn.close()
+            except Exception:
+                pass
             finally:
                 self._conn = None
 
