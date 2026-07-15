@@ -58,13 +58,13 @@ INBOX=$(curl -s "$API/inbox" | jqpy "print(any(r['id']==$RID for r in d))")
 ok "gate shows in the needs-me inbox"
 
 echo "▸ admin gates + factory run"
-curl -s -X POST "$API/requests/$RID/approve" -H 'content-type: application/json' -d '{"actor":"Kim P."}' >/dev/null
-ST=$(curl -s "$API/requests/$RID" | jqpy "print(d['status'], d['stage'], d['repo_ready'], d['spec_pr_open'], d['stage2_fired'])")
+ST=$(curl -sf -X POST "$API/requests/$RID/approve" -H 'content-type: application/json' -d '{"operator_id":1}' \
+  | jqpy "print(d['status'], d['stage'], d['repo_ready'], d['spec_pr_open'], d['stage2_fired'])")
 [ "$ST" = "approved architecture True True True" ] || fail "approve ledger wrong ($ST)"
 ok "approve: status=approved, stage=architecture, 3-step ledger complete"
 
 EVENTS_BEFORE=$(curl -s "$API/events?request_id=$RID" | jqpy "print(len(d))")
-curl -s -X POST "$API/requests/$RID/approve" -H 'content-type: application/json' -d '{"actor":"Kim P."}' >/dev/null
+curl -sf -X POST "$API/requests/$RID/approve" -H 'content-type: application/json' -d '{"operator_id":1}' >/dev/null
 EVENTS_AFTER=$(curl -s "$API/events?request_id=$RID" | jqpy "print(len(d))")
 [ "$EVENTS_BEFORE" = "$EVENTS_AFTER" ] || fail "approve replay emitted duplicate events"
 ok "approve replay is idempotent (ADR 0006)"
@@ -74,7 +74,7 @@ GATE=$(curl -s "$API/requests/$RID" | jqpy "print(d['stage'], d['gate'])")
 [ "$GATE" = "review approve_merge" ] || fail "simulator did not stop at the merge gate ($GATE)"
 ok "stages 2-5 ran; factory waits at the merge gate (humans gate the irreversible)"
 
-curl -s -X POST "$API/requests/$RID/approve" -H 'content-type: application/json' -d '{"actor":"Kim P."}' >/dev/null
+curl -sf -X POST "$API/requests/$RID/approve" -H 'content-type: application/json' -d '{"operator_id":1}' >/dev/null
 FINAL=$(curl -s "$API/requests/$RID" | jqpy "print(d['status'], d['stage'])")
 [ "$FINAL" = "done done" ] || fail "merge approval did not deploy ($FINAL)"
 DEPLOYED=$(curl -s "$API/events?request_id=$RID" | jqpy "print(any('Deployed' in e['title'] for e in d))")
