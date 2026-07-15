@@ -7,14 +7,13 @@ import {
   computed,
   inject,
   input,
-  model,
   output,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
-import { Evidence, FactoryRequest, SpecLine, Turn } from './models';
-import { TYPE_LABEL, confirmSteps, evidenceBits } from './util';
+import { FactoryRequest } from './models';
+import { TYPE_LABEL, confirmSteps } from './util';
 
 /** Reliable focus for dynamically-inserted inputs (the `autofocus` attribute only
  *  works at document parse time, not for @if-rendered overlays). */
@@ -410,162 +409,7 @@ export class Sig {
   kbd = input<string | null>(null);
 }
 
-/* ---- sf-pop-menu — the one floating options panel (plan 004) ---- */
-@Component({
-  selector: 'sf-pop-menu',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    @if (open()) {
-      <span class="pop__scrim" (click)="closed.emit()"></span>
-      <span
-        class="pop"
-        [style.width]="width() === 'fill' ? null : width() + 'px'"
-        [class.pop--fill]="width() === 'fill'"
-        [style.left]="align() === 'left' || width() === 'fill' ? '0' : null"
-        [style.right]="align() === 'right' || width() === 'fill' ? '0' : null"
-      >
-        <ng-content />
-      </span>
-    }
-  `,
-  host: {
-    '(document:keydown.escape)': 'open() && closed.emit()',
-    '(document:click)': 'onDocClick($event)',
-  },
-})
-export class PopMenu {
-  open = input.required<boolean>();
-  width = input<number | 'fill'>(200);
-  align = input<'left' | 'right'>('right');
-  closed = output<void>();
-
-  private el = inject(ElementRef);
-
-  onDocClick(e: Event) {
-    if (this.open() && !this.el.nativeElement.contains(e.target)) {
-      this.closed.emit();
-    }
-  }
-}
-
-/* ---- shared gate UI — one copy of the escalation box, spec rendering,
-   and the three irreversible-action modals (board, issue, queue consume these) ---- */
-
-/** The red "Escalated — why" box. Project extra action rows as content. */
-@Component({
-  selector: 'sf-escalation-box',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Glyph],
-  template: `
-    <div class="openq" style="border-color:var(--red-line);background:var(--red-bg)">
-      <div class="row" style="gap:8px;margin-bottom:5px">
-        <sf-glyph type="flag" [size]="14" color="var(--red)" /><span
-          style="font-size:13px;font-weight:600;color:var(--red-tx)"
-          >{{ title() }}</span
-        >
-      </div>
-      <div style="font-size:13.5px;color:var(--red-tx);line-height:1.45">
-        {{ reason() }}
-      </div>
-      <ng-content />
-    </div>
-  `,
-  host: { '[style.display]': '"block"' },
-})
-export class EscalationBox {
-  title = input<string>('Escalated — why');
-  reason = input<string | null>(null);
-}
-
-/** Draft-spec lines with provenance, plus the open-questions note. */
-@Component({
-  selector: 'sf-spec-lines',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Glyph],
-  template: `
-    @for (line of lines(); track $index) {
-      <div class="specline">
-        <span style="color:var(--faint);font-size:12px;margin-top:4px">•</span>
-        <span class="specline__b"
-          >{{ line.text }}
-          <span class="prov" [class.assume]="line.assume">{{
-            line.assume ? '(ASSUMPTION — not stated)' : '(from: ' + line.prov + ')'
-          }}</span></span
-        >
-      </div>
-    } @empty {
-      @if (emptyText()) {
-        <div style="font-size:13px;color:var(--faint)">{{ emptyText() }}</div>
-      }
-    }
-    @if (openNote(); as note) {
-      @if (compactNote()) {
-        <div class="openq" style="margin:10px 0 0">
-          <div class="row" style="gap:8px">
-            <sf-glyph type="dotted" [size]="13" color="var(--amber)" /><span
-              style="font-size:12.5px;font-weight:600;color:var(--amber-tx)"
-              >Open questions · {{ note }}</span
-            >
-          </div>
-        </div>
-      } @else {
-        <div class="openq" style="margin-top:12px">
-          <div class="row" style="gap:8px;margin-bottom:6px">
-            <sf-glyph type="dotted" [size]="14" color="var(--amber)" /><span
-              style="font-size:13px;font-weight:600;color:var(--amber-tx)"
-              >Open questions · assumptions</span
-            >
-          </div>
-          <div style="font-size:13.5px;color:var(--amber-tx);line-height:1.45">{{ note }}</div>
-        </div>
-      }
-    }
-  `,
-  host: { '[style.display]': '"block"' },
-})
-export class SpecLines {
-  lines = input.required<SpecLine[]>();
-  emptyText = input<string | null>(null);
-  openNote = input<string | null>(null);
-  compactNote = input<boolean>(false);
-}
-
-/** The "Interview answers (N)" collapsible. `open` is a model so surfaces can reset it per item. */
-@Component({
-  selector: 'sf-interview-answers',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
-  template: `
-    <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
-      <button
-        class="row"
-        (click)="open.set(!open())"
-        style="width:100%;gap:8px;padding:9px 12px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:12.5px;color:var(--muted)"
-      >
-        <sf-icon [name]="open() ? 'chevDown' : 'chevRight'" [size]="14" />Interview answers ({{
-          turns().length
-        }})
-      </button>
-      @if (open()) {
-        <div style="padding:0 14px 12px;display:flex;flex-direction:column;gap:8px">
-          @for (t of turns(); track t.order) {
-            <div>
-              <div style="font-size:12.5px;color:var(--muted)">{{ t.question }}</div>
-              <div style="font-size:13.5px">
-                {{ t.skipped ? 'Skipped.' : t.answer }}
-              </div>
-            </div>
-          }
-        </div>
-      }
-    </div>
-  `,
-  host: { '[style.display]': '"block"' },
-})
-export class InterviewAnswers {
-  turns = input.required<Turn[]>();
-  open = model<boolean>(false);
-}
+/* ---- gate UI — the irreversible-action modals (floor/dossier consume these) ---- */
 
 /** The "Approve this merge/spec?" confirmation — the one intentional friction point. */
 @Component({
@@ -815,66 +659,4 @@ export class CancelConfirm {
   r = input.required<FactoryRequest>();
   kept = output<void>();
   confirmed = output<void>();
-}
-
-/** Shared evidence strip for gate cards (spec §6, §7): spec gates show grounding,
- *  merge gates show tests/diff/reviewer. Assumptions rendered with the dotted amber
- *  glyph (same affordance as SpecLines / EscalationBox). */
-@Component({
-  selector: 'sf-evidence-strip',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Glyph],
-  template: `
-    <div class="evstrip">
-      @for (bit of bits(); track bit.text) {
-        <span
-          class="evstrip__bit"
-          [class.green]="bit.tone === 'green'"
-          [class.purple]="bit.tone === 'purple'"
-          [class.red]="bit.tone === 'red'"
-          >{{ bit.text }}</span
-        >
-      }
-    </div>
-    @if (assumptions().length) {
-      <div class="evstrip__assume">
-        <sf-glyph type="dotted" [size]="13" color="var(--amber)" />
-        {{ assumptions().length }} assumption{{ assumptions().length === 1 ? '' : 's' }}:
-        {{ assumptions()[0] }}
-      </div>
-    }
-  `,
-  styles: `
-    .evstrip {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px 16px;
-      font-size: 12px;
-      color: var(--fg2);
-    }
-    .evstrip__bit.green {
-      color: var(--green-tx);
-      font-weight: 500;
-    }
-    .evstrip__bit.purple {
-      color: var(--accent-tx);
-    }
-    .evstrip__bit.red {
-      color: var(--red-tx);
-      font-weight: 500;
-    }
-    .evstrip__assume {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 5px;
-      font-size: 12px;
-      color: var(--amber-tx);
-    }
-  `,
-})
-export class EvidenceStrip {
-  evidence = input<Evidence | null>(null);
-  bits = computed(() => evidenceBits(this.evidence()));
-  assumptions = computed(() => this.evidence()?.assumptions ?? []);
 }
