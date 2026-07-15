@@ -73,6 +73,11 @@ GATE_ACTIVE_DEADLINE = int(os.environ.get("FACTORY_GATE_ACTIVE_DEADLINE", "900")
 STAGE_WALL_CLOCK = int(os.environ.get("FACTORY_STAGE_WALL_CLOCK", "2100"))
 GATE_WALL_CLOCK = int(os.environ.get("FACTORY_GATE_WALL_CLOCK", "1200"))
 # N=2: one retry-with-feedback, then needs_human (spec §4.6).
-KUBE_MAX_ATTEMPTS = int(os.environ.get("FACTORY_MAX_ATTEMPTS", "2"))
+KUBE_MAX_ATTEMPTS = int(
+    os.environ.get(
+        "FACTORY_KUBE_MAX_ATTEMPTS",
+        os.environ.get("FACTORY_MAX_ATTEMPTS", "2"),
+    )
+)
 # Concurrent Jobs the orchestrator will run (spec §2).
 KUBE_JOB_CAP = int(os.environ.get("FACTORY_JOB_CAP", "10"))

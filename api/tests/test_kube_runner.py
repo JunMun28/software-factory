@@ -2,6 +2,15 @@
 prove the ORCHESTRATOR's guarantees (spawn/observe/grade/reap, gates,
 escalation, fencing), not any container. The kube reimplementation of the four
 AGENTS.md §7 witness behaviors lives here."""
+import builtins
+import importlib.util
+import inspect
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 from fake_kube import (
     GOOD_METRICS,
     SURFACE,
@@ -14,7 +23,7 @@ from fake_kube import (
 from helpers import approved_request
 from sqlalchemy import select
 
-from app import settings
+from app import settings, transitions
 from app.db import SessionLocal
 from app.kube_runner import KubeJobRunner
 from app.models import Request, StageJob
@@ -323,3 +332,243 @@ def test_human_retry_grants_one_fresh_attempt(client):
                     and not m["metadata"]["name"].endswith("-gate")]
     assert red_attempts == [f"sf-{ref}-red-1", f"sf-{ref}-red-2", f"sf-{ref}-red-3"]
     assert out["needs_human"] is True  # the fresh attempt also failed → back to a human
+
+
+# ---------- final-review recovery and hardening fixes ----------
+
+def test_tick_repairs_review_grade_committed_before_merge_gate(client, monkeypatch):
+    """A crash after the review grade commit must not strand approved work."""
+    runner, fake = make_runner()
+    honest_cluster(fake)
+    d = _approved(client, "Kube merge-gate repair")
+    finish_review = runner._finish_review
+    interrupted: list[dict] = []
+
+    def lose_finish(db, req, envelope, moved):
+        interrupted.append(envelope)
+
+    monkeypatch.setattr(runner, "_finish_review", lose_finish)
+    tick_until(client, runner, d["id"], lambda _o: bool(interrupted))
+    stranded = client.get(f"/api/requests/{d['id']}").json()
+    assert stranded["status"] == "approved" and stranded["gate"] is None
+
+    monkeypatch.setattr(runner, "_finish_review", finish_review)
+    repaired = tick_until(
+        client, runner, d["id"], lambda o: o["gate"] == "approve_merge", limit=10
+    )
+    assert repaired["gate"] == "approve_merge"
+
+
+def test_hung_gate_infra_loop_consumes_attempt_and_escalates(client):
+    """A deadline-killed gate with no envelope cannot churn forever."""
+    runner, fake = make_runner()
+
+    def deadline_kill(name, job):
+        if job.phase != "running":
+            return
+        if name.endswith("-gate"):
+            job.phase = "failed"
+        else:
+            job.phase = "succeeded"
+            job.termination_message = json.dumps(stage_ok())
+
+    fake.on_observe = deadline_kill
+    d = _approved(client, "Kube bounded gate infra")
+    out = tick_until(client, runner, d["id"], lambda o: o["needs_human"], limit=30)
+    ref = d["ref"].lower()
+
+    assert "produced no verdict" in out["needs_human_reason"]
+    assert [
+        m["metadata"]["name"]
+        for m in fake.creations
+        if m["metadata"]["name"].startswith(f"sf-{ref}-architecture-")
+        and m["metadata"]["name"].endswith("-gate")
+    ] == [
+        f"sf-{ref}-architecture-1-gate",
+        f"sf-{ref}-architecture-1-gate",
+        f"sf-{ref}-architecture-1-gate",
+        f"sf-{ref}-architecture-2-gate",
+        f"sf-{ref}-architecture-2-gate",
+        f"sf-{ref}-architecture-2-gate",
+    ]
+
+
+def test_gate_infra_bound_resets_for_a_new_attempt(client):
+    runner, fake = make_runner()
+    failures: dict[str, int] = {}
+
+    def recover_on_second_attempt(name, job):
+        if job.phase != "running":
+            return
+        if not name.endswith("-gate"):
+            job.phase = "succeeded"
+            job.termination_message = json.dumps(stage_ok())
+            return
+        failures[name] = failures.get(name, 0) + 1
+        if "-architecture-1-gate" in name or failures[name] < 3:
+            job.phase = "failed"
+            return
+        job.phase = "succeeded"
+        job.termination_message = json.dumps(pass_verdict())
+
+    fake.on_observe = recover_on_second_attempt
+    d = _approved(client, "Kube gate infra resets")
+    ref = d["ref"].lower()
+    tick_until(
+        client,
+        runner,
+        d["id"],
+        lambda _o: f"sf-{ref}-red-1" in fake.jobs,
+        limit=30,
+    )
+
+    out = client.get(f"/api/requests/{d['id']}").json()
+    assert out["needs_human"] is False
+    assert failures[f"sf-{ref}-architecture-2-gate"] == 3
+
+
+def test_observe_tolerates_one_transient_get_job_failure(client):
+    runner, fake = make_runner()
+    d = _approved(client, "Kube observe flake")
+    name = f"sf-{d['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+
+    fake.raise_once.add(name)
+    with SessionLocal() as db:
+        runner.tick(db)
+        row = db.scalar(select(StageJob).where(StageJob.job_name == name))
+        assert row.status == "running"
+    assert name not in fake.deletions
+    assert client.get(f"/api/requests/{d['id']}").json()["needs_human"] is False
+
+    fake.finish(name, stage_ok())
+    with SessionLocal() as db:
+        runner.tick(db)
+    assert f"{name}-gate" in fake.jobs
+
+
+def test_send_back_to_build_supersedes_later_rows_and_restarts_red(client):
+    runner, fake = make_runner()
+
+    def fail_green(name):
+        if name.endswith("-gate") and "-green-" in name:
+            return fail_verdict("green needs another implementation pass")
+        return pass_verdict() if name.endswith("-gate") else stage_ok()
+
+    _scripted(fake, fail_green)
+    d = _approved(client, "Kube rewind")
+    tick_until(client, runner, d["id"], lambda o: o["needs_human"])
+    with SessionLocal() as db:
+        req = db.get(Request, d["id"])
+        result = transitions.apply(
+            db,
+            req,
+            "send_back_to_stage",
+            actor=transitions.Actor(name="Riley Rewind"),
+            params={"stage": "build", "reason": "Redo from RED"},
+        )
+        assert not isinstance(result, transitions.Loss)
+        db.commit()
+
+    creations_before = len(fake.creations)
+    with SessionLocal() as db:
+        runner.tick(db)
+        superseded = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == d["id"], StageJob.status == "superseded"
+            )
+        ).all()
+
+    spawned = fake.creations[creations_before:]
+    assert spawned[0]["metadata"]["name"] == f"sf-{d['ref'].lower()}-red-2"
+    assert {row.stage for row in superseded} == {"red", "green"}
+
+
+def test_reap_failure_isolated_so_other_work_is_observed_and_spawned(client):
+    runner, fake = make_runner()
+    poisoned = _approved(client, "Kube poisoned reap")
+    healthy = _approved(client, "Kube healthy observe")
+    with SessionLocal() as db:
+        runner.tick(db)
+
+    poisoned_name = f"sf-{poisoned['ref'].lower()}-architecture-1"
+    healthy_name = f"sf-{healthy['ref'].lower()}-architecture-1"
+    client.post(
+        f"/api/requests/{poisoned['id']}/cancel",
+        json={"operator_id": 1, "note": "stop"},
+    )
+    queued = _approved(client, "Kube spawn despite poisoned reap")
+    fake.raise_always.add(poisoned_name)
+    fake.finish(healthy_name, stage_ok())
+
+    with SessionLocal() as db:
+        runner.tick(db)
+
+    assert f"{healthy_name}-gate" in fake.jobs
+    assert f"sf-{queued['ref'].lower()}-architecture-1" in fake.jobs
+
+
+def test_wall_clock_captures_available_output_before_delete(client, monkeypatch):
+    monkeypatch.setattr(settings, "STAGE_WALL_CLOCK", -1)
+    runner, fake = make_runner()
+    d = _approved(client, "Kube timeout capture")
+    name = f"sf-{d['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+    fake.jobs[name].termination_message = json.dumps(stage_ok("partial output"))
+    fake.jobs[name].logs = "partial running log"
+
+    with SessionLocal() as db:
+        runner.tick(db)
+        row = db.scalar(select(StageJob).where(StageJob.job_name == name))
+
+    assert row.envelope == stage_ok("partial output")
+    assert row.logs_tail == "partial running log"
+    assert name in fake.deletions
+
+
+def test_stage_jobs_migration_owns_its_timezone_type(monkeypatch):
+    migration = (
+        Path(__file__).parents[1]
+        / "alembic"
+        / "versions"
+        / "7f2a9c4d1e88_stage_jobs.py"
+    )
+    real_import = builtins.__import__
+
+    def reject_live_model(name, *args, **kwargs):
+        if name == "app.models":
+            raise AssertionError("migration imported live app.models")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", reject_live_model)
+    spec = importlib.util.spec_from_file_location("stage_jobs_migration", migration)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.TZDateTime.__module__ == "stage_jobs_migration"
+
+
+def test_kube_max_attempts_prefers_new_env_and_keeps_compat_fallback():
+    api_dir = Path(__file__).parents[1]
+    command = [sys.executable, "-c", "from app.settings import KUBE_MAX_ATTEMPTS; print(KUBE_MAX_ATTEMPTS)"]
+    env = os.environ.copy()
+    env.update(FACTORY_KUBE_MAX_ATTEMPTS="7", FACTORY_MAX_ATTEMPTS="4")
+    preferred = subprocess.run(
+        command, cwd=api_dir, env=env, capture_output=True, text=True, check=True
+    )
+    env.pop("FACTORY_KUBE_MAX_ATTEMPTS")
+    fallback = subprocess.run(
+        command, cwd=api_dir, env=env, capture_output=True, text=True, check=True
+    )
+    assert preferred.stdout.strip() == "7"
+    assert fallback.stdout.strip() == "4"
+
+
+def test_kube_runner_module_contract_documents_actual_limits():
+    import app.kube_runner as kube_runner
+
+    doc = inspect.getdoc(kube_runner)
+    assert "three consecutive infra outcomes" in doc
+    assert "running-pod capture is best-effort" in doc
+    assert "grades themselves are not epoch-fenced" in doc

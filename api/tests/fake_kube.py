@@ -55,6 +55,8 @@ class FakeKubeClient:
     creations: list[dict] = field(default_factory=list)
     deletions: list[str] = field(default_factory=list)
     observations: list[str] = field(default_factory=list)
+    raise_once: set[str] = field(default_factory=set)
+    raise_always: set[str] = field(default_factory=set)
     on_observe = None
 
     def create_job(self, manifest: dict) -> None:
@@ -66,6 +68,11 @@ class FakeKubeClient:
 
     def get_job(self, name: str) -> JobView:
         self.observations.append(name)
+        if name in self.raise_once:
+            self.raise_once.remove(name)
+            raise RuntimeError(f"one-shot observation failure for {name}")
+        if name in self.raise_always:
+            raise RuntimeError(f"persistent observation failure for {name}")
         job = self.jobs.get(name)
         if job is None or job.deleted:
             return JobView(name=name, phase="absent")

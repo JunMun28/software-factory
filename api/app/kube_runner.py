@@ -3,17 +3,20 @@
 FACTORY_RUNNER=kube. The factory stays a DB state machine driven by the
 leader's tick: nothing pushes work — each tick the runner *notices* runnable
 requests and running Jobs and advances them one step (spec §4; poll from the
-tick loop, no watch API). All Request lifecycle writes go through
-transitions.apply()/apply_committed() as MACHINE transitions (epoch-fenced);
+tick loop, no watch API). Request lifecycle transitions go through
+transitions.apply()/apply_committed(); raise_merge_gate and escalations are
+epoch-fenced, while durable StageJob grades themselves are not epoch-fenced.
 Job creation is an external side effect and rides the intent log (spec §3.3).
 
 Orchestrator-owned hard lines (spec §5/§6):
   * wall clock per (stage, attempt) — a partitioned node cannot strand a request;
   * only StageJob rows with status='running' are ever polled or graded — late
     completions of superseded attempts are discarded;
-  * the orchestrator owns Job deletion, ALWAYS after capturing envelope + logs;
-  * gate verdict absent = infra failure: the gate re-runs, no attempt consumed,
-    no escalation;
+  * the orchestrator attempts output capture before Job deletion; terminal-pod
+    capture is complete, while running-pod capture is best-effort until the
+    client seam can read running pod output;
+  * a missing gate verdict re-runs the same attempt, but three consecutive infra outcomes
+    consume that attempt as a gate failure instead of churning forever;
   * frozen surface: green's gate must report exactly the surface_hash red's
     succeeded gate recorded — a weakened test surface fails the attempt even
     when the (untrusted) gate pod claims a pass;
@@ -27,7 +30,7 @@ work oldest-first under the Job cap.
 import logging
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import intents, settings, transitions, verification
@@ -48,6 +51,7 @@ from .transitions import FACTORY, IntentSpec
 log = logging.getLogger("factory.kube")
 
 LOGS_TAIL = 20_000  # chars of captured NDJSON persisted per Job
+GATE_INFRA_LIMIT = 3
 
 # feed parity with AgentRunner's milestone texts (test_agent_runner asserts these prefixes)
 MILESTONES = {
@@ -73,6 +77,7 @@ MILESTONES = {
 class KubeJobRunner:
     def __init__(self, client: KubeClient | None = None):
         self._client = client
+        self._observe_failures: dict[str, int] = {}
 
     @property
     def client(self) -> KubeClient:
@@ -93,8 +98,15 @@ class KubeJobRunner:
             try:
                 self._observe(db, req, sj, moved)
             except Exception as exc:  # one broken Job stalls only its request (ADR 0013)
-                log.exception("kube observe failed for %s", sj.job_name)
                 db.rollback()
+                failures = self._observe_failures.get(sj.job_name, 0) + 1
+                self._observe_failures[sj.job_name] = failures
+                if failures == 1:
+                    log.warning("kube observe flaked for %s: %s", sj.job_name, exc)
+                    continue
+                log.exception("kube observe failed twice for %s", sj.job_name)
+                self._observe_failures.pop(sj.job_name, None)
+                req = db.get(Request, sj.request_id)
                 self._escalate(db, req, f"Job observation failed for {sj.job_name}: {exc}")
         running = db.scalars(select(StageJob).where(StageJob.status == "running")).all()
         busy = {r.request_id for r in running}
@@ -125,31 +137,43 @@ class KubeJobRunner:
 
     # ---------- reap: cancel (or any exit from the runnable set) wins ----------
     def _reap_dead_requests(self, db: Session, moved: list[str]) -> None:
-        """Running Jobs of non-runnable requests are captured, deleted, closed
-        (spec §4 'Cancel wins'). Capture still precedes deletion — a cancelled
-        run's logs are evidence too."""
+        """Close running Jobs whose requests left the runnable set.
+
+        Capture is attempted before deletion, but RealKubeClient currently reads
+        pod output only once Kubernetes marks a Job terminal. A cancelled Job
+        still reported as running therefore has best-effort (usually empty)
+        capture until the client seam grows running-pod capture support.
+        """
         for sj in db.scalars(select(StageJob).where(StageJob.status == "running")).all():
             req = db.get(Request, sj.request_id)
             if req and req.status == transitions.APPROVED and not req.needs_human:
                 continue
-            view = self.client.get_job(sj.job_name)
-            sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
-            sj.envelope = parse_envelope(view.termination_message)
-            self.client.delete_job(sj.job_name)
-            sj.status = "reaped"
-            sj.completed_at = utcnow()
-            db.commit()
-            moved.append(f"{req.ref if req else sj.request_id}: reaped {sj.job_name}")
+            try:
+                view = self.client.get_job(sj.job_name)
+                sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+                sj.envelope = parse_envelope(view.termination_message)
+                self.client.delete_job(sj.job_name)
+                sj.status = "reaped"
+                sj.completed_at = utcnow()
+                db.commit()
+                moved.append(f"{req.ref if req else sj.request_id}: reaped {sj.job_name}")
+            except Exception:
+                log.exception("kube reap failed for %s", sj.job_name)
+                db.rollback()
 
     # ---------- observe one running Job ----------
     def _observe(self, db: Session, req: Request, sj: StageJob, moved: list[str]) -> None:
         view = self.client.get_job(sj.job_name)
+        self._observe_failures.pop(sj.job_name, None)
         now = utcnow()
         if view.phase == "running":
             if now < sj.deadline_at:
                 return
             # orchestrator wall clock (spec §5): fires regardless of Job status —
-            # a partitioned node cannot strand the request
+            # a partitioned node cannot strand the request. Capture is attempted
+            # first, though production running-pod output is currently unavailable.
+            sj.envelope = parse_envelope(view.termination_message)
+            sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
             self.client.delete_job(sj.job_name)
             sj.status = "timed_out"
             sj.completed_at = now
@@ -166,6 +190,9 @@ class KubeJobRunner:
         if view.phase == "absent":
             # vanished under us (external deletion / create replay that never landed):
             # infra, not a domain failure — the same attempt re-runs
+            if sj.role == "gate":
+                self._grade(db, req, sj, view.phase, None, moved)
+                return
             sj.status = "infra"
             sj.completed_at = now
             db.commit()
@@ -225,11 +252,28 @@ class KubeJobRunner:
         moved: list[str],
     ) -> None:
         if envelope is None:
-            # absent verdict = INFRA failure: re-run, no attempt consumed,
-            # no escalation (spec §6)
-            sj.status = "infra"
+            infra_count = db.scalar(
+                select(func.count(StageJob.id)).where(
+                    StageJob.request_id == req.id,
+                    StageJob.stage == sj.stage,
+                    StageJob.attempt == sj.attempt,
+                    StageJob.role == sj.role,
+                    StageJob.status == "infra",
+                )
+            )
+            if (infra_count or 0) + 1 < GATE_INFRA_LIMIT:
+                sj.status = "infra"
+                db.commit()
+                moved.append(f"{req.ref}: {sj.job_name} produced no verdict — gate re-runs")
+                return
+            reason = (
+                f"{sj.stage} gate produced no verdict after {GATE_INFRA_LIMIT} "
+                f"consecutive infra outcomes (last phase: {phase})"
+            )
+            sj.status = "failed"
+            sj.envelope = {"outcome": "fail", "reason": reason}
             db.commit()
-            moved.append(f"{req.ref}: {sj.job_name} produced no verdict — gate re-runs")
+            self._after_failure(db, req, sj, reason, moved)
             return
         verdict = envelope.get("outcome")
         if verdict == "pass" and sj.stage == "green":
@@ -347,21 +391,27 @@ class KubeJobRunner:
         log.error("escalated %s: %s", req.ref, reason)
 
     # ---------- decide + spawn the next Job for a runnable request ----------
-    def _next_work(self, db: Session, req: Request):
-        """What to spawn right now, derived ONLY from StageJob rows — the
-        durable record a recovering leader re-attaches to (spec §3.4).
+    def _next_work(self, db: Session, req: Request, moved: list[str]):
+        """What to spawn from durable rows plus an explicit Request rewind.
+
+        StageJob rows remain the recovery record. A newer Request.stage entry
+        can deliberately invalidate later rows when an operator sends work back.
         Returns ("stage", kube_stage, attempt, feedback) | ("gate", kube_stage,
         attempt) | None (busy, or waiting at the merge gate)."""
+        all_rows = db.scalars(
+            select(StageJob)
+            .where(StageJob.request_id == req.id)
+            .order_by(StageJob.attempt, StageJob.id)
+        ).all()
+        self._supersede_rewound_rows(db, req, all_rows)
         for stage in KUBE_STAGES:
-            rows = db.scalars(
-                select(StageJob)
-                .where(StageJob.request_id == req.id, StageJob.stage == stage)
-                .order_by(StageJob.attempt, StageJob.id)
-            ).all()
+            history = [row for row in all_rows if row.stage == stage]
+            rows = [row for row in history if row.status != "superseded"]
             if any(r.role == "gate" and r.status == "succeeded" for r in rows):
                 continue  # stage fully graded — look at the next one
             if not rows:
-                return ("stage", stage, 1, "")
+                attempt = max((row.attempt for row in history), default=0) + 1
+                return ("stage", stage, attempt, "")
             if any(r.status == "running" for r in rows):
                 return None  # the observe pass owns it
             attempt = max(r.attempt for r in rows)
@@ -377,7 +427,48 @@ class KubeJobRunner:
             # failed / timed_out / reaped → next attempt (escalation, if due,
             # already happened at failure time; a human Retry cleared it)
             return ("stage", stage, attempt + 1, self._feedback(rows))
-        return None  # every stage graded — review grading raised the merge gate
+        review = next(
+            (
+                row
+                for row in reversed(all_rows)
+                if row.stage == "review"
+                and row.role == "gate"
+                and row.status == "succeeded"
+            ),
+            None,
+        )
+        if req.status == transitions.APPROVED and req.gate is None and review is not None:
+            self._finish_review(db, req, review.envelope or {}, moved)
+        return None
+
+    @staticmethod
+    def _supersede_rewound_rows(
+        db: Session, req: Request, rows: list[StageJob]
+    ) -> None:
+        target = next(
+            (stage for stage in KUBE_STAGES if REQUEST_STAGE[stage] == req.stage),
+            None,
+        )
+        if target is None or req.stage_entered_at is None:
+            return
+        target_index = KUBE_STAGES.index(target)
+        older_later_rows = [
+            row
+            for row in rows
+            if row.status != "superseded"
+            and row.created_at < req.stage_entered_at
+            and KUBE_STAGES.index(row.stage) > target_index
+        ]
+        if not older_later_rows:
+            return
+        for row in rows:
+            if (
+                row.status != "superseded"
+                and row.created_at < req.stage_entered_at
+                and KUBE_STAGES.index(row.stage) >= target_index
+            ):
+                row.status = "superseded"
+        db.commit()
 
     @staticmethod
     def _feedback(rows: list[StageJob]) -> str:
@@ -392,7 +483,7 @@ class KubeJobRunner:
         return ""
 
     def _spawn_next(self, db: Session, req: Request, moved: list[str]) -> bool:
-        work = self._next_work(db, req)
+        work = self._next_work(db, req, moved)
         if work is None:
             return False
         if work[0] == "stage":
@@ -474,9 +565,9 @@ class KubeJobRunner:
     ) -> bool:
         name = job_name(req.ref, stage, attempt, gate=True)
         # No Request-lifecycle CAS fits "spawn a gate" (the stage column does
-        # not move). The epoch fence bites at GRADING instead: a stale leader's
-        # stray gate Job loses its grade transition and gets reaped. The intent
-        # row still records the side effect (idempotent begin: a replay is None).
+        # not move). StageJob grades are deliberately unfenced; only a later
+        # raise_merge_gate or escalation is epoch-fenced. The intent row records
+        # the side effect (idempotent begin: a replay is None).
         intents.begin(db, f"spawn:{name}", intents.SPAWN_GATE_JOB, req.id, {"job": name})
         db.add(
             StageJob(

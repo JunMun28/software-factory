@@ -5,10 +5,33 @@ Revises: b71c2e4f9a10
 Create Date: 2026-07-15
 
 """
+from datetime import datetime, timezone
+
 import sqlalchemy as sa
+from sqlalchemy.types import TypeDecorator
 
 from alembic import op
-from app.models import TZDateTime
+
+
+class TZDateTime(TypeDecorator[datetime]):
+    """Frozen migration copy: naive UTC in storage, aware UTC in Python."""
+
+    impl = sa.DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("TZDateTime requires a timezone-aware datetime")
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+    def process_result_value(self, value: datetime | None, dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
 # revision identifiers, used by Alembic.
 revision = "7f2a9c4d1e88"

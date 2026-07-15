@@ -373,7 +373,7 @@ class StageJob(Base):
     job_name: Mapped[str] = mapped_column(String(63), index=True)
     epoch: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(12), default="running")
-    # running | succeeded | failed | timed_out | infra | reaped
+    # running | succeeded | failed | timed_out | infra | reaped | superseded
     envelope: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     logs_tail: Mapped[str | None] = mapped_column(Text, nullable=True)
     deadline_at: Mapped[datetime] = mapped_column(TZDateTime())
