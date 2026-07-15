@@ -210,3 +210,90 @@ def test_stage_job_uid_column_roundtrip():
         db.add(row)
         db.commit()
         assert db.get(StageJob, row.id).job_uid == "uid-abc"
+
+
+# ---------- manifests v2 (Plan B2 task 4) ----------
+
+
+def _pod(m):
+    return m["spec"]["template"]["spec"]
+
+
+def _env(m):
+    return {e["name"]: e["value"] for e in _pod(m)["containers"][0]["env"]}
+
+
+def test_manifests_carry_the_restricted_pod_shape():
+    m = stage_job_manifest("REQ-2052", "red", 1)
+    pod = _pod(m)
+    sec = pod["securityContext"]
+    assert sec["runAsNonRoot"] is True and sec["runAsUser"] == settings.KUBE_RUN_AS_UID
+    assert sec["runAsGroup"] == 0 and sec["fsGroup"] == 0
+    assert sec["seccompProfile"] == {"type": "RuntimeDefault"}
+    c = pod["containers"][0]
+    assert c["securityContext"] == {
+        "allowPrivilegeEscalation": False,
+        "capabilities": {"drop": ["ALL"]},
+    }
+    assert c["imagePullPolicy"] == "IfNotPresent"
+    assert pod["automountServiceAccountToken"] is False
+    assert {"name": "workspace", "mountPath": "/workspace"} in c["volumeMounts"]
+    assert {"name": "workspace", "emptyDir": {}} in pod["volumes"]
+    assert _env(m)["HOME"] == "/workspace"
+
+
+def test_service_accounts_split_by_role():
+    assert (
+        _pod(stage_job_manifest("REQ-2052", "red", 1))["serviceAccountName"]
+        == settings.KUBE_AGENT_SA
+    )
+    assert (
+        _pod(gate_job_manifest("REQ-2052", "red", 1))["serviceAccountName"]
+        == settings.KUBE_GATE_SA
+    )
+
+
+def test_codex_secret_only_on_stage_pods():
+    stage = _pod(stage_job_manifest("REQ-2052", "red", 1))
+    gate = _pod(gate_job_manifest("REQ-2052", "red", 1))
+    assert any(
+        v.get("secret", {}).get("secretName") == settings.CODEX_AUTH_SECRET
+        for v in stage["volumes"]
+    )
+    assert {
+        "name": "codex-auth",
+        "mountPath": "/secrets/codex",
+        "readOnly": True,
+    } in stage["containers"][0]["volumeMounts"]
+    assert not any(
+        "secret" in v for v in gate["volumes"]
+    )  # no LLM credential in gates (spec §6)
+
+
+def test_git_env_rides_the_remote_base(monkeypatch):
+    monkeypatch.setattr(settings, "GIT_REMOTE_BASE", "git://api:9418")
+    env = _env(stage_job_manifest("REQ-2052", "green", 2))
+    assert env["SF_REPO_URL"] == "git://api:9418/req-2052"
+    assert env["SF_BRANCH"] == "work/req-2052"
+    assert env["SF_CLI"] in ("codex", "opencode", "claude")
+    genv = _env(gate_job_manifest("REQ-2052", "green", 2, sha="a" * 40))
+    assert genv["SF_SHA"] == "a" * 40 and genv["SF_REPO_URL"] == "git://api:9418/req-2052"
+    assert "SF_CLI" not in genv  # gates never run a CLI
+    monkeypatch.setattr(settings, "GIT_REMOTE_BASE", "")
+    assert "SF_REPO_URL" not in _env(stage_job_manifest("REQ-2052", "green", 2))
+
+
+def test_review_gate_carries_the_reviewer_verdict():
+    env = _env(
+        gate_job_manifest(
+            "REQ-2052",
+            "review",
+            1,
+            sha="b" * 40,
+            review_verdict="APPROVE — implements the spec",
+        )
+    )
+    assert env["SF_REVIEW_VERDICT"].startswith("APPROVE")
+    assert "SF_REVIEW_VERDICT" not in _env(
+        gate_job_manifest("REQ-2052", "red", 1)
+    )
