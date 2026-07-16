@@ -837,30 +837,96 @@ class KubeJobRunner:
         self._escalate(db, req, reason)
 
     def _teardown_app(self, db: Session, req: Request, slug: str) -> None:
-        build = db.scalar(
+        # OPERATE-02: a closed/escalated deploy request stays at stage=deploy and
+        # is re-selected every tick. Guard against (a) re-running the deletes
+        # every tick (durable teardown marker + early return) and (b) deleting a
+        # SHARED live app another request owns (ownership decided by the DB, not a
+        # cluster label). Scope is DELETION safety only — apply-time cutover
+        # safety is deferred to C8.
+        lref = req.ref.lower()
+        rows = db.scalars(
             select(StageJob)
-            .where(StageJob.request_id == req.id, StageJob.role == "build")
+            .where(
+                StageJob.request_id == req.id,
+                StageJob.role.in_(("build", "deploy", "teardown")),
+            )
             .order_by(StageJob.id.desc())
-        )
+        ).all()
+        if rows and rows[0].role == "teardown":
+            return  # this closed episode was already cleaned (idempotent, once)
+        build = next((r for r in rows if r.role == "build"), None)
         if build is not None:
             try:
                 self.client.delete_job(build.job_name, uid=build.job_uid)
             except Exception:
                 log.exception("build teardown failed for %s", build.job_name)
+        # request-scoped ephemeral resources (C1 previews will carry sf/request);
+        # a no-op today — only the build Job has that label and Jobs are not
+        # deleted by delete_by_label.
         try:
-            self.client.delete_by_label(f"sf/instance={slug}")
+            self.client.delete_by_label(f"sf/request={lref}")
         except Exception:
-            log.exception("app teardown failed for %s", slug)
-        for row in db.scalars(
-            select(StageJob).where(
-                StageJob.request_id == req.id,
-                StageJob.role.in_(("build", "deploy")),
-                StageJob.status == "running",
+            log.exception("ephemeral teardown failed for %s", lref)
+        # the SHARED live app (sf/instance=<slug>) is deleted ONLY when nothing
+        # successful is live under this slug — a failed follow-up must never nuke
+        # a sibling's production.
+        deleted_instance = False
+        if not self._slug_has_live_app(db, req):
+            try:
+                self.client.delete_by_label(f"sf/instance={slug}")
+                deleted_instance = True
+            except Exception:
+                log.exception("app teardown failed for %s", slug)
+        for row in rows:
+            if row.role in ("build", "deploy") and row.status == "running":
+                row.status = "reaped"
+                row.completed_at = utcnow()
+        now = utcnow()
+        db.add(
+            StageJob(
+                request_id=req.id,
+                stage="deploy",
+                attempt=1,
+                role="teardown",
+                job_name=f"sf-{lref}-teardown",
+                epoch=get_elector().epoch,
+                status="succeeded",
+                deadline_at=now,
+                completed_at=now,
+                envelope={"teardown": True, "slug": slug,
+                          "deleted_instance": deleted_instance},
             )
-        ).all():
-            row.status = "reaped"
-            row.completed_at = utcnow()
+        )
         db.commit()
+
+    def _slug_has_live_app(self, db: Session, req: Request) -> bool:
+        """True iff a DIFFERENT request sharing this slug has a live (running or
+        succeeded) deploy — i.e. sf/instance=<slug> belongs to a sibling we must
+        NOT delete. `req` itself is excluded: the request being torn down is not
+        "live", and its own half-applied/succeeded-then-superseded debris is
+        exactly what teardown reclaims. Running is protected alongside succeeded
+        so a sibling mid-rollout (Deployment applied, rollout not yet finished) is
+        not nuked. Requests share a slug through Request.app_id (OPERATE-01's
+        follow-up linkage); an unregistered app (app_id is None) has a unique
+        ephemeral slug=ref, so no sibling can share it -> always False -> teardown
+        reclaims its own debris. HARD PRECONDITION for OPERATE-01/C8: the request
+        that owns a live deploy MUST carry the shared app_id, else this misses it
+        and teardown fails open into the nuke-prod bug."""
+        if req.app_id is None:
+            return False
+        q = (
+            select(StageJob.id)
+            .where(
+                StageJob.role == "deploy",
+                StageJob.status.in_(("running", "succeeded")),
+                StageJob.request_id != req.id,
+                StageJob.request_id.in_(
+                    select(Request.id).where(Request.app_id == req.app_id)
+                ),
+            )
+            .limit(1)
+        )
+        return db.scalar(q) is not None
 
     # ---------- failure policy: retry-with-feedback (N=2), then a human ----------
     def _after_failure(

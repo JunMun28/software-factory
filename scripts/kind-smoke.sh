@@ -127,6 +127,12 @@ echo "▸ the orchestrator owned the Job lifecycle: nothing left behind"
 LEFT=$(kubectl -n $NS get jobs -o name 2>/dev/null | grep "sf-$LREF" || true)
 [ -z "$LEFT" ] || fail "Jobs left behind (incl. build): $LEFT"
 ok "every sf-$LREF Job (stages, gates, build) was reaped after capture"
+# DEPLOY-03: Jobs being gone is not enough — a Job deleted without Foreground GC
+# orphans its pods (found live: 31 ownerless sf-req-* pods after 15h). Assert the
+# pods cascaded too, scoped by label (robust to slug/name overlap).
+PODS_LEFT=$(kubectl -n $NS get pods -l sf/request=$LREF -o name 2>/dev/null | wc -l | tr -d ' ')
+[ "$PODS_LEFT" = "0" ] || fail "orphaned pods after Job reap (DEPLOY-03): $PODS_LEFT left"
+ok "no orphaned pods — Foreground GC cascaded the reaped Jobs' pods"
 
 ./scripts/netpol-smoke.sh
 

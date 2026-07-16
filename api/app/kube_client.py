@@ -113,13 +113,16 @@ class RealKubeClient:
         )
 
     def delete_job(self, name: str, *, uid: str | None = None) -> None:
-        kwargs = {"propagation_policy": "Foreground"}
+        # Foreground GC must live INSIDE V1DeleteOptions: when a body is present
+        # the apiserver ignores the propagation_policy query param, and batch/v1
+        # Jobs then default to Orphan GC — which strands the pods (found live:
+        # 31 ownerless sf-req-* pods after 15h). The uid precondition still
+        # guards against deleting a same-named replacement Job.
+        body = self._types.V1DeleteOptions(propagation_policy="Foreground")
         if uid:
-            kwargs["body"] = self._types.V1DeleteOptions(
-                preconditions=self._types.V1Preconditions(uid=uid)
-            )
+            body.preconditions = self._types.V1Preconditions(uid=uid)
         try:
-            self._batch.delete_namespaced_job(name, self.ns, **kwargs)
+            self._batch.delete_namespaced_job(name, self.ns, body=body)
         except self._ApiException as e:
             if e.status != 404:
                 raise
@@ -161,7 +164,15 @@ class RealKubeClient:
         )
 
     def delete_by_label(self, selector: str) -> None:
-        self._apps.delete_collection_namespaced_deployment(self.ns, label_selector=selector)
+        # Same Orphan-default trap as delete_job (DEPLOY-03): a collection delete
+        # without Foreground propagation orphans the Deployment's ReplicaSets and
+        # Pods. Pass it in the body so the produced-app teardown actually reaps.
+        fg = self._types.V1DeleteOptions(propagation_policy="Foreground")
+        self._apps.delete_collection_namespaced_deployment(
+            self.ns, label_selector=selector, body=fg
+        )
         for item in self._core.list_namespaced_service(self.ns, label_selector=selector).items:
             self._core.delete_namespaced_service(item.metadata.name, self.ns)
-        self._net.delete_collection_namespaced_ingress(self.ns, label_selector=selector)
+        self._net.delete_collection_namespaced_ingress(
+            self.ns, label_selector=selector, body=fg
+        )

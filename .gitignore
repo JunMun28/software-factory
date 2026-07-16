@@ -15,3 +15,4 @@ workspaces/
 
 # Attachment uploads — runtime data (ADR 0022), like the DB
 api/uploads/
+.impeccable/

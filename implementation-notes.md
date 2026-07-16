@@ -311,3 +311,51 @@ already emits it via begin_deploy).
   confirmed at every call site). Deferred/acknowledged: post-done deploy-
   approve replay is a plain 409; the full retry→tick→re-approve mirror-stale
   recovery path is unit-proven only at the approve_merge level.
+
+## Plan C — end-to-end factory improvement program (2026-07-16)
+
+Full e2e audit (15 subagents + concurrency attacker + synthesizer) → gap
+register + roadmap in `docs/reviews/factory-e2e-gap-analysis-2026-07-16.md`
+(63 gaps: 6 CRITICAL / 24 HIGH / 24 MED / 9 LOW). Roadmap slices C1–C9;
+approved build order C2 → C1 → C4 → C3 → C5 → C7 → C6 → C8/C9. C1 = the
+mandated preview & feedback loop (pre-merge placement).
+
+### Deviations — C2 (correctness & failure-recovery hotfixes)
+
+- **C2 split into C2a + C2b.** The design→adversarial-verify workflow returned
+  NEEDS_WORK on all 8 gaps with genuine (not nitpick) findings. OPERATE-02 +
+  DEPLOY-03 (the two prod-destroying bugs, both in the teardown/reaping area)
+  are well-understood post-review and ship as **C2a** now. FAIL-01/02/03/04 have
+  real design subtlety (FAIL-01: a git timeout inside `surface_hash_at` would
+  flip a passing green to fail AND the timeout sentinel embeds the authed URL =
+  PAT leak; FAIL-04: never-scheduled pods never reach a terminal grade because
+  `JOB_ACTIVE_DEADLINE`(1800) < `STAGE_WALL_CLOCK`(2100); FAIL-03 couples to
+  C1's merge-gate re-entry) and touch the same `kube_client` methods, so they
+  get a v2 design pass as **C2b** after C2a lands. Conservative: ship the
+  critical safety fixes first, don't rush the entangled reliability set.
+- **FAIL-07 + DEPLOY-05 (rollback rewrite) deferred to C8.** Both came back
+  invariant-UNSAFE as designed and are entangled with app-registration
+  (OPERATE-01). Rollback is less urgent than the teardown/orphan bugs. The
+  coherent rollback rewrite belongs with C8 where the app/rollback lifecycle is
+  built. C2a's OPERATE-02 writes the invariant C8 must honor: **a live digest is
+  always backed by a durable `succeeded` deploy StageJob under the shared
+  `app_id`** (else teardown's `_slug_has_live_app` fails open).
+- **OPERATE-02 scoped to DELETION safety only.** The fix guarantees a failed
+  follow-up never *deletes* a live sibling's app. It does NOT address apply-time
+  *overwrite* (`_apply_deploy` writes the shared `sf/instance=<slug>` Deployment
+  before rollout/health passes) — that is blue-green cutover safety, deferred to
+  C8. Safe today because apps are unregistered (ephemeral slug = req.ref; no
+  shared prod exists yet). **Hard precondition handed to OPERATE-01:** the
+  request owning the first succeeded deploy MUST carry the shared `app_id`
+  (backfill onto A, not just follow-ups), or teardown fails open into the
+  original nuke-prod bug.
+- **Ownership by DB, not cluster label.** Shared prod (`sf/instance=<slug>`) is
+  deleted only when `_slug_has_live_app` is false (no request sharing the slug
+  has a succeeded deploy). Ephemeral/preview resources use `sf/request=<lref>`;
+  C1 preview manifests MUST label previews `sf/request` (never `sf/instance`).
+- **StageJob.role widened String(8)→String(16)** (migration): "teardown" is
+  exactly 8 chars = zero headroom on MSSQL VARCHAR(8), and C1 adds
+  preview/replan roles. Stale `# stage | gate` comment updated.
+- **31 pre-existing orphaned pods** (no ownerReference, uncollectable by the
+  Foreground/ttl fix) cleaned out-of-band via kubectl; the code fix prevents
+  future orphans. teardown "once" is once-per-episode (idempotent under crash).

@@ -72,6 +72,11 @@ JOB_ACTIVE_DEADLINE = int(os.environ.get("FACTORY_JOB_ACTIVE_DEADLINE", "1800"))
 GATE_ACTIVE_DEADLINE = int(os.environ.get("FACTORY_GATE_ACTIVE_DEADLINE", "900"))
 STAGE_WALL_CLOCK = int(os.environ.get("FACTORY_STAGE_WALL_CLOCK", "2100"))
 GATE_WALL_CLOCK = int(os.environ.get("FACTORY_GATE_WALL_CLOCK", "1200"))
+# Backstop reaper (DEPLOY-03): the orchestrator's explicit Foreground delete_job
+# is the PRIMARY reaper and captures logs/envelope first; ttlSecondsAfterFinished
+# only collects Jobs a crashed/absent orchestrator never got to. Generous on
+# purpose (1h) so it never races capture-before-delete on a healthy plane.
+JOB_TTL_AFTER_FINISHED = int(os.environ.get("FACTORY_JOB_TTL_AFTER_FINISHED", "3600"))
 # N=2: one retry-with-feedback, then needs_human (spec §4.6).
 KUBE_MAX_ATTEMPTS = int(
     os.environ.get(

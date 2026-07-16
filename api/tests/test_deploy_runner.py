@@ -24,7 +24,7 @@ from app import (
 )
 from app.db import SessionLocal
 from app.kube_runner import KubeJobRunner
-from app.models import AuditEvent, Intent, Request, StageJob, utcnow
+from app.models import App, AuditEvent, Intent, Request, StageJob, utcnow
 from app.ws_exec import _git
 
 DIGEST = "sha256:" + "d" * 64
@@ -41,14 +41,30 @@ def _enable_deploy(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "APP_DEPLOY", True)
 
 
-def _northwind_request(client, title):
-    app_id = next(app["id"] for app in client.get("/api/apps").json() if app["key"] == "northwind")
+def _northwind_request(client, title, app_id=None):
+    if app_id is None:
+        app_id = next(
+            app["id"] for app in client.get("/api/apps").json() if app["key"] == "northwind"
+        )
     return approved_request(
         client,
         app_id=app_id,
         title=title,
         description="Add a monthly export function that returns the export format name.",
     )
+
+
+def _dedicated_app(key):
+    # A fresh registered App with a unique slug so _slug_has_live_app (OPERATE-02)
+    # is not polluted by other tests' succeeded northwind deploys in the
+    # session-scoped DB. slug=key, so teardown targets sf/instance=<key>.
+    with SessionLocal() as db:
+        app = db.scalar(select(App).where(App.key == key))
+        if app is None:
+            app = App(key=key, name=key.title(), owner="qa", repo=f"sf-app-{key}")
+            db.add(app)
+            db.commit()
+        return app.id
 
 
 def _tick_until(client, runner, rid, predicate, limit=40):
@@ -62,7 +78,7 @@ def _tick_until(client, runner, rid, predicate, limit=40):
     raise AssertionError(f"condition not reached after {limit} ticks: {out}")
 
 
-def _to_merge_gate(client, monkeypatch, tmp_path, title, *, deploy=True):
+def _to_merge_gate(client, monkeypatch, tmp_path, title, *, deploy=True, app_id=None):
     # The session-scoped API client keeps rows between tests. A stranded deploy
     # intentionally replays teardown, so retire earlier scenarios before a new
     # FakeKubeClient starts representing the cluster.
@@ -78,7 +94,7 @@ def _to_merge_gate(client, monkeypatch, tmp_path, title, *, deploy=True):
         monkeypatch.setattr(settings, "APP_DEPLOY", False)
     runner = KubeJobRunner(client=(fake := FakeKubeClient()))
     honest_build(fake, settings.WORKSPACES)
-    request = _northwind_request(client, title)
+    request = _northwind_request(client, title, app_id=app_id)
     out = _tick_until(
         client, runner, request["id"], lambda item: item["gate"] == "approve_merge"
     )
@@ -164,9 +180,9 @@ def _github_merge_ready(client, monkeypatch, tmp_path, title, *, deploy=False):
     return request, runner, fake, github, graded
 
 
-def _spawn_and_finish_build(client, monkeypatch, tmp_path, title):
+def _spawn_and_finish_build(client, monkeypatch, tmp_path, title, *, app_id=None):
     request, approved, runner, fake = _to_merge_gate(
-        client, monkeypatch, tmp_path, title
+        client, monkeypatch, tmp_path, title, app_id=app_id
     )
     assert approved["stage"] == "deploy" and approved["status"] == transitions.APPROVED
     with SessionLocal() as db:
@@ -598,8 +614,10 @@ def test_probe_failure_escalates_not_a_silent_half_deploy(
 
 
 def test_cancel_during_deploy_tears_down_the_app(client, monkeypatch, tmp_path):
+    # dedicated app so no sibling northwind success makes _slug_has_live_app True
+    app_id = _dedicated_app("cancelteardown")
     request, runner, fake, build_name = _spawn_and_finish_build(
-        client, monkeypatch, tmp_path, "B3 cancel teardown"
+        client, monkeypatch, tmp_path, "B3 cancel teardown", app_id=app_id
     )
     with SessionLocal() as db:
         build = db.scalar(
@@ -616,23 +634,30 @@ def test_cancel_during_deploy_tears_down_the_app(client, monkeypatch, tmp_path):
     assert cancelled["status"] == transitions.CANCELLED
     with SessionLocal() as db:
         runner.tick(db)
-        runner.tick(db)  # teardown is safe to replay
+        runner.tick(db)  # OPERATE-02: teardown runs ONCE, the replay is a no-op
 
-    assert fake.deletions.count(build_name) >= deletion_count + 2
+    # nothing successful is live under this slug -> the app is deleted, but only
+    # once (the durable teardown marker early-returns the second tick)
+    assert fake.deletions.count(build_name) >= deletion_count + 1
     assert (build_name, build_uid) in fake.deletion_uids
-    assert fake.label_deletions[-2:] == [
-        "sf/instance=northwind",
-        "sf/instance=northwind",
-    ]
+    assert fake.label_deletions.count("sf/instance=cancelteardown") == 1
     assert not fake.objects
+    with SessionLocal() as db:
+        markers = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == request["id"], StageJob.role == "teardown"
+            )
+        ).all()
+        assert len(markers) == 1 and markers[0].envelope["deleted_instance"] is True
 
 
 def test_retry_after_deploy_timeout_reapplies(client, monkeypatch, tmp_path):
     # review HIGH: a dead deploy row (timed_out) must not dead-end the request —
     # after the human Retry the manifests are re-applied and a fresh row drives.
     monkeypatch.setattr(settings, "DEPLOY_WALL_CLOCK", -1)
+    app_id = _dedicated_app("retryteardown")
     request, runner, fake, _build_name = _spawn_and_finish_build(
-        client, monkeypatch, tmp_path, "B3 retry after deploy timeout"
+        client, monkeypatch, tmp_path, "B3 retry after deploy timeout", app_id=app_id
     )
     monkeypatch.setattr(kube_runner, "_http_ok", lambda _url: False)
     with SessionLocal() as db:
@@ -660,12 +685,65 @@ def test_retry_after_deploy_timeout_reapplies(client, monkeypatch, tmp_path):
     assert rows[-1].status == "running" and rows[-1].id != rows[0].id
 
     # and the fresh round can still finish
-    fake.mark_ready(deploy_manifests.app_name("northwind"))
+    fake.mark_ready(deploy_manifests.app_name("retryteardown"))
     monkeypatch.setattr(kube_runner, "_http_ok", lambda _url: True)
     with SessionLocal() as db:
         runner.tick(db)
         req = db.get(Request, request["id"])
         assert req.status == transitions.DONE and req.stage == "done"
+
+
+def test_failed_follow_up_deploy_preserves_the_live_sibling_app(
+    client, monkeypatch, tmp_path
+):
+    # OPERATE-02 core regression: request A deploys live (DONE); a follow-up B on
+    # the SAME registered app is cancelled at the deploy stage. B's teardown must
+    # NOT delete sf/instance=<slug> — A's production survives. Before the fix,
+    # B's teardown ran delete_by_label(sf/instance=<slug>) every tick and nuked
+    # A's live app.
+    app_id = _dedicated_app("op02shared")
+    a, body, runner, fake = _to_merge_gate(
+        client, monkeypatch, tmp_path, "A live", app_id=app_id
+    )
+    assert body["stage"] == "deploy" and body["gate"] is None
+    # drive A: build -> capture digest -> apply deploy -> rollout ready -> DONE
+    with SessionLocal() as db:
+        runner.tick(db)
+        a_build = db.scalar(
+            select(StageJob).where(
+                StageJob.request_id == a["id"], StageJob.role == "build"
+            )
+        ).job_name
+    fake.finish(a_build, {}, phase="succeeded")
+    fake.jobs[a_build].termination_message = DIGEST + "\n"
+    with SessionLocal() as db:
+        runner.tick(db)  # capture -> apply deploy
+    fake.mark_ready(deploy_manifests.app_name("op02shared"))
+    monkeypatch.setattr(kube_runner, "_http_ok", lambda _url: True)
+    with SessionLocal() as db:
+        runner.tick(db)  # rollout ready -> finish_done
+        assert db.get(Request, a["id"]).status == transitions.DONE
+    assert {obj["kind"] for obj in fake.applied} == {"Deployment", "Service", "Ingress"}
+    live_objs = dict(fake.objects)  # A's live app snapshot
+
+    # follow-up B on the SAME app, cancelled at the deploy stage
+    b = _northwind_request(client, "B cancelled", app_id=app_id)
+    _tick_until(client, runner, b["id"], lambda o: o["gate"] == "approve_merge")
+    client.post(f"/api/requests/{b['id']}/approve", json={"operator_id": 1})  # merge gate
+    client.post(f"/api/requests/{b['id']}/approve", json={"operator_id": 1})  # deploy gate
+    client.post(f"/api/requests/{b['id']}/cancel", json={"operator_id": 1})
+    with SessionLocal() as db:
+        runner.tick(db)  # cancelled deploy -> teardown, must preserve A's app
+
+    assert fake.objects == live_objs  # A's live app untouched
+    assert "sf/instance=op02shared" not in fake.label_deletions
+    with SessionLocal() as db:
+        marker = db.scalar(
+            select(StageJob).where(
+                StageJob.request_id == b["id"], StageJob.role == "teardown"
+            )
+        )
+        assert marker is not None and marker.envelope["deleted_instance"] is False
 
 
 def test_build_absent_respawns_bounded(client, monkeypatch, tmp_path):

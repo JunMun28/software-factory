@@ -119,6 +119,9 @@ def _base_job(
         "spec": {
             "backoffLimit": 0,
             "activeDeadlineSeconds": deadline,
+            # backstop reaper (DEPLOY-03): the orchestrator's Foreground delete is
+            # primary; this only collects Jobs a crashed orchestrator abandoned.
+            "ttlSecondsAfterFinished": settings.JOB_TTL_AFTER_FINISHED,
             "podFailurePolicy": {
                 "rules": [
                     {

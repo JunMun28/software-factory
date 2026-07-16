@@ -179,7 +179,8 @@ def test_real_delete_job_uses_uid_precondition_when_known():
     from app.kube_client import RealKubeClient
 
     class DeleteOptions:
-        def __init__(self, *, preconditions):
+        def __init__(self, *, propagation_policy=None, preconditions=None):
+            self.propagation_policy = propagation_policy
             self.preconditions = preconditions
 
     class Preconditions:
@@ -204,7 +205,17 @@ def test_real_delete_job_uses_uid_precondition_when_known():
 
     name, namespace, kwargs = real._batch.call
     assert (name, namespace) == ("sf-req-2050-red-1", "software-factory")
+    # DEPLOY-03: Foreground GC rides INSIDE the body (a query-param kwarg is
+    # ignored by the apiserver when a body is present -> Jobs default to Orphan).
+    assert kwargs["body"].propagation_policy == "Foreground"
     assert kwargs["body"].preconditions.uid == "uid-original"
+    assert "propagation_policy" not in kwargs
+
+    # no-uid path still deletes Foreground (just without the precondition)
+    real.delete_job("sf-req-2050-red-1")
+    _n, _ns, kwargs2 = real._batch.call
+    assert kwargs2["body"].propagation_policy == "Foreground"
+    assert kwargs2["body"].preconditions is None
 
 
 def test_fake_capture_gates_running_pod_logs():

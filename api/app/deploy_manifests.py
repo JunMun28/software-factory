@@ -67,6 +67,8 @@ def build_job_manifest(ref: str, slug: str, sha: str) -> dict:
         "spec": {
             "backoffLimit": 0,
             "activeDeadlineSeconds": settings.BUILD_ACTIVE_DEADLINE,
+            # backstop reaper (DEPLOY-03): explicit Foreground delete is primary.
+            "ttlSecondsAfterFinished": settings.JOB_TTL_AFTER_FINISHED,
             "podFailurePolicy": {
                 "rules": [{"action": "Ignore",
                            "onPodConditions": [{"type": "DisruptionTarget"}]}]

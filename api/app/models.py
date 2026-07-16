@@ -369,7 +369,7 @@ class StageJob(Base):
     request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"), index=True)
     stage: Mapped[str] = mapped_column(String(16))  # architecture | red | green | review
     attempt: Mapped[int] = mapped_column(Integer, default=1)
-    role: Mapped[str] = mapped_column(String(8))  # stage | gate
+    role: Mapped[str] = mapped_column(String(16))  # stage | gate | build | deploy | teardown
     job_name: Mapped[str] = mapped_column(String(63), index=True)
     # uid of the Kubernetes Job object this row spawned/adopted. Deterministic
     # names are REUSED across infra re-runs; the uid says which incarnation is
