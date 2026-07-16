@@ -294,3 +294,20 @@ already emits it via begin_deploy).
 - Console changes are additive only (gate union + one branch per site); the
   merge gate's existing copy is untouched.
 - Half B (GitHub) is planned and user-approved but deferred — see the B4 plan.
+
+## Plan B4b — GitHub as the real remote (2026-07-16)
+
+- Agents push to `github.com/<owner>/sf-app-<slug>` (private, created via the
+  intent log); the orchestrator fetches pushed SHAs + merged main into its
+  local mirror; gate/build pods keep cloning `git://api:9418` — the walls are
+  unchanged. Merge = GitHub API with the head==graded-SHA precondition; an
+  ancestor guard makes merge replay safe after a "merged on GitHub but mirror
+  stale" escalation.
+- Token hygiene (review-verified): the PAT rides an optional Secret env into
+  STAGE pods only; every git error string passes `sanitize_github_git_error`;
+  the entrypoint silences clone/push stderr and the read-only review stage
+  drops its credentialed origin right after the clone (review fixes).
+- `FACTORY_GITHUB_TOKEN` unset = byte-for-byte git-daemon mode (review
+  confirmed at every call site). Deferred/acknowledged: post-done deploy-
+  approve replay is a plain 409; the full retry→tick→re-approve mirror-stale
+  recovery path is unit-proven only at the approve_merge level.

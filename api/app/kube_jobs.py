@@ -21,7 +21,7 @@ log transfer failures remain best-effort.
 import json
 import re
 
-from . import settings
+from . import settings, workspace
 from .agent_exec import agent_cli
 
 
@@ -65,11 +65,23 @@ def _base_job(
     attempt: int,
     deadline: int,
     env: dict,
+    repo_slug: str | None = None,
 ) -> dict:
     env = {"HOME": "/workspace", **env}
     if settings.GIT_REMOTE_BASE:
         env.setdefault("SF_REPO_URL", f"{settings.GIT_REMOTE_BASE}/{ref.lower()}")
         env.setdefault("SF_BRANCH", f"work/{ref.lower()}")
+    if role == "stage" and settings.github_enabled():
+        env["SF_REPO_URL"] = workspace.github_https_url(repo_slug or ref.lower())
+        env["SF_GITHUB_TOKEN"] = {
+            "valueFrom": {
+                "secretKeyRef": {
+                    "name": settings.GITHUB_TOKEN_SECRET,
+                    "key": "token",
+                    "optional": True,
+                }
+            }
+        }
     volumes: list[dict] = [{"name": "workspace", "emptyDir": {}}]
     mounts: list[dict] = [{"name": "workspace", "mountPath": "/workspace"}]
     if role == "stage":
@@ -151,7 +163,11 @@ def _base_job(
                                 "capabilities": {"drop": ["ALL"]},
                             },
                             "env": [
-                                {"name": key, "value": str(value)}
+                                (
+                                    {"name": key, **value}
+                                    if isinstance(value, dict)
+                                    else {"name": key, "value": str(value)}
+                                )
                                 for key, value in env.items()
                             ],
                             "volumeMounts": mounts,
@@ -169,7 +185,12 @@ def _base_job(
 
 
 def stage_job_manifest(
-    ref: str, stage: str, attempt: int, *, feedback: str = ""
+    ref: str,
+    stage: str,
+    attempt: int,
+    *,
+    feedback: str = "",
+    repo_slug: str | None = None,
 ) -> dict:
     env = {
         "SF_REF": ref,
@@ -189,6 +210,7 @@ def stage_job_manifest(
         attempt=attempt,
         deadline=settings.JOB_ACTIVE_DEADLINE,
         env=env,
+        repo_slug=repo_slug,
     )
 
 

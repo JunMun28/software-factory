@@ -4,16 +4,28 @@ factory-owned deploy apply -> rollout wait -> health probe -> done, plus
 escalation + capture-before-delete + cancel teardown. Env-gated: unset REGISTRY
 keeps B2 (merge -> done) exactly."""
 
+import copy
+import json
 from datetime import timedelta
 
+from fake_github import FakeGitHub
 from fake_kube import FakeKubeClient, honest_build
 from helpers import approved_request
 from sqlalchemy import select
 
-from app import api_helpers, deploy_manifests, kube_runner, settings, transitions
+from app import (
+    api_helpers,
+    deploy_manifests,
+    intents,
+    kube_runner,
+    settings,
+    transitions,
+    workspace,
+)
 from app.db import SessionLocal
 from app.kube_runner import KubeJobRunner
 from app.models import AuditEvent, Intent, Request, StageJob, utcnow
+from app.ws_exec import _git
 
 DIGEST = "sha256:" + "d" * 64
 
@@ -91,6 +103,67 @@ def _to_merge_gate(client, monkeypatch, tmp_path, title, *, deploy=True):
     return request, body, runner, fake
 
 
+def _github_merge_ready(client, monkeypatch, tmp_path, title, *, deploy=False):
+    with SessionLocal() as db:
+        for old in db.scalars(select(Request).where(Request.stage == "deploy")).all():
+            old.stage = "done"
+        db.commit()
+    if deploy:
+        _enable_deploy(monkeypatch, tmp_path)
+    else:
+        _enable_git(monkeypatch, tmp_path)
+        monkeypatch.setattr(settings, "REGISTRY", "")
+        monkeypatch.setattr(settings, "APP_DEPLOY", False)
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "GITHUB_OWNER", "octocat")
+    monkeypatch.setattr(
+        KubeJobRunner,
+        "_push_github_baseline",
+        staticmethod(lambda _ws, _slug, _ref: None),
+    )
+    monkeypatch.setattr(
+        workspace, "push_branch_to_github", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        workspace, "fetch_ref_from_github", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        workspace, "fetch_main_from_github", lambda *_args, **_kwargs: None
+    )
+    github = FakeGitHub("octocat")
+    runner = KubeJobRunner(client=(fake := FakeKubeClient()), github=github)
+    honest_build(fake, settings.WORKSPACES)
+    deterministic_runner = fake.on_observe
+
+    def run_with_resolved_secrets(name, job):
+        resolved = copy.deepcopy(job)
+        container = resolved.manifest["spec"]["template"]["spec"]["containers"][0]
+        container["env"] = [
+            {"name": item["name"], "value": "test-token"}
+            if "secretKeyRef" in item.get("valueFrom", {})
+            else item
+            for item in container["env"]
+        ]
+        deterministic_runner(name, resolved)
+        job.phase = resolved.phase
+        job.termination_message = resolved.termination_message
+        job.logs = resolved.logs
+
+    fake.on_observe = run_with_resolved_secrets
+    request = _northwind_request(client, title)
+    out = _tick_until(
+        client, runner, request["id"], lambda item: item["gate"] == "approve_merge"
+    )
+    assert out["stage"] == "review" and not out["needs_human"]
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        graded = runner._last_graded_sha(db, req)
+    github.set_head("northwind", workspace.work_branch(request["ref"]), graded)
+    monkeypatch.setenv("FACTORY_RUNNER", "kube")
+    monkeypatch.setattr(api_helpers, "_pipeline", runner)
+    return request, runner, fake, github, graded
+
+
 def _spawn_and_finish_build(client, monkeypatch, tmp_path, title):
     request, approved, runner, fake = _to_merge_gate(
         client, monkeypatch, tmp_path, title
@@ -123,6 +196,256 @@ def test_merge_disabled_still_ends_at_done(client, monkeypatch, tmp_path):
             select(StageJob.role).where(StageJob.request_id == request["id"])
         ).all()
     assert "build" not in roles and "deploy" not in roles
+
+
+def test_github_merge_resolves_pr_intent_before_fallback_lookup(
+    client, monkeypatch, tmp_path
+):
+    request, _runner, _fake, github, _graded = _github_merge_ready(
+        client, monkeypatch, tmp_path / "intent", "GitHub PR intent resolution"
+    )
+    response = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == transitions.DONE
+    assert not any(call[0] == "find_open_pr" for call in github.calls)
+
+    request, _runner, _fake, github, _graded = _github_merge_ready(
+        client, monkeypatch, tmp_path / "fallback", "GitHub PR fallback resolution"
+    )
+    with SessionLocal() as db:
+        pr_intent = db.get(Intent, f"pr:{request['ref']}")
+        pr_intent.outcome_json = "{}"
+        db.commit()
+    response = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == transitions.DONE
+    assert any(call[0] == "find_open_pr" for call in github.calls)
+
+
+def test_github_pr_lookup_error_is_sanitized_and_escalated_once(
+    client, monkeypatch, tmp_path
+):
+    request, _runner, _fake, github, _graded = _github_merge_ready(
+        client, monkeypatch, tmp_path, "GitHub PR lookup failure"
+    )
+    with SessionLocal() as db:
+        pr_intent = db.get(Intent, f"pr:{request['ref']}")
+        pr_intent.outcome_json = "{}"
+        db.commit()
+    token = settings.GITHUB_TOKEN
+    leaked_url = (
+        f"https://x-access-token:{token}@github.com/octocat/sf-app-northwind.git"
+    )
+    monkeypatch.setattr(
+        github,
+        "find_open_pr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError(f"lookup failed for {leaked_url}")
+        ),
+    )
+
+    response = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["needs_human"]
+    assert "Could not resolve GitHub PR: lookup failed" in body["needs_human_reason"]
+    assert "No open GitHub PR" not in body["needs_human_reason"]
+    assert token not in body["needs_human_reason"]
+    assert "x-access-token:" not in body["needs_human_reason"]
+    events = client.get(
+        "/api/events", params={"request_id": request["id"]}
+    ).json()
+    assert len([event for event in events if event["kind"] == "escalation"]) == 1
+    with SessionLocal() as db:
+        merge_intent = db.get(Intent, f"merge:{request['ref']}")
+        outcome = json.loads(merge_intent.outcome_json)
+        assert merge_intent.status == "failed"
+        assert "Could not resolve GitHub PR: lookup failed" in outcome["error"]
+        assert token not in outcome["error"]
+        assert "x-access-token:" not in outcome["error"]
+
+
+def test_github_merge_uses_graded_sha_updates_mirror_and_raises_deploy_gate(
+    client, monkeypatch, tmp_path
+):
+    request, _runner, _fake, github, graded = _github_merge_ready(
+        client,
+        monkeypatch,
+        tmp_path,
+        "GitHub merge happy path",
+        deploy=True,
+    )
+    fetches = []
+    monkeypatch.setattr(
+        workspace,
+        "fetch_main_from_github",
+        lambda ws, slug: fetches.append((ws, slug)) or None,
+    )
+
+    response = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["gate"] == "approve_deploy" and body["stage"] == "deploy"
+    merge_call = next(call for call in github.calls if call[0] == "merge_pr")
+    assert merge_call[1] == "northwind" and merge_call[3] == graded
+    assert fetches == [(settings.WORKSPACES / request["ref"].lower(), "northwind")]
+    with SessionLocal() as db:
+        merge_intent = db.get(Intent, f"merge:{request['ref']}")
+        assert merge_intent.kind == "merge_pr" and merge_intent.status == "done"
+        assert json.loads(merge_intent.outcome_json)["merge_sha"] == f"{merge_call[2]:040x}"
+
+
+def test_github_merge_sha_mismatch_escalates_without_completion_or_tail(
+    client, monkeypatch, tmp_path
+):
+    request, _runner, _fake, github, _graded = _github_merge_ready(
+        client, monkeypatch, tmp_path, "GitHub stale head"
+    )
+    github.set_head(
+        "northwind", workspace.work_branch(request["ref"]), "f" * 40
+    )
+
+    response = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["needs_human"] and body["needs_human_reason"].startswith("Merge refused:")
+    assert body["stage"] == "review" and body["gate"] is None
+    with SessionLocal() as db:
+        merge_intent = db.get(Intent, f"merge:{request['ref']}")
+        assert merge_intent.status == "failed"
+    pr_number = next(call[2] for call in github.calls if call[0] == "merge_pr")
+    assert not github.prs[pr_number]["merged"]
+
+
+def test_github_merge_mirror_fetch_failure_escalates_without_completion_or_tail(
+    client, monkeypatch, tmp_path
+):
+    request, runner, _fake, github, graded = _github_merge_ready(
+        client, monkeypatch, tmp_path, "GitHub mirror fetch failure", deploy=True
+    )
+    monkeypatch.setattr(
+        workspace,
+        "fetch_main_from_github",
+        lambda *_args, **_kwargs: "fetch main failed",
+    )
+
+    response = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["needs_human"]
+    assert body["needs_human_reason"].startswith(
+        "Merged on GitHub but mirror update failed:"
+    )
+    assert body["stage"] == "review" and body["gate"] is None
+    with SessionLocal() as db:
+        merge_intent = db.get(Intent, f"merge:{request['ref']}")
+        assert merge_intent.status == "failed"
+    pr_number = next(call[2] for call in github.calls if call[0] == "merge_pr")
+    assert github.prs[pr_number]["merged"]
+
+    retried = client.post(
+        f"/api/requests/{request['id']}/retry",
+        json={"operator_id": 1, "note": "refresh merged main"},
+    )
+    assert retried.status_code == 200, retried.text
+    merge_calls_before = [call for call in github.calls if call[0] == "merge_pr"]
+
+    def refresh_merged_main(ws, slug):
+        assert slug == "northwind"
+        _git(ws, "checkout", "-q", "main")
+        merged = _git(ws, "merge", "--no-ff", "-q", "-m", "remote merge", graded)
+        assert merged.returncode == 0, merged.stderr
+        return None
+
+    monkeypatch.setattr(workspace, "fetch_main_from_github", refresh_merged_main)
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner.approve_merge(db, req, "Kim Park")
+        db.refresh(req)
+        merge_intent = db.get(Intent, f"merge:{request['ref']}")
+        assert merge_intent.status == "done"
+        assert req.gate == "approve_deploy" and req.stage == "deploy"
+    assert [call for call in github.calls if call[0] == "merge_pr"] == merge_calls_before
+
+
+def test_incomplete_github_merge_refreshes_main_and_recovers_without_second_merge(
+    client, monkeypatch, tmp_path
+):
+    request, _runner, _fake, github, graded = _github_merge_ready(
+        client, monkeypatch, tmp_path, "GitHub merge crash recovery"
+    )
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        intents.begin(
+            db,
+            f"merge:{req.ref}",
+            intents.MERGE_PR,
+            req.id,
+            {"slug": "northwind", "sha": graded},
+        )
+        db.commit()
+    merge_calls_before = [call for call in github.calls if call[0] == "merge_pr"]
+
+    def refresh_already_merged(ws, slug):
+        assert slug == "northwind"
+        _git(ws, "checkout", "-q", "main")
+        merged = _git(ws, "merge", "--no-ff", "-q", "-m", "remote merge", graded)
+        assert merged.returncode == 0, merged.stderr
+        return None
+
+    monkeypatch.setattr(workspace, "fetch_main_from_github", refresh_already_merged)
+    response = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == transitions.DONE
+    assert [call for call in github.calls if call[0] == "merge_pr"] == merge_calls_before
+    with SessionLocal() as db:
+        row = db.get(Intent, f"merge:{request['ref']}")
+        assert row.status == "done"
+        assert json.loads(row.outcome_json)["merge_sha"] == workspace.head_sha(
+            workspace.workspace_for(db.get(Request, request["id"])), "main"
+        )
+
+
+def test_incomplete_github_merge_before_side_effect_still_merges(
+    client, monkeypatch, tmp_path
+):
+    request, _runner, _fake, github, graded = _github_merge_ready(
+        client, monkeypatch, tmp_path, "GitHub pending merge before side effect"
+    )
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        intents.begin(
+            db,
+            f"merge:{req.ref}",
+            intents.MERGE_PR,
+            req.id,
+            {"slug": "northwind", "sha": graded},
+        )
+        db.commit()
+
+    response = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == transitions.DONE
+    merge_calls = [call for call in github.calls if call[0] == "merge_pr"]
+    assert len(merge_calls) == 1 and merge_calls[0][3] == graded
+    with SessionLocal() as db:
+        assert db.get(Intent, f"merge:{request['ref']}").status == "done"
 
 
 def test_merge_kicks_off_build_then_deploy_to_done(client, monkeypatch, tmp_path):

@@ -74,6 +74,92 @@ def repo_url(ref: str) -> str:
     return f"{base}/{ref.lower()}" if base else ""
 
 
+def github_https_url(slug: str) -> str:
+    """The public https URL of the produced-app repo (no credential)."""
+    return f"https://github.com/{settings.GITHUB_OWNER}/sf-app-{slug}.git"
+
+
+def _authed_url(slug: str) -> str:
+    # x-access-token is GitHub's convention for a bearer/PAT over https.
+    return (
+        f"https://x-access-token:{settings.GITHUB_TOKEN}"
+        f"@github.com/{settings.GITHUB_OWNER}/sf-app-{slug}.git"
+    )
+
+
+def sanitize_github_git_error(message: str) -> str:
+    """Remove GitHub credentials before an error crosses the workspace seam."""
+    sanitized = re.sub(
+        r"https://x-access-token:[^@\s]+@github\.com/",
+        "https://github.com/",
+        message or "",
+    )
+    if settings.GITHUB_TOKEN:
+        sanitized = sanitized.replace(settings.GITHUB_TOKEN, "<redacted>")
+    return sanitized
+
+
+def _github_git_error(out, fallback: str) -> str:
+    detail = sanitize_github_git_error(out.stderr or out.stdout).strip()[:200]
+    return detail or fallback
+
+
+def push_branch_to_github(
+    ws: Path, slug: str, ref: str, *, force: bool = False
+) -> str | None:
+    """Push the local work branch to GitHub. force (rewind to last-graded SHA on a
+    retry) uses --force-with-lease so a concurrent push is never clobbered. Returns
+    an error string or None. The authed URL is passed per-command, never persisted."""
+    br = work_branch(ref)
+    url = _authed_url(slug)
+    force_args = []
+    if force:
+        remote_ref = f"refs/heads/{br}"
+        remote = _git(ws, "ls-remote", url, remote_ref)
+        if remote.returncode != 0:
+            return _github_git_error(
+                remote, f"read remote {br} head from github failed"
+            )
+        expected = remote.stdout.strip().split(maxsplit=1)[0] if remote.stdout.strip() else ""
+        force_args = [f"--force-with-lease={remote_ref}:{expected}"]
+    args = ["push"] + force_args + [url, f"{br}:{br}"]
+    out = _git(ws, *args)
+    return None if out.returncode == 0 else _github_git_error(out, "push to github failed")
+
+
+def fetch_ref_from_github(
+    ws: Path, slug: str, ref: str, sha: str | None = None
+) -> str | None:
+    """Fetch the work branch (agent pushed to GitHub) into the LOCAL mirror so
+    git-daemon serves the pinned SHA to gate/build pods and surface_hash_at can
+    resolve it. Fast-forwards the local work branch; a rewind updates it hard.
+    Returns an error string or None."""
+    br = work_branch(ref)
+    if _git(ws, "fetch", _authed_url(slug), br).returncode != 0:
+        return f"fetch {br} from github failed"
+    if sha and head_sha(ws, "FETCH_HEAD") != sha:
+        return f"fetched head is not the reported SHA {sha[:12]}"
+    if _git(ws, "checkout", "-q", "main").returncode != 0:
+        return "could not check out local main"
+    # Move the local branch without checking it out.
+    if _git(ws, "branch", "-f", br, "FETCH_HEAD").returncode != 0:
+        return f"could not update local {br} to fetched head"
+    return None
+
+
+def fetch_main_from_github(ws: Path, slug: str) -> str | None:
+    """After a GitHub-API merge: pull merged main into the local mirror so the
+    build clone (git://api:9418/<ref>) sees the merge commit — B3's build path
+    is byte-for-byte unchanged."""
+    if _git(ws, "fetch", _authed_url(slug), "main").returncode != 0:
+        return "fetch main from github failed"
+    if _git(ws, "checkout", "-q", "main").returncode != 0:
+        return "could not check out local main"
+    if _git(ws, "reset", "-q", "--hard", "FETCH_HEAD").returncode != 0:
+        return "could not fast-forward local main to merged head"
+    return None
+
+
 def ensure_repo(req, spec: str) -> Path:
     """Create the per-request repo once; NEVER touch an existing one — agent
     pushes live there and must not be clobbered by a re-entrant tick."""

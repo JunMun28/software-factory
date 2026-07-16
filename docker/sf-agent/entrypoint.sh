@@ -21,7 +21,19 @@ die_stage() {
 REPO=/workspace/repo
 
 note "cloning $SF_REPO_URL ($SF_BRANCH)"
-git clone -q --branch "$SF_BRANCH" "$SF_REPO_URL" "$REPO" || die_stage "clone failed: $SF_REPO_URL"
+if [ -n "${SF_GITHUB_TOKEN:-}" ] && [[ "$SF_REPO_URL" == https://github.com/* ]]; then
+  AUTHED_URL="https://x-access-token:${SF_GITHUB_TOKEN}@${SF_REPO_URL#https://}"
+  git clone -q --branch "$SF_BRANCH" "$AUTHED_URL" "$REPO" >/dev/null 2>&1 || die_stage "clone failed"
+  if [ "$SF_STAGE" = "review" ]; then
+    # the read-only reviewer never pushes and its output is surfaced verbatim —
+    # it keeps NO credentialed origin after the clone
+    git -C "$REPO" remote set-url origin "$SF_REPO_URL" || die_stage "origin setup failed"
+  else
+    git -C "$REPO" remote set-url origin "$AUTHED_URL" || die_stage "origin setup failed"
+  fi
+else
+  git clone -q --branch "$SF_BRANCH" "$SF_REPO_URL" "$REPO" || die_stage "clone failed: $SF_REPO_URL"
+fi
 cd "$REPO"
 git config user.email agent@sf.local
 git config user.name "sf-agent"
@@ -103,6 +115,6 @@ fi
 git add -A
 git commit -q -m "$SF_REF: $SF_STAGE (attempt ${SF_ATTEMPT:-1})" 2>/dev/null \
   || note "stage produced no changes — the gate will judge the unchanged SHA"
-git push -q origin "HEAD:$SF_BRANCH" || die_stage "push to $SF_BRANCH failed"
+git push -q origin "HEAD:$SF_BRANCH" >/dev/null 2>&1 || die_stage "push to $SF_BRANCH failed"
 SHA="$(git rev-parse HEAD)"
 write_envelope "$(jq -cn --arg s "$SHA" '{v:1,outcome:"ok",detail:"stage complete",sha:$s}')"

@@ -27,6 +27,7 @@ Orchestrator-owned hard lines (spec §5/§6):
 Tick order matters: reap (cancel wins) → observe running Jobs → spawn next
 work oldest-first under the Job cap.
 """
+import json
 import logging
 import re
 import urllib.request
@@ -56,8 +57,9 @@ from .kube_jobs import (
     stage_job_manifest,
 )
 from .leader import get_elector
-from .models import PIPELINE_STAGES, Request, StageJob, utcnow
+from .models import PIPELINE_STAGES, Intent, Request, StageJob, utcnow
 from .transitions import FACTORY, IntentSpec
+from .ws_exec import _git
 
 log = logging.getLogger("factory.kube")
 
@@ -95,8 +97,9 @@ MILESTONES = {
 
 
 class KubeJobRunner:
-    def __init__(self, client: KubeClient | None = None):
+    def __init__(self, client: KubeClient | None = None, github=None):
         self._client = client
+        self._github = github
         self._observe_failures: dict[str, int] = {}
 
     @property
@@ -106,6 +109,14 @@ class KubeJobRunner:
 
             self._client = RealKubeClient()
         return self._client
+
+    @property
+    def github(self):
+        if self._github is None:
+            from .github import GitHub
+
+            self._github = GitHub()
+        return self._github
 
     # ---------- tick ----------
     def tick(self, db: Session) -> list[str]:
@@ -414,6 +425,23 @@ class KubeJobRunner:
         moved.append(f"{req.ref}: merge gate raised")
 
     # ---------- the human merge gate (kube mode) ----------
+    def _resolve_pr(
+        self, db: Session, req: Request, slug: str, ref: str
+    ) -> int | None:
+        pr_intent = db.get(Intent, f"pr:{ref}")
+        if pr_intent is not None:
+            try:
+                pr_number = json.loads(pr_intent.outcome_json).get("pr_number")
+            except (TypeError, ValueError):
+                pr_number = None
+            if isinstance(pr_number, int):
+                return pr_number
+        try:
+            pr_number = self.github.find_open_pr(slug, workspace.work_branch(ref))
+        except Exception as exc:
+            raise RuntimeError(f"Could not resolve GitHub PR: {exc}") from exc
+        return pr_number
+
     def approve_merge(self, db: Session, req: Request, actor: str) -> None:
         """SHA-precondition merge (spec §6, local edition): merge exactly the
         last graded SHA into main, or escalate. Without a git workspace (no
@@ -427,10 +455,99 @@ class KubeJobRunner:
         if not (ws / ".git").exists() or not sha:
             simulator.approve_merge(db, req, actor)
             return
-        err = workspace.merge_graded(ws, req.ref, sha, actor)
-        if err:
-            self._escalate(db, req, f"Merge failed: {err}")
-            return
+        intent_key = f"merge:{req.ref}"
+        fresh = intents.begin(
+            db,
+            intent_key,
+            intents.MERGE_PR,
+            req.id,
+            {"slug": self._app_slug(req), "sha": sha},
+        )
+        db.commit()
+        merge_intent = db.get(Intent, intent_key)
+        already_done = fresh is None and merge_intent.status == "done"
+        if fresh is None and not already_done:
+            recovery_error = None
+            if settings.github_enabled():
+                try:
+                    recovery_error = workspace.fetch_main_from_github(
+                        ws, self._app_slug(req)
+                    )
+                except Exception as exc:
+                    recovery_error = workspace.sanitize_github_git_error(str(exc))
+            graded_is_merged = (
+                _git(ws, "merge-base", "--is-ancestor", sha, "main").returncode
+                == 0
+            )
+            if graded_is_merged:
+                merge_sha = workspace.head_sha(ws, "main") or sha
+                intents.complete(db, intent_key, {"merge_sha": merge_sha})
+                already_done = True
+            elif recovery_error:
+                recovery_error = workspace.sanitize_github_git_error(
+                    recovery_error
+                )[:300]
+                intents.fail(db, intent_key, {"error": recovery_error})
+                self._escalate(
+                    db,
+                    req,
+                    f"Could not refresh GitHub main during merge recovery: "
+                    f"{recovery_error}",
+                )
+                return
+        if settings.github_enabled():
+            if not already_done:
+                slug = self._app_slug(req)
+                try:
+                    pr_number = self._resolve_pr(db, req, slug, req.ref)
+                except Exception as exc:
+                    detail = workspace.sanitize_github_git_error(str(exc))[:300]
+                    intents.fail(db, intent_key, {"error": detail})
+                    self._escalate(db, req, detail)
+                    return
+                if pr_number is None:
+                    detail = f"No open GitHub PR found for {req.ref}"
+                    intents.fail(db, intent_key, {"error": detail})
+                    self._escalate(db, req, detail)
+                    return
+                try:
+                    from .github import MergeShaMismatch
+
+                    merge_sha = self.github.merge_pr(slug, pr_number, sha)
+                except MergeShaMismatch as exc:
+                    detail = workspace.sanitize_github_git_error(str(exc))[:300]
+                    intents.fail(db, intent_key, {"error": detail})
+                    self._escalate(db, req, f"Merge refused: {detail}")
+                    return
+                except Exception as exc:
+                    detail = workspace.sanitize_github_git_error(str(exc))[:300]
+                    intents.fail(db, intent_key, {"error": detail})
+                    self._escalate(db, req, f"GitHub merge failed: {detail}")
+                    return
+                try:
+                    fetch_error = workspace.fetch_main_from_github(ws, slug)
+                except Exception as exc:
+                    fetch_error = workspace.sanitize_github_git_error(str(exc))
+                if fetch_error:
+                    fetch_error = workspace.sanitize_github_git_error(
+                        fetch_error
+                    )[:300]
+                    intents.fail(db, intent_key, {"error": fetch_error})
+                    self._escalate(
+                        db,
+                        req,
+                        f"Merged on GitHub but mirror update failed: {fetch_error}",
+                    )
+                    return
+                intents.complete(db, intent_key, {"merge_sha": merge_sha})
+        elif not already_done:
+            err = workspace.merge_graded(ws, req.ref, sha, actor)
+            if err:
+                intents.fail(db, intent_key, {"error": err})
+                self._escalate(db, req, f"Merge failed: {err}")
+                return
+            merge_sha = workspace.head_sha(ws, "main") or sha
+            intents.complete(db, intent_key, {"merge_sha": merge_sha})
         if settings.app_deploy_enabled():
             # B4: merge landed — WAIT at the deploy gate (spec §4.10). The build
             # is driven only after a human clears the gate; fenced + notified
@@ -813,16 +930,95 @@ class KubeJobRunner:
                 return sha
         return None
 
-    def _prepare_workspace(self, db: Session, req: Request) -> None:
+    def _prepare_workspace(
+        self, db: Session, req: Request, *, force_rewind: bool = False
+    ) -> None:
         """Before an agent Job clones: the repo exists and the work branch
         sits at the last graded SHA (or the SPEC baseline). A no-op between
         clean stages; the reset that matters happens on retries."""
         if not settings.GIT_REMOTE_BASE:
             return  # no git backbone configured: B1 behavior (unit fakes)
         ws = workspace.ensure_repo(req, workspace.spec_md(req))
+        if settings.github_enabled():
+            slug = self._app_slug(req)
+            intent_key = f"repo:{req.ref}"
+            fresh = intents.begin(
+                db,
+                intent_key,
+                intents.CREATE_REPO,
+                req.id,
+                {"slug": slug},
+            )
+            db.commit()
+            repo_intent = fresh or db.get(Intent, intent_key)
+            if repo_intent.status != "done":
+                try:
+                    clone_url = self.github.ensure_repo(slug)
+                    self._push_github_baseline(ws, slug, req.ref)
+                except Exception as exc:
+                    detail = workspace.sanitize_github_git_error(str(exc))[:300]
+                    intents.fail(db, intent_key, {"error": detail})
+                    raise RuntimeError(detail) from exc
+                intents.complete(db, intent_key, {"clone_url": clone_url})
         target = self._last_graded_sha(db, req) or workspace.BASELINE_TAG
+        before = workspace.head_sha(ws, workspace.work_branch(req.ref))
         if not workspace.reset_branch(ws, req.ref, target):
             raise RuntimeError(f"could not reset {req.ref} work branch to {target}")
+        if settings.github_enabled() and (
+            force_rewind or before != workspace.head_sha(ws)
+        ):
+            error = workspace.push_branch_to_github(
+                ws,
+                self._app_slug(req),
+                req.ref,
+                force=True,
+            )
+            if error:
+                raise RuntimeError(f"could not rewind GitHub work branch: {error}")
+
+    @staticmethod
+    def _push_github_baseline(ws, slug: str, ref: str) -> None:
+        pushed_main = _git(
+            ws,
+            "push",
+            workspace._authed_url(slug),
+            "main:main",
+        )
+        if pushed_main.returncode != 0:
+            detail = workspace.sanitize_github_git_error(
+                pushed_main.stderr or pushed_main.stdout
+            ).strip()[:200]
+            raise RuntimeError(detail or "push main to GitHub failed")
+        push_error = workspace.push_branch_to_github(ws, slug, ref)
+        if push_error:
+            raise RuntimeError(push_error)
+
+    def _open_pr(self, db: Session, req: Request, slug: str) -> bool:
+        intent_key = f"pr:{req.ref}"
+        fresh = intents.begin(
+            db,
+            intent_key,
+            intents.OPEN_PR,
+            req.id,
+            {"slug": slug, "branch": workspace.work_branch(req.ref)},
+        )
+        db.commit()
+        pr_intent = fresh or db.get(Intent, intent_key)
+        if pr_intent.status == "done":
+            return True
+        try:
+            pr_number = self.github.open_pr(
+                slug,
+                workspace.work_branch(req.ref),
+                req.ref,
+                workspace.spec_md(req),
+            )
+        except Exception as exc:
+            intents.fail(db, intent_key, {"error": str(exc)[:300]})
+            self._escalate(db, req, f"Could not open GitHub PR: {exc}")
+            return False
+        intents.complete(db, intent_key, {"pr_number": pr_number})
+        return True
 
     def _surface_check(self, db: Session, req: Request, sj: StageJob) -> str:
         """'ok' | 'violated' | 'unavailable'. The orchestrator computes the
@@ -985,7 +1181,6 @@ class KubeJobRunner:
         feedback: str,
         moved: list[str],
     ) -> bool:
-        self._prepare_workspace(db, req)
         name = job_name(req.ref, stage, attempt)
         # the fenced CAS + intent + StageJob row + heartbeat event land in ONE
         # transaction (spec §3.3); the external create happens after commit
@@ -1031,11 +1226,30 @@ class KubeJobRunner:
             },
         )
         db.commit()
+        try:
+            self._prepare_workspace(db, req, force_rewind=attempt > 1)
+        except Exception as exc:
+            detail = workspace.sanitize_github_git_error(str(exc))[:300]
+            row.status = "infra"
+            row.completed_at = utcnow()
+            intents.fail(db, f"spawn:{name}", {"error": detail})
+            self._escalate(
+                db,
+                req,
+                f"Workspace preparation failed before {name}: {detail}",
+            )
+            return False
         return self._create(
             db,
             req,
             row,
-            stage_job_manifest(req.ref, stage, attempt, feedback=feedback),
+            stage_job_manifest(
+                req.ref,
+                stage,
+                attempt,
+                feedback=feedback,
+                repo_slug=self._app_slug(req),
+            ),
             moved,
         )
 
@@ -1081,6 +1295,29 @@ class KubeJobRunner:
             db.add(row)
             self._grade(db, req, row, "failed", row.envelope, moved)
             return False
+        if settings.github_enabled():
+            ws = workspace.workspace_for(req)
+            try:
+                fetch_error = workspace.fetch_ref_from_github(
+                    ws,
+                    self._app_slug(req),
+                    req.ref,
+                    sha=pinned_sha,
+                )
+            except Exception as exc:
+                fetch_error = workspace.sanitize_github_git_error(str(exc))
+            if fetch_error:
+                self._escalate(
+                    db,
+                    req,
+                    f"could not fetch {pinned_sha[:12]} from GitHub before grading: "
+                    f"{fetch_error}",
+                )
+                return False
+            if stage == "architecture" and not self._open_pr(
+                db, req, self._app_slug(req)
+            ):
+                return False
         review_verdict = (
             (stage_env.get("detail") or "") if stage == "review" else ""
         )

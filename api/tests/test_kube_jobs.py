@@ -1,14 +1,17 @@
 """Kube building blocks: settings, StageJob rows, names, manifests, envelopes."""
 
+import os
 import subprocess
 import sys
 import uuid
 from datetime import timezone
+from pathlib import Path
 
 import pytest
 
 from app import settings
 from app.db import SessionLocal, migrate
+from app.deploy_manifests import build_job_manifest
 from app.kube_jobs import (
     KUBE_STAGES,
     REQUEST_STAGE,
@@ -265,6 +268,13 @@ def _env(m):
     return {e["name"]: e["value"] for e in _pod(m)["containers"][0]["env"]}
 
 
+def _env_entries(m):
+    return {
+        entry["name"]: entry
+        for entry in _pod(m)["containers"][0]["env"]
+    }
+
+
 def test_manifests_carry_the_restricted_pod_shape():
     m = stage_job_manifest("REQ-2052", "red", 1)
     pod = _pod(m)
@@ -325,6 +335,237 @@ def test_git_env_rides_the_remote_base(monkeypatch):
     assert "SF_REPO_URL" not in _env(stage_job_manifest("REQ-2052", "green", 2))
 
 
+def test_github_stage_manifest_uses_slug_and_optional_token_secret(monkeypatch):
+    monkeypatch.setattr(settings, "GIT_REMOTE_BASE", "git://api:9418")
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "orchestrator-only-token")
+    monkeypatch.setattr(settings, "GITHUB_OWNER", "octocat")
+
+    manifest = stage_job_manifest(
+        "REQ-2052", "green", 2, repo_slug="northwind"
+    )
+    env = _env_entries(manifest)
+
+    assert env["SF_REPO_URL"] == {
+        "name": "SF_REPO_URL",
+        "value": "https://github.com/octocat/sf-app-northwind.git",
+    }
+    assert env["SF_BRANCH"] == {
+        "name": "SF_BRANCH",
+        "value": "work/req-2052",
+    }
+    assert env["SF_GITHUB_TOKEN"] == {
+        "name": "SF_GITHUB_TOKEN",
+        "valueFrom": {
+            "secretKeyRef": {
+                "name": "sf-github-token",
+                "key": "token",
+                "optional": True,
+            }
+        },
+    }
+    assert "value" not in env["SF_GITHUB_TOKEN"]
+    assert "orchestrator-only-token" not in str(manifest)
+
+
+def test_github_stage_manifest_honors_custom_token_secret(monkeypatch):
+    monkeypatch.setattr(settings, "GIT_REMOTE_BASE", "git://api:9418")
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "orchestrator-only-token")
+    monkeypatch.setattr(settings, "GITHUB_OWNER", "octocat")
+    monkeypatch.setattr(settings, "GITHUB_TOKEN_SECRET", "custom-github-secret")
+
+    env = _env_entries(
+        stage_job_manifest("REQ-2052", "red", 1, repo_slug="northwind")
+    )
+
+    assert env["SF_GITHUB_TOKEN"]["valueFrom"]["secretKeyRef"] == {
+        "name": "custom-github-secret",
+        "key": "token",
+        "optional": True,
+    }
+
+
+def test_token_unset_stage_manifest_is_b2_b3_identical(monkeypatch):
+    monkeypatch.setattr(settings, "GIT_REMOTE_BASE", "git://api:9418")
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "")
+    monkeypatch.setattr(settings, "GITHUB_OWNER", "")
+    expected = stage_job_manifest("REQ-2052", "green", 2)
+
+    monkeypatch.setattr(settings, "GITHUB_OWNER", "octocat")
+    actual = stage_job_manifest(
+        "REQ-2052", "green", 2, repo_slug="northwind"
+    )
+
+    assert actual == expected
+
+
+def test_github_does_not_change_gate_or_build_manifests(monkeypatch):
+    monkeypatch.setattr(settings, "GIT_REMOTE_BASE", "git://api:9418")
+    monkeypatch.setattr(settings, "REGISTRY", "registry.local:5000")
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "")
+    monkeypatch.setattr(settings, "GITHUB_OWNER", "")
+    gate_before = gate_job_manifest("REQ-2052", "green", 2, sha="a" * 40)
+    build_before = build_job_manifest("REQ-2052", "northwind", "b" * 40)
+
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "orchestrator-only-token")
+    monkeypatch.setattr(settings, "GITHUB_OWNER", "octocat")
+    gate_after = gate_job_manifest("REQ-2052", "green", 2, sha="a" * 40)
+    build_after = build_job_manifest("REQ-2052", "northwind", "b" * 40)
+
+    assert gate_after == gate_before
+    assert build_after == build_before
+    assert "SF_GITHUB_TOKEN" not in str(gate_after)
+    assert "SF_GITHUB_TOKEN" not in str(build_after)
+    assert "orchestrator-only-token" not in str(gate_after)
+    assert "orchestrator-only-token" not in str(build_after)
+
+
+def test_entrypoint_authenticates_only_github_clone_without_leaking_token():
+    source = (
+        Path(__file__).resolve().parents[2] / "docker/sf-agent/entrypoint.sh"
+    ).read_text()
+
+    assert '[[ "$SF_REPO_URL" == https://github.com/* ]]' in source
+    assert (
+        'AUTHED_URL="https://x-access-token:${SF_GITHUB_TOKEN}'
+        '@${SF_REPO_URL#https://}"'
+    ) in source
+    assert (
+        'git clone -q --branch "$SF_BRANCH" "$AUTHED_URL" "$REPO" '
+        '>/dev/null 2>&1 || die_stage "clone failed"'
+    ) in source
+    assert 'git -C "$REPO" remote set-url origin "$AUTHED_URL"' in source
+    assert (
+        'git clone -q --branch "$SF_BRANCH" "$SF_REPO_URL" "$REPO" '
+        '|| die_stage "clone failed: $SF_REPO_URL"'
+    ) in source
+    assert not any(
+        "AUTHED_URL" in line and line.lstrip().startswith("note ")
+        for line in source.splitlines()
+    )
+    assert 'die_stage "clone failed: $AUTHED_URL"' not in source
+
+
+def _run_clone_entrypoint(tmp_path, *, repo_url, token=""):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    git_calls = tmp_path / "git-calls"
+    termlog = tmp_path / "termination-log"
+    termlog.write_text("")
+
+    fake_git = fake_bin / "git"
+    fake_git.write_text(
+        """#!/usr/bin/env bash
+command="$1"
+{
+  printf '%s' "$1"
+  shift
+  printf '\t%s' "$@"
+  printf '\n'
+} >> "$GIT_CALLS"
+if [ "$command" = "clone" ]; then
+  for arg in "$@"; do
+    case "$arg" in
+      https://x-access-token:*)
+        printf 'git clone failed for %s\n' "$arg" >&2
+        ;;
+    esac
+  done
+fi
+exit 0
+"""
+    )
+    fake_git.chmod(0o755)
+
+    fake_jq = fake_bin / "jq"
+    fake_jq.write_text(
+        """#!/usr/bin/env bash
+printf '{"type":"note","text":"safe"}\n'
+"""
+    )
+    fake_jq.chmod(0o755)
+
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text("cd() { return 0; }\n")
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "BASH_ENV": str(bash_env),
+        "GIT_CALLS": str(git_calls),
+        "SF_TERMLOG": str(termlog),
+        "SF_REF": "REQ-2052",
+        "SF_STAGE": "build",
+        "SF_ROLE": "clone",
+        "SF_REPO_URL": repo_url,
+        "SF_BRANCH": "main",
+        "SF_SHA": "a" * 40,
+        "SF_GITHUB_TOKEN": token,
+    }
+    entrypoint = Path(__file__).resolve().parents[2] / "docker/sf-agent/entrypoint.sh"
+
+    result = subprocess.run(
+        ["bash", str(entrypoint)],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    calls = [line.split("\t") for line in git_calls.read_text().splitlines()]
+    captured = result.stdout + result.stderr + termlog.read_text()
+    return result, calls, captured
+
+
+def test_entrypoint_github_clone_uses_auth_without_output_leak(tmp_path):
+    repo_url = "https://github.com/acme/sf-app-northwind.git"
+    token = "super-secret-token"
+    authed_url = (
+        "https://x-access-token:super-secret-token"
+        "@github.com/acme/sf-app-northwind.git"
+    )
+
+    result, calls, captured = _run_clone_entrypoint(
+        tmp_path, repo_url=repo_url, token=token
+    )
+
+    assert result.returncode == 0, captured
+    assert calls[0] == [
+        "clone",
+        "-q",
+        "--branch",
+        "main",
+        authed_url,
+        "/workspace/repo",
+    ]
+    assert calls[1] == [
+        "-C",
+        "/workspace/repo",
+        "remote",
+        "set-url",
+        "origin",
+        authed_url,
+    ]
+    assert token not in captured
+    assert "x-access-token:" not in captured
+
+
+def test_entrypoint_non_github_clone_preserves_original_remote(tmp_path):
+    repo_url = "git://api:9418/req-2052"
+
+    result, calls, captured = _run_clone_entrypoint(
+        tmp_path, repo_url=repo_url, token="unused-token"
+    )
+
+    assert result.returncode == 0, captured
+    assert calls[0] == [
+        "clone",
+        "-q",
+        "--branch",
+        "main",
+        repo_url,
+        "/workspace/repo",
+    ]
+    assert not any(call[2:5] == ["remote", "set-url", "origin"] for call in calls)
+
+
 def test_review_gate_carries_the_reviewer_verdict():
     env = _env(
         gate_job_manifest(
@@ -339,3 +580,15 @@ def test_review_gate_carries_the_reviewer_verdict():
     assert "SF_REVIEW_VERDICT" not in _env(
         gate_job_manifest("REQ-2052", "red", 1)
     )
+
+
+def test_entrypoint_push_and_review_paths_cannot_leak_the_token():
+    # review MEDIUM (B4b): a failed push must not echo the authed origin URL
+    # into captured logs; the read-only review stage must not keep a
+    # credentialed origin after its clone.
+    src = (
+        Path(__file__).resolve().parents[2] / "docker/sf-agent/entrypoint.sh"
+    ).read_text()
+    push_line = next(line for line in src.splitlines() if "git push -q origin" in line)
+    assert "2>&1" in push_line or "2>/dev/null" in push_line
+    assert 'remote set-url origin "$SF_REPO_URL"' in src  # review keeps the clean URL

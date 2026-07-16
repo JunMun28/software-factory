@@ -13,6 +13,8 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
+from fake_github import FakeGitHub
 from fake_kube import (
     GOOD_METRICS,
     SURFACE,
@@ -25,16 +27,41 @@ from fake_kube import (
 from helpers import approved_request
 from sqlalchemy import select
 
-from app import settings, simulator, transitions, workspace
+from app import intents, settings, simulator, transitions, workspace
+from app import kube_runner as kube_runner_module
 from app.db import SessionLocal
+from app.kube_jobs import job_name
 from app.kube_runner import KubeJobRunner
-from app.models import Request, StageJob, utcnow
+from app.models import Intent, Request, StageJob, utcnow
 from app.ws_exec import _git
 
 
 def make_runner() -> tuple[KubeJobRunner, FakeKubeClient]:
     fake = FakeKubeClient()
     return KubeJobRunner(client=fake), fake
+
+
+def test_github_dependency_is_injectable_and_lazy(monkeypatch):
+    fake_kube = FakeKubeClient()
+    injected = FakeGitHub("octocat")
+    runner = KubeJobRunner(client=fake_kube, github=injected)
+
+    assert runner.github is injected
+
+    import app.github as github_module
+
+    constructed = []
+
+    def make_github():
+        constructed.append(True)
+        return injected
+
+    monkeypatch.setattr(github_module, "GitHub", make_github)
+    lazy = KubeJobRunner(client=fake_kube)
+    assert lazy._github is None
+    assert lazy.github is injected
+    assert lazy.github is injected
+    assert constructed == [True]
 
 
 def tick_until(client, runner, rid: int, pred, limit: int = 40):
@@ -775,10 +802,561 @@ def _git_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "WORKSPACES", tmp_path / "kube-ws")
 
 
+def _github_mode(monkeypatch, tmp_path):
+    _git_mode(monkeypatch, tmp_path)
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "GITHUB_OWNER", "octocat")
+
+
 def _commit_all(ws, msg):
     _git(ws, "add", "-A")
     _git(ws, "commit", "-q", "-m", msg)
     return _git(ws, "rev-parse", "HEAD").stdout.strip()
+
+
+def test_github_workspace_prep_creates_and_pushes_repo_once(
+    client, monkeypatch, tmp_path
+):
+    _github_mode(monkeypatch, tmp_path)
+    github = FakeGitHub("octocat")
+    runner = KubeJobRunner(client=FakeKubeClient(), github=github)
+    request = _approved(client, "GitHub repo preparation")
+    effects = []
+
+    ensure_repo = github.ensure_repo
+
+    def record_repo(slug):
+        effects.append(("repo", slug))
+        return ensure_repo(slug)
+
+    def record_git(ws, *args):
+        effects.append(("git", *args))
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    def record_work_push(ws, slug, ref, *, force=False):
+        effects.append(("work", slug, ref, force))
+        return None
+
+    monkeypatch.setattr(github, "ensure_repo", record_repo)
+    monkeypatch.setattr(kube_runner_module, "_git", record_git, raising=False)
+    monkeypatch.setattr(workspace, "push_branch_to_github", record_work_push)
+
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner._prepare_workspace(db, req)
+        runner._prepare_workspace(db, req)
+        row = db.get(Intent, f"repo:{req.ref}")
+
+    assert effects[0] == ("repo", "northwind")
+    assert any(effect[0] == "git" and effect[-1] == "main:main" for effect in effects)
+    assert effects[-1] == ("work", "northwind", request["ref"], False)
+    assert effects.count(("repo", "northwind")) == 1
+    assert effects.count(("work", "northwind", request["ref"], False)) == 1
+    assert row.kind == "create_repo" and row.status == "done"
+    assert json.loads(row.payload_json) == {"slug": "northwind"}
+    assert json.loads(row.outcome_json)["clone_url"].endswith("/sf-app-northwind.git")
+
+
+@pytest.mark.parametrize("intent_status", ["pending", "failed"])
+def test_incomplete_repo_intent_replays_idempotent_setup_and_completes(
+    client, monkeypatch, tmp_path, intent_status
+):
+    _github_mode(monkeypatch, tmp_path)
+    github = FakeGitHub("octocat")
+    runner = KubeJobRunner(client=FakeKubeClient(), github=github)
+    request = _approved(client, "GitHub incomplete repo intent")
+    effects = []
+    monkeypatch.setattr(
+        kube_runner_module,
+        "_git",
+        lambda _ws, *args: effects.append(("main", args[-1]))
+        or subprocess.CompletedProcess(args, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        workspace,
+        "push_branch_to_github",
+        lambda _ws, slug, ref, *, force=False: effects.append(
+            ("work", slug, ref, force)
+        )
+        or None,
+    )
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner._prepare_workspace(db, req)
+        row = db.get(Intent, f"repo:{req.ref}")
+        row.status = intent_status
+        row.outcome_json = "{}"
+        db.commit()
+        db.expunge(row)
+        effects.clear()
+
+        runner._prepare_workspace(db, req)
+        row = db.get(Intent, f"repo:{req.ref}")
+
+    assert effects == [
+        ("main", "main:main"),
+        ("work", "northwind", request["ref"], False),
+    ]
+    assert [call[0] for call in github.calls].count("ensure_repo") == 2
+    assert row.status == "done"
+
+
+def test_repo_push_error_escalates_without_spawning_stage(
+    client, monkeypatch, tmp_path
+):
+    _github_mode(monkeypatch, tmp_path)
+    github = FakeGitHub("octocat")
+    fake = FakeKubeClient()
+    runner = KubeJobRunner(client=fake, github=github)
+    request = _approved(client, "GitHub repo push failure")
+    monkeypatch.setattr(
+        kube_runner_module,
+        "_git",
+        lambda _ws, *args: subprocess.CompletedProcess(
+            args, 1, "", "remote rejected baseline"
+        ),
+    )
+
+    with SessionLocal() as db:
+        runner.tick(db)
+        req = db.get(Request, request["id"])
+        repo_intent = db.get(Intent, f"repo:{req.ref}")
+        assert req.needs_human
+        assert "remote rejected baseline" in req.needs_human_reason
+        assert repo_intent.status == "failed"
+
+    assert not any(
+        manifest["metadata"]["labels"]["sf/request"] == request["ref"].lower()
+        for manifest in fake.creations
+    )
+
+
+def test_github_retry_reset_force_pushes_after_reset_and_escalates_on_error(
+    client, monkeypatch, tmp_path
+):
+    _github_mode(monkeypatch, tmp_path)
+    github = FakeGitHub("octocat")
+    runner = KubeJobRunner(client=FakeKubeClient(), github=github)
+    request = _approved(client, "GitHub retry rewind")
+    monkeypatch.setattr(
+        kube_runner_module,
+        "_git",
+        lambda _ws, *args: subprocess.CompletedProcess(args, 0, "", ""),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        workspace, "push_branch_to_github", lambda *_args, **_kwargs: None
+    )
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner._prepare_workspace(db, req)
+        ws = workspace.workspace_for(req)
+    (ws / "HALFDONE.md").write_text("stray work\n")
+    _commit_all(ws, "half done")
+
+    force_calls = []
+
+    def reject_force(push_ws, slug, ref, *, force=False):
+        if ref != request["ref"]:
+            return None
+        force_calls.append((slug, ref, force, workspace.head_sha(push_ws)))
+        return "remote rejected force push"
+
+    monkeypatch.setattr(workspace, "push_branch_to_github", reject_force)
+    with SessionLocal() as db:
+        runner.tick(db)
+        req = db.get(Request, request["id"])
+        assert req.needs_human
+        assert "remote rejected force push" in req.needs_human_reason
+
+    assert force_calls == [
+        ("northwind", request["ref"], True, workspace.head_sha(ws, workspace.BASELINE_TAG))
+    ]
+
+
+def test_github_retry_force_pushes_even_when_local_head_is_already_at_target(
+    client, monkeypatch, tmp_path
+):
+    _github_mode(monkeypatch, tmp_path)
+    github = FakeGitHub("octocat")
+    fake = FakeKubeClient()
+    runner = KubeJobRunner(client=fake, github=github)
+    request = _approved(client, "GitHub remote-only stale retry")
+    monkeypatch.setattr(
+        kube_runner_module,
+        "_git",
+        lambda _ws, *args: subprocess.CompletedProcess(args, 0, "", ""),
+    )
+    pushes = []
+    monkeypatch.setattr(
+        workspace,
+        "push_branch_to_github",
+        lambda _ws, slug, ref, *, force=False: pushes.append((slug, ref, force))
+        or None,
+    )
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner._prepare_workspace(db, req)
+        pushes.clear()
+        db.add(
+            StageJob(
+                request_id=req.id,
+                stage="architecture",
+                attempt=1,
+                role="stage",
+                job_name=job_name(req.ref, "architecture", 1),
+                status="failed",
+                epoch=1,
+                deadline_at=utcnow(),
+            )
+        )
+        db.commit()
+
+        assert runner._spawn_stage(db, req, "architecture", 2, "retry", [])
+
+    assert pushes == [("northwind", request["ref"], True)]
+
+
+def test_github_fetches_pinned_sha_before_gate_and_opens_architecture_pr_once(
+    client, monkeypatch, tmp_path
+):
+    _github_mode(monkeypatch, tmp_path)
+    github = FakeGitHub("octocat")
+    fake = FakeKubeClient()
+    runner = KubeJobRunner(client=fake, github=github)
+    request = _approved(client, "GitHub fetch and pull request")
+    monkeypatch.setattr(
+        kube_runner_module,
+        "_git",
+        lambda _ws, *args: subprocess.CompletedProcess(args, 0, "", ""),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        workspace, "push_branch_to_github", lambda *_args, **_kwargs: None
+    )
+    fetches = []
+
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner._prepare_workspace(db, req)
+        ws = workspace.workspace_for(req)
+        sha = workspace.head_sha(ws)
+        stage = StageJob(
+            request_id=req.id,
+            stage="architecture",
+            attempt=1,
+            role="stage",
+            job_name=job_name(req.ref, "architecture", 1),
+            status="succeeded",
+            envelope={"outcome": "ok", "detail": "plan ready", "sha": sha},
+            epoch=1,
+            deadline_at=utcnow(),
+        )
+        db.add(stage)
+        db.commit()
+
+        def fetch_before_spawn(fetch_ws, slug, ref, *, sha=None):
+            gate_name = job_name(ref, "architecture", 1, gate=True)
+            assert gate_name not in fake.jobs
+            fetches.append((fetch_ws, slug, ref, sha))
+            return None
+
+        monkeypatch.setattr(workspace, "fetch_ref_from_github", fetch_before_spawn)
+        assert runner._spawn_gate(db, req, "architecture", 1, [])
+
+        pr_intent = db.get(Intent, f"pr:{req.ref}")
+        pr_number = json.loads(pr_intent.outcome_json)["pr_number"]
+
+    assert fetches == [(ws, "northwind", request["ref"], sha)]
+    assert pr_number == 1
+    assert [call[0] for call in github.calls].count("open_pr") == 1
+    open_call = next(call for call in github.calls if call[0] == "open_pr")
+    assert open_call[1:4] == (
+        "northwind",
+        workspace.work_branch(request["ref"]),
+        request["ref"],
+    )
+
+    gate_name = job_name(request["ref"], "architecture", 1, gate=True)
+    fake.finish(gate_name, pass_verdict())
+    with SessionLocal() as db:
+        runner.tick(db)
+    assert [call[0] for call in github.calls].count("open_pr") == 1
+
+
+@pytest.mark.parametrize("intent_status", ["pending", "failed"])
+def test_incomplete_pr_intent_replays_idempotent_open_and_completes(
+    client, monkeypatch, tmp_path, intent_status
+):
+    _github_mode(monkeypatch, tmp_path)
+    github = FakeGitHub("octocat")
+    runner = KubeJobRunner(client=FakeKubeClient(), github=github)
+    request = _approved(client, "GitHub incomplete PR intent")
+    monkeypatch.setattr(
+        kube_runner_module,
+        "_git",
+        lambda _ws, *args: subprocess.CompletedProcess(args, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        workspace, "push_branch_to_github", lambda *_args, **_kwargs: None
+    )
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner._prepare_workspace(db, req)
+        key = f"pr:{req.ref}"
+        intents.begin(
+            db,
+            key,
+            intents.OPEN_PR,
+            req.id,
+            {"slug": "northwind", "branch": workspace.work_branch(req.ref)},
+        )
+        row = db.get(Intent, key)
+        row.status = intent_status
+        db.commit()
+        db.expunge(row)
+
+        assert runner._open_pr(db, req, "northwind")
+        row = db.get(Intent, key)
+
+    assert [call[0] for call in github.calls].count("open_pr") == 1
+    assert row.status == "done"
+    assert json.loads(row.outcome_json) == {"pr_number": 1}
+
+
+def test_pr_error_escalates_without_spawning_gate(
+    client, monkeypatch, tmp_path
+):
+    _github_mode(monkeypatch, tmp_path)
+    github = FakeGitHub("octocat")
+    fake = FakeKubeClient()
+    runner = KubeJobRunner(client=fake, github=github)
+    request = _approved(client, "GitHub PR open failure")
+    monkeypatch.setattr(
+        kube_runner_module,
+        "_git",
+        lambda _ws, *args: subprocess.CompletedProcess(args, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        workspace, "push_branch_to_github", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        workspace, "fetch_ref_from_github", lambda *_args, **_kwargs: None
+    )
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner._prepare_workspace(db, req)
+        sha = workspace.head_sha(workspace.workspace_for(req))
+        db.add(
+            StageJob(
+                request_id=req.id,
+                stage="architecture",
+                attempt=1,
+                role="stage",
+                job_name=job_name(req.ref, "architecture", 1),
+                status="succeeded",
+                envelope={"outcome": "ok", "detail": "plan ready", "sha": sha},
+                epoch=1,
+                deadline_at=utcnow(),
+            )
+        )
+        db.commit()
+        monkeypatch.setattr(
+            github,
+            "open_pr",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("PR service unavailable")
+            ),
+        )
+
+        assert not runner._spawn_gate(db, req, "architecture", 1, [])
+        db.refresh(req)
+        pr_intent = db.get(Intent, f"pr:{req.ref}")
+        assert req.needs_human
+        assert "PR service unavailable" in req.needs_human_reason
+        assert pr_intent.status == "failed"
+
+    assert fake.creations == []
+
+
+def test_spawn_stage_epoch_loss_has_no_workspace_or_github_effects(
+    client, monkeypatch
+):
+    runner, fake = make_runner()
+    request = _approved(client, "Kube lost spawn fencing")
+    prep_calls = []
+    monkeypatch.setattr(
+        runner,
+        "_prepare_workspace",
+        lambda *_args, **_kwargs: prep_calls.append("prepared"),
+    )
+    monkeypatch.setattr(
+        transitions,
+        "apply",
+        lambda *_args, **_kwargs: transitions.Loss(
+            transition="advance_stage",
+            replay=False,
+            winner=None,
+            resulting_state="cancelled",
+            detail="stale epoch",
+        ),
+    )
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        assert not runner._spawn_stage(db, req, "architecture", 1, "", [])
+
+    assert prep_calls == []
+    assert fake.creations == []
+
+
+def test_spawn_stage_prep_failure_is_durable_and_creates_no_kube_job(
+    client, monkeypatch
+):
+    runner, fake = make_runner()
+    request = _approved(client, "Kube durable prep failure")
+    monkeypatch.setattr(
+        runner,
+        "_prepare_workspace",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("workspace preparation failed")
+        ),
+    )
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        try:
+            result = runner._spawn_stage(db, req, "architecture", 1, "", [])
+        except RuntimeError:
+            result = "raised"
+
+        assert result is False
+        row = db.scalar(
+            select(StageJob).where(
+                StageJob.request_id == req.id,
+                StageJob.stage == "architecture",
+                StageJob.attempt == 1,
+                StageJob.role == "stage",
+            )
+        )
+        intent = db.get(Intent, f"spawn:{job_name(req.ref, 'architecture', 1)}")
+        db.refresh(req)
+        assert row.status == "infra" and row.completed_at is not None
+        assert intent.status == "failed"
+        assert "workspace preparation failed" in intent.outcome_json
+        assert req.needs_human
+        assert "workspace preparation failed" in req.needs_human_reason
+
+    assert fake.creations == []
+
+
+def test_spawn_stage_threads_actual_app_slug_to_github_manifest(
+    client, monkeypatch
+):
+    fake = FakeKubeClient()
+    runner = KubeJobRunner(client=fake)
+    request = _approved(client, "GitHub stage clone slug")
+    monkeypatch.setattr(settings, "GIT_REMOTE_BASE", "git://api:9418")
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "orchestrator-only-token")
+    monkeypatch.setattr(settings, "GITHUB_OWNER", "octocat")
+    monkeypatch.setattr(runner, "_prepare_workspace", lambda *_args, **_kwargs: None)
+
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        slug = req.app.key
+        assert slug != req.ref.lower()
+        assert runner._spawn_stage(db, req, "architecture", 1, "", [])
+
+    env = {
+        entry["name"]: entry
+        for entry in fake.creations[-1]["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert env["SF_REPO_URL"]["value"] == (
+        f"https://github.com/octocat/sf-app-{slug}.git"
+    )
+
+
+def test_baseline_push_error_redacts_github_token_before_persistence(
+    client, monkeypatch, tmp_path
+):
+    _github_mode(monkeypatch, tmp_path)
+    github = FakeGitHub("octocat")
+    fake = FakeKubeClient()
+    runner = KubeJobRunner(client=fake, github=github)
+    request = _approved(client, "GitHub redacted baseline failure")
+    token = settings.GITHUB_TOKEN
+    leaked_url = (
+        f"https://x-access-token:{token}@github.com/octocat/sf-app-northwind.git"
+    )
+    monkeypatch.setattr(
+        kube_runner_module,
+        "_git",
+        lambda _ws, *args: subprocess.CompletedProcess(
+            args, 1, "", f"fatal: authentication failed for '{leaked_url}'"
+        ),
+    )
+
+    with SessionLocal() as db:
+        runner.tick(db)
+        req = db.get(Request, request["id"])
+        repo_intent = db.get(Intent, f"repo:{req.ref}")
+        persisted = repo_intent.outcome_json + (req.needs_human_reason or "")
+
+    assert token not in persisted
+    assert "x-access-token:" not in persisted
+    assert "https://github.com/octocat/sf-app-northwind.git" in persisted
+    assert not any(
+        manifest["metadata"]["labels"]["sf/request"] == request["ref"].lower()
+        for manifest in fake.creations
+    )
+
+
+def test_github_fetch_failure_escalates_before_spawning_gate(
+    client, monkeypatch, tmp_path
+):
+    _github_mode(monkeypatch, tmp_path)
+    github = FakeGitHub("octocat")
+    fake = FakeKubeClient()
+    runner = KubeJobRunner(client=fake, github=github)
+    request = _approved(client, "GitHub fetch failure")
+    monkeypatch.setattr(
+        kube_runner_module,
+        "_git",
+        lambda _ws, *args: subprocess.CompletedProcess(args, 0, "", ""),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        workspace, "push_branch_to_github", lambda *_args, **_kwargs: None
+    )
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner._prepare_workspace(db, req)
+        sha = workspace.head_sha(workspace.workspace_for(req))
+        db.add(
+            StageJob(
+                request_id=req.id,
+                stage="architecture",
+                attempt=1,
+                role="stage",
+                job_name=job_name(req.ref, "architecture", 1),
+                status="succeeded",
+                envelope={"outcome": "ok", "detail": "plan ready", "sha": sha},
+                epoch=1,
+                deadline_at=utcnow(),
+            )
+        )
+        db.commit()
+        monkeypatch.setattr(
+            workspace,
+            "fetch_ref_from_github",
+            lambda *_args, **_kwargs: "fetch rejected",
+        )
+
+        assert not runner._spawn_gate(db, req, "architecture", 1, [])
+        db.refresh(req)
+        assert req.needs_human
+        assert f"could not fetch {sha[:12]} from GitHub before grading" in req.needs_human_reason
+
+    assert fake.creations == []
+    assert not any(call[0] == "open_pr" for call in github.calls)
 
 
 def git_backed_cluster(fake, ws_root, *, green_cheats=False):
@@ -954,6 +1532,29 @@ def test_retry_resets_the_branch_to_the_last_graded_sha(client, monkeypatch, tmp
 
 def test_kube_approve_merge_merges_the_graded_sha(client, monkeypatch, tmp_path):
     _git_mode(monkeypatch, tmp_path)
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "")
+    monkeypatch.setattr(settings, "GITHUB_OWNER", "octocat")
+    monkeypatch.setattr(
+        KubeJobRunner,
+        "github",
+        property(
+            lambda _self: (_ for _ in ()).throw(
+                AssertionError("GitHub dependency used with token unset")
+            )
+        ),
+    )
+    for helper in (
+        "push_branch_to_github",
+        "fetch_ref_from_github",
+        "fetch_main_from_github",
+    ):
+        monkeypatch.setattr(
+            workspace,
+            helper,
+            lambda *_args, _helper=helper, **_kwargs: (_ for _ in ()).throw(
+                AssertionError(f"{_helper} called with token unset")
+            ),
+        )
     monkeypatch.setenv("FACTORY_RUNNER", "kube")
     from fastapi.testclient import TestClient
 
@@ -979,6 +1580,73 @@ def test_kube_approve_merge_merges_the_graded_sha(client, monkeypatch, tmp_path)
         done = c.post(f"/api/requests/{d['id']}/approve", json={"operator_id": 1}).json()
         assert done["status"] == "done" and done["stage"] == "done"
         assert _git(ws, "merge-base", "--is-ancestor", graded, "main").returncode == 0
+        with SessionLocal() as db:
+            merge_intent = db.get(Intent, f"merge:{d['ref']}")
+            assert merge_intent.status == "done"
+    shutil.rmtree(tmp_path / "kube-ws", ignore_errors=True)
+
+
+def test_incomplete_local_merge_recovers_when_main_contains_graded_sha(
+    monkeypatch, tmp_path
+):
+    _git_mode(monkeypatch, tmp_path)
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "")
+    monkeypatch.setattr(settings, "GITHUB_OWNER", "octocat")
+    monkeypatch.setenv("FACTORY_RUNNER", "kube")
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    fake = FakeKubeClient()
+    runner = KubeJobRunner(client=fake)
+    git_backed_cluster(fake, tmp_path / "kube-ws")
+    app = create_app(auto_tick=0, runner=runner)
+    with TestClient(app) as c:
+        request = approved_request(
+            c,
+            title="Kube local merge crash recovery",
+            description="Add a monthly_export function that returns the export format name.",
+        )
+        out = request
+        for _ in range(40):
+            if out["gate"] == "approve_merge":
+                break
+            c.post("/api/simulator/tick")
+            out = c.get(f"/api/requests/{request['id']}").json()
+        assert out["gate"] == "approve_merge"
+        ws = tmp_path / "kube-ws" / request["ref"].lower()
+        graded = workspace.head_sha(ws, workspace.work_branch(request["ref"]))
+        with SessionLocal() as db:
+            req = db.get(Request, request["id"])
+            intents.begin(
+                db,
+                f"merge:{req.ref}",
+                intents.MERGE_PR,
+                req.id,
+                {"slug": "northwind", "sha": graded},
+            )
+            db.commit()
+        _git(ws, "checkout", "-q", "main")
+        merged = _git(ws, "merge", "--no-ff", "-q", "-m", "crash window", graded)
+        assert merged.returncode == 0, merged.stderr
+        monkeypatch.setattr(
+            workspace,
+            "merge_graded",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("local merge repeated during recovery")
+            ),
+        )
+
+        done = c.post(
+            f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+        ).json()
+        assert done["status"] == "done" and done["stage"] == "done"
+        with SessionLocal() as db:
+            row = db.get(Intent, f"merge:{request['ref']}")
+            assert row.status == "done"
+            assert json.loads(row.outcome_json)["merge_sha"] == workspace.head_sha(
+                ws, "main"
+            )
     shutil.rmtree(tmp_path / "kube-ws", ignore_errors=True)
 
 
