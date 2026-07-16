@@ -386,3 +386,49 @@ mandated preview & feedback loop (pre-merge placement).
   conditions for the never-scheduled family (which hits the Job deadline with no
   container); FakeKubeClient models the real no-container terminal shape.
 - Stacked on c2-hotfixes (branch c2b-reliability); shares C2a's merge-hold.
+
+## Plan C1 — preview & feedback loop (2026-07-16)
+
+The mandated headline: a non-technical requester SEES the produced app and can
+request changes BEFORE prod deploy. Design reconciled from audit-preview-loop.md
++ a6-preview.md via a design→verify workflow (v1 found 4 blockers → v2 resolved
+them, verified CAS-race-closed + zero-frontend). Implemented by codex from the
+v2 spec; adversarially reviewed SOUND ("ship it", headline race closed).
+
+Shape: PRE-MERGE placement (after review gate, before merge gate), env-gated
+FACTORY_PREVIEW (OFF == B4 byte-for-byte). New `preview` stage; requester-held
+`accept_preview` gate; `_drive_previews` builds the last-graded SHA off the work
+branch into an ephemeral `sf-app-<slug>-preview` at `<slug>-preview.<domain>`
+(labeled sf/request — C2a's teardown reclaims it, never touches prod). Accept →
+raise_merge_gate → the SHA-preconditioned GitHub merge ships EXACTLY the accepted
+SHA. Request-changes → PreviewFeedback row → rewind to architecture with
+SF_PREVIEW_FEEDBACK → full red→green→review re-grade → new preview (same env
+rolls, stable URL). All-in-gates.py endpoints (requester respond-actor pattern);
+ZERO frontend/shared/main.py edits (parallel session owns those).
+
+### Deviations / decisions — C1
+
+- **Backend + kind-smoke ONLY; rich Stream/console requester UI deferred to a P4
+  phase** — the parallel session is actively rebuilding console+intake; the loop
+  is proven end-to-end over HTTP (curl) so no TS is imported / no collision.
+- **CAS race (the a936f8c class) closed** by a terminal-audit guard on the WHOLE
+  _drive_previews machine: no-op when the newest decisive audit is merge_claimed
+  (within MERGE_CLAIM_GRACE) or preview_accepted, so it can't steal
+  raise_deploy_gate's CAS during the merge window. raise_accept_gate is atomic
+  with the pdeploy→succeeded write (one commit, rolled back on Loss).
+- **Round-scoped preview-deploy intent** `deploy_preview:<slug>:<digest>:r<N>`;
+  progression gated on round-scoped StageJob absence, never intent novelty (a
+  byte-identical rebuild across rounds still mints a fresh accept gate).
+- **claim_accept + request_changes clear needs_human** (the v2 surviving blocker)
+  — else TTL-escalated accept-on-behalf would tear down the accepted prod app,
+  or request-changes-on-behalf would strand the rewound request.
+- **PREREQ fixed:** _supersede_rewound_rows now uses KUBE_STAGE_INDEX.get() at
+  both call sites (kube_runner.py:218 observe loop + :1373 _next_work) so a
+  preview/deploy-stage row can't ValueError-brick the tick.
+- **TTL keeps the env** (escalate without teardown) so an operator can
+  accept-on-behalf; _reap_dead_requests extended to pbuild/pdeploy roles so a
+  cancel mid-build doesn't leak the env.
+- Migration f6a8c0e2b4d6 chains from the C2a head d4e6f8a0c2b4 (NOT the parallel
+  session's untracked c9d1f3a5b7e2). Stacked on c2b-reliability; shares the
+  merge-hold. LIVE kind-smoke (real preview env + feedback round) is the
+  remaining validation.

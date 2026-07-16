@@ -15,8 +15,8 @@ Orchestrator-owned hard lines (spec §5/§6):
   * the orchestrator attempts output capture before every Job deletion,
     including timeout, reap, and supersede paths; running-pod capture is best-effort
     because log transfer itself can still fail;
-  * a missing gate verdict re-runs the same attempt; three consecutive INFRA
-    outcomes (C2b: incl. stage-infra + 409-park) escalate to a human
+  * a missing gate verdict re-runs the same attempt; three consecutive infra outcomes
+    (C2b: incl. stage-infra + 409-park) escalate to a human
     retry-neutrally — the agent attempt is kept, not consumed — instead of
     churning forever;
   * frozen surface: green's gate must report exactly the surface_hash red's
@@ -59,7 +59,16 @@ from .kube_jobs import (
     stage_job_manifest,
 )
 from .leader import get_elector
-from .models import PIPELINE_STAGES, AuditEvent, Intent, Request, StageJob, utcnow
+from .models import (
+    PIPELINE_STAGES,
+    AuditEvent,
+    Intent,
+    PreviewFeedback,
+    ProgressEvent,
+    Request,
+    StageJob,
+    utcnow,
+)
 from .transitions import FACTORY, IntentSpec
 from .ws_exec import _git
 
@@ -76,6 +85,7 @@ PARK_PREDECESSOR_GRACE = int(
 # enough for any GitHub merge round-trip, short enough that a process that died
 # between claim and merge is still rescued by the re-raise.
 MERGE_CLAIM_GRACE = int(__import__("os").environ.get("FACTORY_MERGE_CLAIM_GRACE", "600"))
+KUBE_STAGE_INDEX = {stage: index for index, stage in enumerate(KUBE_STAGES)}
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 STAGE_INFRA_LIMIT = GATE_INFRA_LIMIT
 INFRA_DETECT_GRACE = int(
@@ -201,6 +211,9 @@ class KubeJobRunner:
         defer_spawn: set[int] = set()
         self._reap_dead_requests(db, moved)
         self._drive_deploys(db, moved)
+        self._drive_previews(db, moved)
+        self._reap_finished_previews(db, moved)
+        self._sweep_preview_ttl(db, moved)
         for sj in db.scalars(
             select(StageJob)
             .where(
@@ -239,7 +252,7 @@ class KubeJobRunner:
         running = db.scalars(
             select(StageJob).where(
                 StageJob.status == "running",
-                StageJob.role.in_(("stage", "gate")),
+                StageJob.role.in_(("stage", "gate", "pbuild")),
             )
         ).all()
         busy = {r.request_id for r in running} | defer_spawn
@@ -278,7 +291,7 @@ class KubeJobRunner:
         for sj in db.scalars(
             select(StageJob).where(
                 StageJob.status == "running",
-                StageJob.role.in_(("stage", "gate")),
+                StageJob.role.in_(("stage", "gate", "pbuild")),
             )
         ).all():
             req = db.get(Request, sj.request_id)
@@ -571,17 +584,23 @@ class KubeJobRunner:
         # metrics were validated in _grade before the verdict counted as a pass
         payload = verification.payload_from_metrics(req, envelope.get("metrics") or {})
         verification.emit_verification(db, req, payload=payload)
+        transition = "begin_preview" if settings.preview_enabled() else "raise_merge_gate"
         res = transitions.apply_committed(
             db,
             req,
-            "raise_merge_gate",
+            transition,
             actor=FACTORY,
             epoch=get_elector().epoch,
+            expected_stage="review",
         )
         if isinstance(res, transitions.Loss):
-            log.info("%s: merge gate raise lost (%s)", req.ref, res.detail)
+            log.info("%s: review finish lost (%s)", req.ref, res.detail)
             return
-        moved.append(f"{req.ref}: merge gate raised")
+        moved.append(
+            f"{req.ref}: preview started"
+            if settings.preview_enabled()
+            else f"{req.ref}: merge gate raised"
+        )
 
     # ---------- the human merge gate (kube mode) ----------
     def _resolve_pr(
@@ -711,12 +730,21 @@ class KubeJobRunner:
             # B4: merge landed — WAIT at the deploy gate (spec §4.10). The build
             # is driven only after a human clears the gate; fenced + notified
             # like the merge gate, and a raced Cancel wins the CAS.
+            accepted = self._newest_decisive(db, req)
+            preview_params = {}
+            if accepted is not None and accepted.action == "preview_accepted":
+                slug = self._app_slug(req)
+                preview_params = {
+                    "preview_url": f"http://{slug}-preview.{settings.APP_INGRESS_DOMAIN}",
+                    "preview_round": req.preview_round,
+                    "accepted_by": accepted.actor,
+                }
             res = transitions.apply_committed(
                 db,
                 req,
                 "raise_deploy_gate",
                 actor=transitions.Actor(name=actor),
-                params={"sha": sha},
+                params={"sha": sha, **preview_params},
                 epoch=get_elector().epoch,
             )
             if isinstance(res, transitions.Loss):
@@ -749,6 +777,535 @@ class KubeJobRunner:
     @staticmethod
     def _app_slug(req: Request) -> str:
         return req.app.key if req.app else req.ref.lower()
+
+    # ---------- pre-merge preview + requester feedback (C1) ----------
+    def _drive_previews(self, db: Session, moved: list[str]) -> None:
+        if not settings.preview_enabled():
+            return
+        requests = db.scalars(
+            select(Request).where(
+                Request.stage == "preview", Request.gate.is_(None)
+            )
+        ).all()
+        for req in requests:
+            try:
+                self._drive_one_preview(db, req, moved)
+            except Exception as exc:
+                db.rollback()
+                log.exception("preview driver failed for %s", req.ref)
+                self._escalate(db, req, f"Preview failed: {exc}")
+
+    def _drive_one_preview(
+        self, db: Session, req: Request, moved: list[str]
+    ) -> None:
+        slug = self._app_slug(req)
+        if req.status != transitions.APPROVED:
+            self._teardown_preview(db, req, slug, moved=moved, reason=req.status)
+            return
+        if req.needs_human:
+            return
+        newest = self._newest_decisive(db, req)
+        action = newest.action if newest else None
+        if action in ("preview_accepted", "merge_claimed"):
+            if action == "merge_claimed" and self._within_merge_grace(newest):
+                return
+            res = transitions.apply_committed(
+                db,
+                req,
+                "raise_merge_gate",
+                actor=FACTORY,
+                epoch=get_elector().epoch,
+                expected_stage="preview",
+            )
+            if isinstance(res, transitions.Loss):
+                log.info("%s: preview merge re-raise lost (%s)", req.ref, res.detail)
+            return
+        self._preview_state_machine(db, req, slug, moved)
+
+    @staticmethod
+    def _within_merge_grace(audit: AuditEvent) -> bool:
+        return bool(
+            audit.created_at is not None
+            and (utcnow() - audit.created_at).total_seconds() < MERGE_CLAIM_GRACE
+        )
+
+    @staticmethod
+    def _newest_decisive(db: Session, req: Request) -> AuditEvent | None:
+        return db.scalar(
+            select(AuditEvent)
+            .where(
+                AuditEvent.request_id == req.id,
+                AuditEvent.action.in_(transitions.DECISIVE_ACTIONS),
+            )
+            .order_by(AuditEvent.id.desc())
+        )
+
+    def _preview_state_machine(
+        self, db: Session, req: Request, slug: str, moved: list[str]
+    ) -> None:
+        round_number = req.preview_round
+        rows = db.scalars(
+            select(StageJob)
+            .where(
+                StageJob.request_id == req.id,
+                StageJob.role.in_(("pbuild", "pdeploy")),
+            )
+            .order_by(StageJob.id)
+        ).all()
+
+        def for_round(role: str) -> list[StageJob]:
+            return [
+                row
+                for row in rows
+                if row.role == role
+                and (row.envelope or {}).get("round") == round_number
+            ]
+
+        pbuild_rows = for_round("pbuild")
+        pdeploy_rows = for_round("pdeploy")
+        pbuild = pbuild_rows[-1] if pbuild_rows else None
+        pdeploy = pdeploy_rows[-1] if pdeploy_rows else None
+        has_live_pdeploy = any(
+            row.role == "pdeploy" and row.status in ("running", "succeeded")
+            for row in rows
+        )
+        if pbuild is None and not has_live_pdeploy and self._preview_slots_full(db, req):
+            self._note_preview_wait(db, req, moved)
+            return
+        if pbuild is None or pbuild.status in ("failed", "timed_out", "infra"):
+            if self._infra_loop_escalated(
+                db,
+                req,
+                pbuild_rows,
+                "preview",
+                "pbuild",
+                moved,
+                label="Preview build",
+            ):
+                return
+            self._spawn_preview_build(db, req, slug, round_number, moved)
+            return
+        if pbuild.status == "running":
+            self._observe_preview_build(
+                db, req, pbuild, slug, round_number, moved
+            )
+            return
+        pdeploy_live = pdeploy is not None and pdeploy.status in (
+            "running",
+            "succeeded",
+        )
+        if pbuild.status == "succeeded" and not pdeploy_live:
+            self._apply_preview(
+                db,
+                req,
+                slug,
+                pbuild.envelope["digest"],
+                round_number,
+                moved,
+            )
+            return
+        if pdeploy is not None and pdeploy.status == "running":
+            self._observe_preview_deploy(
+                db, req, pdeploy, slug, round_number, moved
+            )
+
+    def _spawn_preview_build(
+        self,
+        db: Session,
+        req: Request,
+        slug: str,
+        round_number: int,
+        moved: list[str],
+    ) -> None:
+        sha = self._last_graded_sha(db, req)
+        if not (isinstance(sha, str) and SHA40.fullmatch(sha)):
+            self._escalate(db, req, "Preview source SHA could not be read from review")
+            return
+        name = deploy_manifests.preview_build_job_name(req.ref, round_number)
+        intent_key = f"build_preview:{req.ref}:{sha}:r{round_number}"
+        intents.begin(
+            db,
+            intent_key,
+            intents.TRIGGER_BUILD,
+            req.id,
+            {"job": name, "sha": sha, "round": round_number},
+        )
+        row = StageJob(
+            request_id=req.id,
+            stage="preview",
+            attempt=1,
+            role="pbuild",
+            job_name=name,
+            epoch=get_elector().epoch,
+            deadline_at=utcnow() + timedelta(seconds=settings.BUILD_WALL_CLOCK),
+            envelope={"round": round_number, "sha": sha},
+        )
+        db.add(row)
+        db.commit()
+        self._create(
+            db,
+            req,
+            row,
+            deploy_manifests.preview_build_job_manifest(
+                req.ref, slug, sha, round_number
+            ),
+            moved,
+            intent_key=intent_key,
+        )
+
+    def _observe_preview_build(
+        self,
+        db: Session,
+        req: Request,
+        pbuild: StageJob,
+        slug: str,
+        round_number: int,
+        moved: list[str],
+    ) -> None:
+        view = self.client.get_job(pbuild.job_name)
+        now = utcnow()
+        if view.phase == "running" and now < pbuild.deadline_at:
+            return
+        view = self.client.get_job(pbuild.job_name, capture=True)
+        pbuild.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+        if (
+            view.phase != "absent"
+            and pbuild.job_uid
+            and view.uid
+            and view.uid != pbuild.job_uid
+        ):
+            pbuild.status = "infra"
+            pbuild.completed_at = now
+            self.client.delete_job(pbuild.job_name, uid=pbuild.job_uid)
+            db.commit()
+            self._escalate(db, req, f"Preview build Job {pbuild.job_name} uid changed")
+            return
+        self.client.delete_job(pbuild.job_name, uid=pbuild.job_uid)
+        pbuild.completed_at = now
+        if view.phase == "running":
+            pbuild.status = "timed_out"
+            db.commit()
+            self._escalate(
+                db, req, f"Preview build Job {pbuild.job_name} exceeded its wall clock"
+            )
+            return
+        if view.phase == "absent":
+            pbuild.status = "infra"
+            db.commit()
+            moved.append(f"{req.ref}: preview build Job absent — re-running")
+            return
+        if view.phase != "succeeded":
+            pbuild.status = "failed"
+            db.commit()
+            self._escalate(db, req, f"Preview build Job {pbuild.job_name} failed")
+            return
+        digest = parse_digest(view.termination_message)
+        if digest is None:
+            pbuild.status = "infra"
+            db.commit()
+            self._escalate(db, req, "preview image digest could not be captured")
+            return
+        pbuild.status = "succeeded"
+        pbuild.envelope = {
+            **(pbuild.envelope or {}),
+            "round": round_number,
+            "digest": digest,
+        }
+        db.commit()
+        moved.append(f"{req.ref}: preview image captured at {digest}")
+        self._apply_preview(db, req, slug, digest, round_number, moved)
+
+    def _apply_preview(
+        self,
+        db: Session,
+        req: Request,
+        slug: str,
+        digest: str,
+        round_number: int,
+        moved: list[str],
+    ) -> None:
+        name = deploy_manifests.preview_app_name(slug)
+        image = f"{settings.REGISTRY}/sf-app-{slug}@{digest}"
+        intent_key = f"deploy_preview:{slug}:{digest}:r{round_number}"
+        intents.begin(
+            db,
+            intent_key,
+            intents.APPLY_DEPLOY,
+            req.id,
+            {"app": name, "digest": digest, "round": round_number},
+        )
+        pbuild = db.scalar(
+            select(StageJob)
+            .where(
+                StageJob.request_id == req.id,
+                StageJob.role == "pbuild",
+            )
+            .order_by(StageJob.id.desc())
+        )
+        sha = (pbuild.envelope or {}).get("sha") if pbuild else None
+        row = StageJob(
+            request_id=req.id,
+            stage="preview",
+            attempt=1,
+            role="pdeploy",
+            job_name=name,
+            epoch=get_elector().epoch,
+            deadline_at=utcnow() + timedelta(seconds=settings.DEPLOY_WALL_CLOCK),
+            envelope={
+                "round": round_number,
+                "sha": sha,
+                "digest": digest,
+                "image": image,
+            },
+        )
+        db.add(row)
+        db.commit()
+        try:
+            for manifest in deploy_manifests.preview_manifests(
+                slug, digest, req.ref
+            ):
+                self.client.apply(manifest)
+        except Exception as exc:
+            row.status = "infra"
+            row.completed_at = utcnow()
+            intents.fail(db, intent_key, {"error": str(exc)[:300]})
+            self._escalate(db, req, f"Could not apply preview {name}: {exc}")
+            return
+        intents.complete(db, intent_key, {"app": name, "digest": digest})
+        moved.append(f"{req.ref}: applied preview {name} at {digest}")
+
+    def _observe_preview_deploy(
+        self,
+        db: Session,
+        req: Request,
+        pdeploy: StageJob,
+        slug: str,
+        round_number: int,
+        moved: list[str],
+    ) -> None:
+        name = deploy_manifests.preview_app_name(slug)
+        probe_url = f"http://{name}.{settings.KUBE_NAMESPACE}.svc:80/health"
+        now = utcnow()
+        if self.client.rollout_ready(name) and _http_ok(probe_url):
+            url = f"http://{slug}-preview.{settings.APP_INGRESS_DOMAIN}"
+            pdeploy.status = "succeeded"
+            pdeploy.completed_at = now
+            res = transitions.apply(
+                db,
+                req,
+                "raise_accept_gate",
+                actor=FACTORY,
+                params={
+                    "url": url,
+                    "round": round_number + 1,
+                    "sha": (pdeploy.envelope or {}).get("sha"),
+                    "digest": pdeploy.envelope["digest"],
+                },
+                epoch=get_elector().epoch,
+                expected_stage="preview",
+            )
+            if isinstance(res, transitions.Loss):
+                log.info("%s: raise_accept_gate lost (%s)", req.ref, res.detail)
+                return
+            db.commit()
+            res.notify()
+            moved.append(f"{req.ref}: preview round {round_number + 1} live at {url}")
+            return
+        if now < pdeploy.deadline_at:
+            return
+        pdeploy.status = "timed_out"
+        pdeploy.completed_at = now
+        db.commit()
+        self._escalate(db, req, f"Preview {name} was not ready before the deadline")
+
+    def _preview_slots_full(self, db: Session, req: Request) -> bool:
+        active = 0
+        candidates = db.scalars(
+            select(Request).where(
+                Request.id != req.id,
+                Request.stage.in_(("preview", "deploy")),
+            )
+        ).all()
+        for candidate in candidates:
+            rows = db.scalars(
+                select(StageJob)
+                .where(
+                    StageJob.request_id == candidate.id,
+                    StageJob.role.in_(("pdeploy", "pteardown")),
+                )
+                .order_by(StageJob.id)
+            ).all()
+            marker = next(
+                (row for row in reversed(rows) if row.role == "pteardown"), None
+            )
+            if any(
+                row.role == "pdeploy"
+                and row.status in ("running", "succeeded")
+                and (marker is None or row.id > marker.id)
+                for row in rows
+            ):
+                active += 1
+        return active >= settings.PREVIEW_CAP
+
+    @staticmethod
+    def _note_preview_wait(db: Session, req: Request, moved: list[str]) -> None:
+        existing = db.scalar(
+            select(ProgressEvent.id).where(
+                ProgressEvent.request_id == req.id,
+                ProgressEvent.title == "Waiting for a preview slot",
+            )
+        )
+        if existing is not None:
+            return
+        emit(
+            db,
+            req,
+            "step_summary",
+            "Waiting for a preview slot",
+            payload={"Ref": req.ref, "round": req.preview_round + 1},
+        )
+        db.commit()
+        moved.append(f"{req.ref}: waiting for a preview slot")
+
+    def _teardown_preview(
+        self,
+        db: Session,
+        req: Request,
+        slug: str,
+        *,
+        moved: list[str] | None = None,
+        reason: str = "request finished",
+    ) -> None:
+        moved = moved if moved is not None else []
+        rows = db.scalars(
+            select(StageJob)
+            .where(
+                StageJob.request_id == req.id,
+                StageJob.role.in_(("pbuild", "pdeploy", "pteardown")),
+            )
+            .order_by(StageJob.id.desc())
+        ).all()
+        if rows and rows[0].role == "pteardown":
+            return
+        pdeploy = next((row for row in rows if row.role == "pdeploy"), None)
+        for row in rows:
+            if row.role == "pbuild" and row.status == "running":
+                try:
+                    view = self.client.get_job(row.job_name, capture=True)
+                    row.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+                    if pdeploy is not None and row.logs_tail:
+                        pdeploy.logs_tail = row.logs_tail
+                    self.client.delete_job(row.job_name, uid=row.job_uid)
+                except Exception:
+                    log.exception("preview build teardown failed for %s", row.job_name)
+                    continue
+                row.status = "reaped"
+                row.completed_at = utcnow()
+            elif row.role == "pdeploy" and row.status == "running":
+                row.status = "reaped"
+                row.completed_at = utcnow()
+        try:
+            self.client.delete_by_label(f"sf/request={req.ref.lower()}")
+        except Exception:
+            log.exception("preview teardown failed for %s", req.ref.lower())
+        now = utcnow()
+        db.add(
+            StageJob(
+                request_id=req.id,
+                stage="preview",
+                attempt=1,
+                role="pteardown",
+                job_name=f"sf-{req.ref.lower()}-pteardown",
+                epoch=get_elector().epoch,
+                status="succeeded",
+                deadline_at=now,
+                completed_at=now,
+                envelope={"teardown": True, "slug": slug, "reason": reason[:300]},
+            )
+        )
+        emit(
+            db,
+            req,
+            "recovery_action",
+            f"Preview reaped — {reason}",
+            payload={"Ref": req.ref, "slug": slug},
+        )
+        db.commit()
+        moved.append(f"{req.ref}: preview reaped")
+
+    def _reap_finished_previews(self, db: Session, moved: list[str]) -> None:
+        if not settings.preview_enabled():
+            return
+        for req in db.scalars(select(Request).where(Request.stage == "done")).all():
+            rows = db.scalars(
+                select(StageJob)
+                .where(
+                    StageJob.request_id == req.id,
+                    StageJob.role.in_(("pdeploy", "pteardown")),
+                )
+                .order_by(StageJob.id)
+            ).all()
+            marker = next(
+                (row for row in reversed(rows) if row.role == "pteardown"), None
+            )
+            live = next(
+                (
+                    row
+                    for row in reversed(rows)
+                    if row.role == "pdeploy"
+                    and row.status in ("running", "succeeded")
+                    and (marker is None or row.id > marker.id)
+                ),
+                None,
+            )
+            if live is not None:
+                self._teardown_preview(
+                    db,
+                    req,
+                    self._app_slug(req),
+                    moved=moved,
+                    reason="production deploy finished",
+                )
+
+    def _sweep_preview_ttl(self, db: Session, moved: list[str]) -> None:
+        if not settings.preview_enabled():
+            return
+        cutoff = utcnow() - timedelta(seconds=settings.PREVIEW_TTL)
+        expired = db.scalars(
+            select(Request).where(
+                Request.stage == "preview",
+                Request.gate == transitions.GATE_ACCEPT_PREVIEW,
+                ~Request.needs_human,
+                Request.stage_entered_at < cutoff,
+            )
+        ).all()
+        for req in expired:
+            res = transitions.apply_committed(
+                db,
+                req,
+                "escalate",
+                actor=FACTORY,
+                params={"reason": "Preview acceptance timed out — operator decision needed"},
+                epoch=get_elector().epoch,
+                expected_stage="preview",
+            )
+            if isinstance(res, transitions.Win):
+                moved.append(f"{req.ref}: preview acceptance timed out")
+
+    @staticmethod
+    def _preview_feedback_text(db: Session, req: Request) -> str:
+        rows = db.scalars(
+            select(PreviewFeedback)
+            .where(
+                PreviewFeedback.request_id == req.id,
+                PreviewFeedback.round == req.preview_round,
+            )
+            .order_by(PreviewFeedback.order)
+        ).all()
+        return "\n".join(
+            f"- {row.body}" + (f" (on {row.page_path})" if row.page_path else "")
+            for row in rows
+        )[:8192]
 
     def _drive_deploys(self, db: Session, moved: list[str]) -> None:
         if not settings.app_deploy_enabled():
@@ -1453,21 +2010,27 @@ class KubeJobRunner:
         )
         if target is None or req.stage_entered_at is None:
             return
-        target_index = KUBE_STAGES.index(target)
+        target_index = KUBE_STAGE_INDEX[target]
+
+        def _index(row: StageJob) -> int | None:
+            return KUBE_STAGE_INDEX.get(row.stage)
+
         older_later_rows = [
             row
             for row in rows
             if row.status != "superseded"
             and row.created_at < req.stage_entered_at
-            and KUBE_STAGES.index(row.stage) > target_index
+            and (_index(row) is not None and _index(row) > target_index)
         ]
         if not older_later_rows:
             return
         for row in rows:
+            row_index = _index(row)
             if (
                 row.status != "superseded"
                 and row.created_at < req.stage_entered_at
-                and KUBE_STAGES.index(row.stage) >= target_index
+                and row_index is not None
+                and row_index >= target_index
             ):
                 if row.status == "running":
                     # A superseded running row must be captured and deleted, or
@@ -1631,6 +2194,14 @@ class KubeJobRunner:
                 f"Workspace preparation failed before {name}: {detail}",
             )
             return False
+        newest = self._newest_decisive(db, req)
+        preview_feedback = (
+            self._preview_feedback_text(db, req)
+            if stage == "architecture"
+            and newest is not None
+            and newest.action == "changes_requested"
+            else ""
+        )
         return self._create(
             db,
             req,
@@ -1640,6 +2211,7 @@ class KubeJobRunner:
                 stage,
                 attempt,
                 feedback=feedback,
+                preview_feedback=preview_feedback,
                 repo_slug=self._app_slug(req),
             ),
             moved,

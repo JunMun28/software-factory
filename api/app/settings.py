@@ -149,6 +149,17 @@ BUILD_ACTIVE_DEADLINE = int(os.environ.get("FACTORY_BUILD_ACTIVE_DEADLINE", "900
 BUILD_WALL_CLOCK = int(os.environ.get("FACTORY_BUILD_WALL_CLOCK", "1200"))
 DEPLOY_WALL_CLOCK = int(os.environ.get("FACTORY_DEPLOY_WALL_CLOCK", "600"))
 
+# ---------- pre-merge requester preview + feedback loop (Plan C1) ----------
+PREVIEW = os.environ.get("FACTORY_PREVIEW", "").lower() in ("1", "true", "yes")
+PREVIEW_MAX_ROUNDS = int(os.environ.get("FACTORY_PREVIEW_MAX_ROUNDS", "3"))
+PREVIEW_CAP = int(os.environ.get("FACTORY_PREVIEW_CAP", "5"))
+PREVIEW_TTL = int(os.environ.get("FACTORY_PREVIEW_TTL", "259200"))
+
+
+def preview_enabled() -> bool:
+    """Previewing is an overlay on the produced-app deploy profile."""
+    return app_deploy_enabled() and PREVIEW
+
 
 def app_deploy_enabled() -> bool:
     """B3 build+deploy is active only with a git backbone AND a registry AND the

@@ -62,6 +62,13 @@ if [ -n "${SF_GATE_FEEDBACK:-}" ]; then
 The previous attempt failed its gate. Gate feedback to fix in THIS attempt:
 ${SF_GATE_FEEDBACK}"
 fi
+if [ -n "${SF_PREVIEW_FEEDBACK:-}" ]; then
+  PROMPT="$PROMPT
+
+The requester reviewed the LIVE preview and asked for changes. Revise PLAN.md so the
+plan addresses this, then the pipeline re-runs from RED:
+${SF_PREVIEW_FEEDBACK}"
+fi
 
 OUT=/workspace/agent-output.txt
 CLI="${SF_CLI:-codex}"

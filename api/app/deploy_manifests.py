@@ -19,6 +19,7 @@ git) -> main container `build` (kaniko, builds /workspace/repo, pushes by digest
 writes the digest to /dev/termination-log for the orchestrator to capture).
 """
 import re
+from copy import deepcopy
 
 from . import settings
 
@@ -31,6 +32,11 @@ def app_name(slug: str) -> str:
     if not _SLUG.fullmatch(slug or ""):
         raise ValueError(f"refusing non-DNS-label app slug {slug!r}")
     return f"sf-app-{slug}"
+
+
+def preview_app_name(slug: str) -> str:
+    app_name(slug)
+    return f"sf-app-{slug}-preview"
 
 
 def _validate(slug: str, digest: str, replicas: int) -> None:
@@ -46,6 +52,14 @@ def build_job_name(ref: str) -> str:
     if not re.fullmatch(r"REQ-\d+", ref or ""):
         raise ValueError(f"refusing build job name for malformed ref {ref!r}")
     return f"sf-{ref.lower()}-build"
+
+
+def preview_build_job_name(ref: str, round: int) -> str:
+    if not re.fullmatch(r"REQ-\d+", ref or ""):
+        raise ValueError(f"refusing preview build job name for malformed ref {ref!r}")
+    if not isinstance(round, int) or round < 0:
+        raise ValueError(f"refusing preview build job name for bad round {round!r}")
+    return f"sf-{ref.lower()}-pbuild-r{round}"
 
 
 def build_job_manifest(ref: str, slug: str, sha: str) -> dict:
@@ -146,6 +160,30 @@ def build_job_manifest(ref: str, slug: str, sha: str) -> dict:
     }
 
 
+def preview_build_job_manifest(ref: str, slug: str, sha: str, round: int) -> dict:
+    manifest = deepcopy(build_job_manifest(ref, slug, sha))
+    name = preview_build_job_name(ref, round)
+    lref = ref.lower()
+    labels = {
+        "sf/tier": "agent",
+        "sf/role": "build",
+        "sf/request": lref,
+        "sf/preview": "true",
+    }
+    manifest["metadata"]["name"] = name
+    manifest["metadata"]["labels"] = labels
+    manifest["spec"]["template"]["metadata"]["labels"] = labels
+    pod_spec = manifest["spec"]["template"]["spec"]
+    clone_env = pod_spec["initContainers"][0]["env"]
+    for item in clone_env:
+        if item["name"] == "SF_BRANCH":
+            item["value"] = f"work/{lref}"
+    destination = f"--destination={settings.REGISTRY}/sf-app-{slug}:preview-{sha[:12]}"
+    args = pod_spec["containers"][0]["args"]
+    args[args.index(next(arg for arg in args if arg.startswith("--destination=")))] = destination
+    return manifest
+
+
 # ---------- produced-app Deployment / Service / Ingress ----------
 def app_deploy_manifests(slug: str, digest: str, replicas: int = 1) -> list[dict]:
     _validate(slug, digest, replicas)
@@ -205,3 +243,35 @@ def app_deploy_manifests(slug: str, digest: str, replicas: int = 1) -> list[dict
         }]},
     }
     return [deployment, service, ingress]
+
+
+def preview_manifests(
+    slug: str, digest: str, request_ref: str | None = None
+) -> list[dict]:
+    """Factory-owned preview resources; request_ref supplies the teardown label."""
+    manifests = deepcopy(app_deploy_manifests(slug, digest, replicas=1))
+    name = preview_app_name(slug)
+    lref = (request_ref or slug).lower()
+    if request_ref is not None and not re.fullmatch(r"REQ-\d+", request_ref or ""):
+        raise ValueError(f"refusing preview manifests for malformed ref {request_ref!r}")
+    labels = {
+        "sf/tier": "app",
+        "sf/request": lref,
+        "sf/preview": "true",
+        "app": name,
+    }
+    selector = {"app": name}
+    deployment, service, ingress = manifests
+    deployment["metadata"] = {"name": name, "labels": labels}
+    deployment["spec"]["replicas"] = 1
+    deployment["spec"]["selector"]["matchLabels"] = selector
+    deployment["spec"]["template"]["metadata"]["labels"] = labels
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    container["resources"]["requests"] = {"cpu": "50m", "memory": "64Mi"}
+    service["metadata"] = {"name": name, "labels": labels}
+    service["spec"]["selector"] = selector
+    ingress["metadata"] = {"name": name, "labels": labels}
+    rule = ingress["spec"]["rules"][0]
+    rule["host"] = f"{slug}-preview.{settings.APP_INGRESS_DOMAIN}"
+    rule["http"]["paths"][0]["backend"]["service"]["name"] = name
+    return manifests

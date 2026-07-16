@@ -82,10 +82,39 @@ def _notify(db: Session, req: Request, subject: str, body: str) -> None:
             )
 
 
+def _notify_requester(req: Request, subject: str, body: str) -> None:
+    """Send the requester-owned preview gate to the reporter, not operators."""
+    link = (
+        f"{_env('INTAKE_BASE_URL', 'http://localhost:4201').rstrip('/')}"
+        f"/submit/{req.id}"
+    )
+    message = EmailMessage()
+    message["From"] = _env("SMTP_FROM", "software-factory@localhost")
+    message["To"] = req.reporter
+    message["Subject"] = subject
+    message.set_content(f"{body} {link}")
+    try:
+        send_email(message)
+    except Exception:
+        log.exception(
+            "email delivery failed; preview gate state preserved (to=%s subject=%s)",
+            req.reporter,
+            subject,
+        )
+
+
 def notify_gate_raised(db: Session, req: Request) -> None:
+    if req.gate == "accept_preview":
+        _notify_requester(
+            req,
+            "Software Factory: preview needs your review",
+            f"{req.ref} {req.title} has a live preview ready for review.",
+        )
+        return
     gate_name = {
         "approve_merge": "merge gate",
         "approve_deploy": "deploy gate",
+        "accept_preview": "preview",
     }.get(req.gate, "spec gate")
     _notify(
         db,

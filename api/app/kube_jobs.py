@@ -193,6 +193,7 @@ def stage_job_manifest(
     attempt: int,
     *,
     feedback: str = "",
+    preview_feedback: str = "",
     repo_slug: str | None = None,
 ) -> dict:
     env = {
@@ -205,6 +206,8 @@ def stage_job_manifest(
     }
     if feedback:
         env["SF_GATE_FEEDBACK"] = feedback[:_FEEDBACK_CAP]
+    if preview_feedback:
+        env["SF_PREVIEW_FEEDBACK"] = preview_feedback[:8192]
     return _base_job(
         job_name(ref, stage, attempt),
         role="stage",

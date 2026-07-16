@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from . import intents, notifications
 from .events import emit
-from .models import AuditEvent, Intent, LeaderEpoch, Request, utcnow
+from .models import AuditEvent, Intent, LeaderEpoch, PreviewFeedback, Request, utcnow
 
 # ---------- lifecycle vocabulary (D5: the constants that kill the magic strings) ----------
 
@@ -53,6 +53,7 @@ PRE_APPROVAL = (DRAFT, SUBMITTED, PENDING_APPROVAL, SENT_BACK)
 GATE_APPROVE_SPEC = "approve_spec"
 GATE_APPROVE_MERGE = "approve_merge"
 GATE_APPROVE_DEPLOY = "approve_deploy"  # B4: the second human gate (spec §4.10)
+GATE_ACCEPT_PREVIEW = "accept_preview"
 
 # The audit actions a Loss resolves against (ADR 0006): the newest of these rows
 # identifies the winner of a consumed precondition.
@@ -64,6 +65,8 @@ DECISIVE_ACTIONS = (
     "deploy_claimed",
     "approved_deploy",
     "deploy_approval_failed",
+    "preview_accepted",
+    "changes_requested",
     "sent_back",
     "retried",
     "taken_over",
@@ -156,10 +159,16 @@ def _ev_approve_spec(db: Session, req: Request, actor: Actor, params: dict) -> N
 
 
 def _ev_raise_deploy_gate(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    preview = {
+        key: params[key]
+        for key in ("preview_url", "preview_round", "accepted_by")
+        if params.get(key) is not None
+    }
     emit(db, req, "gate_event",
          "Waiting at the deploy gate — merged to main, deploy needs approval",
          broadcast=True,
-         payload={"gate": GATE_APPROVE_DEPLOY, "Ref": req.ref, "sha": params.get("sha")})
+         payload={"gate": GATE_APPROVE_DEPLOY, "Ref": req.ref,
+                  "sha": params.get("sha"), **preview})
 
 
 def _ev_begin_deploy(db: Session, req: Request, actor: Actor, params: dict) -> None:
@@ -217,6 +226,55 @@ def _ev_escalate(db: Session, req: Request, actor: Actor, params: dict) -> None:
 def _ev_raise_merge_gate(db: Session, req: Request, actor: Actor, params: dict) -> None:
     emit(db, req, "gate_event", "Waiting at the merge gate — review passed, approval needed",
          broadcast=True, payload={"gate": GATE_APPROVE_MERGE, "Ref": req.ref})
+
+
+def _ev_begin_preview(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    emit(
+        db,
+        req,
+        "milestone_summary",
+        f"Review passed — building preview round {req.preview_round + 1}",
+        stage="preview",
+        payload={"Stage": "Preview", "Ref": req.ref},
+    )
+    db.execute(
+        update(PreviewFeedback)
+        .where(
+            PreviewFeedback.request_id == req.id,
+            PreviewFeedback.round <= req.preview_round,
+            PreviewFeedback.disposition == "open",
+        )
+        .values(disposition="addressed")
+    )
+
+
+def _ev_raise_accept_gate(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    emit(
+        db,
+        req,
+        "gate_event",
+        f"Preview round {params['round']} live — {params['url']}",
+        broadcast=True,
+        payload={
+            "gate": GATE_ACCEPT_PREVIEW,
+            "url": params["url"],
+            "round": params["round"],
+            "sha": params.get("sha"),
+            "digest": params["digest"],
+        },
+    )
+
+
+def _ev_request_changes(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    emit(
+        db,
+        req,
+        "gate_event",
+        f"Changes requested — round {req.preview_round} recorded",
+        actor=actor.name,
+        bot=False,
+        payload={"gate": GATE_ACCEPT_PREVIEW, "round": req.preview_round, "Ref": req.ref},
+    )
 
 
 def _ev_advance_stage(db: Session, req: Request, actor: Actor, params: dict) -> None:
@@ -277,6 +335,32 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
         audit_action="merge_claimed",
         replay_actions=("merge_claimed", "approved_merge", "merge_approval_failed"),
         conflict_detail=lambda r: f"Cannot merge a {r.status} request",
+    ),
+    Transition(
+        name="claim_accept",
+        pre=Pre(status_in=(APPROVED,), gate=GATE_ACCEPT_PREVIEW),
+        effects=lambda p: {"gate": None, "needs_human": False,
+                           "needs_human_reason": None},
+        audit_action="preview_accepted",
+        replay_actions=("preview_accepted",),
+        conflict_detail=lambda r: f"Cannot accept preview on a {r.status} request",
+    ),
+    Transition(
+        name="request_changes",
+        pre=Pre(status_in=(APPROVED,), gate=GATE_ACCEPT_PREVIEW),
+        effects=lambda p: {
+            "gate": None,
+            "stage": "architecture",
+            "preview_round": Request.preview_round + 1,
+            "sim_step": 0,
+            "stage_entered_at": utcnow(),
+            "needs_human": False,
+            "needs_human_reason": None,
+        },
+        events=_ev_request_changes,
+        audit_action="changes_requested",
+        replay_actions=("changes_requested",),
+        conflict_detail=lambda r: f"Cannot request changes on a {r.status} request",
     ),
     Transition(
         # B4 (machine, epoch-fenced by the caller): after a real merge, the
@@ -412,6 +496,21 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
         events=_ev_escalate,
         notify=_notify_escalation,
         conflict_detail=lambda r: f"Cannot escalate a {r.status} request",
+    ),
+    Transition(
+        name="begin_preview",
+        pre=Pre(status_in=(APPROVED,), gate=None),
+        effects=lambda p: {"stage": "preview", "stage_entered_at": utcnow()},
+        events=_ev_begin_preview,
+        conflict_detail=lambda r: f"Cannot begin preview on a {r.status} request",
+    ),
+    Transition(
+        name="raise_accept_gate",
+        pre=Pre(status_in=(APPROVED,), gate=None),
+        effects=lambda p: {"gate": GATE_ACCEPT_PREVIEW, "stage_entered_at": utcnow()},
+        events=_ev_raise_accept_gate,
+        notify=_notify_gate_raised,
+        conflict_detail=lambda r: f"Cannot raise preview acceptance gate on a {r.status} request",
     ),
     Transition(
         name="raise_merge_gate",

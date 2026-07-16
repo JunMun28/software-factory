@@ -41,6 +41,47 @@ def make_runner() -> tuple[KubeJobRunner, FakeKubeClient]:
     return KubeJobRunner(client=fake), fake
 
 
+def test_rewind_supersede_ignores_preview_and_deploy_rows(client):
+    request = approved_request(client, title="Preview rewind row lanes")
+    runner, _fake = make_runner()
+    entered = utcnow()
+    old = entered - timedelta(seconds=30)
+    deadline = entered + timedelta(minutes=5)
+
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        req.stage = "architecture"
+        req.stage_entered_at = entered
+        rows = [
+            StageJob(request_id=req.id, stage="architecture", attempt=1, role="stage",
+                     job_name=f"{req.ref.lower()}-architecture", status="succeeded",
+                     created_at=old, deadline_at=deadline),
+            StageJob(request_id=req.id, stage="red", attempt=1, role="stage",
+                     job_name=f"{req.ref.lower()}-red", status="succeeded",
+                     created_at=old, deadline_at=deadline),
+            StageJob(request_id=req.id, stage="review", attempt=1, role="gate",
+                     job_name=f"{req.ref.lower()}-review", status="succeeded",
+                     created_at=old, deadline_at=deadline),
+            StageJob(request_id=req.id, stage="preview", attempt=1, role="pdeploy",
+                     job_name=f"{req.ref.lower()}-preview", status="succeeded",
+                     created_at=old, deadline_at=deadline),
+            StageJob(request_id=req.id, stage="deploy", attempt=1, role="build",
+                     job_name=f"{req.ref.lower()}-deploy", status="succeeded",
+                     created_at=old, deadline_at=deadline),
+        ]
+        db.add_all(rows)
+        db.commit()
+
+        runner._supersede_rewound_rows(db, req, rows)
+
+        by_stage = {row.stage: row.status for row in rows}
+        assert by_stage["architecture"] == "superseded"
+        assert by_stage["red"] == "superseded"
+        assert by_stage["review"] == "superseded"
+        assert by_stage["preview"] == "succeeded"
+        assert by_stage["deploy"] == "succeeded"
+
+
 def test_github_dependency_is_injectable_and_lazy(monkeypatch):
     fake_kube = FakeKubeClient()
     injected = FakeGitHub("octocat")

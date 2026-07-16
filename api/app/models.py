@@ -80,7 +80,7 @@ class OperatorAppMute(Base):
 
 
 # Stage columns (fixed, Jira-style): the Work item's position in the Factory.
-STAGES = ["intake", "spec", "architecture", "build", "review", "done"]
+STAGES = ["intake", "spec", "architecture", "build", "review", "preview", "done"]
 # The post-approval stages the runner/simulator drive autonomously — the one
 # definition every module shares (orphan rescan, Retry re-drive, sim tick).
 PIPELINE_STAGES = ("architecture", "build", "review")
@@ -143,6 +143,7 @@ class Request(Base):
     send_back_question: Mapped[str | None] = mapped_column(Text, nullable=True)
     send_back_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     send_back_rounds: Mapped[int] = mapped_column(Integer, default=0)
+    preview_round: Mapped[int] = mapped_column(Integer, default=0)
 
     # Per-step Approve ledger (PRD hardening #3, ADR 0006 resumability)
     repo_ready: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -179,6 +180,9 @@ class Request(Base):
     )
     prototype_turns: Mapped[list["PrototypeTurn"]] = relationship(
         back_populates="request", order_by="PrototypeTurn.order", cascade="all, delete-orphan"
+    )
+    preview_feedback: Mapped[list["PreviewFeedback"]] = relationship(
+        back_populates="request", order_by="PreviewFeedback.order", cascade="all, delete-orphan"
     )
     spec_lines: Mapped[list["SpecLine"]] = relationship(
         back_populates="request", order_by="SpecLine.order", cascade="all, delete-orphan"
@@ -234,6 +238,29 @@ class PrototypeTurn(Base):
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
     request: Mapped[Request] = relationship(back_populates="prototype_turns")
+
+
+class PreviewFeedback(Base):
+    """One ordered, append-only requester feedback item for a preview round."""
+
+    __tablename__ = "preview_feedback"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"), index=True)
+    round: Mapped[int] = mapped_column(Integer, default=0)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    body: Mapped[str] = mapped_column(Text)
+    page_path: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    annotation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    attachment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("attachments.id"), nullable=True
+    )
+    author: Mapped[str] = mapped_column(String(80))
+    disposition: Mapped[str] = mapped_column(String(10), default="open")
+    disposition_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
+
+    request: Mapped[Request] = relationship(back_populates="preview_feedback")
 
 
 class SpecLine(Base):

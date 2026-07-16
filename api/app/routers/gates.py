@@ -15,14 +15,31 @@ HUMAN-initiated transitions: no epoch fence — valid from any replica.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import simulator, transitions
+from .. import settings, simulator, transitions
 from ..agent_exec import runner_mode
 from ..api_helpers import conflict_response, get_request, pipeline, prospective_repo, to_out
 from ..db import get_db
-from ..models import PIPELINE_STAGES, AuditEvent, SpecLine
-from ..schemas import Note, OperatorNote, RequestDetail, SendBackToStageIn
+from ..events import emit
+from ..models import (
+    PIPELINE_STAGES,
+    AuditEvent,
+    PreviewFeedback,
+    SpecLine,
+    StageJob,
+)
+from ..schemas import (
+    Note,
+    OperatorNote,
+    PreviewAcceptIn,
+    PreviewChangesIn,
+    PreviewFeedbackOut,
+    PreviewStatusOut,
+    RequestDetail,
+    SendBackToStageIn,
+)
 from ..transitions import Actor
 from .operators import resolve_operator
 
@@ -31,6 +48,140 @@ router = APIRouter()
 
 def _operator_actor(db: Session, operator_id: int) -> Actor:
     return Actor(name=resolve_operator(db, operator_id).name, operator_id=operator_id)
+
+
+@router.get("/api/requests/{rid}/preview", response_model=PreviewStatusOut)
+def preview_status(rid: int, db: Session = Depends(get_db)):
+    r = get_request(db, rid)
+    rows = db.scalars(
+        select(StageJob)
+        .where(
+            StageJob.request_id == r.id,
+            StageJob.role.in_(("pbuild", "pdeploy")),
+        )
+        .order_by(StageJob.id)
+    ).all()
+    pbuild = next((row for row in reversed(rows) if row.role == "pbuild"), None)
+    pdeploy = next((row for row in reversed(rows) if row.role == "pdeploy"), None)
+    newest = db.scalar(
+        select(AuditEvent)
+        .where(
+            AuditEvent.request_id == r.id,
+            AuditEvent.action.in_(transitions.DECISIVE_ACTIONS),
+        )
+        .order_by(AuditEvent.id.desc())
+    )
+    if r.gate == transitions.GATE_ACCEPT_PREVIEW:
+        state = "ready"
+    elif newest is not None and newest.action == "preview_accepted":
+        state = "accepted"
+    elif pdeploy is not None and pdeploy.status == "running":
+        state = "deploying"
+    elif pbuild is not None and pbuild.status == "running":
+        state = "building"
+    else:
+        state = "none"
+    live = pdeploy is not None and pdeploy.status in ("running", "succeeded")
+    envelope = (pdeploy.envelope if pdeploy else None) or (
+        pbuild.envelope if pbuild else None
+    ) or {}
+    feedback = db.scalars(
+        select(PreviewFeedback)
+        .where(PreviewFeedback.request_id == r.id)
+        .order_by(PreviewFeedback.round, PreviewFeedback.order, PreviewFeedback.id)
+    ).all()
+    slug = r.app.key if r.app else r.ref.lower()
+    return PreviewStatusOut(
+        round=r.preview_round + 1,
+        url=(f"http://{slug}-preview.{settings.APP_INGRESS_DOMAIN}" if live else None),
+        gate=r.gate if r.gate == transitions.GATE_ACCEPT_PREVIEW else None,
+        sha=envelope.get("sha"),
+        digest=envelope.get("digest"),
+        state=state,
+        feedback=[PreviewFeedbackOut.model_validate(item) for item in feedback],
+    )
+
+
+@router.post("/api/requests/{rid}/preview/accept", response_model=RequestDetail)
+def accept_preview(rid: int, body: PreviewAcceptIn, db: Session = Depends(get_db)):
+    r = get_request(db, rid)
+    actor = (
+        _operator_actor(db, body.operator_id)
+        if body.operator_id is not None
+        else Actor(name=body.actor or r.reporter)
+    )
+    claimed = transitions.apply(db, r, "claim_accept", actor=actor)
+    if isinstance(claimed, transitions.Loss):
+        return conflict_response(r, claimed)
+    raised = transitions.apply(db, r, "raise_merge_gate", actor=actor)
+    if isinstance(raised, transitions.Loss):
+        return conflict_response(r, raised)
+    db.commit()
+    raised.notify()
+    return to_out(r, RequestDetail)
+
+
+@router.post(
+    "/api/requests/{rid}/preview/request-changes", response_model=RequestDetail
+)
+def request_preview_changes(
+    rid: int, body: PreviewChangesIn, db: Session = Depends(get_db)
+):
+    r = get_request(db, rid)
+    actor = (
+        _operator_actor(db, body.operator_id)
+        if body.operator_id is not None
+        else Actor(name=body.actor or r.reporter)
+    )
+    at_cap = r.preview_round >= settings.PREVIEW_MAX_ROUNDS
+    changed = transitions.apply(db, r, "request_changes", actor=actor)
+    if isinstance(changed, transitions.Loss):
+        return conflict_response(r, changed)
+    new_round = r.preview_round
+    db.add(
+        PreviewFeedback(
+            request_id=r.id,
+            round=new_round,
+            order=0,
+            body=body.feedback,
+            page_path=body.page_path,
+            attachment_id=body.attachment_id,
+            author=actor.name,
+        )
+    )
+    db.add(
+        SpecLine(
+            request=r,
+            order=len(r.spec_lines),
+            text=body.feedback.strip().rstrip(".") + ".",
+            prov=f"preview {new_round}",
+        )
+    )
+    emit(
+        db,
+        r,
+        "comment",
+        body.feedback.splitlines()[0][:120],
+        actor=actor.name,
+        bot=False,
+        payload={"round": new_round, "items": 1},
+    )
+    if at_cap:
+        escalated = transitions.apply(
+            db,
+            r,
+            "escalate",
+            actor=actor,
+            params={
+                "reason": "Preview feedback rounds exhausted after "
+                f"{settings.PREVIEW_MAX_ROUNDS} — operator decision needed"
+            },
+        )
+        if isinstance(escalated, transitions.Loss):
+            return conflict_response(r, escalated)
+    db.commit()
+    changed.notify()
+    return to_out(r, RequestDetail)
 
 
 @router.post("/api/requests/{rid}/approve", response_model=RequestDetail)

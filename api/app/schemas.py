@@ -370,6 +370,40 @@ class OperatorNote(BaseModel):
     note: str = Field(default="", max_length=4000)
 
 
+class PreviewAcceptIn(BaseModel):
+    actor: str = Field(default="", max_length=80)
+    operator_id: int | None = None
+
+
+class PreviewChangesIn(BaseModel):
+    feedback: str = Field(min_length=1, max_length=8000)
+    actor: str = Field(default="", max_length=80)
+    page_path: str | None = Field(default=None, max_length=300)
+    attachment_id: int | None = None
+    operator_id: int | None = None
+
+
+class PreviewFeedbackOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    round: int
+    order: int
+    body: str
+    page_path: str | None = None
+    author: str
+    disposition: str
+    created_at: datetime
+
+
+class PreviewStatusOut(BaseModel):
+    round: int
+    url: str | None = None
+    gate: str | None = None
+    sha: str | None = None
+    digest: str | None = None
+    state: str
+    feedback: list[PreviewFeedbackOut] = Field(default_factory=list)
+
+
 class SendBackToStageIn(BaseModel):
     operator_id: int
     stage: str = Field(min_length=1, max_length=16)
