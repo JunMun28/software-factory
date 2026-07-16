@@ -23,6 +23,7 @@ import re
 
 from . import settings, workspace
 from .agent_exec import agent_cli
+from .log_scrub import scrub_secrets
 
 
 def _agent_model() -> str:
@@ -268,6 +269,45 @@ def ndjson_events(logs: str) -> list[dict]:
         if isinstance(event, dict):
             events.append(event)
     return events
+
+
+_VERDICT_RE = re.compile(r"^(APPROVE|REQUEST-CHANGES)\b")
+
+
+def parse_review_report(stage_row) -> dict:
+    """Parse and scrub the captured review stage's verdict and reasoning.
+
+    Scrubbing happens here, before the report can reach an append-only event,
+    merge evidence, the jobs API, or a retry prompt.
+    """
+    detail = ((stage_row.envelope or {}).get("detail") or "").strip()
+    match = _VERDICT_RE.match(detail)
+    raw_verdict = (
+        match.group(1)
+        if match
+        else (detail.split("\n", 1)[0][:120] or "no explicit verdict")
+    )
+    verdict = scrub_secrets(raw_verdict)
+    reasoning = ""
+    for event in ndjson_events(stage_row.logs_tail or ""):
+        if event.get("type") == "review":
+            reasoning = scrub_secrets(str(event.get("text") or "").strip())[:4000]
+            break
+    approved = verdict == "APPROVE"
+    feedback = ""
+    if not approved:
+        feedback = scrub_secrets(
+            "Your prior review requested changes for these reasons; re-review "
+            "the unchanged code honestly. The code SHA is unchanged, so repeat "
+            "REQUEST-CHANGES if the concerns still apply.\n"
+            f"Verdict: {verdict}\n{reasoning}"
+        ).strip()[:_FEEDBACK_CAP]
+    return {
+        "verdict": verdict,
+        "approved": approved,
+        "reasoning": reasoning,
+        "feedback": feedback,
+    }
 
 
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")

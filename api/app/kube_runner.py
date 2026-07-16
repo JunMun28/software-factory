@@ -55,11 +55,14 @@ from .kube_jobs import (
     REQUEST_STAGE,
     gate_job_manifest,
     job_name,
+    ndjson_events,
     parse_digest,
     parse_envelope,
+    parse_review_report,
     stage_job_manifest,
 )
 from .leader import get_elector
+from .log_scrub import scrub_secrets
 from .models import (
     PIPELINE_STAGES,
     AuditEvent,
@@ -560,6 +563,56 @@ class KubeJobRunner:
                     "reason": "Verification could not be built — the review gate reported no test/diff evidence",
                 }
                 sj.envelope = envelope
+        review_report = None
+        if sj.stage == "review":
+            review_report = self._review_report_for(db, req, sj.attempt)
+            if review_report is None:
+                log.warning(
+                    "%s: review gate attempt %s has no captured review stage row",
+                    req.ref,
+                    sj.attempt,
+                )
+                if verdict == "pass":
+                    verdict = "fail"
+                    envelope = {
+                        **envelope,
+                        "reason": "Reviewer did not APPROVE — captured review report unavailable",
+                        "review_verdict": None,
+                    }
+                    sj.envelope = envelope
+            else:
+                self._emit_review_report(db, req, sj.attempt, review_report)
+                if not review_report["approved"]:
+                    verdict = "fail"
+                    envelope = {
+                        **envelope,
+                        "reason": review_report["feedback"],
+                        "review_verdict": review_report["verdict"],
+                    }
+                    sj.envelope = envelope
+        if sj.stage in ("red", "green"):
+            block = self._pytest_block(sj.logs_tail)
+            if block:
+                emit(
+                    db,
+                    req,
+                    "agent_transcript",
+                    f"{sj.stage} test output",
+                    stage="build",
+                    payload={
+                        "Ref": req.ref,
+                        "stage": sj.stage,
+                        "attempt": sj.attempt,
+                        "text": scrub_secrets(block)[:4000],
+                    },
+                )
+                if verdict != "pass":
+                    reason = envelope.get("reason") or f"{sj.stage} gate failed"
+                    envelope = {
+                        **envelope,
+                        "reason": f"{reason}\n\n{scrub_secrets(block)[-1500:]}",
+                    }
+                    sj.envelope = envelope
         if verdict != "pass":
             sj.status = "failed"
             db.commit()
@@ -578,14 +631,75 @@ class KubeJobRunner:
         moved.append(f"{req.ref}: {sj.stage} gate passed")
         if sj.stage == "red" and settings.acceptance_enabled():
             self._emit_ac_coverage(db, req, stage="red")
+        if sj.stage == "architecture":
+            self._emit_architecture_plan(db, req)
         if sj.stage == "review":
-            self._finish_review(db, req, envelope, moved)
+            self._finish_review(db, req, envelope, moved, attempt=sj.attempt)
+
+    @staticmethod
+    def _pytest_block(logs: str | None) -> str:
+        for event in ndjson_events(logs or ""):
+            if event.get("type") == "pytest":
+                return str(event.get("text") or "").strip()[:4000]
+        return ""
+
+    @staticmethod
+    def _emit_review_report(
+        db: Session, req: Request, attempt: int, report: dict
+    ) -> None:
+        emit(
+            db,
+            req,
+            "review_report",
+            f"Reviewer: {report['verdict']}",
+            stage="review",
+            payload={
+                "Ref": req.ref,
+                "attempt": attempt,
+                "verdict": report["verdict"],
+                "approved": report["approved"],
+                "reasoning": report["reasoning"][:4000],
+            },
+        )
+
+    @staticmethod
+    def _review_report_for(
+        db: Session, req: Request, attempt: int | None = None
+    ) -> dict | None:
+        query = (
+            select(StageJob)
+            .where(
+                StageJob.request_id == req.id,
+                StageJob.stage == "review",
+                StageJob.role == "stage",
+                StageJob.status == "succeeded",
+            )
+            .order_by(StageJob.id.desc())
+        )
+        if attempt is not None:
+            query = query.where(StageJob.attempt == attempt)
+        row = db.scalar(query)
+        return parse_review_report(row) if row is not None else None
 
     def _finish_review(
-        self, db: Session, req: Request, envelope: dict, moved: list[str]
+        self,
+        db: Session,
+        req: Request,
+        envelope: dict,
+        moved: list[str],
+        *,
+        attempt: int | None = None,
     ) -> None:
         # metrics were validated in _grade before the verdict counted as a pass
-        payload = verification.payload_from_metrics(req, envelope.get("metrics") or {})
+        report = self._review_report_for(db, req, attempt)
+        review_sha = self._stage_sha(db, req, "review", attempt)
+        payload = verification.payload_from_metrics(
+            req,
+            envelope.get("metrics") or {},
+            pr_url=self._pr_html_url(db, req),
+            diffstat=self._review_diffstat(db, req, review_sha),
+            reviewer_reasoning=(report or {}).get("reasoning") or None,
+        )
         if settings.acceptance_enabled():
             coverage = self._coverage_at_stage(db, req, "review")
             if coverage is not None:
@@ -866,10 +980,30 @@ class KubeJobRunner:
         if accepted is None:
             return {}
         slug = self._app_slug(req)
+        builds = db.scalars(
+            select(StageJob)
+            .where(
+                StageJob.request_id == req.id,
+                StageJob.stage == "preview",
+                StageJob.role == "pbuild",
+                StageJob.status == "succeeded",
+            )
+            .order_by(StageJob.id.desc())
+        ).all()
+        build = next(
+            (
+                row
+                for row in builds
+                if (row.envelope or {}).get("round") == req.preview_round
+            ),
+            builds[0] if builds else None,
+        )
         return {
             "preview_url": f"http://{slug}-preview.{settings.APP_INGRESS_DOMAIN}",
             "preview_round": req.preview_round,
             "accepted_by": accepted.actor,
+            "preview_digest": (build.envelope or {}).get("digest") if build else None,
+            "pr_url": self._pr_html_url(db, req),
         }
 
     def _preview_state_machine(
@@ -1892,12 +2026,18 @@ class KubeJobRunner:
 
     def _open_pr(self, db: Session, req: Request, slug: str) -> bool:
         intent_key = f"pr:{req.ref}"
+        ws = workspace.workspace_for(req)
+        base_sha = workspace.head_sha(ws, "main")
         fresh = intents.begin(
             db,
             intent_key,
             intents.OPEN_PR,
             req.id,
-            {"slug": slug, "branch": workspace.work_branch(req.ref)},
+            {
+                "slug": slug,
+                "branch": workspace.work_branch(req.ref),
+                "base_sha": base_sha,
+            },
         )
         db.commit()
         pr_intent = fresh or db.get(Intent, intent_key)
@@ -1916,6 +2056,93 @@ class KubeJobRunner:
             return False
         intents.complete(db, intent_key, {"pr_number": pr_number})
         return True
+
+    def _pr_html_url(self, db: Session, req: Request) -> str | None:
+        if not settings.github_enabled():
+            return None
+        intent = db.get(Intent, f"pr:{req.ref}")
+        if intent is None or not intent.outcome_json:
+            return None
+        try:
+            pr_number = json.loads(intent.outcome_json).get("pr_number")
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(pr_number, int):
+            return None
+        from .github import repo_name
+
+        return (
+            f"https://github.com/{settings.GITHUB_OWNER}/"
+            f"{repo_name(self._app_slug(req))}/pull/{pr_number}"
+        )
+
+    @staticmethod
+    def _recorded_pr_base_sha(db: Session, req: Request) -> str | None:
+        intent = db.get(Intent, f"pr:{req.ref}")
+        if intent is None or not intent.payload_json:
+            return None
+        try:
+            base_sha = json.loads(intent.payload_json).get("base_sha")
+        except (TypeError, ValueError):
+            return None
+        return base_sha if isinstance(base_sha, str) and SHA40.fullmatch(base_sha) else None
+
+    def _review_diffstat(
+        self, db: Session, req: Request, review_sha: str | None
+    ) -> list[dict] | dict | None:
+        if not settings.GIT_REMOTE_BASE or not review_sha:
+            return None
+        ws = workspace.workspace_for(req)
+        if not (ws / ".git").exists():
+            return {
+                "status": "unavailable",
+                "reason": "orchestrator workspace unavailable",
+            }
+        base_sha = self._recorded_pr_base_sha(db, req)
+        try:
+            if base_sha is None:
+                base_sha = workspace.merge_base_at(ws, "main", review_sha)
+            if base_sha is None:
+                return {
+                    "status": "unavailable",
+                    "reason": "PR base SHA unavailable",
+                }
+            rows = workspace.numstat_at(ws, base_sha, review_sha)
+        except workspace.GitTimeout as exc:
+            log.warning("diffstat timed out for %s: %s", req.ref, exc)
+            return {"status": "unavailable", "reason": "diffstat timed out"}
+        if rows is None:
+            return {"status": "unavailable", "reason": "diffstat unavailable"}
+        return rows
+
+    def _emit_architecture_plan(self, db: Session, req: Request) -> None:
+        excerpt = None
+        digest = None
+        if settings.GIT_REMOTE_BASE:
+            ws = workspace.workspace_for(req)
+            sha = self._stage_sha(db, req, "architecture")
+            if sha and (ws / ".git").exists():
+                try:
+                    plan = workspace.plan_at(ws, sha)
+                except workspace.GitTimeout as exc:
+                    log.warning("PLAN.md read timed out for %s: %s", req.ref, exc)
+                    plan = None
+                if plan is not None:
+                    excerpt, digest = plan
+        emit(
+            db,
+            req,
+            "architecture_plan",
+            "Architecture plan ready",
+            stage="architecture",
+            payload={
+                "Ref": req.ref,
+                "plan_excerpt": excerpt,
+                "plan_digest": digest,
+                "pr_url": self._pr_html_url(db, req),
+            },
+        )
+        db.commit()
 
     def _surface_check(self, db: Session, req: Request, sj: StageJob) -> str:
         """'ok' | 'violated' | 'unavailable'. The orchestrator computes the

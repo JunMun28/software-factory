@@ -62,6 +62,15 @@ def cheating_executor(prompt: str, *, cwd: str | None = None, **kw) -> AgentResu
     return AgentResult(ok=True, text="done")
 
 
+def requesting_changes_executor(prompt: str, *, cwd: str | None = None, **kw) -> AgentResult:
+    result = honest_executor(prompt, cwd=cwd, **kw)
+    if "reviewer" in prompt:
+        Path(cwd, "REVIEW.md").write_text(
+            "REQUEST-CHANGES\nThe implementation misses the error path.\n"
+        )
+    return result
+
+
 def lazy_test_author(prompt: str, *, cwd: str | None = None, **kw) -> AgentResult:
     ws = Path(cwd)
     if "architect" in prompt:
@@ -95,6 +104,21 @@ def test_full_pipeline_to_merge(client, ws_root):
     assert final["status"] == "done" and final["stage"] == "done"
     log = agent_runner._git(ws, "log", "--oneline", "main").stdout
     assert "merge (approved by Kim P.)" in log
+
+
+def test_non_kube_reviewer_request_changes_is_binding(client, ws_root):
+    request = _approved_request(client, "Binding local review")
+
+    AgentRunner(executor=requesting_changes_executor).run_pipeline(request["id"])
+
+    out = client.get(f"/api/requests/{request['id']}").json()
+    assert out["needs_human"] is True
+    assert out["gate"] != "approve_merge"
+    assert "REQUEST-CHANGES" in out["needs_human_reason"]
+    client.post(
+        f"/api/requests/{request['id']}/cancel",
+        json={"operator_id": 1, "note": "test cleanup"},
+    )
 
 
 def test_real_runner_injects_and_acks_pending_steer_at_stage_boundary(client, ws_root):

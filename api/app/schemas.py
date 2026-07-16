@@ -115,8 +115,8 @@ class SteerStateOut(BaseModel):
 
 class EvidenceOut(BaseModel):
     """What the admin sees before approving (spec §6). kind='spec' uses the
-    grounded-lines fields; kind='merge' uses the verification fields."""
-    kind: Literal["spec", "merge"]
+    grounded-lines fields; merge/deploy use verification and release fields."""
+    kind: Literal["spec", "merge", "deploy"]
     grounded_lines: int | None = None
     total_lines: int | None = None
     interview_count: int | None = None
@@ -126,6 +126,13 @@ class EvidenceOut(BaseModel):
     diff_removed: int | None = None
     files_changed: int | None = None
     reviewer_verdict: str | None = None
+    reviewer_reasoning: str | None = None
+    pr_url: str | None = None
+    diffstat: list[dict] | dict | None = None
+    sha: str | None = None
+    preview_digest: str | None = None
+    preview_url: str | None = None
+    review_event_id: int | None = None
     ac_total: int | None = None
     ac_covered: int | None = None
     ac_coverage: float | None = None
@@ -464,3 +471,28 @@ class EventOut(BaseModel):
     created_at: datetime
     request_ref: str | None = None
     request_title: str | None = None
+
+
+# C3 schemas intentionally live at EOF: a parallel branch has additive edits
+# in the earlier application/operator/mission schema region.
+class ReviewReportOut(BaseModel):
+    verdict: str
+    approved: bool
+    reasoning: str
+
+
+class StageJobOut(BaseModel):
+    stage: str
+    role: str
+    attempt: int
+    status: str
+    job_name: str
+    envelope: dict | None = None
+    logs_tail: str | None = None
+    review: ReviewReportOut | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class JobsOut(BaseModel):
+    jobs: list[StageJobOut]

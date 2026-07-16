@@ -57,10 +57,19 @@ PROMPT_FILE="/opt/sf/prompts/${SF_STAGE}.md"
 [ -f "$PROMPT_FILE" ] || die_stage "unknown stage $SF_STAGE"
 PROMPT="$(cat "$PROMPT_FILE")"
 if [ -n "${SF_GATE_FEEDBACK:-}" ]; then
-  PROMPT="$PROMPT
+  if [ "$SF_STAGE" = "review" ]; then
+    PROMPT="$PROMPT
+
+Your prior review requested changes for these reasons. Re-review the UNCHANGED code
+honestly; repeat REQUEST-CHANGES if the concerns still apply. Do not approve merely
+because this is a retry:
+${SF_GATE_FEEDBACK}"
+  else
+    PROMPT="$PROMPT
 
 The previous attempt failed its gate. Gate feedback to fix in THIS attempt:
 ${SF_GATE_FEEDBACK}"
+  fi
 fi
 if [ -n "${SF_PREVIEW_FEEDBACK:-}" ]; then
   PROMPT="$PROMPT
@@ -112,7 +121,7 @@ if [ "$SF_STAGE" = "review" ]; then
   jq -cn --arg t "$(tail -c 20000 "$OUT")" '{type:"review",text:$t}'
   # anchored: the prompt demands the verdict START a line — prose mentions
   # ("I would not APPROVE") must not count as a verdict
-  VERDICT="$(grep -m1 -oE '^(APPROVE|REQUEST-CHANGES)' "$OUT" || echo 'no explicit verdict')"
+  VERDICT="$(grep -m1 -oE '^(APPROVE|REQUEST-CHANGES)\b' "$OUT" || echo 'no explicit verdict')"
   SHA="$(git rev-parse HEAD)"
   write_envelope "$(jq -cn --arg d "$VERDICT" --arg s "$SHA" \
     '{v:1,outcome:"ok",detail:$d,sha:$s}')"

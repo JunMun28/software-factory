@@ -17,9 +17,19 @@ from .. import transitions
 from ..api_helpers import get_request, to_out
 from ..db import get_db
 from ..events import emit
-from ..models import App, AuditEvent, Comment, ProgressEvent, Request
+from ..kube_jobs import KUBE_STAGES, parse_review_report
+from ..log_scrub import scrub_envelope, scrub_secrets
+from ..models import App, AuditEvent, Comment, ProgressEvent, Request, StageJob
 from ..revision import current_revision
-from ..schemas import CommentIn, CommentOut, EventOut, FeedPage, RequestOut
+from ..schemas import (
+    CommentIn,
+    CommentOut,
+    EventOut,
+    FeedPage,
+    JobsOut,
+    RequestOut,
+    StageJobOut,
+)
 from ..supervision import classify
 from .operators import resolve_operator
 
@@ -46,6 +56,38 @@ def joined_events(db: Session):
     return (
         db.query(ProgressEvent, Request.ref, Request.title)
         .outerjoin(Request, ProgressEvent.request_id == Request.id)
+    )
+
+
+_STAGE_ORDER = {stage: index for index, stage in enumerate(KUBE_STAGES)}
+_TAIL_ORDER = {"preview": 10, "build": 11, "deploy": 12, "teardown": 13}
+
+
+def _row_sort_key(row: StageJob) -> tuple[int, int, int]:
+    rank = _STAGE_ORDER.get(row.stage, _TAIL_ORDER.get(row.stage, 99))
+    return rank, row.attempt, row.id or 0
+
+
+def serialize_job(row: StageJob) -> StageJobOut:
+    review = None
+    if row.stage == "review" and row.role == "stage":
+        parsed = parse_review_report(row)
+        review = {
+            "verdict": parsed["verdict"],
+            "approved": parsed["approved"],
+            "reasoning": parsed["reasoning"],
+        }
+    return StageJobOut(
+        stage=row.stage,
+        role=row.role,
+        attempt=row.attempt,
+        status=row.status,
+        job_name=row.job_name,
+        envelope=scrub_envelope(row.envelope),
+        logs_tail=scrub_secrets(row.logs_tail) if row.logs_tail else None,
+        review=review,
+        created_at=row.created_at,
+        completed_at=row.completed_at,
     )
 
 
@@ -111,6 +153,18 @@ def request_trace(rid: int, after: int = 0, limit: int = 200, db: Session = Depe
     items = serialize_events(rows)
     cursor = items[-1].id if items else after
     return FeedPage(items=items, cursor=cursor)
+
+
+@router.get("/api/requests/{rid}/jobs", response_model=JobsOut)
+def request_jobs(rid: int, db: Session = Depends(get_db)):
+    """Per-attempt Job evidence for diagnosing a stalled request."""
+    get_request(db, rid)
+    rows = db.scalars(
+        select(StageJob)
+        .where(StageJob.request_id == rid)
+        .order_by(StageJob.id)
+    ).all()
+    return JobsOut(jobs=[serialize_job(row) for row in sorted(rows, key=_row_sort_key)])
 
 
 # ---------- comments ----------

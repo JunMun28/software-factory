@@ -165,5 +165,55 @@ def evidence(db: Session, r: Request) -> dict | None:
             "max_fanin",
         )
         result.update({key: p[key] for key in acceptance_keys if key in p})
+        result.update(
+            {
+                key: p[key]
+                for key in ("pr_url", "diffstat", "reviewer_reasoning")
+                if key in p
+            }
+        )
         return result
+    if r.gate == transitions.GATE_APPROVE_DEPLOY:
+        gate_events = (
+            db.query(ProgressEvent)
+            .filter(
+                ProgressEvent.request_id == r.id,
+                ProgressEvent.kind == "gate_event",
+            )
+            .order_by(ProgressEvent.id.desc())
+            .all()
+        )
+        gate_event = next(
+            (
+                event
+                for event in gate_events
+                if (event.payload or {}).get("gate")
+                == transitions.GATE_APPROVE_DEPLOY
+            ),
+            None,
+        )
+        if gate_event is None:
+            return None
+        verification_event = (
+            db.query(ProgressEvent)
+            .filter(
+                ProgressEvent.request_id == r.id,
+                ProgressEvent.kind == "verification",
+            )
+            .order_by(ProgressEvent.id.desc())
+            .first()
+        )
+        payload = gate_event.payload or {}
+        review_payload = (
+            verification_event.payload or {} if verification_event else {}
+        )
+        return {
+            "kind": "deploy",
+            "sha": payload.get("sha"),
+            "preview_digest": payload.get("preview_digest"),
+            "preview_url": payload.get("preview_url"),
+            "pr_url": payload.get("pr_url"),
+            "review_event_id": verification_event.id if verification_event else None,
+            "reviewer_verdict": review_payload.get("reviewer_verdict"),
+        }
     return None

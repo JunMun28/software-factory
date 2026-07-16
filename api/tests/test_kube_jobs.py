@@ -19,6 +19,7 @@ from app.kube_jobs import (
     job_name,
     ndjson_events,
     parse_envelope,
+    parse_review_report,
     stage_job_manifest,
 )
 from app.models import Request, StageJob, utcnow
@@ -138,6 +139,36 @@ def test_parse_envelope_and_ndjson_are_tolerant():
     assert parse_envelope('{"no_outcome": true}') is None
     logs = 'banner line\n{"type":"note","text":"a"}\nnot json\n{"type":"note","text":"b"}\n'
     assert [e["text"] for e in ndjson_events(logs)] == ["a", "b"]
+
+
+def test_parse_review_report_scrubs_reasoning_and_feedback_at_source():
+    token = "ghp_" + "R" * 36
+    row = StageJob(
+        envelope={"detail": "REQUEST-CHANGES"},
+        logs_tail=(
+            '{"type":"review","text":"Fix the race; remote '
+            f'https://x-access-token:{token}@github.com/acme/private.git"}}\n'
+        ),
+    )
+
+    report = parse_review_report(row)
+
+    assert report["verdict"] == "REQUEST-CHANGES"
+    assert report["approved"] is False
+    assert "Fix the race" in report["reasoning"]
+    assert "unchanged code honestly" in report["feedback"]
+    assert "repeat REQUEST-CHANGES" in report["feedback"]
+    assert token not in str(report)
+
+
+@pytest.mark.parametrize("detail", ["", "no explicit verdict", "APPROVEX"])
+def test_parse_review_report_fails_closed_without_exact_verdict(detail):
+    row = StageJob(envelope={"detail": detail}, logs_tail="banner noise")
+
+    report = parse_review_report(row)
+
+    assert report["approved"] is False
+    assert report["feedback"]
 
 
 def test_fake_kube_client_roundtrip():

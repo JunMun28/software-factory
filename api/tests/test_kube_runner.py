@@ -226,6 +226,17 @@ def test_zero_acceptance_coverage_never_blocks_review_gate(client, monkeypatch):
         )
         assert red_gate.status == "succeeded"
         req.stage = "review"
+        review_stage = StageJob(
+            request_id=req.id,
+            stage="review",
+            attempt=1,
+            role="stage",
+            job_name=f"{req.ref.lower()}-review-stage",
+            status="succeeded",
+            envelope={"detail": "APPROVE"},
+            logs_tail='{"type":"review","text":"Coverage is advisory."}',
+            deadline_at=utcnow() + timedelta(minutes=5),
+        )
         gate = StageJob(
             request_id=req.id,
             stage="review",
@@ -234,7 +245,7 @@ def test_zero_acceptance_coverage_never_blocks_review_gate(client, monkeypatch):
             job_name=f"{req.ref.lower()}-review-gate",
             deadline_at=utcnow() + timedelta(minutes=5),
         )
-        db.add(gate)
+        db.add_all([review_stage, gate])
         db.commit()
         runner._grade(
             db,
@@ -270,11 +281,15 @@ def test_review_escalates_when_gate_reports_no_evidence(client):
             v = pass_verdict(metrics={**GOOD_METRICS, "tests_total": 0, "tests_passed": 0})
         elif name.endswith("-gate"):
             v = pass_verdict()
+        elif "-review-" in name:
+            v = stage_ok("APPROVE")
         else:
             v = stage_ok()
         import json as _json
         job.phase = "succeeded"
         job.termination_message = _json.dumps(v)
+        if "-review-" in name and not name.endswith("-gate"):
+            job.logs = '{"type":"review","text":"Evidence is incomplete."}\n'
     fake.on_observe = run
 
     d = _approved(client, "Kube empty evidence")
@@ -1511,9 +1526,11 @@ def test_github_fetches_pinned_sha_before_gate_and_opens_architecture_pr_once(
 
         pr_intent = db.get(Intent, f"pr:{req.ref}")
         pr_number = json.loads(pr_intent.outcome_json)["pr_number"]
+        recorded_base = json.loads(pr_intent.payload_json)["base_sha"]
 
     assert fetches == [(ws, "northwind", request["ref"], sha)]
     assert pr_number == 1
+    assert recorded_base == workspace.head_sha(ws, "main")
     assert [call[0] for call in github.calls].count("open_pr") == 1
     open_call = next(call for call in github.calls if call[0] == "open_pr")
     assert open_call[1:4] == (

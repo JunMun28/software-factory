@@ -59,6 +59,8 @@ EOF2
       --argjson da "${added:-0}" --argjson dr "${removed:-0}" --argjson fc "$files" \
       --arg rv "${SF_REVIEW_VERDICT:-no review}" \
       '{tests_passed:$tp,tests_total:$tt,diff_added:$da,diff_removed:$dr,files_changed:$fc,reviewer_verdict:$rv}')"
+    [ "${SF_REVIEW_VERDICT:-}" = "APPROVE" ] || \
+      verdict fail "review gate: reviewer did not APPROVE (${SF_REVIEW_VERDICT:-no review})" "$METRICS"
     [ "$rc" = "0" ] && verdict pass "review gate metrics computed" "$METRICS"
     verdict fail "review gate: suite not green at the pinned SHA (rc=$rc)" "$METRICS"
     ;;

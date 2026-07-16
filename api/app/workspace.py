@@ -239,6 +239,62 @@ def surface_hash_at(ws: Path, sha: str) -> str | None:
     return hashlib.sha256(out.stdout.encode()).hexdigest()
 
 
+def plan_at(
+    ws: Path, sha: str, *, max_lines: int = 40
+) -> tuple[str, str] | None:
+    """Read PLAN.md from an exact orchestrator-side commit."""
+    if not re.fullmatch(r"[0-9a-fA-F]{7,40}", sha or ""):
+        return None
+    out = _git(ws, "show", f"{sha}:PLAN.md")
+    if out.returncode == GIT_TIMEOUT_RC:
+        raise GitTimeout(out.stderr)
+    if out.returncode != 0:
+        return None
+    body = out.stdout
+    excerpt = "".join(body.splitlines(keepends=True)[:max_lines])
+    digest = "sha256:" + hashlib.sha256(body.encode()).hexdigest()[:12]
+    return excerpt, digest
+
+
+def merge_base_at(ws: Path, left: str, right: str) -> str | None:
+    """Resolve a merge base, distinguishing unavailable refs from no changes."""
+    out = _git(ws, "merge-base", left, right)
+    if out.returncode == GIT_TIMEOUT_RC:
+        raise GitTimeout(out.stderr)
+    value = out.stdout.strip()
+    return value if out.returncode == 0 and re.fullmatch(r"[0-9a-fA-F]{40}", value) else None
+
+
+def numstat_at(
+    ws: Path, base_sha: str, sha: str, *, max_files: int = 50
+) -> list[dict] | None:
+    """Per-file diffstat from an explicit PR base to an exact graded SHA."""
+    if not all(
+        re.fullmatch(r"[0-9a-fA-F]{7,40}", value or "")
+        for value in (base_sha, sha)
+    ):
+        return None
+    out = _git(ws, "diff", "--numstat", f"{base_sha}...{sha}")
+    if out.returncode == GIT_TIMEOUT_RC:
+        raise GitTimeout(out.stderr)
+    if out.returncode != 0:
+        return None
+    rows: list[dict] = []
+    for line in out.stdout.splitlines()[:max_files]:
+        parts = line.split("\t", 2)
+        if len(parts) != 3:
+            continue
+        added, removed, path = parts
+        rows.append(
+            {
+                "file": path,
+                "added": int(added) if added.isdigit() else 0,
+                "removed": int(removed) if removed.isdigit() else 0,
+            }
+        )
+    return rows
+
+
 def acceptance_manifest_at(ws: Path, sha: str) -> dict | None:
     """Parse the committed RED manifest from the orchestrator's own git copy."""
     if not re.fullmatch(r"[0-9a-fA-F]{7,40}", sha or ""):

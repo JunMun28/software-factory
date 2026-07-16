@@ -113,6 +113,34 @@ def test_surface_hash_pins_the_test_surface(ws_root):
     assert workspace.surface_hash_at(ws, "0" * 40) is None  # unknown SHA = None
 
 
+def test_plan_and_numstat_are_read_at_recorded_shas(ws_root):
+    req = _req()
+    ws = workspace.ensure_repo(req, workspace.spec_md(req))
+    base = workspace.head_sha(ws, "main")
+    (ws / "PLAN.md").write_text("# Plan\n\n1. First\n2. Second\n")
+    (ws / "src" / "feature.py").write_text("one = 1\ntwo = 2\n")
+    head = _commit_all(ws, "plan and implementation")
+
+    plan = workspace.plan_at(ws, head, max_lines=2)
+    diffstat = workspace.numstat_at(ws, base, head)
+
+    assert plan is not None
+    assert plan[0] == "# Plan\n\n"
+    assert plan[1].startswith("sha256:") and len(plan[1]) == 19
+    assert {row["file"] for row in diffstat} >= {"PLAN.md", "src/feature.py"}
+    assert workspace.plan_at(ws, "0" * 40) is None
+    assert workspace.numstat_at(ws, "0" * 40, head) is None
+
+
+def test_merge_base_at_returns_none_when_a_ref_is_unavailable(ws_root):
+    req = _req()
+    ws = workspace.ensure_repo(req, workspace.spec_md(req))
+    head = workspace.head_sha(ws)
+
+    assert workspace.merge_base_at(ws, "main", head) == workspace.head_sha(ws, "main")
+    assert workspace.merge_base_at(ws, "missing-ref", head) is None
+
+
 def test_reset_branch_discards_half_pushed_work(ws_root):
     req = _req()
     ws = workspace.ensure_repo(req, workspace.spec_md(req))

@@ -90,6 +90,9 @@ def _payload(
     covered_count: int | None = None,
     distinct_covering_nodes: int | None = None,
     max_fanin: int | None = None,
+    pr_url: str | None = None,
+    diffstat: list[dict] | dict | None = None,
+    reviewer_reasoning: str | None = None,
 ) -> dict:
     """The one place the 8-key payload SHAPE is built. Both the fabricated
     (simulator) and derived (runner) paths pass their six metrics through here,
@@ -112,6 +115,9 @@ def _payload(
         "covered_count": covered_count,
         "distinct_covering_nodes": distinct_covering_nodes,
         "max_fanin": max_fanin,
+        "pr_url": pr_url,
+        "diffstat": diffstat,
+        "reviewer_reasoning": reviewer_reasoning,
     }
     # The kill-switch restores the byte-for-byte pre-C4 payload shape.
     payload.update({key: value for key, value in optional.items() if value is not None})
@@ -133,7 +139,14 @@ def build_payload(ws: Path, req: Request) -> dict:
     )
 
 
-def payload_from_metrics(req: Request, metrics: dict) -> dict:
+def payload_from_metrics(
+    req: Request,
+    metrics: dict,
+    *,
+    pr_url: str | None = None,
+    diffstat: list[dict] | dict | None = None,
+    reviewer_reasoning: str | None = None,
+) -> dict:
     """Kube path (Plan B1): the review GATE Job's verdict carries the six
     metrics (spec §6); shape them through the one payload builder so the
     contract with supervision.evidence() cannot drift here either."""
@@ -145,6 +158,9 @@ def payload_from_metrics(req: Request, metrics: dict) -> dict:
         diff_removed=int(metrics.get("diff_removed") or 0),
         files_changed=int(metrics.get("files_changed") or 0),
         reviewer_verdict=str(metrics.get("reviewer_verdict") or "no review")[:120],
+        pr_url=pr_url,
+        diffstat=diffstat,
+        reviewer_reasoning=reviewer_reasoning,
     )
 
 

@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 
-from fake_kube import FakeKubeClient
+from fake_kube import FakeKubeClient, pass_verdict
 from helpers import approved_request
 from sqlalchemy import select
 
@@ -188,6 +188,10 @@ def test_preview_off_preserves_review_to_merge_flow(client, monkeypatch, tmp_pat
                 StageJob.request_id == req.id, StageJob.stage == "preview"
             )
         ).all()
+    client.post(
+        f"/api/requests/{request['id']}/cancel",
+        json={"operator_id": 1, "note": "test cleanup"},
+    )
 
 
 def test_merge_claim_terminal_audit_blocks_whole_preview_machine(client, monkeypatch, tmp_path):
@@ -348,6 +352,80 @@ def test_operator_request_changes_clears_escalation_records_round_and_reruns_arc
             for item in manifest["spec"]["template"]["spec"]["containers"][0]["env"]
         }
         assert env["SF_PREVIEW_FEEDBACK"] == "- Keep the filters visible (on /orders)"
+
+
+def test_round_two_review_request_changes_escalates_at_shared_attempt_cap(
+    client, monkeypatch, tmp_path
+):
+    """The review retry budget is request-wide, including superseded preview rounds."""
+    _enable_preview(monkeypatch, tmp_path)
+    request = _put_at_preview_gate(client, "Round two shared review budget")
+    now = utcnow() - timedelta(minutes=5)
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        db.add_all(
+            [
+                StageJob(
+                    request_id=req.id,
+                    stage="review",
+                    attempt=1,
+                    role=role,
+                    job_name=f"{req.ref.lower()}-review-1-{role}",
+                    status="succeeded",
+                    envelope={"detail": "APPROVE"} if role == "stage" else {},
+                    logs_tail='{"type":"review","text":"First round approved."}',
+                    deadline_at=now,
+                    completed_at=now,
+                    created_at=now,
+                )
+                for role in ("stage", "gate")
+            ]
+        )
+        db.commit()
+    changed = client.post(
+        f"/api/requests/{request['id']}/preview/request-changes",
+        json={"feedback": "Make the filters sticky"},
+    )
+    assert changed.status_code == 200, changed.text
+    runner = KubeJobRunner(client=FakeKubeClient())
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        req.stage = "review"
+        stage = StageJob(
+            request_id=req.id,
+            stage="review",
+            attempt=2,
+            role="stage",
+            job_name=f"{req.ref.lower()}-review-2",
+            status="succeeded",
+            envelope={"detail": "REQUEST-CHANGES"},
+            logs_tail='{"type":"review","text":"The filter state is still lost."}',
+            deadline_at=utcnow() + timedelta(minutes=5),
+        )
+        gate = StageJob(
+            request_id=req.id,
+            stage="review",
+            attempt=2,
+            role="gate",
+            job_name=f"{req.ref.lower()}-review-2-gate",
+            deadline_at=utcnow() + timedelta(minutes=5),
+        )
+        db.add_all([stage, gate])
+        db.commit()
+
+        runner._grade(db, req, gate, "succeeded", pass_verdict(), [])
+        db.refresh(req)
+
+        assert req.needs_human is True
+        assert req.gate is None
+        assert "after 2 attempts" in req.needs_human_reason
+        assert not db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == req.id,
+                StageJob.stage == "review",
+                StageJob.attempt == 3,
+            )
+        ).all()
 
 
 def test_identical_digest_in_next_round_gets_a_fresh_accept_gate(
@@ -570,8 +648,31 @@ def test_deploy_gate_preview_evidence_survives_a_later_merge_claim(
     runner = KubeJobRunner(client=FakeKubeClient())
     with SessionLocal() as db:
         req = db.get(Request, request["id"])
-        db.add(AuditEvent(request_id=req.id, actor="Ada",
-                          operator_id=1, action="preview_accepted"))
+        db.add_all(
+            [
+                AuditEvent(
+                    request_id=req.id,
+                    actor="Ada",
+                    operator_id=1,
+                    action="preview_accepted",
+                ),
+                StageJob(
+                    request_id=req.id,
+                    stage="preview",
+                    attempt=1,
+                    role="pbuild",
+                    job_name=f"{req.ref.lower()}-pbuild",
+                    status="succeeded",
+                    envelope={
+                        "round": req.preview_round,
+                        "sha": SHA,
+                        "digest": DIGEST,
+                    },
+                    deadline_at=utcnow(),
+                    completed_at=utcnow(),
+                ),
+            ]
+        )
         db.commit()
         # claim_merge runs AFTER the accept, so this is the newest decisive audit
         db.add(AuditEvent(request_id=req.id, actor="Kim",
@@ -581,3 +682,106 @@ def test_deploy_gate_preview_evidence_survives_a_later_merge_claim(
     assert params["preview_url"].endswith(f"-preview.{settings.APP_INGRESS_DOMAIN}")
     assert params["accepted_by"] == "Ada"  # the acceptor, never the merge claimer
     assert "preview_round" in params
+    assert params["preview_digest"] == DIGEST
+    assert "built_digest" not in params
+
+
+def test_ai_review_retry_and_requester_preview_rewind_use_distinct_feedback(
+    client,
+):
+    runner = KubeJobRunner(client=FakeKubeClient())
+    ai_request = approved_request(client, title="AI review feedback lane")
+    preview_request = _put_at_preview_gate(client, "Requester preview feedback lane")
+    old = utcnow() - timedelta(minutes=5)
+
+    with SessionLocal() as db:
+        ai = db.get(Request, ai_request["id"])
+        ai.stage = "review"
+        for stage_name in ("architecture", "red", "green"):
+            for role in ("stage", "gate"):
+                db.add(
+                    StageJob(
+                        request_id=ai.id,
+                        stage=stage_name,
+                        attempt=1,
+                        role=role,
+                        job_name=f"{ai.ref.lower()}-{stage_name}-1-{role}",
+                        status="succeeded",
+                        envelope={"detail": "complete"},
+                        created_at=old,
+                        deadline_at=old,
+                        completed_at=old,
+                    )
+                )
+        ai_stage = StageJob(
+            request_id=ai.id,
+            stage="review",
+            attempt=1,
+            role="stage",
+            job_name=f"{ai.ref.lower()}-review-1",
+            status="succeeded",
+            envelope={"detail": "REQUEST-CHANGES"},
+            logs_tail='{"type":"review","text":"Handle the race."}',
+            created_at=old,
+            deadline_at=old,
+            completed_at=old,
+        )
+        ai_gate = StageJob(
+            request_id=ai.id,
+            stage="review",
+            attempt=1,
+            role="gate",
+            job_name=f"{ai.ref.lower()}-review-1-gate",
+            deadline_at=utcnow(),
+        )
+        preview = db.get(Request, preview_request["id"])
+        for stage_name in ("architecture", "red", "green", "review"):
+            for role in ("stage", "gate"):
+                db.add(
+                    StageJob(
+                        request_id=preview.id,
+                        stage=stage_name,
+                        attempt=1,
+                        role=role,
+                        job_name=f"{preview.ref.lower()}-{stage_name}-1-{role}",
+                        status="succeeded",
+                        envelope={"detail": "APPROVE"},
+                        created_at=old,
+                        deadline_at=old,
+                        completed_at=old,
+                    )
+                )
+        db.add_all([ai_stage, ai_gate])
+        db.commit()
+        runner._grade(db, ai, ai_gate, "succeeded", pass_verdict(), [])
+
+    changed = client.post(
+        f"/api/requests/{preview_request['id']}/preview/request-changes",
+        json={"feedback": "Keep the filters visible", "page_path": "/orders"},
+    )
+    assert changed.status_code == 200, changed.text
+
+    with SessionLocal() as db:
+        ai = db.get(Request, ai_request["id"])
+        preview = db.get(Request, preview_request["id"])
+        assert runner._spawn_next(db, ai, [])
+        assert runner._spawn_next(db, preview, [])
+
+    ai_manifest = runner.client.jobs[f"sf-{ai_request['ref'].lower()}-review-2"].manifest
+    preview_manifest = runner.client.jobs[
+        f"sf-{preview_request['ref'].lower()}-architecture-2"
+    ].manifest
+    ai_env = {
+        item["name"]: item["value"]
+        for item in ai_manifest["spec"]["template"]["spec"]["containers"][0]["env"]
+        if "value" in item
+    }
+    preview_env = {
+        item["name"]: item["value"]
+        for item in preview_manifest["spec"]["template"]["spec"]["containers"][0]["env"]
+        if "value" in item
+    }
+    assert "Handle the race" in ai_env["SF_GATE_FEEDBACK"]
+    assert "SF_PREVIEW_FEEDBACK" not in ai_env
+    assert preview_env["SF_PREVIEW_FEEDBACK"] == "- Keep the filters visible (on /orders)"
+    assert "SF_GATE_FEEDBACK" not in preview_env

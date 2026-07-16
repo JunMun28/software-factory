@@ -161,7 +161,13 @@ def _ev_approve_spec(db: Session, req: Request, actor: Actor, params: dict) -> N
 def _ev_raise_deploy_gate(db: Session, req: Request, actor: Actor, params: dict) -> None:
     preview = {
         key: params[key]
-        for key in ("preview_url", "preview_round", "accepted_by")
+        for key in (
+            "preview_url",
+            "preview_round",
+            "accepted_by",
+            "preview_digest",
+            "pr_url",
+        )
         if params.get(key) is not None
     }
     emit(db, req, "gate_event",

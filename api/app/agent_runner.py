@@ -34,6 +34,7 @@ from .agent_exec import AgentResult, run_agent
 from .db import SessionLocal
 from .events import emit
 from .leader import get_elector
+from .log_scrub import scrub_secrets
 from .models import Request
 from .supervision import pending_steer_notes
 from .transitions import FACTORY
@@ -373,6 +374,14 @@ class AgentRunner:
         db.refresh(req)
         if req.status != "approved":  # cancelled while the reviewer ran — never raise a gate on it
             log.info("%s cancelled during review — merge gate not raised", req.ref)
+            return False
+        if not re.match(r"^APPROVE\b", verdict):
+            detail = scrub_secrets(review.read_text().strip())[:2000]
+            self._escalate(
+                db,
+                req,
+                f"Reviewer did not APPROVE: {detail or 'no explicit verdict'}",
+            )
             return False
         emit(db, req, "milestone_summary", f"Review report committed — {verdict}",
              payload={"fields": {"Artifacts": "REVIEW.md", "Agent": "Factory agent"}, "Ref": req.ref})

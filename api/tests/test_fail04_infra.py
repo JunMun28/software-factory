@@ -23,6 +23,12 @@ def _honest_or_fault(fake, request_ref, target_stage, fault):
             fake.finish(name, pass_verdict())
         elif name.startswith(f"sf-{request_ref.lower()}-{target_stage}-"):
             fault(name, job)
+        elif "-review-" in name:
+            fake.finish(
+                name,
+                stage_ok("APPROVE"),
+                logs='{"type":"review","text":"Implementation matches the spec."}\n',
+            )
         else:
             fake.finish(name, stage_ok())
 

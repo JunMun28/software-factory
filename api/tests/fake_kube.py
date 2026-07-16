@@ -14,7 +14,7 @@ GOOD_METRICS = {
     "diff_added": 40,
     "diff_removed": 2,
     "files_changed": 2,
-    "reviewer_verdict": "APPROVE — implements the spec",
+    "reviewer_verdict": "APPROVE",
 }
 
 
@@ -185,10 +185,10 @@ class FakeKubeClient:
         job.scheduling_reason = reason
 
 
-def _complete(job: FakeJob, envelope: dict) -> None:
+def _complete(job: FakeJob, envelope: dict, *, logs: str | None = None) -> None:
     job.phase = "succeeded"
     job.termination_message = json.dumps(envelope)
-    job.logs = '{"type":"note","text":"ndjson line"}\n'
+    job.logs = logs or '{"type":"note","text":"ndjson line"}\n'
 
 
 def honest_cluster(fake: FakeKubeClient) -> None:
@@ -197,7 +197,16 @@ def honest_cluster(fake: FakeKubeClient) -> None:
     def run(name: str, job: FakeJob) -> None:
         if job.phase != "running":
             return
-        _complete(job, pass_verdict() if name.endswith("-gate") else stage_ok())
+        if name.endswith("-gate"):
+            _complete(job, pass_verdict())
+        elif "-review-" in name:
+            _complete(
+                job,
+                stage_ok("APPROVE"),
+                logs='{"type":"review","text":"Implementation matches the spec."}\n',
+            )
+        else:
+            _complete(job, stage_ok())
 
     fake.on_observe = run
 
@@ -241,9 +250,14 @@ def honest_build(fake: FakeKubeClient, workspace_root: Path) -> None:
             {
                 "v": 1,
                 "outcome": "ok",
-                "detail": "APPROVE — looks right" if stage == "review" else "stage complete",
+                "detail": "APPROVE" if stage == "review" else "stage complete",
                 "sha": sha,
             },
+            logs=(
+                '{"type":"review","text":"Implementation matches the spec."}\n'
+                if stage == "review"
+                else None
+            ),
         )
 
     fake.on_observe = run

@@ -3,6 +3,25 @@
 Task: add **opencode** as a third `FACTORY_CLI` (alongside codex/claude), make it the
 **default**, and prove it with a real full-pipeline end-to-end run.
 
+# Implementation notes — C3 gate evidence and feedback fidelity (2026-07-16)
+
+### Deviations
+
+- **Review retries re-run the read-only reviewer, not the implementer.** The retry
+  grades the same SHA again and explicitly tells the reviewer to assess the unchanged
+  code honestly. It can recover a missing/borderline verdict; repeated substantive
+  objections escalate to a human rather than bouncing automatically to GREEN.
+- **The review retry budget is per request, shared across preview rounds.** Attempt
+  numbering includes superseded rows. After a C1 preview rewind, round-two review is
+  attempt 2, so its first `REQUEST-CHANGES` reaches the existing cap and escalates
+  immediately; it does not loop or grant another reviewer retry.
+- **The non-kube AgentRunner escalates immediately on a non-APPROVE.** That runner has
+  no durable per-attempt gate model; the kube production path owns the retry-once flow.
+- **Reviewer output is scrubbed at parse time.** Both reasoning and retry feedback are
+  redacted before append-only events, merge evidence, the jobs API, or
+  `SF_GATE_FEEDBACK` can receive them. Jobs API envelopes and raw log tails are also
+  recursively scrubbed at egress.
+
 ## Design decisions
 
 - **One chokepoint, unchanged shape.** opencode joins codex/claude behind `run_agent`
