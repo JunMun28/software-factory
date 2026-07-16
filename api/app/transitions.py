@@ -765,6 +765,20 @@ def apply(
     params = params or {}
     clauses = _where(req.id, row.pre, expected_stage)
     if epoch is not None:  # machine actor — fence against a deposed leader (spec §3.2)
+        if db.get_bind().dialect.name == "mssql":
+            current_epoch = db.scalar(
+                text(
+                    "SELECT epoch FROM leader_epochs WITH (UPDLOCK, HOLDLOCK) "
+                    "WHERE id = 1 AND epoch = :epoch"
+                ),
+                {"epoch": epoch},
+            )
+        else:
+            current_epoch = db.scalar(
+                select(LeaderEpoch.epoch).where(LeaderEpoch.id == 1)
+            )
+        if current_epoch != epoch:
+            return resolve_loss(db, req, transition, actor, epoch=epoch)
         clauses.append(
             select(LeaderEpoch.id)
             .where(LeaderEpoch.id == 1, LeaderEpoch.epoch == epoch)
@@ -845,9 +859,21 @@ def cas_status(
     at all. Because sessions use ``expire_on_commit=False``, callers must call
     ``db.refresh(obj)`` to see the new status on already-loaded objects.
     """
-    # Under MSSQL READ COMMITTED/RCSI, a stale leader's in-flight statement can
-    # commit just after an epoch bump. The status CAS still serializes conflicting
-    # transitions; revisit with UPDLOCK/HOLDLOCK once cas_status carries production traffic.
+    # MSSQL commonly runs READ_COMMITTED_SNAPSHOT: without a locking read, this
+    # transaction can observe the old epoch from its snapshot and commit after a
+    # successor bumps the fence. UPDLOCK + HOLDLOCK serializes this CAS with the
+    # epoch bump until the caller commits/rolls back. SQLite stays on the original
+    # one-statement path and never sees MSSQL-only syntax.
+    if db.get_bind().dialect.name == "mssql":
+        locked_epoch = db.scalar(
+            text(
+                "SELECT epoch FROM leader_epochs WITH (UPDLOCK, HOLDLOCK) "
+                "WHERE id = 1 AND epoch = :epoch"
+            ),
+            {"epoch": epoch},
+        )
+        if locked_epoch != epoch:
+            return False
     result = db.execute(
         text(
             "UPDATE requests SET status = :new "

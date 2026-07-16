@@ -1,3 +1,43 @@
+# Implementation notes — C9 data and disaster recovery (2026-07-17)
+
+- **Unicode model collision warning.** `api/app/models.py` also collides with the
+  parallel session. C9 therefore changes only the affected column-definition
+  lines (plus the text-type imports/helpers); it makes no relationship, default,
+  enum, or data-semantics edits.
+- **Profiles stay separate.** The base remains the kind/dev SQLite profile. The
+  local overlay adds the SQLite-on-PVC backup CronJob, while the prod overlay
+  disables demo seeding and injects the Azure SQL URL from the external
+  `factory-db` Secret.
+- **Production migration order is explicit.** Record a fresh backup/PITR point,
+  run the freshness-gated Alembic Job, then deploy the API. Startup migration is
+  retained for dev compatibility but is not the production rollout mechanism.
+- **DATA-07 is MSSQL-specific.** The real machine-transition path, `apply()`,
+  takes `UPDLOCK, HOLDLOCK` on the leader epoch row before its fenced CAS under
+  MSSQL RCSI. SQLite performs the same epoch check as a plain unlocked read.
+  The older `cas_status()` primitive retains its MSSQL lock as well.
+
+## Deferred to office / user handoff
+
+- **DATA-04 — progress-event archival/partitioning.** `progress_event` remains
+  append-only under ADR 0008. C9 never deletes or mutates historical events.
+- **Live Azure SQL online type migration.** This revision's batch/direct alters
+  are the dev and fresh-database path. A populated production database needs an
+  office-run shadow-copy, validate, and swap runbook for the large text columns;
+  that ONLINE procedure cannot be validated on kind or SQLite.
+- **Migration Job Azure SQL egress.** The production endpoint/CIDR is not known
+  in this checkout, so the pre-deploy Job's endpoint-specific NetworkPolicy is
+  deferred to the Azure SQL cutover rather than pretending kind proves it.
+- **MSSQL migration and drift CI.** SQLite migration drift remains covered here.
+  MSSQL/Azure SQL drift belongs in the office MSSQL CI suite against a real SQL
+  Server-compatible environment.
+- **Machine-issued backup evidence.** The pre-deploy guard currently validates
+  operator-supplied backup reference and freshness inputs. Replacing that trust
+  with evidence issued by Azure Backup/PITR is an Azure-cutover handoff.
+- **Azure SQL PITR cutover.** Provisioning, retention policy, a live restore
+  exercise, and the production connection-string cutover remain office/user
+  handoff work. The prod runbook treats the verified PITR point as the backup
+  gate for migrations.
+
 # Implementation notes — C6 security hardening [kind] (2026-07-17)
 
 ## Deferred to office / Phase 2
@@ -586,3 +626,36 @@ C2a interaction. 564 pytest + full verify green. Backend only, no schema change.
 SPA-01 (factory-self release pipeline — office), CONTRACT-01 (OpenAPI codegen —
 TS/parallel), A11Y-01 (SPA — parallel), OPERATE-04 (role in the console UI —
 parallel; server role wall already exists).
+
+## Plan C9 — data & DR (2026-07-16) — FINAL Plan C slice
+
+DATA-01/02/03/05/06/07. codex-built + codex-reviewed (1 CRITICAL + 4 HIGH found;
+the buildable ones fixed, the MSSQL/Azure-cutover ones documented as office).
+617 pytest + full verify + lifecycle smoke green.
+
+- DATA-01 (CRITICAL): human-text columns are Unicode — String(n)/Text ->
+  with_variant(NVARCHAR(n)/NVARCHAR(MAX), "mssql") (renders NVARCHAR, NOT the
+  legacy NTEXT) so Azure SQL won't corrupt emoji/CJK/curly-quotes. Enum/key/ref/
+  digest/role columns untouched. Migration e7f9a1c3d5b7 (down_revision
+  a1b2c3d4e5f6, batch-mode for SQLite; drops+recreates the operators.email unique
+  index around the alter; downgrade refuses a lossy conversion). Unicode
+  round-trip test. **models.py collides with the parallel session — surgical
+  column-type edits only; reconcile at merge.**
+- DATA-02: deploy/overlays/prod (SEED_DEMO=0 + DB_URL-from-Secret); base stays
+  the kind/dev SQLite+seed profile.
+- DATA-03: a SQLite-on-PVC backup CronJob + scripts/restore-db.sh (refuses while
+  writers are up; move-aside + atomic swap + rollback on failure, preserving the
+  live DB/WAL/SHM trio until success) + a drill test (incl. failed-swap/active-WAL).
+- DATA-05: a model<->migration drift test (SQLite). DATA-06: scripts/
+  pre-deploy-migrate.sh + a migration Job manifest (migrate as a gated pre-deploy
+  step, not auto-at-startup on the sole replica).
+- DATA-07: the UPDLOCK/HOLDLOCK epoch read is now inside apply() (the real
+  fenced-CAS machine path, not just cas_status()), MSSQL-guarded / SQLite no-op —
+  closes the RCSI CAS race that the merge-claim race was an instance of.
+
+### Deferred to the Azure SQL cutover (office / user handoff — can't validate without MSSQL):
+the full ONLINE MSSQL type migration (shadow-copy/validate/swap on a live Azure DB
+— the batch migration here is the fresh-DB path); the migration Job's egress to
+the real Azure SQL endpoint; MSSQL migration/drift CI; machine-issued backup
+evidence for the pre-deploy guard; Azure PITR; DATA-04 progress_event archival
+(never DELETE — ADR 0008).

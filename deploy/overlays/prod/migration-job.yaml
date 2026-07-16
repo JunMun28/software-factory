@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: factory-db-migrate
+  namespace: software-factory
+  labels:
+    app: factory-db-migrate
+    sf/tier: factory
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: factory-db-migrate
+        sf/tier: factory
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: sf-api:dev
+          imagePullPolicy: IfNotPresent
+          command: ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+          env:
+            - name: FACTORY_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: factory-db
+                  key: url
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}

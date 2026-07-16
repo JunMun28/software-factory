@@ -1,6 +1,7 @@
 """Epoch-fenced compare-and-swap transition tests."""
 import inspect
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from helpers import approved_request
@@ -113,6 +114,91 @@ def test_cas_missing_row_returns_false(make_elector):
             db, -1, "queued_for_pipeline", "running", elector.epoch
         ) is False
         db.rollback()
+
+
+class _CasSession:
+    def __init__(self, dialect_name, locked_epoch=None):
+        self.bind = SimpleNamespace(dialect=SimpleNamespace(name=dialect_name))
+        self.locked_epoch = locked_epoch
+        self.statements = []
+
+    def get_bind(self):
+        return self.bind
+
+    def flush(self):
+        pass
+
+    def refresh(self, _request):
+        pass
+
+    def scalar(self, statement, params=None):
+        self.statements.append((str(statement), params))
+        return self.locked_epoch
+
+    def execute(self, statement, params=None):
+        self.statements.append((str(statement), params))
+        return SimpleNamespace(rowcount=1)
+
+
+def test_mssql_cas_locks_the_epoch_row_before_update():
+    db = _CasSession("mssql", locked_epoch=7)
+
+    assert cas_status(db, 42, "approved", "running", 7) is True
+    assert len(db.statements) == 2
+    assert "WITH (UPDLOCK, HOLDLOCK)" in db.statements[0][0]
+    assert db.statements[0][1] == {"epoch": 7}
+    assert db.statements[1][0].startswith("UPDATE requests")
+
+
+def test_sqlite_cas_lock_step_is_a_no_op():
+    db = _CasSession("sqlite")
+
+    assert cas_status(db, 42, "approved", "running", 7) is True
+    assert len(db.statements) == 1
+    assert db.statements[0][0].startswith("UPDATE requests")
+    assert "UPDLOCK" not in db.statements[0][0]
+
+
+def test_mssql_apply_locks_the_epoch_row_before_the_fenced_update():
+    migrate()
+    db = _CasSession("mssql", locked_epoch=7)
+    request = SimpleNamespace(id=42)
+
+    result = apply(
+        db,
+        request,
+        "advance_stage",
+        actor=FACTORY,
+        params={"stage": "review"},
+        epoch=7,
+    )
+
+    assert isinstance(result, Win)
+    assert len(db.statements) == 2
+    assert "WITH (UPDLOCK, HOLDLOCK)" in db.statements[0][0]
+    assert db.statements[0][1] == {"epoch": 7}
+    assert db.statements[1][0].startswith("UPDATE requests")
+
+
+def test_sqlite_apply_uses_a_plain_epoch_read_before_the_fenced_update():
+    db = _CasSession("sqlite", locked_epoch=7)
+    request = SimpleNamespace(id=42)
+
+    result = apply(
+        db,
+        request,
+        "advance_stage",
+        actor=FACTORY,
+        params={"stage": "review"},
+        epoch=7,
+    )
+
+    assert isinstance(result, Win)
+    assert len(db.statements) == 2
+    assert "leader_epochs" in db.statements[0][0]
+    assert "UPDLOCK" not in db.statements[0][0]
+    assert db.statements[0][1] is None
+    assert db.statements[1][0].startswith("UPDATE requests")
 
 
 def _request(db, **cols):

@@ -15,10 +15,19 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects import mssql
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
 from .db import Base
+
+
+def human_string(length: int):
+    """Human text: portable String locally, explicit NVARCHAR on MSSQL."""
+    return String(length).with_variant(mssql.NVARCHAR(length), "mssql")
+
+
+HUMAN_TEXT = Text().with_variant(mssql.NVARCHAR(None), "mssql")
 
 
 def utcnow() -> datetime:
@@ -53,9 +62,9 @@ class App(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     key: Mapped[str] = mapped_column(String(40), unique=True)  # slug, e.g. "northwind"
-    name: Mapped[str] = mapped_column(String(120))
-    owner: Mapped[str] = mapped_column(String(120))
-    repo: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(human_string(120))
+    owner: Mapped[str] = mapped_column(human_string(120))
+    repo: Mapped[str] = mapped_column(human_string(200))
     provisioning: Mapped[str] = mapped_column(String(12), default="Manual")  # Auto | Manual
     muted: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -68,10 +77,10 @@ class Operator(Base):
     __tablename__ = "operators"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(120))
+    name: Mapped[str] = mapped_column(human_string(120))
     initials: Mapped[str] = mapped_column(String(4))
     hue: Mapped[str] = mapped_column(String(12))
-    email: Mapped[str] = mapped_column(String(200), unique=True)
+    email: Mapped[str] = mapped_column(human_string(200), unique=True)
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
 
@@ -125,32 +134,32 @@ class Request(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ref: Mapped[str] = mapped_column(String(12), unique=True)  # REQ-2041
-    title: Mapped[str] = mapped_column(String(200))
-    description: Mapped[str] = mapped_column(Text, default="")
+    title: Mapped[str] = mapped_column(human_string(200))
+    description: Mapped[str] = mapped_column(HUMAN_TEXT, default="")
     type: Mapped[str] = mapped_column(String(8))  # bug | enh | new | other
     urgency: Mapped[str] = mapped_column(String(8), default="normal")
-    reach: Mapped[str | None] = mapped_column(String(120), nullable=True)  # me | team | dept | wider | free text — null for bugs/unstated
+    reach: Mapped[str | None] = mapped_column(human_string(120), nullable=True)  # me | team | dept | wider | free text — null for bugs/unstated
     impact_metric: Mapped[str | None] = mapped_column(String(12), nullable=True)  # hours | cost | other
-    impact_value: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    impact_value: Mapped[str | None] = mapped_column(human_string(120), nullable=True)
     priority: Mapped[str] = mapped_column(String(8), default="Normal")
 
     app_id: Mapped[int | None] = mapped_column(ForeignKey("apps.id"), nullable=True)
-    new_app_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    bug_where: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    extra_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_app_name: Mapped[str | None] = mapped_column(human_string(120), nullable=True)
+    bug_where: Mapped[str | None] = mapped_column(human_string(200), nullable=True)
+    extra_detail: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
 
     stage: Mapped[str] = mapped_column(String(16), default="intake")
     status: Mapped[str] = mapped_column(String(20), default="draft")
     gate: Mapped[str | None] = mapped_column(String(20), nullable=True)  # approve_spec | approve_merge
     needs_human: Mapped[bool] = mapped_column(Boolean, default=False)
-    needs_human_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    needs_human_reason: Mapped[str | None] = mapped_column(human_string(300), nullable=True)
 
-    reporter: Mapped[str] = mapped_column(String(80), default="Jordan D.")
+    reporter: Mapped[str] = mapped_column(human_string(80), default="Jordan D.")
     reporter_initials: Mapped[str] = mapped_column(String(4), default="JD")
     labels: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
-    send_back_question: Mapped[str | None] = mapped_column(Text, nullable=True)
-    send_back_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    send_back_question: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
+    send_back_response: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     send_back_rounds: Mapped[int] = mapped_column(Integer, default=0)
     preview_round: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -159,7 +168,7 @@ class Request(Base):
     spec_pr_open: Mapped[bool] = mapped_column(Boolean, default=False)
     stage2_fired: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    spec_open_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    spec_open_note: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     sim_step: Mapped[int] = mapped_column(Integer, default=0)
     # the generated-but-unanswered interview question — persisted so the question the
     # submitter sees is exactly the one recorded with their answer (and the brain runs once)
@@ -174,7 +183,7 @@ class Request(Base):
     # Prototype step (new-app only) — the current self-contained HTML mock and its status.
     # Denormalized cache (mirrors `summary`); the append-only PrototypeTurn rows are the log,
     # and the current prototype = the latest turn with non-null html.
-    prototype_html: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prototype_html: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     prototype_status: Mapped[str] = mapped_column(String(10), default="none")  # none|draft|edited|skipped
     # when the Work item entered its current stage (or its current gate was raised) —
     # powers the Pipeline view's time-in-stage / "is it stuck?" readout
@@ -221,10 +230,10 @@ class InterviewTurn(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
     order: Mapped[int] = mapped_column(Integer, default=0)
-    question: Mapped[str] = mapped_column(Text)
-    sub: Mapped[str | None] = mapped_column(Text, nullable=True)
+    question: Mapped[str] = mapped_column(HUMAN_TEXT)
+    sub: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     options: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [{t, d}]
-    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answer: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     skipped: Mapped[bool] = mapped_column(Boolean, default=False)
 
     request: Mapped[Request] = relationship(back_populates="turns")
@@ -244,11 +253,11 @@ class PrototypeTurn(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
     order: Mapped[int] = mapped_column(Integer, default=0)
-    instruction: Mapped[str | None] = mapped_column(Text, nullable=True)  # user chat msg; null for the auto first draft
+    instruction: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)  # user chat msg; null for the auto first draft
     annotation: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {pid, selector, tag, textSnippet, ...}
     mode: Mapped[str] = mapped_column(String(8), default="pending")  # pending | rewrite | patch | chat
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)  # assistant prose preamble (the streamed part)
-    html: Mapped[str | None] = mapped_column(Text, nullable=True)  # resulting document; null on chat/pending
+    note: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)  # assistant prose preamble (the streamed part)
+    html: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)  # resulting document; null on chat/pending
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
     request: Mapped[Request] = relationship(back_populates="prototype_turns")
@@ -263,15 +272,15 @@ class PreviewFeedback(Base):
     request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"), index=True)
     round: Mapped[int] = mapped_column(Integer, default=0)
     order: Mapped[int] = mapped_column(Integer, default=0)
-    body: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(HUMAN_TEXT)
     page_path: Mapped[str | None] = mapped_column(String(300), nullable=True)
     annotation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     attachment_id: Mapped[int | None] = mapped_column(
         ForeignKey("attachments.id"), nullable=True
     )
-    author: Mapped[str] = mapped_column(String(80))
+    author: Mapped[str] = mapped_column(human_string(80))
     disposition: Mapped[str] = mapped_column(String(10), default="open")
-    disposition_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    disposition_note: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
     request: Mapped[Request] = relationship(back_populates="preview_feedback")
@@ -285,7 +294,7 @@ class SpecLine(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
     order: Mapped[int] = mapped_column(Integer, default=0)
-    text: Mapped[str] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(HUMAN_TEXT)
     prov: Mapped[str | None] = mapped_column(String(20), nullable=True)  # "Q1" … ; None+assume=True
     assume: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -306,7 +315,7 @@ class AcceptanceCriterion(Base):
     version: Mapped[int] = mapped_column(Integer, default=0)
     ordinal: Mapped[int] = mapped_column(Integer)
     code: Mapped[str] = mapped_column(String(12))
-    text: Mapped[str] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(HUMAN_TEXT)
     prov: Mapped[str | None] = mapped_column(String(20), nullable=True)
     assume: Mapped[bool] = mapped_column(Boolean, default=False)
     source_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -329,7 +338,7 @@ class SpecSnapshot(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"), index=True)
     version: Mapped[int] = mapped_column(Integer, default=0)
-    spec_md: Mapped[str] = mapped_column(Text)
+    spec_md: Mapped[str] = mapped_column(HUMAN_TEXT)
     criteria_json: Mapped[list] = mapped_column(JSON)
     content_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
@@ -352,11 +361,11 @@ class ProgressEvent(Base):
     subject_id: Mapped[int | None] = mapped_column(ForeignKey("apps.id"), nullable=True, index=True)
     kind: Mapped[str] = mapped_column(String(20))
     stage: Mapped[str] = mapped_column(String(16), default="intake")
-    actor: Mapped[str] = mapped_column(String(80), default="Factory")
+    actor: Mapped[str] = mapped_column(human_string(80), default="Factory")
     bot: Mapped[bool] = mapped_column(Boolean, default=True)
     broadcast: Mapped[bool] = mapped_column(Boolean, default=False)
-    title: Mapped[str] = mapped_column(String(300))
-    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title: Mapped[str] = mapped_column(human_string(300))
+    body: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
@@ -366,10 +375,10 @@ class Comment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
-    author: Mapped[str] = mapped_column(String(80))
+    author: Mapped[str] = mapped_column(human_string(80))
     initials: Mapped[str] = mapped_column(String(4))
     color: Mapped[str] = mapped_column(String(12), default="#6E5A8A")
-    body: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(HUMAN_TEXT)
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
     request: Mapped[Request] = relationship(back_populates="comments")
@@ -384,7 +393,7 @@ class Attachment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
-    filename: Mapped[str] = mapped_column(String(255))  # original name — display only
+    filename: Mapped[str] = mapped_column(human_string(255))  # original name — display only
     mime: Mapped[str] = mapped_column(String(100))      # sniffed, not the client's claim
     kind: Mapped[str] = mapped_column(String(8))        # image | doc
     size: Mapped[int] = mapped_column(Integer)
@@ -401,9 +410,9 @@ class AuditEvent(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"))
     operator_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id"), nullable=True)
-    actor: Mapped[str] = mapped_column(String(80))
+    actor: Mapped[str] = mapped_column(human_string(80))
     action: Mapped[str] = mapped_column(String(40))  # submitted | approved | sent_back | cancelled | responded | commented
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
 
@@ -433,9 +442,9 @@ class Intent(Base):
     key: Mapped[str] = mapped_column(String(128), primary_key=True)  # idempotency key
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     request_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    payload_json: Mapped[str] = mapped_column(HUMAN_TEXT, nullable=False, default="{}")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")  # pending|done|failed
-    outcome_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    outcome_json: Mapped[str] = mapped_column(HUMAN_TEXT, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(TZDateTime(), nullable=True)
 
@@ -467,7 +476,7 @@ class StageJob(Base):
     status: Mapped[str] = mapped_column(String(12), default="running")
     # running | succeeded | failed | timed_out | infra | reaped | superseded
     envelope: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    logs_tail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    logs_tail: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     deadline_at: Mapped[datetime] = mapped_column(TZDateTime())
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(TZDateTime(), nullable=True)

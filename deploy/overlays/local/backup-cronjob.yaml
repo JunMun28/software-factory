@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: factory-db-backup
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: factory-db-backup
+            sf/tier: factory
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: sf-api:dev
+              imagePullPolicy: IfNotPresent
+              command: ["sh", "-ec"]
+              args:
+                - |
+                  uv run --no-sync python - <<'PY'
+                  import datetime
+                  import os
+                  import sqlite3
+                  from pathlib import Path
+
+                  source_path = Path("/data/factory.db")
+                  backup_dir = Path("/data/backups")
+                  backup_dir.mkdir(parents=True, exist_ok=True)
+                  stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d-%H%M%S-%f")
+                  output_path = backup_dir / f"factory-{stamp}.db"
+                  source = sqlite3.connect(f"{source_path.resolve().as_uri()}?mode=ro", uri=True)
+                  target = sqlite3.connect(output_path)
+                  try:
+                      source.backup(target)
+                      if target.execute("PRAGMA quick_check").fetchone() != ("ok",):
+                          raise RuntimeError("backup integrity check failed")
+                  finally:
+                      target.close()
+                      source.close()
+                  os.chmod(output_path, 0o600)
+                  print(output_path)
+                  PY
+              resources:
+                requests: {cpu: 25m, memory: 64Mi}
+                limits: {cpu: 250m, memory: 256Mi}
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: sf-data
