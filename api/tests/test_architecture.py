@@ -41,7 +41,11 @@ def agent_client(monkeypatch):
 
 
 def _spec_gated_request(client, title="Hardening probe"):
-    return submitted_request(client, title=title, description="x")
+    return submitted_request(
+        client,
+        title=title,
+        description="Exercise the architecture pipeline hardening behavior.",
+    )
 
 
 # ---------- Retry re-drives the real pipeline ----------
@@ -119,7 +123,11 @@ def ws_root(tmp_path, monkeypatch):
 
 
 def _approved(client, title):
-    return approved_request(client, title=title, description="x")
+    return approved_request(
+        client,
+        title=title,
+        description="Exercise the architecture pipeline hardening behavior.",
+    )
 
 
 def test_crashed_stage_escalates(client, ws_root):
@@ -227,7 +235,11 @@ def test_migrate_defaults_new_not_null_columns(client):
 # ---------- a double submit drafts exactly one spec ----------
 
 def test_submit_replay_never_drafts_twice(client):
-    r = submitted_request(client, title="Submit replay", description="x")
+    r = submitted_request(
+        client,
+        title="Submit replay",
+        description="Exercise idempotent request submission and spec drafting.",
+    )
     before = client.get(f"/api/requests/{r['id']}").json()["spec_lines"]
     d2 = client.post(f"/api/requests/{r['id']}/submit", json={}).json()
     assert d2["status"] == "pending_approval"

@@ -122,10 +122,10 @@ _QUOTA_SIGNATURES = (
 
 
 def _bounded_logs_tail(logs: str | None) -> str | None:
-    """Return a UTF-8 tail no larger than the configured byte ceiling."""
+    """Scrub secrets, then return a bounded UTF-8 tail safe to persist."""
     if not logs or settings.LOGS_TAIL_MAX <= 0:
         return None
-    raw = logs.encode("utf-8")
+    raw = scrub_secrets(logs).encode("utf-8")
     return raw[-settings.LOGS_TAIL_MAX :].decode("utf-8", errors="ignore") or None
 
 

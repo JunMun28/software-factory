@@ -22,6 +22,17 @@ _GITHUB_TOKEN = re.compile(
 _LABELED_HEX_PAT = re.compile(
     r"(?i)\b(token|x-access-token)(\s*[:=]\s*)([0-9a-f]{40})\b"
 )
+_JSON_CREDENTIAL = re.compile(
+    r'(?i)("(?:access_token|token|authorization)"\s*:\s*)'
+    r'"(?:\\.|[^"\\])*"'
+)
+_COLON_TOKEN = re.compile(
+    r"(?i)(?<![A-Za-z0-9_-])(access_token|token)(\s*:\s*)([^\s,\"']+)"
+)
+_PROVIDER_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:sk-proj-|sk-|xox[bp]-)[A-Za-z0-9_-]{10,}"
+    r"(?![A-Za-z0-9_-])"
+)
 _KEY_VALUE = re.compile(
     r"(?i)\b([A-Za-z_][A-Za-z0-9_-]*(?:token|secret|password|passwd|api[_-]?key|auth)"
     r"[A-Za-z0-9_-]*)(\s*=\s*)([^\s\"']+)"
@@ -47,9 +58,12 @@ def scrub_secrets(text: str) -> str:
     scrubbed = _AUTHED_GITHUB_URL.sub(
         "https://x-access-token:***@github.com/", scrubbed
     )
+    scrubbed = _JSON_CREDENTIAL.sub(r'\1"***"', scrubbed)
     scrubbed = _AUTHORIZATION_BEARER.sub(r"\1 ***", scrubbed)
     scrubbed = _BARE_BEARER.sub(r"\1 ***", scrubbed)
     scrubbed = _GITHUB_TOKEN.sub("***", scrubbed)
+    scrubbed = _PROVIDER_TOKEN.sub("***", scrubbed)
+    scrubbed = _COLON_TOKEN.sub(r"\1\2***", scrubbed)
     scrubbed = _LABELED_HEX_PAT.sub(r"\1\2***", scrubbed)
     return _KEY_VALUE.sub(r"\1\2***", scrubbed)
 

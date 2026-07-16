@@ -142,7 +142,7 @@ def test_workspace_for_accepts_real_ref():
 def test_unknown_impact_metric_falls_back_instead_of_500(client):
     # write a legal request, then corrupt the metric the way a bad migration would
     r = client.post("/api/requests", json={"type": "other", "title": "Metric fallback",
-                                           "description": "x", "impact_metric": "hours",
+                                           "description": "Estimate the annual time saved.", "impact_metric": "hours",
                                            "impact_value": "9"}).json()
     from app.db import SessionLocal
     from app.models import Request

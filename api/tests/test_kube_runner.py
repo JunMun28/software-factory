@@ -1587,6 +1587,28 @@ def test_captured_logs_tail_is_capped_by_utf8_bytes(client, monkeypatch):
         assert len(row.logs_tail.encode()) <= settings.LOGS_TAIL_MAX
 
 
+def test_captured_stage_stdout_is_scrubbed_before_logs_tail_is_stored(client):
+    runner, fake = make_runner()
+    d = _approved(client, "Kube source log scrub")
+    name = f"sf-{d['ref'].lower()}-architecture-1"
+    token = "ghp_" + "S" * 36
+    with SessionLocal() as db:
+        runner.tick(db)
+    fake.finish(
+        name,
+        stage_ok(),
+        logs=f'{{"type":"note","text":"leaked {token}"}}\n',
+    )
+
+    with SessionLocal() as db:
+        runner.tick(db)
+        row = db.scalar(select(StageJob).where(StageJob.job_name == name))
+
+    assert row.status == "succeeded"
+    assert token not in (row.logs_tail or "")
+    assert "***" in (row.logs_tail or "")
+
+
 def test_reap_captures_running_logs(client):
     runner, fake = make_runner()
     d = _approved(client, "Kube reap capture")

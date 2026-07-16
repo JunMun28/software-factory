@@ -72,6 +72,13 @@ def test_console_mutations_reject_missing_and_unknown_operator(client):
 
 
 def test_intake_submit_does_not_require_operator(client):
-    draft = client.post("/api/requests", json={"type": "enh", "title": "Intake stays open"}).json()
+    draft = client.post(
+        "/api/requests",
+        json={
+            "type": "enh",
+            "title": "Intake stays open",
+            "description": "Let submitters file a request without operator credentials.",
+        },
+    ).json()
     submitted = client.post(f"/api/requests/{draft['id']}/submit", json={})
     assert submitted.status_code == 200

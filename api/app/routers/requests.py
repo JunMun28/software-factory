@@ -33,6 +33,7 @@ from ..interview import (
     get_brain,
     is_stop_signal,
     pending_payload,
+    question_budget,
     question_ceiling,
 )
 from ..models import AuditEvent, InterviewTurn, ProgressEvent, PrototypeTurn, Request
@@ -512,11 +513,68 @@ def restore_prototype(rid: int, body: PrototypeRestore, db: Session = Depends(ge
 
 # ---------- submit (after Review step) ----------
 
+MIN_TITLE_CHARS = 3
+MIN_SUBSTANCE_CHARS = 10
+
+
+def _normalized_content(value: object) -> str:
+    """Collapse surrounding/internal whitespace before applying intake floors."""
+    return " ".join(str(value or "").split())
+
+
+def _is_substantive(value: object, minimum: int = MIN_SUBSTANCE_CHARS) -> bool:
+    return len(_normalized_content(value)) >= minimum
+
+
+def _submit_floor_error(r: Request, extra: Note | None) -> str | None:
+    """Return why a draft is too thin to spend pipeline work on, if anything."""
+    title = _normalized_content(r.title)
+    if not title or title == "(untitled request)":
+        return "Request title is required before submit."
+    if len(title) < MIN_TITLE_CHARS:
+        return f"Request title must contain at least {MIN_TITLE_CHARS} characters."
+
+    supplied_detail = any(
+        _is_substantive(value)
+        for value in (
+            r.description,
+            r.bug_where,
+            r.reach,
+            r.impact_value,
+            r.extra_detail,
+            extra.note if extra else None,
+        )
+    )
+    supplied_detail = supplied_detail or any(
+        not turn.skipped and _is_substantive(turn.answer) for turn in r.turns
+    )
+    supplied_detail = supplied_detail or any(
+        not line.assume and _is_substantive(line.text) for line in r.spec_lines
+    )
+    floor, _ceiling = question_budget(r.type)
+    answered = sum(
+        1
+        for turn in r.turns
+        if not turn.skipped and _is_substantive(turn.answer)
+    )
+    interview_complete = answered >= floor or (
+        r.pending_question == DONE_SENTINEL and answered > 0
+    )
+    if not supplied_detail and not interview_complete:
+        return (
+            "Request needs more detail before submit: add a description/spec "
+            "detail or complete the interview."
+        )
+    return None
+
+
 @router.post("/api/requests/{rid}/submit", response_model=RequestDetail)
 def submit(rid: int, extra: Note | None = None, db: Session = Depends(get_db)):
     r = get_request(db, rid)
     if r.status not in (transitions.DRAFT, transitions.SUBMITTED):
         return to_out(r, RequestDetail)  # idempotent
+    if floor_error := _submit_floor_error(r, extra):
+        raise HTTPException(422, floor_error)
     # atomic claim (mirrors approve), committed BEFORE the brain runs: of two
     # concurrent submits exactly one drafts the spec — the loser replays
     # idempotently. Committing first also means the write lock is never held

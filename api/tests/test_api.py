@@ -59,6 +59,93 @@ def test_submitter_flow_end_to_end(client):
     assert any(i["id"] == r["id"] for i in inbox)
 
 
+def test_submit_floor_rejects_empty_and_near_empty_drafts(client):
+    drafts = [
+        client.post(
+            "/api/requests",
+            json={"type": "new", "title": "   ", "description": ""},
+        ).json(),
+        client.post(
+            "/api/requests",
+            json={"type": "enh", "title": "Rename reports", "description": "   "},
+        ).json(),
+    ]
+
+    expected_details = [
+        "Request title is required before submit.",
+        (
+            "Request needs more detail before submit: add a description/spec "
+            "detail or complete the interview."
+        ),
+    ]
+    for draft, expected_detail in zip(drafts, expected_details, strict=True):
+        response = client.post(f"/api/requests/{draft['id']}/submit", json={})
+        assert response.status_code == 422
+        assert response.json()["detail"] == expected_detail
+        current = client.get(f"/api/requests/{draft['id']}").json()
+        assert current["status"] == "draft"
+        assert current["spec_lines"] == []
+
+
+def test_submit_floor_rejects_short_normalized_title(client):
+    draft = client.post(
+        "/api/requests",
+        json={
+            "type": "enh",
+            "title": "  x  ",
+            "description": "Add a CSV export of the monthly totals table.",
+        },
+    ).json()
+
+    response = client.post(f"/api/requests/{draft['id']}/submit", json={})
+
+    assert response.status_code == 422
+    assert "title" in response.json()["detail"].lower()
+
+
+def test_submit_floor_rejects_one_character_description(client):
+    draft = client.post(
+        "/api/requests",
+        json={"type": "enh", "title": "Export monthly totals", "description": " x "},
+    ).json()
+
+    response = client.post(f"/api/requests/{draft['id']}/submit", json={})
+
+    assert response.status_code == 422
+
+
+def test_submit_floor_rejects_all_skipped_interview(client):
+    draft = client.post(
+        "/api/requests",
+        json={"type": "bug", "title": "Export fails", "description": ""},
+    ).json()
+    for _ in range(3):
+        skipped = client.post(
+            f"/api/requests/{draft['id']}/interview", json={"skip": True}
+        )
+        assert skipped.status_code == 200
+
+    response = client.post(f"/api/requests/{draft['id']}/submit", json={})
+
+    assert response.status_code == 422
+
+
+def test_submit_floor_allows_a_substantive_direct_submit(client):
+    draft = client.post(
+        "/api/requests",
+        json={
+            "type": "enh",
+            "title": "Export monthly totals",
+            "description": "Add a CSV export of the monthly totals table.",
+        },
+    ).json()
+
+    response = client.post(f"/api/requests/{draft['id']}/submit", json={})
+
+    assert response.status_code == 200
+    assert response.json()["gate"] == "approve_spec"
+
+
 def test_approve_ledger_and_idempotent_replay(client):
     hero = submitted_request(client, title="Ledger replay probe")
     before = client.get("/api/events", params={"request_id": hero["id"]}).json()

@@ -1,3 +1,18 @@
+# Implementation notes — C6 security hardening [kind] (2026-07-17)
+
+## Deferred to office / Phase 2
+
+- **SEC-03 — authenticated, request-scoped git push.** The in-cluster git daemon
+  cannot simply drop `--enable=receive-pack`: architecture, RED, and GREEN agents
+  legitimately push their stage commits back to the request work branch. The local
+  NetworkPolicy already limits port 9418 to `sf/tier=agent` pods, but it does not
+  authenticate or scope one agent pod to one request. The real fix is an authenticated,
+  request-scoped push backend, or the Phase-2 GitHub App flow with a short-lived
+  per-request token that replaces this seam.
+- **Office overlay.** SEC-01 Entra/OIDC API authentication, PodSecurity/Kyverno,
+  MERGE-05 branch protection, and GitHub App per-request tokens remain office work.
+  None of these controls is simulated in the local kind slice.
+
 # Implementation notes — opencode as default agent runtime
 
 Task: add **opencode** as a third `FACTORY_CLI` (alongside codex/claude), make it the
