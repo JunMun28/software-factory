@@ -580,3 +580,15 @@ def test_review_gate_carries_the_reviewer_verdict():
     assert "SF_REVIEW_VERDICT" not in _env(
         gate_job_manifest("REQ-2052", "red", 1)
     )
+
+
+def test_entrypoint_push_and_review_paths_cannot_leak_the_token():
+    # review MEDIUM (B4b): a failed push must not echo the authed origin URL
+    # into captured logs; the read-only review stage must not keep a
+    # credentialed origin after its clone.
+    src = (
+        Path(__file__).resolve().parents[2] / "docker/sf-agent/entrypoint.sh"
+    ).read_text()
+    push_line = next(line for line in src.splitlines() if "git push -q origin" in line)
+    assert "2>&1" in push_line or "2>/dev/null" in push_line
+    assert 'remote set-url origin "$SF_REPO_URL"' in src  # review keeps the clean URL
