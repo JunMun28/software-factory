@@ -13,6 +13,7 @@ import { Api, FactoryRequest, MissionGate, MissionOut, Poll } from '@sf/shared';
 
 import { INTAKE_URL, intakeNewRequestUrl } from '../core/intake-url';
 import { Session } from '../core/session.service';
+import { Store } from '../core/store.service';
 import {
   ApproveModal,
   CancelConfirm,
@@ -41,10 +42,11 @@ import { FloorContent } from './floor-content';
     CancelConfirm,
   ],
   template: `
-    <sf-console-shell active="floor">
+    <sf-console-shell active="floor" [wide]="true">
       @if (mission(); as m) {
         <sf-floor-content
           [mission]="m"
+          [requests]="store.requests()"
           [intakeUrl]="intakeUrl"
           [actionOutcomes]="actionOutcomes()"
           (approved)="confirming.set($event)"
@@ -53,10 +55,9 @@ import { FloorContent } from './floor-content';
           (sendBackToStageRequested)="sendingStageBack.set($event)"
           (takeOverRequested)="takingOver.set($event)"
           (cancelled)="cancelling.set($event)"
-          (steered)="steer($event.request, $event.note)"
         />
       } @else {
-        <p class="loading" role="status">Bringing the factory floor into view…</p>
+        <p class="loading" role="status">Bringing the line into view…</p>
       }
     </sf-console-shell>
     @if (confirming(); as gate) {
@@ -122,6 +123,7 @@ export class FloorPage {
   private session = inject(Session);
   private router = inject(Router);
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  store = inject(Store);
   mission = signal<MissionOut | null>(null);
   confirming = signal<MissionGate | null>(null);
   sendingBack = signal<MissionGate | null>(null);
@@ -133,13 +135,14 @@ export class FloorPage {
   intakeUrl = intakeNewRequestUrl(inject(INTAKE_URL));
   /** -1 = nothing focused yet, so the first J lands on the first row. */
   focusIndex = signal(-1);
+  /** Same order as the rendered queue: gates, stalled, human-owned. */
   focusables = computed(() => {
     const m = this.mission();
     return m
       ? [
           ...m.gates.map((g) => ({ kind: 'gate' as const, gate: g, request: g.request })),
           ...m.stalled.map((request) => ({ kind: 'stalled' as const, request })),
-          ...m.runs.map(({ request }) => ({ kind: 'run' as const, request })),
+          ...m.human_owned.map((o) => ({ kind: 'owned' as const, request: o.request })),
         ]
       : [];
   });
@@ -185,9 +188,6 @@ export class FloorPage {
     this.cancelling.set(null);
     this.runAction(request, 'cancel', this.api.cancel(request.id, this.session.operatorId()!));
   }
-  steer(request: FactoryRequest, note: string) {
-    this.runAction(request, 'steer', this.api.steer(request.id, note, this.session.operatorId()!));
-  }
   private runAction(request: FactoryRequest, verb: FloorActionVerb, action: Observable<unknown>) {
     action.subscribe({
       next: () => {
@@ -210,13 +210,10 @@ export class FloorPage {
     });
   }
   stageLabel(request: FactoryRequest) {
-    // Match the Floor's vocabulary: the backend 'architecture' stage reads as 'plan'.
-    return request.stage === 'architecture' ? 'plan' : request.stage;
+    return request.stage;
   }
   private focusRow() {
-    const rows = this.host.nativeElement.querySelectorAll<HTMLElement>(
-      'sf-floor-gate-card article, article.triage, article.lane',
-    );
+    const rows = this.host.nativeElement.querySelectorAll<HTMLElement>('article.q-row');
     rows[Math.min(this.focusIndex(), rows.length - 1)]?.focus();
   }
   @HostListener('window:keydown', ['$event'])

@@ -9,14 +9,14 @@ import { Session } from '../core/session.service';
   selector: 'sf-console-shell',
   imports: [RouterLink, RouterLinkActive, Autofocus],
   template: `
-    <div class="wrap">
+    <div class="wrap" [class.wide]="wide()">
       <header class="bar">
-        <a class="mark" routerLink="/" aria-label="Software Factory, The Floor"
+        <a class="mark" routerLink="/" aria-label="Software Factory, Overview"
           ><i></i><span class="mark-name">Software Factory</span></a
         >
         <nav aria-label="Primary navigation">
           <a routerLink="/" [routerLinkActiveOptions]="{ exact: true }" routerLinkActive="active"
-            >Floor</a
+            >Overview</a
           >
           <a routerLink="/library" routerLinkActive="active">Library</a>
           <a routerLink="/studio" routerLinkActive="active">Studio</a>
@@ -88,7 +88,7 @@ import { Session } from '../core/session.service';
               ><kbd>{{ action.hint }}</kbd>
             </button>
           } @empty {
-            <p class="no-match">Nothing matches. Try Floor, Library, or Studio.</p>
+            <p class="no-match">Nothing matches. Try Overview, Library, or Studio.</p>
           }
         </section>
       </div>
@@ -103,6 +103,10 @@ import { Session } from '../core/session.service';
       max-width: 1060px;
       margin: 0 auto;
       padding: 0 clamp(18px, 4vw, 48px);
+    }
+    /* The Overview board earns the full monitor; other pages keep the reading column. */
+    .wrap.wide {
+      max-width: 1480px;
     }
     .bar {
       display: flex;
@@ -142,8 +146,9 @@ import { Session } from '../core/session.service';
       background: var(--surface-2);
     }
     nav a.active {
-      color: var(--accent-tx);
-      background: var(--accent-tint);
+      color: var(--fg1);
+      background: var(--surface-2);
+      box-shadow: inset 0 0 0 1px var(--border);
     }
     .spacer {
       flex: 1;
@@ -300,6 +305,8 @@ import { Session } from '../core/session.service';
 })
 export class ConsoleShell {
   active = input('floor');
+  /** Wide pages (the Overview board) stretch the wrap; default keeps the reading column. */
+  wide = input(false);
   private router = inject(Router);
   private api = inject(Api);
   private poll = inject(Poll);
@@ -321,7 +328,7 @@ export class ConsoleShell {
 
   newRequestUrl = computed(() => intakeNewRequestUrl(this.intakeUrl));
   actions = [
-    { label: 'Go to The Floor', hint: 'G F', path: '/' },
+    { label: 'Go to Overview', hint: 'G O', path: '/' },
     { label: 'Go to Library', hint: 'G L', path: '/library' },
     { label: 'Go to Studio', hint: 'G S', path: '/studio' },
     { label: 'New request', hint: 'C', path: 'intake' },
@@ -386,9 +393,9 @@ export class ConsoleShell {
     if (tag === 'input' || tag === 'textarea' || tag === 'button') return;
     if (this.gPending) {
       const target = {
+        o: '/',
         f: '/',
         m: '/',
-        o: '/',
         t: '/',
         i: '/',
         l: '/library',

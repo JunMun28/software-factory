@@ -35,6 +35,7 @@ export const STAGE_LABEL: Record<string, string> = {
   architecture: 'Architecture',
   build: 'Build',
   review: 'Review',
+  deploy: 'Deploy',
   done: 'Done',
 };
 

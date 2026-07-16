@@ -209,3 +209,74 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   re-drive loop recovered the same request through all four fixes with no
   rebuild of anything but the failed leg — the review-wave re-drive path,
   exercised live.
+
+---
+
+# Implementation notes — IntakeDraft stale-answer leak fix (2026-07-16)
+
+Task: stop a previous request's in-memory draft answers (reach/impact/app) from
+leaking into a newly opened/created request.
+
+## Root cause
+
+`IntakeDraft.hydrateFrom()` stamped `requestId = d.id` and then early-returned
+whenever the draft was "live" (`type != null`) — keeping every OTHER field from
+the PREVIOUS request. Any later `save()` (ring click, blur, type pick) PATCHed
+request A's answers onto request B. Reproduced live: with a live draft on
+request 99 (`reach='me'`), SPA-navigating (list → interview) to request 97
+produced a draft claiming to be 97 while still holding 99's answers.
+
+## Fix
+
+`hydrateFrom()` now calls `reset()` whenever the incoming `d.id` differs from
+the draft's own `requestId`, before hydrating from the server. Same-request
+re-hydration keeps in-session edits exactly as before (including
+`typeConfidence < 1`, which the basics wizard relies on to never pre-select a
+type). Reset-then-hydrate also covers "server value is null" — fields return to
+defaults instead of retaining stale values. Two new specs in
+`intake-draft.service.spec.ts` (72 intake tests green).
+
+## Deviations
+
+- The task suggested also resetting the draft in `new-request.ts` on mount.
+  NOT done (conservative choice): Review's "Edit details" intentionally lands on
+  `/submit/new` with a live draft to keep editing it (see `sub-shell.startNew`
+  comment), and `save()` PATCHes the full body — clearing basics on mount would
+  wipe the stored answers on the server for that legitimate flow. With the
+  `hydrateFrom` guard, the cross-request leak is closed at the single chokepoint;
+  deep-linking to `/submit/new` with a live draft now means "resume editing that
+  draft" (the old description is visibly prefilled in the composer), which
+  matches the Edit-details semantics.
+- Noticed, out of scope: `Interview.id` reads the route param from a SNAPSHOT,
+  so a hypothetical interview→interview param-only navigation reuses the
+  component with a stale id. No in-app link does this today; worth a
+  paramMap-subscription if one ever appears.
+
+## Console overview redesign (2026-07-16)
+
+User rejected the narrative Floor home page. Rebuilt `/` as an admin
+dashboard with two zones:
+
+1. **Waiting on you** — a dense decision queue derived from `/api/mission`:
+   gate rows (spec gate = "approve to build", merge gate = "approve to
+   deploy") with inline evidence bits + Approve / Send back; needs-human
+   rows with the four recovery verbs; human-owned rows.
+2. **Pipeline board** — bird's-eye of every open request across five fixed
+   columns: Intake & Spec, Architecture, Build, Review & Preview, Deploy.
+   Populated from the Store's `/api/requests` projection, with run overlays
+   (step x of y, health) joined from mission runs. Approval boundaries are
+   drawn on the Architecture and Deploy column headers (amber diamond,
+   "enters by approval") — the two human gates are visible in the geometry.
+
+Mechanics kept, not rebuilt: gate modals, action plumbing (409 outcomes),
+j/k + a/s keyboard flow, poll loop. `FloorGateCard` deleted (queue rows
+replaced it). Shell nav label Floor → Overview; shell gains a `wide` input
+so the board gets 1400px while other pages keep 1060px.
+
+`stage: 'deploy'` added to the shared FactoryRequest type (backend B3
+already emits it via begin_deploy).
+
+### Deviations
+- "Steer next step" dropped from the home page (was on every lane card);
+  still available per-request in the dossier, which is the scoped place
+  for it. Conservative: no backend change, no feature loss.

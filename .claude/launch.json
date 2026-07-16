@@ -80,6 +80,18 @@
       "autoPort": false
     },
     {
+      "name": "console-4203",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "ng",
+        "serve",
+        "console",
+        "--port",
+        "4203"
+      ],
+      "port": 4203
+    },
+    {
       "name": "console-redesign",
       "runtimeExecutable": "sh",
       "runtimeArgs": [

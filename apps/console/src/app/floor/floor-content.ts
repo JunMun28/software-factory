@@ -1,713 +1,615 @@
-import { Component, computed, input, output, signal } from '@angular/core';
+import { Component, computed, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { FactoryRequest, MissionGate, MissionOut, timeAgo } from '@sf/shared';
+import { FactoryRequest, Glyph, MissionGate, MissionOut, RunState } from '@sf/shared';
 
 import { FloorActionOutcome } from '../shared/action-outcome';
-import { FloorGateCard } from './floor-gate-card';
-import { FLOOR_STAGES, deriveLane } from './floor-view';
+import { deriveBoard, deriveQueue, deriveTallies } from './floor-view';
 
 @Component({
   selector: 'sf-floor-content',
-  imports: [FloorGateCard, RouterLink],
+  imports: [RouterLink, Glyph],
   template: `
     @if (mission(); as m) {
       <div class="sr-only" role="status" aria-live="polite">
-        {{ needsCount() }} things need you. {{ lanes().length }} requests in motion.
+        {{ queue().length }} decisions waiting. {{ tallies().open }} requests on the line.
       </div>
-      <section class="hello reveal" aria-labelledby="floor-title">
-        <h1 id="floor-title">{{ greeting() }}. {{ attentionLine() }}</h1>
-        <p>Everything else is moving on its own.</p>
-        <div class="stats" aria-label="Factory statistics">
-          <span class="stat"
-            ><i></i><b>{{ lanes().length }}</b> in motion</span
-          >
-          <span class="stat"
-            ><b>{{ shippedThisWeek() }}</b> shipped this week</span
-          >
-          <span class="stat"><b>—</b> median cycle</span>
-          <span class="stat"><b>—</b> wait on human</span>
-        </div>
-      </section>
 
-      <section aria-labelledby="needs-title" class="reveal delay-1">
-        <h2 id="needs-title">Needs you</h2>
-        @if (needsCount() === 0) {
-          <p class="all-clear">
-            Nothing needs you — {{ lanes().length }}
-            {{ lanes().length === 1 ? 'request' : 'requests' }} in motion.
-          </p>
-        } @else {
-          <p class="section-note">Decide here — each card shows what the decision needs.</p>
-          @for (gate of m.gates; track gate.request.id) {
-            <sf-floor-gate-card
-              [gate]="gate"
-              [actionOutcome]="actionOutcomes()[gate.request.id]"
-              (approved)="approved.emit(gate)"
-              (sentBack)="sentBack.emit(gate)"
-            />
+      <header class="head">
+        <h1>Overview</h1>
+        <p class="pulse">
+          <b class="mono">{{ tallies().open }}</b> on the line
+          <span class="sep" aria-hidden="true"></span>
+          <b class="mono" [class.hot]="tallies().deciding > 0">{{ tallies().deciding }}</b>
+          waiting on your decision
+          <span class="sep" aria-hidden="true"></span>
+          <b class="mono" [class.bad]="tallies().attention > 0">{{ tallies().attention }}</b>
+          need attention
+          <span class="sep" aria-hidden="true"></span>
+          <b class="mono">{{ tallies().shipped }}</b> shipped this week
+        </p>
+      </header>
+
+      <section aria-labelledby="queue-title">
+        <div class="zone-head">
+          <h2 id="queue-title">Waiting on you</h2>
+          @if (queue().length > 0) {
+            <span class="zcount mono">{{ queue().length }}</span>
           }
-          @for (request of m.stalled; track request.id) {
-            <article
-              class="triage"
-              tabindex="0"
-              [attr.aria-label]="request.title + ', needs a human'"
-            >
-              <div class="triage-meta">
-                <span>Needs human</span>{{ request.app_name }} · {{ stageName(request) }}
+        </div>
+        @if (queue().length === 0) {
+          <p class="all-clear">
+            Nothing is waiting on you — the line runs itself until the next gate.
+          </p>
+        }
+        @for (item of queue(); track item.request.id) {
+          <article
+            class="q-row"
+            [class.is-gate]="item.kind === 'gate'"
+            [class.is-stalled]="item.kind === 'stalled'"
+            [class.is-owned]="item.kind === 'owned'"
+            tabindex="0"
+            [attr.aria-label]="item.request.title + ', ' + chipText(item.kind, item.headline)"
+          >
+            <span class="q-chip">{{ chipText(item.kind, item.headline) }}</span>
+            <div class="q-main">
+              <div class="q-title">
+                <a [routerLink]="['/requests', item.request.id]">{{ item.request.title }}</a>
+                <span class="q-meta mono"
+                  >{{ item.request.ref }} · {{ item.request.app_name }}</span
+                >
               </div>
-              <h3>{{ request.title }}</h3>
-              <div class="last-signal">
-                <b>Last signal</b
-                ><span>{{
-                  request.last_event || request.needs_human_reason || 'No signal recorded'
-                }}</span>
-              </div>
-              <div class="actions">
-                <button class="primary" type="button" (click)="retryRequested.emit(request)">
-                  Retry this stage
+              @if (item.kind === 'gate') {
+                <p class="q-facts mono">
+                  @for (fact of item.facts; track fact.text) {
+                    <span [class]="fact.tone">{{ fact.text }}</span>
+                  }
+                </p>
+                <p class="q-why">Approving {{ item.consequence }}.</p>
+              } @else if (item.kind === 'stalled') {
+                <p class="q-why">
+                  {{
+                    item.request.needs_human_reason ||
+                      item.request.last_event ||
+                      'No signal recorded'
+                  }}
+                </p>
+              } @else {
+                <p class="q-why">{{ item.owner }} is finishing this by hand in the PR.</p>
+              }
+              @if (actionOutcomes()[item.request.id]; as outcome) {
+                <p
+                  class="action-outcome"
+                  [class.conflict]="outcome.kind === 'conflict'"
+                  role="status"
+                >
+                  {{ outcome.message }}
+                </p>
+              }
+            </div>
+            <div class="q-actions">
+              @if (item.kind === 'gate') {
+                <button class="act primary" type="button" (click)="approved.emit(asGate(item))">
+                  Approve <kbd>A</kbd>
                 </button>
-                <button type="button" (click)="sendBackToStageRequested.emit(request)">
+                <button class="act" type="button" (click)="sentBack.emit(asGate(item))">
+                  Send back <kbd>S</kbd>
+                </button>
+              } @else if (item.kind === 'stalled') {
+                <button
+                  class="act primary"
+                  type="button"
+                  (click)="retryRequested.emit(item.request)"
+                >
+                  Retry stage
+                </button>
+                <button
+                  class="act"
+                  type="button"
+                  (click)="sendBackToStageRequested.emit(item.request)"
+                >
                   Send back to…
                 </button>
-                <button type="button" (click)="takeOverRequested.emit(request)">Take over</button>
-                <button class="danger" type="button" (click)="cancelled.emit(request)">
+                <button class="act" type="button" (click)="takeOverRequested.emit(item.request)">
+                  Take over
+                </button>
+                <button class="act danger" type="button" (click)="cancelled.emit(item.request)">
                   Cancel
                 </button>
-              </div>
-              @if (actionOutcomes()[request.id]; as outcome) {
-                <p
-                  class="action-outcome"
-                  [class.conflict]="outcome.kind === 'conflict'"
-                  role="status"
-                >
-                  {{ outcome.message }}
-                </p>
-              }
-            </article>
-          }
-          @for (owned of m.human_owned; track owned.request.id) {
-            <article
-              class="triage human-owned"
-              tabindex="0"
-              [attr.aria-label]="owned.request.title + ', human-owned by ' + owned.taken_over_by"
-            >
-              <div class="triage-meta">
-                <span>Human-owned</span>{{ owned.request.app_name }} ·
-                {{ stageName(owned.request) }}
-              </div>
-              <h3>{{ owned.request.title }}</h3>
-              <div class="last-signal">
-                <b>Automation stopped</b
-                ><span>{{ owned.taken_over_by }} is finishing this request by hand in the PR.</span>
-              </div>
-              <div class="actions">
-                <a [routerLink]="['/requests', owned.request.id]">Open dossier</a>
-                <button class="danger" type="button" (click)="cancelled.emit(owned.request)">
+              } @else {
+                <a class="act link" [routerLink]="['/requests', item.request.id]">Open dossier</a>
+                <button class="act danger" type="button" (click)="cancelled.emit(item.request)">
                   Cancel
                 </button>
-              </div>
-              @if (actionOutcomes()[owned.request.id]; as outcome) {
-                <p
-                  class="action-outcome"
-                  [class.conflict]="outcome.kind === 'conflict'"
-                  role="status"
-                >
-                  {{ outcome.message }}
-                </p>
-              }
-            </article>
-          }
-        }
-      </section>
-
-      <section aria-labelledby="line-title" class="reveal delay-2">
-        <h2 id="line-title">On the line</h2>
-        <p class="section-note">
-          Each request travels spec → plan → build → review → merge → ship.
-        </p>
-        @for (lane of lanes(); track lane.id) {
-          <article
-            class="lane"
-            [class.quiet]="lane.quiet"
-            tabindex="0"
-            [attr.aria-label]="
-              lane.title +
-              ', ' +
-              lane.stage +
-              ', step ' +
-              lane.step +
-              ' of ' +
-              lane.of +
-              ', ' +
-              lane.healthLabel
-            "
-          >
-            <div class="lane-top">
-              <h3>
-                <a [routerLink]="['/requests', lane.id]">{{ lane.title }}</a>
-              </h3>
-              <span class="app">{{ lane.app }}</span
-              ><span class="spacer"></span><span class="health">{{ lane.healthLabel }}</span>
-            </div>
-            <div class="track" aria-hidden="true">
-              <div class="rail"><span class="fill" [style.width.%]="lane.progress"></span></div>
-              <div class="marks">
-                @for (stage of stages; track stage) {
-                  <i
-                    ><span>{{ stage }}</span></i
-                  >
-                }
-              </div>
-              <span class="bead" [style.left.%]="lane.progress"></span>
-            </div>
-            <div class="now">
-              <span class="mono">{{ lane.stage }} · step {{ lane.step }} of {{ lane.of }}</span
-              ><span>{{ lane.label }}</span>
-            </div>
-            <div class="steer-bar">
-              <button
-                class="steer-toggle"
-                type="button"
-                [attr.aria-expanded]="steeringId() === lane.id"
-                [attr.aria-controls]="'steer-' + lane.id"
-                (click)="openSteer(lane.id)"
-              >
-                Steer next step
-              </button>
-              @if (lane.steer; as steer) {
-                <span class="steer-state" [class.heard]="steer.state === 'heard'">
-                  {{ steer.state === 'heard' ? 'heard ✓ at step ' + steer.at_step : 'queued' }}
-                </span>
               }
             </div>
-            @if (steeringId() === lane.id) {
-              <div class="steer-form" [id]="'steer-' + lane.id">
-                <label [for]="'steer-note-' + lane.id">Note for the next stage boundary</label>
-                <div class="steer-fields">
-                  <input
-                    [id]="'steer-note-' + lane.id"
-                    type="text"
-                    placeholder="Add a constraint the next step must honor…"
-                    [value]="steerText()"
-                    (input)="steerText.set($any($event.target).value)"
-                    (keydown.enter)="sendSteer(lane.id)"
-                    (keydown.escape)="steeringId.set(null)"
-                  />
-                  <button
-                    type="button"
-                    (click)="sendSteer(lane.id)"
-                    [disabled]="!steerText().trim()"
-                  >
-                    Send
-                  </button>
-                </div>
-              </div>
-            }
-            @if (actionOutcomes()[lane.id]; as outcome) {
-              <p
-                class="action-outcome"
-                [class.conflict]="outcome.kind === 'conflict'"
-                role="status"
-              >
-                {{ outcome.message }}
-              </p>
-            }
           </article>
-        } @empty {
-          <div class="empty-line">
-            <span class="resting-track" aria-hidden="true"></span>
-            <p>
-              The line is resting.
-              <a [href]="intakeUrl()">Invite the next request through Intake →</a>
-            </p>
-          </div>
         }
       </section>
 
-      <section aria-labelledby="recent-title" class="reveal delay-3">
-        <h2 id="recent-title">Recently</h2>
-        <p class="section-note">The latest outcomes, in factory order.</p>
-        <ul class="recent">
-          @for (recent of m.recent; track recent.request.id) {
-            <li>
-              <span class="outcome" [class.shipped]="recent.outcome === 'approved_merge'">{{
-                outcome(recent.outcome)
-              }}</span
-              ><a [routerLink]="['/requests', recent.request.id]">{{ recent.request.title }}</a
-              ><span class="spacer"></span><span class="signed">by {{ recent.decided_by }} · </span
-              ><time [attr.datetime]="recent.decided_at">{{ timeAgo(recent.decided_at) }}</time>
-            </li>
-          } @empty {
-            <li class="muted">No recent outcomes yet.</li>
+      <section aria-labelledby="board-title">
+        <div class="zone-head">
+          <h2 id="board-title">The line</h2>
+          <p class="zone-note">Every request, intake to deploy. Marked stages open by approval.</p>
+        </div>
+        <div class="board scroll-x">
+          @for (col of board(); track col.key) {
+            <section
+              class="col"
+              [class.gated]="col.gate !== null"
+              [attr.aria-label]="col.label + ', ' + col.count + ' requests'"
+            >
+              <header class="col-head">
+                <div class="col-name">
+                  <h3>{{ col.label }}</h3>
+                  <span class="ccount mono">{{ col.count }}</span>
+                </div>
+                @if (col.gate) {
+                  <p class="gatecap"><i aria-hidden="true">◆</i> opens by {{ col.gate }}</p>
+                } @else {
+                  <p class="col-sub">{{ col.sub }}</p>
+                }
+              </header>
+              @for (card of col.cards; track card.id) {
+                <a
+                  class="bcard"
+                  [class]="'tone-' + card.tone"
+                  [routerLink]="['/requests', card.id]"
+                >
+                  <div class="b-top mono">
+                    <span>{{ card.ref }}</span>
+                    @if (card.age) {
+                      <span class="b-age" [title]="'time in stage'">{{ card.age }}</span>
+                    }
+                  </div>
+                  <h4>{{ card.title }}</h4>
+                  <p class="b-app">{{ card.app }}</p>
+                  <p class="b-state">
+                    @if (card.tone === 'gate') {
+                      <i class="b-diamond" aria-hidden="true">◆</i>
+                    } @else if (card.glyph) {
+                      <sf-glyph [type]="card.glyph" [size]="13" [fill]="card.progress ?? 0.4" />
+                    }
+                    <span>{{ card.state }}</span>
+                  </p>
+                  @if (card.progress !== null) {
+                    <span class="b-rail" aria-hidden="true"
+                      ><span class="b-fill" [style.width.%]="card.progress * 100"></span
+                    ></span>
+                  }
+                </a>
+              } @empty {
+                <p class="b-none">None right now</p>
+              }
+            </section>
           }
-        </ul>
+        </div>
+        @if (tallies().open === 0) {
+          <p class="line-empty">
+            The line is resting.
+            <a [href]="intakeUrl()">Invite the next request through Intake →</a>
+          </p>
+        }
       </section>
     }
   `,
   styles: `
     :host {
       display: block;
+      padding-bottom: 72px;
     }
-    .hello {
-      padding: 44px 0 0;
+
+    /* ── header: one quiet pulse line, no stat tiles ── */
+    .head {
+      padding: 34px 0 0;
     }
     h1 {
-      font-size: clamp(27px, 3.6vw, 36px);
-      letter-spacing: -0.02em;
+      font-size: 23px;
+      letter-spacing: -0.015em;
     }
-    .hello > p,
-    .section-note {
-      margin: 6px 0 0;
-      color: var(--muted);
-      font-size: 14px;
-    }
-    .stats {
+    .pulse {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 20px;
+      align-items: baseline;
+      gap: 6px 10px;
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13.5px;
     }
-    .stat {
+    .pulse b {
+      color: var(--fg1);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .pulse b.hot {
+      color: var(--amber-tx);
+    }
+    .pulse b.bad {
+      color: var(--red-tx);
+    }
+    .sep {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: var(--border-strong);
+      align-self: center;
+    }
+
+    /* ── zone headers ── */
+    .zone-head {
       display: flex;
       align-items: baseline;
-      gap: 8px;
-      padding: 10px 16px;
-      color: var(--muted);
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--r-lg);
-      font-size: 13px;
-    }
-    .stat b {
-      color: var(--fg1);
-      font: 600 15px var(--mono);
-    }
-    .stat i {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--green);
-      animation: breathe 2.6s ease-in-out infinite;
+      gap: 10px;
+      margin: 36px 0 12px;
+      padding-bottom: 9px;
+      border-bottom: 1px solid var(--hairline);
     }
     h2 {
-      margin: 46px 0 4px;
-      font-size: 24px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .zcount {
+      min-width: 20px;
+      padding: 1px 7px;
+      color: var(--amber-tx);
+      background: var(--amber-bg);
+      border: 1px solid var(--amber-line);
+      border-radius: var(--r-pill);
+      font-size: 11.5px;
+      font-weight: 600;
+      text-align: center;
+    }
+    .zone-note {
+      margin: 0 0 0 auto;
+      color: var(--faint);
+      font-size: 12px;
     }
     .all-clear {
-      margin: 14px 0 0;
-      padding: 12px 16px;
+      margin: 0;
+      padding: 11px 14px;
       color: var(--green-tx);
       background: var(--green-bg);
       border: 1px solid var(--green-line);
-      border-radius: var(--r-lg);
+      border-radius: var(--r);
+      font-size: 13px;
     }
-    .triage {
-      padding: 22px 24px;
-      margin: 14px 0;
+
+    /* ── the decision queue: dense rows, loud only at the chip ── */
+    .q-row {
+      display: grid;
+      grid-template-columns: 132px minmax(0, 1fr) auto;
+      gap: 6px 16px;
+      align-items: start;
+      padding: 13px 16px;
+      margin-bottom: 8px;
       background: var(--surface);
-      border: 1px solid var(--red-line);
+      border: 1px solid var(--border);
       border-radius: var(--r-lg);
       outline: none;
     }
-    .triage:focus-visible {
-      box-shadow: 0 0 0 2px var(--red-line);
+    .q-row.is-gate {
+      border-color: var(--amber-line);
     }
-    .triage-meta {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      color: var(--muted);
-      font-size: 12.5px;
+    .q-row.is-stalled {
+      border-color: var(--red-line);
     }
-    .triage-meta span {
+    .q-row:focus-visible {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-tint-bd);
+    }
+    .q-chip {
+      justify-self: start;
+      margin-top: 1px;
+      padding: 3px 10px;
+      border-radius: var(--r);
+      font-size: 11.5px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .is-gate .q-chip {
+      color: var(--amber-tx);
+      background: var(--amber-bg);
+      border: 1px solid var(--amber-line);
+    }
+    .is-stalled .q-chip {
       color: var(--red-tx);
       background: var(--red-bg);
       border: 1px solid var(--red-line);
-      border-radius: var(--r-pill);
-      padding: 4px 12px;
-      font-weight: 700;
     }
-    .human-owned {
-      border-color: var(--border-strong);
-    }
-    .human-owned .triage-meta span {
+    .is-owned .q-chip {
       color: var(--accent-tx);
       background: var(--accent-tint);
-      border-color: var(--accent);
+      border: 1px solid var(--accent-tint-bd);
     }
-    .triage h3 {
-      margin: 10px 0 14px;
-      font-size: 19px;
-    }
-    .last-signal {
-      display: flex;
-      flex-direction: column;
-      padding: 10px 14px;
-      background: var(--surface-2);
-      border-radius: var(--r);
-      color: var(--fg2);
-      font-size: 13px;
-    }
-    .last-signal b {
-      color: var(--faint);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-size: 11px;
-    }
-    .actions {
+    .q-title {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 16px;
+      align-items: baseline;
+      gap: 4px 10px;
     }
-    .actions button,
-    .actions a {
-      border: 1px solid var(--border-strong);
-      border-radius: var(--r-pill);
-      padding: 8px 16px;
-      background: var(--surface);
+    .q-title a {
       color: var(--fg1);
-      font: 600 13px var(--body);
+      font-size: 14.5px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .q-title a:hover {
+      color: var(--accent-link);
+    }
+    .q-meta {
+      color: var(--faint);
+      font-size: 11.5px;
+    }
+    .q-facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px 14px;
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 11.5px;
+    }
+    .q-facts .green {
+      color: var(--green-tx);
+    }
+    .q-facts .red {
+      color: var(--red-tx);
+    }
+    .q-facts .purple {
+      color: var(--accent-tx);
+    }
+    .q-why {
+      margin: 4px 0 0;
+      color: var(--fg2);
+      font-size: 12.5px;
+    }
+    .q-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .act {
+      padding: 6px 12px;
+      color: var(--fg1);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--r);
+      font: 600 12.5px var(--body);
       text-decoration: none;
       cursor: pointer;
+      transition: background var(--dur) var(--ease);
     }
-    .actions .primary {
-      color: white;
+    .act:hover {
+      background: var(--surface-2);
+    }
+    .act.primary {
+      color: #fff;
       background: var(--accent);
       border-color: var(--accent);
     }
-    .actions .danger {
-      color: var(--red);
+    .act.primary:hover {
+      background: var(--accent-hover);
+    }
+    .act.danger {
+      color: var(--red-tx);
       border-color: var(--red-line);
     }
+    .act.link {
+      border-color: transparent;
+      color: var(--accent-link);
+    }
+    .act kbd {
+      margin-left: 4px;
+      padding: 0 4px;
+      border: 1px solid currentColor;
+      border-radius: var(--r-sm);
+      font: 500 9.5px var(--mono);
+      opacity: 0.75;
+    }
     .action-outcome {
-      margin: 12px 0 0;
-      padding: 8px 12px;
+      margin: 8px 0 0;
+      padding: 7px 11px;
       color: var(--muted);
       background: var(--surface-2);
       border: 1px solid var(--border);
       border-radius: var(--r);
-      font-size: 12.5px;
+      font-size: 12px;
     }
     .action-outcome.conflict {
       color: var(--amber-tx);
       background: var(--amber-bg);
       border-color: var(--amber-line);
     }
-    .lane {
+
+    /* ── the board: five columns, approval boundaries drawn on ── */
+    .board {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(206px, 1fr));
+      gap: 0 18px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+    .col {
+      min-width: 0;
+      padding-top: 2px;
+    }
+    .col.gated {
+      padding-left: 17px;
+      border-left: 1px dashed var(--amber-line);
+    }
+    .col-head {
+      margin-bottom: 10px;
+    }
+    .col-name {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .col-name h3 {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .ccount {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .col-sub,
+    .gatecap {
+      margin: 3px 0 0;
+      font-size: 11px;
+      color: var(--faint);
+    }
+    .gatecap {
+      color: var(--amber-tx);
+      font-weight: 600;
+    }
+    .gatecap i {
+      font-size: 9px;
+      font-style: normal;
+      margin-right: 2px;
+    }
+
+    .bcard {
       display: block;
-      padding: 18px 24px 20px;
-      margin: 12px 0;
-      color: inherit;
-      text-decoration: none;
+      padding: 10px 12px 11px;
+      margin-bottom: 8px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--r-lg);
-    }
-    .lane:hover,
-    .lane:focus-visible {
-      border-color: var(--accent);
-      outline: none;
-    }
-    .lane-top,
-    .now {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      gap: 6px 14px;
-    }
-    .lane h3 {
-      font-size: 16px;
-    }
-    .lane h3 a {
-      color: inherit;
       text-decoration: none;
+      transition:
+        border-color var(--dur) var(--ease),
+        box-shadow var(--dur) var(--ease);
     }
-    .app {
-      color: var(--accent-tx);
-      background: var(--accent-tint);
-      border-radius: var(--r-pill);
-      padding: 3px 12px;
-      font-size: 12px;
+    .bcard:hover {
+      border-color: var(--border-strong);
+      box-shadow: var(--shadow-pop);
+    }
+    .bcard:focus-visible {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-tint-bd);
+    }
+    .b-top {
+      display: flex;
+      justify-content: space-between;
+      color: var(--faint);
+      font-size: 10.5px;
+    }
+    .bcard h4 {
+      margin: 3px 0 0;
+      color: var(--fg1);
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.32;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .b-app {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 11.5px;
+    }
+    .b-state {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 11.5px;
+      line-height: 1.35;
+    }
+    .b-state span {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .b-diamond {
+      font-size: 10px;
+      font-style: normal;
+    }
+    .tone-run .b-state {
+      color: var(--fg2);
+    }
+    .tone-run .b-state sf-glyph {
+      color: var(--accent);
+    }
+    .tone-gate .b-state {
+      color: var(--amber-tx);
       font-weight: 600;
     }
-    .spacer {
-      flex: 1;
-    }
-    .health {
-      color: var(--muted);
-      font-size: 12.5px;
-    }
-    .quiet .health {
+    .tone-human .b-state {
       color: var(--red-tx);
+      font-weight: 600;
     }
-    .track {
-      position: relative;
-      height: 30px;
+    .tone-human {
+      border-color: var(--red-line);
+    }
+    .tone-owned .b-state {
+      color: var(--accent-tx);
+    }
+    .tone-done .b-state {
+      color: var(--green-tx);
+    }
+    .tone-done,
+    .tone-draft {
+      background: transparent;
+    }
+    .tone-draft .b-state {
+      color: var(--faint);
+    }
+    .b-rail {
+      display: block;
+      height: 3px;
       margin-top: 8px;
-    }
-    .rail {
-      position: absolute;
-      inset: 13px 0 auto;
-      height: 4px;
       background: var(--surface-3);
       border-radius: var(--r-pill);
       overflow: hidden;
     }
-    .fill {
+    .b-fill {
       display: block;
       height: 100%;
       background: var(--accent);
+      border-radius: var(--r-pill);
     }
-    .quiet .fill {
-      background: var(--border-strong);
-    }
-    .marks {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      justify-content: space-between;
-    }
-    .marks i {
-      position: relative;
-      width: 4px;
-      height: 4px;
-      margin-top: 13px;
-      border-radius: 50%;
-      background: var(--border-strong);
-    }
-    .marks span {
-      position: absolute;
-      top: 11px;
-      left: 50%;
-      transform: translateX(-50%);
+    .b-none {
+      margin: 4px 0 0;
+      padding: 14px 0;
       color: var(--faint);
-      font: 600 10.5px var(--body);
-      font-style: normal;
-    }
-    .bead {
-      position: absolute;
-      top: 9px;
-      width: 12px;
-      height: 12px;
-      transform: translateX(-50%);
-      border: 2px solid var(--surface);
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 0 1px var(--accent);
-    }
-    .bead:after {
-      content: '';
-      position: absolute;
-      inset: -6px;
-      border: 1px solid var(--accent);
-      border-radius: 50%;
-      animation: ping 2.8s ease-out infinite;
-    }
-    .quiet .bead {
-      background: var(--faint);
-      box-shadow: 0 0 0 1px var(--faint);
-    }
-    .quiet .bead:after {
-      display: none;
-    }
-    .now {
-      margin-top: 22px;
-      color: var(--muted);
-      font-size: 13px;
-    }
-    .now .mono {
-      color: var(--fg2);
-      font-size: 12px;
-    }
-    .steer-bar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
-      margin-top: 14px;
-    }
-    .steer-toggle,
-    .steer-form button {
-      padding: 7px 13px;
-      color: var(--fg2);
-      background: var(--surface-2);
-      border: 1px solid var(--border-strong);
-      border-radius: var(--r-pill);
-      font: 600 12px var(--body);
-      cursor: pointer;
-    }
-    .steer-state {
-      padding: 4px 10px;
-      color: var(--amber-tx);
-      background: var(--amber-bg);
-      border: 1px dashed var(--amber-line);
-      border-radius: var(--r-pill);
-      font: 700 11.5px var(--body);
-    }
-    .steer-state.heard {
-      color: var(--green-tx);
-      background: var(--green-bg);
-      border-style: solid;
-      border-color: var(--green-line);
-    }
-    .steer-form {
-      margin-top: 10px;
-      padding: 12px;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: var(--r);
-    }
-    .steer-form label {
-      display: block;
-      margin-bottom: 7px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-    .steer-fields {
-      display: flex;
-      gap: 8px;
-    }
-    .steer-fields input {
-      min-width: 0;
-      flex: 1;
-      padding: 9px 12px;
-      color: var(--fg1);
-      background: var(--surface);
-      border: 1px solid var(--border-strong);
-      border-radius: var(--r);
-      font: 13px var(--body);
-    }
-    .steer-fields button {
-      color: white;
-      background: var(--accent);
-      border-color: var(--accent);
-    }
-    .steer-fields button:disabled {
-      opacity: 0.55;
-      cursor: default;
-    }
-    .empty-line {
-      padding: 24px;
-      margin-top: 12px;
-      border: 1px solid var(--border);
+      border: 1px dashed var(--border);
       border-radius: var(--r-lg);
-      background: var(--surface);
+      font-size: 12px;
+      text-align: center;
     }
-    .resting-track {
-      display: block;
-      height: 4px;
-      background: var(--surface-3);
-      border-radius: var(--r-pill);
-    }
-    .empty-line p {
+    .line-empty {
+      margin: 14px 0 0;
       color: var(--muted);
-      margin: 16px 0 0;
+      font-size: 13.5px;
     }
-    .empty-line a {
+    .line-empty a {
       color: var(--accent-link);
     }
-    .recent {
-      list-style: none;
-      margin: 14px 0 80px;
-      padding: 0;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      border-radius: var(--r-lg);
-      background: var(--surface);
-    }
-    .recent li {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px 14px;
-      align-items: baseline;
-      padding: 13px 20px;
-      border-bottom: 1px solid var(--hairline);
-    }
-    .recent li:last-child {
-      border: 0;
-    }
-    .recent a {
-      color: var(--fg1);
-      text-decoration: none;
-    }
-    .recent time,
-    .signed,
-    .muted {
-      color: var(--muted);
-      font-size: 12.5px;
-    }
-    .outcome {
-      padding: 4px 12px;
-      color: var(--amber-tx);
-      background: var(--amber-bg);
-      border-radius: var(--r-pill);
-      font-size: 11.5px;
-      font-weight: 700;
-    }
-    .outcome.shipped {
-      color: var(--green-tx);
-      background: var(--green-bg);
-    }
-    .reveal {
-      animation: reveal 0.5s var(--ease-out) both;
-    }
-    .delay-1 {
-      animation-delay: 0.08s;
-    }
-    .delay-2 {
-      animation-delay: 0.16s;
-    }
-    .delay-3 {
-      animation-delay: 0.24s;
-    }
-    @keyframes breathe {
-      50% {
-        opacity: 0.35;
+
+    @media (max-width: 1080px) {
+      .board {
+        grid-template-columns: repeat(5, 224px);
       }
     }
-    @keyframes ping {
-      0% {
-        transform: scale(0.55);
-        opacity: 0.55;
+    @media (max-width: 720px) {
+      .q-row {
+        grid-template-columns: 1fr;
       }
-      70%,
-      100% {
-        transform: scale(1.5);
-        opacity: 0;
+      .q-actions {
+        justify-content: flex-start;
       }
-    }
-    @keyframes reveal {
-      from {
-        opacity: 0;
-        transform: translateY(8px);
-      }
-    }
-    @media (max-width: 640px) {
-      .marks span {
-        display: none;
-      }
-      .marks i:first-child span,
-      .marks i:last-child span {
-        display: block;
-      }
-      .lane,
-      .triage {
-        padding: 18px;
-      }
-      .steer-fields {
-        align-items: stretch;
-        flex-direction: column;
-      }
-      .hello {
-        padding-top: 32px;
+      .head {
+        padding-top: 26px;
       }
     }
     @media (prefers-reduced-motion: reduce) {
-      *,
-      *:before,
-      *:after {
-        animation: none !important;
+      * {
         transition: none !important;
       }
     }
@@ -715,6 +617,7 @@ import { FLOOR_STAGES, deriveLane } from './floor-view';
 })
 export class FloorContent {
   mission = input.required<MissionOut>();
+  requests = input.required<FactoryRequest[]>();
   intakeUrl = input('http://localhost:4201/submit/new');
   actionOutcomes = input<Record<number, FloorActionOutcome>>({});
   approved = output<MissionGate>();
@@ -723,58 +626,22 @@ export class FloorContent {
   sendBackToStageRequested = output<FactoryRequest>();
   takeOverRequested = output<FactoryRequest>();
   cancelled = output<FactoryRequest>();
-  steered = output<{ request: FactoryRequest; note: string }>();
-  steeringId = signal<number | null>(null);
-  steerText = signal('');
-  stages = FLOOR_STAGES;
-  timeAgo = timeAgo;
 
-  openSteer(requestId: number) {
-    this.steerText.set('');
-    this.steeringId.set(this.steeringId() === requestId ? null : requestId);
-  }
-
-  sendSteer(requestId: number) {
-    const note = this.steerText().trim();
-    const lane = this.lanes().find((item) => item.id === requestId);
-    if (!note || !lane) return;
-    this.steered.emit({ request: lane.request, note });
-    this.steeringId.set(null);
-    this.steerText.set('');
-  }
-
-  lanes = computed(() => this.mission().runs.map(deriveLane));
-  needsCount = computed(
-    () =>
-      this.mission().gates.length +
-      this.mission().stalled.length +
-      this.mission().human_owned.length,
-  );
-  shippedThisWeek = computed(
-    () => this.mission().recent.filter((r) => r.outcome === 'approved_merge').length,
-  );
-  greeting = computed(() => {
-    const hour = new Date().getHours();
-    return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  queue = computed(() => deriveQueue(this.mission()));
+  board = computed(() => {
+    const runs = new Map<number, RunState>(
+      this.mission().runs.map((run) => [run.request.id, run.run]),
+    );
+    return deriveBoard(this.requests(), runs);
   });
-  attentionLine = computed(() => {
-    const count = this.needsCount();
-    return count === 0
-      ? 'Nothing needs you.'
-      : `${count === 1 ? 'One thing' : `${count} things`} need you.`;
-  });
-  stageName(request: FactoryRequest) {
-    return request.stage === 'architecture'
-      ? 'Plan stage'
-      : `${request.stage[0].toUpperCase()}${request.stage.slice(1)} stage`;
+  tallies = computed(() => deriveTallies(this.mission(), this.requests()));
+
+  chipText(kind: 'gate' | 'stalled' | 'owned', headline: string | null) {
+    if (kind === 'gate') return headline ?? 'Approve';
+    return kind === 'stalled' ? 'Needs human' : 'Human-owned';
   }
-  outcome(outcome: string) {
-    return outcome === 'approved_merge'
-      ? 'Shipped'
-      : outcome === 'approved'
-        ? 'Approved'
-        : outcome === 'cancelled'
-          ? 'Cancelled'
-          : 'Sent back';
+  /** The modals still speak MissionGate; rebuild it from the queue item. */
+  asGate(item: { request: FactoryRequest; evidence: MissionGate['evidence'] }): MissionGate {
+    return { request: item.request, evidence: item.evidence };
   }
 }

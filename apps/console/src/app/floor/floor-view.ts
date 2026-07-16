@@ -1,57 +1,228 @@
-import { FactoryRequest, MissionRun, SteerState } from '@sf/shared';
+import {
+  Evidence,
+  EvidenceBit,
+  FactoryRequest,
+  MissionOut,
+  RunState,
+  evidenceBits,
+  timeAgo,
+} from '@sf/shared';
 
-export const FLOOR_STAGES = ['Spec', 'Plan', 'Build', 'Review', 'Merge', 'Ship'] as const;
+/* ── Pipeline board: five fixed columns, two approval boundaries ──
+   The two human gates live in the geometry: Architecture opens only by
+   spec approval, Deploy only by merge approval. Everything between runs
+   on its own. */
 
-export interface FloorLane {
+export interface BoardColumnDef {
+  key: 'intake' | 'architecture' | 'build' | 'review' | 'deploy';
+  label: string;
+  sub: string;
+  /** Non-null → entering this column requires a human approval. */
+  gate: string | null;
+}
+
+export const BOARD_COLUMNS: readonly BoardColumnDef[] = [
+  { key: 'intake', label: 'Intake & Spec', sub: 'interview → grounded spec', gate: null },
+  {
+    key: 'architecture',
+    label: 'Architecture',
+    sub: 'plan from the approved spec',
+    gate: 'spec approval',
+  },
+  { key: 'build', label: 'Build', sub: 'failing tests → green → refactor', gate: null },
+  { key: 'review', label: 'Review & Preview', sub: 'independent read of the diff', gate: null },
+  { key: 'deploy', label: 'Deploy', sub: 'merge → image → live pod', gate: 'merge approval' },
+];
+
+/** How many shipped requests the Deploy column keeps visible under the live ones. */
+const SHIPPED_SHOWN = 5;
+
+export type CardTone = 'run' | 'wait' | 'gate' | 'human' | 'owned' | 'draft' | 'done';
+
+export interface BoardCard {
   id: number;
-  request: FactoryRequest;
+  ref: string;
   title: string;
   app: string;
-  stage: (typeof FLOOR_STAGES)[number];
-  step: number;
-  of: number;
-  label: string;
-  healthLabel: string;
-  quiet: boolean;
-  progress: number;
-  steer: SteerState | null;
+  tone: CardTone;
+  /** sf-glyph type; gates render their own ◆ marker instead. */
+  glyph: 'dotted' | 'ring' | 'check' | 'flag' | null;
+  state: string;
+  /** in-stage progress 0..1, only when a live run reports steps */
+  progress: number | null;
+  /** compact time in current stage, e.g. "4h" — null for shipped cards */
+  age: string | null;
+  /** sort keys, not rendered */
+  enteredMs: number;
+  updatedMs: number;
 }
 
-const stageIndex = (item: MissionRun): number => {
-  if (item.request.status === 'done') return 5;
-  if (item.request.gate === 'approve_merge') return 4;
-  return { intake: 0, spec: 0, architecture: 1, build: 2, review: 3, done: 5 }[item.request.stage];
+export interface BoardColumn extends BoardColumnDef {
+  cards: BoardCard[];
+  count: number;
+}
+
+const COLUMN_OF: Record<FactoryRequest['stage'], BoardColumnDef['key'] | 'done'> = {
+  intake: 'intake',
+  spec: 'intake',
+  architecture: 'architecture',
+  build: 'build',
+  review: 'review',
+  deploy: 'deploy',
+  done: 'done',
 };
 
-export function elapsed(seconds: number): string {
-  if (seconds < 60) return `${Math.max(0, Math.round(seconds))} s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)} m`;
-  return `${Math.round(seconds / 3600)} h`;
+export function deriveCard(r: FactoryRequest, run: RunState | null): BoardCard {
+  const base = {
+    id: r.id,
+    ref: r.ref,
+    title: r.title,
+    app: r.app_name || r.new_app_name || 'New app',
+    progress: null as number | null,
+    age: r.stage_entered_at ? timeAgo(r.stage_entered_at) : null,
+    enteredMs: r.stage_entered_at ? Date.parse(r.stage_entered_at) : 0,
+    updatedMs: Date.parse(r.updated_at) || 0,
+  };
+  if (r.status === 'done')
+    return {
+      ...base,
+      tone: 'done',
+      glyph: 'check',
+      state: `Shipped · ${timeAgo(r.updated_at)}`,
+      age: null,
+    };
+  if (r.needs_human)
+    return {
+      ...base,
+      tone: 'human',
+      glyph: 'flag',
+      state: r.needs_human_reason || 'Needs a human',
+    };
+  if (r.status === 'human_owned')
+    return { ...base, tone: 'owned', glyph: 'flag', state: 'Human-owned · automation off' };
+  if (r.gate === 'approve_spec')
+    return { ...base, tone: 'gate', glyph: null, state: 'Approval starts the build' };
+  if (r.gate === 'approve_merge')
+    return { ...base, tone: 'gate', glyph: null, state: 'Approval deploys it' };
+  if (r.status === 'sent_back')
+    return { ...base, tone: 'wait', glyph: 'dotted', state: 'With the submitter · question open' };
+  if (r.status === 'draft')
+    return { ...base, tone: 'draft', glyph: 'dotted', state: 'Draft · not submitted yet' };
+  if (run) {
+    const quiet = run.health !== 'healthy';
+    return {
+      ...base,
+      tone: 'run',
+      glyph: 'ring',
+      state: quiet
+        ? `Quiet · no signal recently`
+        : `${run.label || 'Working'} · ${run.step}/${run.of}`,
+      progress: run.of ? Math.min(1, run.step / run.of) : null,
+    };
+  }
+  if (r.stage === 'deploy')
+    return {
+      ...base,
+      tone: 'run',
+      glyph: 'ring',
+      state: r.last_event || 'Building image · deploying',
+    };
+  if (r.stage === 'intake' || r.stage === 'spec')
+    return {
+      ...base,
+      tone: 'wait',
+      glyph: 'dotted',
+      state: r.status === 'submitted' ? 'Interview in progress' : 'Drafting the spec',
+    };
+  return { ...base, tone: 'run', glyph: 'ring', state: r.last_event || 'Working' };
 }
 
-export function deriveLane(item: MissionRun): FloorLane {
-  const index = stageIndex(item);
-  const waiting = item.request.gate !== null;
-  const quiet = item.run.health !== 'healthy';
-  const healthLabel = waiting
-    ? `◆ waiting on ${item.request.gate === 'approve_merge' ? 'merge' : 'spec'} approval`
-    : quiet
-      ? `▲ quiet for ${elapsed(item.run.seconds_since_event)}`
-      : '● steady';
-  const withinStage = item.run.of ? Math.min(1, item.run.step / item.run.of) : 0;
+/** The whole board from the requests projection + mission run overlays. */
+export function deriveBoard(
+  requests: FactoryRequest[],
+  runs: Map<number, RunState>,
+): BoardColumn[] {
+  const open = requests.filter((r) => r.status !== 'cancelled');
+  const columns = BOARD_COLUMNS.map((def) => ({ ...def, cards: [] as BoardCard[], count: 0 }));
+  const byKey = new Map(columns.map((c) => [c.key, c]));
+  const shipped: BoardCard[] = [];
+  for (const r of open) {
+    const key = COLUMN_OF[r.stage] ?? 'intake';
+    if (key === 'done') {
+      shipped.push(deriveCard(r, null));
+      continue;
+    }
+    byKey.get(key)!.cards.push(deriveCard(r, runs.get(r.id) ?? null));
+  }
+  for (const col of columns) {
+    // Oldest in stage first: the card closest to needing attention leads.
+    col.cards.sort((a, b) => a.enteredMs - b.enteredMs);
+    col.count = col.cards.length;
+  }
+  shipped.sort((a, b) => b.updatedMs - a.updatedMs);
+  const deploy = byKey.get('deploy')!;
+  deploy.count = deploy.cards.length;
+  deploy.cards = [...deploy.cards, ...shipped.slice(0, SHIPPED_SHOWN)];
+  return columns;
+}
 
+/* ── Waiting on you: the decision queue ── */
+
+export type QueueKind = 'gate' | 'stalled' | 'owned';
+
+export interface QueueItem {
+  kind: QueueKind;
+  request: FactoryRequest;
+  evidence: Evidence | null;
+  /** gate rows only: what an approval unlocks, in the admin's words */
+  headline: string | null;
+  consequence: string | null;
+  facts: EvidenceBit[];
+  /** owned rows only */
+  owner: string | null;
+}
+
+export function deriveQueue(m: MissionOut): QueueItem[] {
+  const gates: QueueItem[] = m.gates.map((g) => ({
+    kind: 'gate',
+    request: g.request,
+    evidence: g.evidence,
+    headline: g.request.gate === 'approve_merge' ? 'Approve to deploy' : 'Approve to build',
+    consequence:
+      g.request.gate === 'approve_merge'
+        ? `merges to main and deploys ${g.request.app_name || 'the app'}`
+        : 'accepts the spec and starts architecture + build',
+    facts: evidenceBits(g.evidence),
+    owner: null,
+  }));
+  const stalled: QueueItem[] = m.stalled.map((request) => ({
+    kind: 'stalled',
+    request,
+    evidence: null,
+    headline: null,
+    consequence: null,
+    facts: [],
+    owner: null,
+  }));
+  const owned: QueueItem[] = m.human_owned.map((o) => ({
+    kind: 'owned',
+    request: o.request,
+    evidence: null,
+    headline: null,
+    consequence: null,
+    facts: [],
+    owner: o.taken_over_by,
+  }));
+  return [...gates, ...stalled, ...owned];
+}
+
+/** Header math: the one-line pulse of the factory. */
+export function deriveTallies(m: MissionOut, requests: FactoryRequest[]) {
+  const open = requests.filter((r) => r.status !== 'cancelled' && r.status !== 'done');
   return {
-    id: item.request.id,
-    request: item.request,
-    title: item.request.title,
-    app: item.request.app_name || item.request.new_app_name || 'New app',
-    stage: FLOOR_STAGES[index],
-    step: item.run.step,
-    of: item.run.of,
-    label: item.run.label || item.request.last_event || 'Working through this stage',
-    healthLabel,
-    quiet,
-    progress: Math.min(100, Math.round(((index + withinStage) / (FLOOR_STAGES.length - 1)) * 100)),
-    steer: item.steer,
+    open: open.length,
+    deciding: m.gates.length,
+    attention: m.stalled.length + m.human_owned.length,
+    shipped: m.recent.filter((r) => r.outcome === 'approved_merge').length,
   };
 }
