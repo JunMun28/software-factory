@@ -23,7 +23,14 @@ kubectl -n $NS get secret sf-codex-auth >/dev/null 2>&1 \
 kubectl -n $NS set env deployment/factory-api FACTORY_PREVIEW=1 >/dev/null
 kubectl -n $NS rollout status deployment/factory-api --timeout=180s >/dev/null \
   || fail "factory-api did not restart with FACTORY_PREVIEW=1"
-HEALTH=$(curl -sf "$API/health") || fail "API unreachable at $API (ingress up? task kind-deploy?)"
+# the restart re-points the ingress endpoint; give it a moment to propagate
+# before declaring the API unreachable (single-shot curl races 503s).
+HEALTH=""
+for _ in $(seq 1 30); do
+  if HEALTH=$(curl -sf "$API/health" 2>/dev/null); then break; fi
+  sleep 2
+done
+[ -n "$HEALTH" ] || fail "API unreachable at $API after 60s (ingress up? task kind-deploy?)"
 [ "$(echo "$HEALTH" | jqpy "print(d['runner'])")" = "kube" ] || fail "runner is not kube"
 POD=$(kubectl -n $NS get pod -l app=api -o jsonpath='{.items[0].metadata.name}')
 dbpy() { kubectl -n "$NS" exec "$POD" -c api -- uv run --no-sync python -c "$1"; }

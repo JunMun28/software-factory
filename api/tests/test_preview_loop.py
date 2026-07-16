@@ -555,3 +555,29 @@ def test_apply_preview_commits_pdeploy_intent_before_cluster_apply(
         db.commit()
         runner._apply_preview(db, req, "northwind", DIGEST, 0, [])
     assert fake.saw_pdeploy is True
+
+
+def test_deploy_gate_preview_evidence_survives_a_later_merge_claim(
+    client, monkeypatch, tmp_path
+):
+    # regression (found live, kind-smoke): the deploy gate's preview evidence
+    # (url/round/acceptor) must be read from the preview_accepted audit, NOT the
+    # newest decisive audit — which by merge time is merge_claimed and would
+    # leave the deploy gate with no preview URL. The acceptor must be the
+    # requester who accepted, never the operator who claimed the merge.
+    _enable_preview(monkeypatch, tmp_path)
+    request = _put_at_preview_gate(client, "deploy gate preview evidence")
+    runner = KubeJobRunner(client=FakeKubeClient())
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        db.add(AuditEvent(request_id=req.id, actor="Ada",
+                          operator_id=1, action="preview_accepted"))
+        db.commit()
+        # claim_merge runs AFTER the accept, so this is the newest decisive audit
+        db.add(AuditEvent(request_id=req.id, actor="Kim",
+                          operator_id=1, action="merge_claimed"))
+        db.commit()
+        params = runner._accepted_preview_params(db, req)
+    assert params["preview_url"].endswith(f"-preview.{settings.APP_INGRESS_DOMAIN}")
+    assert params["accepted_by"] == "Ada"  # the acceptor, never the merge claimer
+    assert "preview_round" in params

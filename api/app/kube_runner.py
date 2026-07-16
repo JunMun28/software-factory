@@ -730,15 +730,7 @@ class KubeJobRunner:
             # B4: merge landed — WAIT at the deploy gate (spec §4.10). The build
             # is driven only after a human clears the gate; fenced + notified
             # like the merge gate, and a raced Cancel wins the CAS.
-            accepted = self._newest_decisive(db, req)
-            preview_params = {}
-            if accepted is not None and accepted.action == "preview_accepted":
-                slug = self._app_slug(req)
-                preview_params = {
-                    "preview_url": f"http://{slug}-preview.{settings.APP_INGRESS_DOMAIN}",
-                    "preview_round": req.preview_round,
-                    "accepted_by": accepted.actor,
-                }
+            preview_params = self._accepted_preview_params(db, req)
             res = transitions.apply_committed(
                 db,
                 req,
@@ -839,6 +831,27 @@ class KubeJobRunner:
             )
             .order_by(AuditEvent.id.desc())
         )
+
+    def _accepted_preview_params(self, db: Session, req: Request) -> dict:
+        """Preview evidence (url/round/acceptor) for the deploy gate, from the
+        LAST preview_accepted audit SPECIFICALLY — NOT _newest_decisive, because
+        by merge time the newest decisive audit is merge_claimed (claim_merge ran
+        after the requester's claim_accept), which would hide the acceptance and
+        leave the deploy gate with no preview evidence (found live, kind-smoke)."""
+        accepted = db.scalar(
+            select(AuditEvent)
+            .where(AuditEvent.request_id == req.id,
+                   AuditEvent.action == "preview_accepted")
+            .order_by(AuditEvent.id.desc())
+        )
+        if accepted is None:
+            return {}
+        slug = self._app_slug(req)
+        return {
+            "preview_url": f"http://{slug}-preview.{settings.APP_INGRESS_DOMAIN}",
+            "preview_round": req.preview_round,
+            "accepted_by": accepted.actor,
+        }
 
     def _preview_state_machine(
         self, db: Session, req: Request, slug: str, moved: list[str]
