@@ -24,7 +24,13 @@ import { Autofocus, FactoryRequest, Icon, confirmSteps } from '@sf/shared';
         (click)="$event.stopPropagation()"
       >
         <h3 style="font-size:19px;margin-bottom:8px">
-          {{ r().gate === 'approve_merge' ? 'Approve this merge?' : 'Approve this spec?' }}
+          {{
+            r().gate === 'approve_merge'
+              ? 'Approve this merge?'
+              : r().gate === 'approve_deploy'
+                ? 'Approve this deploy?'
+                : 'Approve this spec?'
+          }}
         </h3>
         <p style="font-size:14px;color:var(--muted);margin:0 0 4px">
           Approving <b style="color:var(--fg1)">{{ r().title }}</b> is irreversible. It will:
@@ -50,7 +56,13 @@ import { Autofocus, FactoryRequest, Icon, confirmSteps } from '@sf/shared';
         <div class="row" style="gap:9px;justify-content:flex-end">
           <button class="btn" (click)="cancelled.emit()">Cancel</button>
           <button class="btn primary" (click)="approved.emit()">
-            {{ r().gate === 'approve_merge' ? 'Approve & deploy' : 'Approve & start build' }}
+            {{
+              r().gate === 'approve_merge'
+                ? 'Approve & deploy'
+                : r().gate === 'approve_deploy'
+                  ? 'Approve & deploy'
+                  : 'Approve & start build'
+            }}
           </button>
         </div>
       </div>

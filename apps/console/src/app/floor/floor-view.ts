@@ -104,6 +104,8 @@ export function deriveCard(r: FactoryRequest, run: RunState | null): BoardCard {
     return { ...base, tone: 'gate', glyph: null, state: 'Approval starts the build' };
   if (r.gate === 'approve_merge')
     return { ...base, tone: 'gate', glyph: null, state: 'Approval deploys it' };
+  if (r.gate === 'approve_deploy')
+    return { ...base, tone: 'gate', glyph: null, state: 'Approval deploys it' };
   if (r.status === 'sent_back')
     return { ...base, tone: 'wait', glyph: 'dotted', state: 'With the submitter · question open' };
   if (r.status === 'draft')
@@ -187,11 +189,18 @@ export function deriveQueue(m: MissionOut): QueueItem[] {
     kind: 'gate',
     request: g.request,
     evidence: g.evidence,
-    headline: g.request.gate === 'approve_merge' ? 'Approve to deploy' : 'Approve to build',
+    headline:
+      g.request.gate === 'approve_deploy'
+        ? 'Approve to go live'
+        : g.request.gate === 'approve_merge'
+          ? 'Approve to deploy'
+          : 'Approve to build',
     consequence:
-      g.request.gate === 'approve_merge'
-        ? `merges to main and deploys ${g.request.app_name || 'the app'}`
-        : 'accepts the spec and starts architecture + build',
+      g.request.gate === 'approve_deploy'
+        ? `builds and deploys ${g.request.app_name || 'the app'}`
+        : g.request.gate === 'approve_merge'
+          ? `merges to main and deploys ${g.request.app_name || 'the app'}`
+          : 'accepts the spec and starts architecture + build',
     facts: evidenceBits(g.evidence),
     owner: null,
   }));

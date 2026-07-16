@@ -60,7 +60,23 @@ while :; do
 done
 ok "all stages + gates green — waiting at the merge gate (humans gate the irreversible)"
 
-echo "▸ merge gate → build → deploy → done (Plan B3: merge kicks off kaniko + rollout)"
+echo "▸ merge gate → deploy gate (Plan B4, spec §4.10: the request WAITS after the merge)"
+curl -sf -X POST "$API/requests/$RID/approve" -H 'content-type: application/json' \
+  -d '{"operator_id":1}' >/dev/null
+for _ in $(seq 1 30); do
+  GATE=$(curl -s "$API/requests/$RID" | jqpy "print(d['gate'])")
+  [ "$GATE" = "approve_deploy" ] && break || sleep 2
+done
+OUT=$(curl -s "$API/requests/$RID")
+STATUS=$(echo "$OUT" | jqpy "print(d['status'])"); STAGE=$(echo "$OUT" | jqpy "print(d['stage'])")
+GATE=$(echo "$OUT" | jqpy "print(d['gate'])")
+[ "$STATUS $STAGE $GATE" = "approved deploy approve_deploy" ] \
+  || fail "request did not hold at the deploy gate (status=$STATUS stage=$STAGE gate=$GATE)"
+kubectl -n $NS get jobs -o name 2>/dev/null | grep -q "sf-$LREF-build" \
+  && fail "build started before the deploy gate was approved — the gate did not hold"
+ok "request held at the deploy gate; nothing built yet"
+
+echo "▸ deploy gate → build → deploy → done (second human gate approved)"
 curl -sf -X POST "$API/requests/$RID/approve" -H 'content-type: application/json' \
   -d '{"operator_id":1}' >/dev/null
 DEPLOY_DEADLINE=$(( $(date +%s) + 900 ))   # 15-minute ceiling for build+deploy
@@ -115,4 +131,4 @@ ok "every sf-$LREF Job (stages, gates, build) was reaped after capture"
 ./scripts/netpol-smoke.sh
 
 echo ""
-echo "✓ KIND SMOKE PASSED — one request end-to-end: intake → merged main → built image → live pod (Plan B3 / spec §9 Phase-1 milestone)"
+echo "✓ KIND SMOKE PASSED — one request end-to-end: intake → merged main → deploy gate → built image → live pod (two human gates, Plan B4)"

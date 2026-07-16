@@ -138,9 +138,10 @@ describe('boardGlyph — status by shape, colour layered on top', () => {
 });
 
 describe('gateLabel', () => {
-  it('names the two human gates and nothing else', () => {
+  it('names the three human gates and nothing else', () => {
     expect(gateLabel(req({ gate: 'approve_spec' }))).toBe('Approve spec');
     expect(gateLabel(req({ gate: 'approve_merge' }))).toBe('Approve merge');
+    expect(gateLabel(req({ gate: 'approve_deploy' }))).toBe('Approve deploy');
     expect(gateLabel(req())).toBeNull();
   });
 });
@@ -173,6 +174,14 @@ describe('confirmSteps — the irreversible steps behind Approve', () => {
     const steps = confirmSteps(req({ gate: 'approve_merge', repo: 'micron/northwind' }));
     expect(steps[0]).toEqual(['Merge the PR to main', 'micron/northwind']);
     expect(steps[2][1]).toBe('Stage 6');
+  });
+  it('deploy gate: pre-build evidence — build, deploy, live URL for the app slug', () => {
+    const steps = confirmSteps(
+      req({ gate: 'approve_deploy', repo: 'micron/northwind', app_key: 'northwind' }),
+    );
+    expect(steps[0]).toEqual(['Build the image from merged main', 'micron/northwind']);
+    expect(steps[1][1]).toContain('northwind');
+    expect(steps[2][1]).toBe('northwind.localtest.me');
   });
 });
 

@@ -95,7 +95,7 @@ export interface FactoryRequest {
     | 'sent_back'
     | 'cancelled'
     | 'done';
-  gate: 'approve_spec' | 'approve_merge' | null;
+  gate: 'approve_spec' | 'approve_merge' | 'approve_deploy' | null;
   needs_human: boolean;
   needs_human_reason: string | null;
   reporter: string;
