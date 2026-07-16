@@ -47,10 +47,14 @@ def approve(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
         if isinstance(res, transitions.Loss):
             return conflict_response(r, res)
         # release to the driver + record the approver in ONE transaction; the
-        # begin_deploy milestone names the approver (spec §4.10 identity).
-        transitions.apply(db, r, "begin_deploy", actor=actor, params={})
+        # begin_deploy milestone names the approver (spec §4.10 identity). A
+        # cancel racing between claim and release makes begin_deploy Lose —
+        # record the honest outcome, never "approved" on a closed request.
+        released = transitions.apply(db, r, "begin_deploy", actor=actor, params={})
+        outcome = ("approved_deploy" if isinstance(released, transitions.Win)
+                   else "deploy_approval_failed")
         db.add(AuditEvent(request_id=r.id, operator_id=body.operator_id,
-                          actor=actor.name, action="approved_deploy"))
+                          actor=actor.name, action=outcome))
         db.commit()
         return to_out(r, RequestDetail)
 
