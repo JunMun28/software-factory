@@ -240,7 +240,9 @@ def test_submit_replay_never_drafts_twice(client):
 
 def test_events_cursor_is_the_tail(client):
     cursor = client.get("/api/events/cursor").json()["cursor"]
-    evs = client.get("/api/events", params={"limit": 500}).json()
+    evs = client.get(
+        "/api/events", params={"after": max(cursor - 500, 0), "limit": 500}
+    ).json()
     assert cursor == max(e["id"] for e in evs)
     # nothing newer than the cursor — a fresh client replays zero history
     assert client.get("/api/events", params={"after": cursor}).json() == []

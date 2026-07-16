@@ -83,11 +83,18 @@ def _payload(
     diff_removed: int,
     files_changed: int,
     reviewer_verdict: str,
+    ac_total: int | None = None,
+    ac_covered: int | None = None,
+    ac_coverage: float | None = None,
+    total_count: int | None = None,
+    covered_count: int | None = None,
+    distinct_covering_nodes: int | None = None,
+    max_fanin: int | None = None,
 ) -> dict:
     """The one place the 8-key payload SHAPE is built. Both the fabricated
     (simulator) and derived (runner) paths pass their six metrics through here,
     so the key set, the `assumptions` derivation, and `"Ref"` cannot drift."""
-    return {
+    payload = {
         "tests_passed": tests_passed,
         "tests_total": tests_total,
         "diff_added": diff_added,
@@ -97,6 +104,18 @@ def _payload(
         "assumptions": [ln.text for ln in req.spec_lines if ln.assume],
         "Ref": req.ref,
     }
+    optional = {
+        "ac_total": ac_total,
+        "ac_covered": ac_covered,
+        "ac_coverage": ac_coverage,
+        "total_count": total_count,
+        "covered_count": covered_count,
+        "distinct_covering_nodes": distinct_covering_nodes,
+        "max_fanin": max_fanin,
+    }
+    # The kill-switch restores the byte-for-byte pre-C4 payload shape.
+    payload.update({key: value for key, value in optional.items() if value is not None})
+    return payload
 
 
 def build_payload(ws: Path, req: Request) -> dict:

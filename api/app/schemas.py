@@ -126,7 +126,28 @@ class EvidenceOut(BaseModel):
     diff_removed: int | None = None
     files_changed: int | None = None
     reviewer_verdict: str | None = None
+    ac_total: int | None = None
+    ac_covered: int | None = None
+    ac_coverage: float | None = None
+    total_count: int | None = None
+    covered_count: int | None = None
+    distinct_covering_nodes: int | None = None
+    max_fanin: int | None = None
     assumptions: list[str] = []
+
+
+class AcceptanceItem(BaseModel):
+    code: str
+    text: str
+    prov: str | None = None
+    assume: bool = False
+
+
+class AcceptanceOut(BaseModel):
+    version: int
+    content_hash: str | None = None
+    criteria: list[AcceptanceItem]
+    coverage: dict | None = None
 
 
 class AttachmentOut(BaseModel):

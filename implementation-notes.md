@@ -432,3 +432,36 @@ ZERO frontend/shared/main.py edits (parallel session owns those).
   session's untracked c9d1f3a5b7e2). Stacked on c2b-reliability; shares the
   merge-hold. LIVE kind-smoke (real preview env + feedback round) is the
   remaining validation.
+
+## Plan C4 — acceptance-criteria contract (2026-07-16)
+
+The grading backbone (INTAKE-02/06). At approve_spec the orchestrator derives
+numbered stable-id AcceptanceCriterion rows (AC-n, carried forward across
+preview rounds by text match) + an IMMUTABLE SpecSnapshot (SPEC.md + AC JSON +
+sha256). RED writes tests/acceptance.json (AC->pytest nodes); the ORCHESTRATOR
+recomputes coverage on its OWN git copy at the graded SHA (git show, AST
+node-check — never trusts the pod, mirrors surface_hash_at), emits an
+append-only acceptance_coverage event folded into the merge-gate evidence.
+Backend + tests only; codex-built from the vetted design + corrections;
+reviewed SOUND. 497 pytest + full verify green.
+
+### Deviations / decisions — C4
+- **v1 is ADDITIVE-NON-BLOCKING**: coverage is EVIDENCE, never a gate pass/fail
+  predicate (tested: a 0%-coverage request still passes RED/review/merge).
+  FACTORY_ACCEPTANCE is a default-ON kill-switch (OFF = byte-for-byte pre-C4).
+  Tightening the gate on coverage is a PHASED v3 (BUILD-02), and per-AC
+  behavioral grading is v2 (REVIEW-04) — structural coverage alone can't tell a
+  real test from `def test(): pass`, so it must not gate yet.
+- **Anti-gaming (adversarial-caught blocker)**: coverage counts DISTINCT nodes
+  and rejects fan-in (an AC mapped only to a node shared by ALL ACs scores 0);
+  surfaces distinct_covering_nodes + max_fanin. Class-based node ids parsed via
+  AST (ClassDef->FunctionDef), not a regex.
+- **Preview-round freshness**: the per-round ACCEPTANCE.md is written by
+  workspace.refresh_contract on the rerun refresh path (NOT ensure_repo, which
+  early-returns) so a request_changes round's new ACs reach the RED pod.
+- **Snapshot**: INSERT-only, UniqueConstraint(request_id,version), fidelity
+  tested (snapshot.spec_md == committed SPEC.md blob); relationship cascade=all
+  (no delete-orphan).
+- Migration a1b2c3d4e5f6 chains from the C1 head f6a8c0e2b4d6. Stacked on
+  c1-preview; shares the merge-hold. A merge migration reconciling the parallel
+  session's c9d1f3a5b7e2 is expected at integration.

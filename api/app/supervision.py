@@ -149,10 +149,21 @@ def evidence(db: Session, r: Request) -> dict | None:
         if not ev:
             return None
         p = ev.payload or {}
-        return {"kind": "merge",
-                "tests_passed": p.get("tests_passed"), "tests_total": p.get("tests_total"),
-                "diff_added": p.get("diff_added"), "diff_removed": p.get("diff_removed"),
-                "files_changed": p.get("files_changed"),
-                "reviewer_verdict": p.get("reviewer_verdict"),
-                "assumptions": p.get("assumptions") or []}
+        result = {"kind": "merge",
+                  "tests_passed": p.get("tests_passed"), "tests_total": p.get("tests_total"),
+                  "diff_added": p.get("diff_added"), "diff_removed": p.get("diff_removed"),
+                  "files_changed": p.get("files_changed"),
+                  "reviewer_verdict": p.get("reviewer_verdict"),
+                  "assumptions": p.get("assumptions") or []}
+        acceptance_keys = (
+            "ac_total",
+            "ac_covered",
+            "ac_coverage",
+            "total_count",
+            "covered_count",
+            "distinct_covering_nodes",
+            "max_fanin",
+        )
+        result.update({key: p[key] for key in acceptance_keys if key in p})
+        return result
     return None

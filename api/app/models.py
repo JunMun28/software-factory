@@ -5,7 +5,16 @@ Vocabulary follows CONTEXT.md: Request, Work item stages, Gates, progress_event
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
@@ -187,6 +196,11 @@ class Request(Base):
     spec_lines: Mapped[list["SpecLine"]] = relationship(
         back_populates="request", order_by="SpecLine.order", cascade="all, delete-orphan"
     )
+    acceptance_criteria: Mapped[list["AcceptanceCriterion"]] = relationship(
+        back_populates="request",
+        order_by="AcceptanceCriterion.ordinal",
+        cascade="all",
+    )
     comments: Mapped[list["Comment"]] = relationship(
         back_populates="request", order_by="Comment.created_at", cascade="all, delete-orphan"
     )
@@ -276,6 +290,53 @@ class SpecLine(Base):
     assume: Mapped[bool] = mapped_column(Boolean, default=False)
 
     request: Mapped[Request] = relationship(back_populates="spec_lines")
+
+
+class AcceptanceCriterion(Base):
+    """One stable-id criterion derived from an approved SpecLine.
+
+    A new version-set is inserted for every changed contract. Historical rows
+    are retained; ``code`` is the durable identifier used by RED manifests.
+    """
+
+    __tablename__ = "acceptance_criteria"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    ordinal: Mapped[int] = mapped_column(Integer)
+    code: Mapped[str] = mapped_column(String(12))
+    text: Mapped[str] = mapped_column(Text)
+    prov: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    assume: Mapped[bool] = mapped_column(Boolean, default=False)
+    source_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
+
+    request: Mapped[Request] = relationship(back_populates="acceptance_criteria")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "request_id", "version", "code", name="uq_ac_req_ver_code"
+        ),
+    )
+
+
+class SpecSnapshot(Base):
+    """Immutable exact SPEC.md and acceptance set for one contract version."""
+
+    __tablename__ = "spec_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    spec_md: Mapped[str] = mapped_column(Text)
+    criteria_json: Mapped[list] = mapped_column(JSON)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("request_id", "version", name="uq_snapshot_req_ver"),
+    )
 
 
 class ProgressEvent(Base):

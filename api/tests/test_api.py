@@ -73,7 +73,9 @@ def test_approve_ledger_and_idempotent_replay(client):
     after = client.get("/api/events", params={"request_id": hero["id"]}).json()
     approvals = [e for e in after if e["kind"] == "gate_event" and e["title"].startswith("Spec approved")]
     assert len(approvals) == 1
-    assert len(after) == len(before) + 1
+    snapshots = [e for e in after if e["kind"] == "spec_snapshot"]
+    assert len(snapshots) == 1
+    assert len(after) == len(before) + 2
 
 
 def test_illegal_approve_rejected(client):

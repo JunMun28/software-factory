@@ -38,6 +38,7 @@ from .models import Request
 from .supervision import pending_steer_notes
 from .transitions import FACTORY
 from .verification import build_payload, emit_verification
+from .workspace import acceptance_md
 from .ws_exec import _git, _pytest
 
 WORKSPACES = settings.WORKSPACES
@@ -108,8 +109,20 @@ class AgentRunner:
             _git(ws, "reset", "-q", "--hard")
             _git(ws, "clean", "-fdq")
         (ws / "SPEC.md").write_text(spec_md)
+        acceptance_path = ws / "ACCEPTANCE.md"
+        acceptance_was_tracked = (
+            _git(ws, "ls-files", "--error-unmatch", "ACCEPTANCE.md").returncode
+            == 0
+        )
+        if settings.acceptance_enabled():
+            acceptance_path.write_text(acceptance_md(req))
+        elif acceptance_path.exists():
+            acceptance_path.unlink()
         _git(ws, "checkout", "-q", "-B", f"work/{req.ref.lower()}")
-        _git(ws, "add", "SPEC.md")
+        contract_paths = ["SPEC.md"]
+        if settings.acceptance_enabled() or acceptance_was_tracked:
+            contract_paths.append("ACCEPTANCE.md")
+        _git(ws, "add", "-A", "--", *contract_paths)
         _git(ws, "commit", "-q", "-m", f"{req.ref}: approved SPEC.md")
         return ws
 

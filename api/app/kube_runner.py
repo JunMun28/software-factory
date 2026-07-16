@@ -39,6 +39,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import (
+    acceptance,
     deploy_manifests,
     intents,
     settings,
@@ -575,6 +576,8 @@ class KubeJobRunner:
         emit(db, req, "milestone_summary", title, payload={"fields": fields, "Ref": req.ref})
         db.commit()
         moved.append(f"{req.ref}: {sj.stage} gate passed")
+        if sj.stage == "red" and settings.acceptance_enabled():
+            self._emit_ac_coverage(db, req, stage="red")
         if sj.stage == "review":
             self._finish_review(db, req, envelope, moved)
 
@@ -583,6 +586,22 @@ class KubeJobRunner:
     ) -> None:
         # metrics were validated in _grade before the verdict counted as a pass
         payload = verification.payload_from_metrics(req, envelope.get("metrics") or {})
+        if settings.acceptance_enabled():
+            coverage = self._coverage_at_stage(db, req, "review")
+            if coverage is not None:
+                payload.update(
+                    {
+                        "ac_total": coverage["total_count"],
+                        "ac_covered": coverage["covered_count"],
+                        "ac_coverage": coverage["coverage"],
+                        "total_count": coverage["total_count"],
+                        "covered_count": coverage["covered_count"],
+                        "distinct_covering_nodes": coverage[
+                            "distinct_covering_nodes"
+                        ],
+                        "max_fanin": coverage["max_fanin"],
+                    }
+                )
         verification.emit_verification(db, req, payload=payload)
         transition = "begin_preview" if settings.preview_enabled() else "raise_merge_gate"
         res = transitions.apply_committed(
@@ -1805,6 +1824,19 @@ class KubeJobRunner:
         if not settings.GIT_REMOTE_BASE:
             return  # no git backbone configured: B1 behavior (unit fakes)
         ws = workspace.ensure_repo(req, workspace.spec_md(req))
+        graded = self._last_graded_sha(db, req)
+        target = graded or workspace.BASELINE_TAG
+        before = workspace.head_sha(ws, workspace.work_branch(req.ref))
+        if not workspace.reset_branch(ws, req.ref, target):
+            raise RuntimeError(f"could not reset {req.ref} work branch to {target}")
+        refreshed = workspace.refresh_contract(ws, req)
+        if graded is None and refreshed:
+            # The initial stage contract commit is the real retry baseline.
+            # Moving the tag here prevents every clean pre-grade stage tick
+            # from dropping/recreating ACCEPTANCE.md with a new commit.
+            workspace._git(ws, "tag", "-f", workspace.BASELINE_TAG, refreshed)
+
+        pushed_baseline = False
         if settings.github_enabled():
             slug = self._app_slug(req)
             intent_key = f"repo:{req.ref}"
@@ -1821,17 +1853,16 @@ class KubeJobRunner:
                 try:
                     clone_url = self.github.ensure_repo(slug)
                     self._push_github_baseline(ws, slug, req.ref)
+                    pushed_baseline = True
                 except Exception as exc:
                     detail = workspace.sanitize_github_git_error(str(exc))[:300]
                     intents.fail(db, intent_key, {"error": detail})
                     raise RuntimeError(detail) from exc
                 intents.complete(db, intent_key, {"clone_url": clone_url})
-        target = self._last_graded_sha(db, req) or workspace.BASELINE_TAG
-        before = workspace.head_sha(ws, workspace.work_branch(req.ref))
-        if not workspace.reset_branch(ws, req.ref, target):
-            raise RuntimeError(f"could not reset {req.ref} work branch to {target}")
-        if settings.github_enabled() and (
-            force_rewind or before != workspace.head_sha(ws)
+        if (
+            settings.github_enabled()
+            and not pushed_baseline
+            and (force_rewind or before != workspace.head_sha(ws))
         ):
             error = workspace.push_branch_to_github(
                 ws,
@@ -1897,24 +1928,8 @@ class KubeJobRunner:
         if not (ws / ".git").exists():
             return "unavailable"
 
-        def _stage_sha(stage: str, attempt: int | None) -> str | None:
-            q = (
-                select(StageJob)
-                .where(
-                    StageJob.request_id == req.id,
-                    StageJob.stage == stage,
-                    StageJob.role == "stage",
-                    StageJob.status == "succeeded",
-                )
-                .order_by(StageJob.id.desc())
-            )
-            if attempt is not None:
-                q = q.where(StageJob.attempt == attempt)
-            row = db.scalar(q)
-            return (row.envelope or {}).get("sha") if row else None
-
-        red_sha = _stage_sha("red", None)
-        green_sha = _stage_sha("green", sj.attempt)
+        red_sha = self._stage_sha(db, req, "red")
+        green_sha = self._stage_sha(db, req, "green", sj.attempt)
         if not red_sha or not green_sha:
             return "unavailable"
         try:
@@ -1926,6 +1941,74 @@ class KubeJobRunner:
         if red_hash is None or green_hash is None:
             return "violated"  # an agent claiming an unknown SHA never passes
         return "ok" if red_hash == green_hash else "violated"
+
+    def _stage_sha(
+        self,
+        db: Session,
+        req: Request,
+        stage: str,
+        attempt: int | None = None,
+    ) -> str | None:
+        query = (
+            select(StageJob)
+            .where(
+                StageJob.request_id == req.id,
+                StageJob.stage == stage,
+                StageJob.role == "stage",
+                StageJob.status == "succeeded",
+            )
+            .order_by(StageJob.id.desc())
+        )
+        if attempt is not None:
+            query = query.where(StageJob.attempt == attempt)
+        row = db.scalar(query)
+        sha = (row.envelope or {}).get("sha") if row else None
+        return sha if isinstance(sha, str) else None
+
+    def _coverage_at_stage(
+        self, db: Session, req: Request, stage: str
+    ) -> dict | None:
+        if not settings.GIT_REMOTE_BASE:
+            return None
+        repo = workspace.workspace_for(req)
+        if not (repo / ".git").exists():
+            return None
+        sha = self._stage_sha(db, req, stage)
+        if not sha:
+            return None
+        codes = [criterion.code for criterion in acceptance.active(db, req)]
+        try:
+            return workspace.acceptance_coverage_at(repo, sha, codes)
+        except workspace.GitTimeout as exc:
+            log.warning(
+                "acceptance coverage timed out for %s at %s: %s",
+                req.ref,
+                stage,
+                exc,
+            )
+            return None
+
+    def _emit_ac_coverage(
+        self, db: Session, req: Request, *, stage: str
+    ) -> None:
+        coverage = self._coverage_at_stage(db, req, stage)
+        if coverage is None:
+            return
+        emit(
+            db,
+            req,
+            "acceptance_coverage",
+            "Acceptance coverage — "
+            f"{coverage['covered_count']}/{coverage['total_count']} criteria "
+            "have a distinct structural test mapping",
+            stage="build",
+            payload={
+                "version": acceptance.active_version(db, req),
+                **coverage,
+                "Ref": req.ref,
+            },
+        )
+        db.commit()
 
     # ---------- decide + spawn the next Job for a runnable request ----------
     def _next_work(self, db: Session, req: Request, moved: list[str]):

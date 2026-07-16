@@ -149,6 +149,19 @@ BUILD_ACTIVE_DEADLINE = int(os.environ.get("FACTORY_BUILD_ACTIVE_DEADLINE", "900
 BUILD_WALL_CLOCK = int(os.environ.get("FACTORY_BUILD_WALL_CLOCK", "1200"))
 DEPLOY_WALL_CLOCK = int(os.environ.get("FACTORY_DEPLOY_WALL_CLOCK", "600"))
 
+# ---------- acceptance-criteria contract (Plan C4) ----------
+# Default-on because v1 only records structural evidence and never changes a
+# gate verdict. Set to 0/false/no before process start for the pre-C4 flow.
+ACCEPTANCE = os.environ.get("FACTORY_ACCEPTANCE", "1").lower() not in (
+    "0",
+    "false",
+    "no",
+)
+
+
+def acceptance_enabled() -> bool:
+    return ACCEPTANCE
+
 # ---------- pre-merge requester preview + feedback loop (Plan C1) ----------
 PREVIEW = os.environ.get("FACTORY_PREVIEW", "").lower() in ("1", "true", "yes")
 PREVIEW_MAX_ROUNDS = int(os.environ.get("FACTORY_PREVIEW_MAX_ROUNDS", "3"))

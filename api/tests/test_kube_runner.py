@@ -187,6 +187,77 @@ def test_review_gate_metrics_become_merge_evidence(client):
     assert "APPROVE" in (ev["reviewer_verdict"] or "")
 
 
+def test_zero_acceptance_coverage_never_blocks_review_gate(client, monkeypatch):
+    runner, _fake = make_runner()
+    request = approved_request(client, title="Zero AC coverage is advisory")
+    monkeypatch.setattr(settings, "ACCEPTANCE", True)
+    monkeypatch.setattr(
+        runner,
+        "_coverage_at_stage",
+        lambda *_args: {
+            "total_count": 2,
+            "covered_count": 0,
+            "coverage": 0.0,
+            "distinct_covering_nodes": 0,
+            "max_fanin": 2,
+            "per_ac": {"AC-1": False, "AC-2": False},
+        },
+    )
+    moved = []
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        red_gate = StageJob(
+            request_id=req.id,
+            stage="red",
+            attempt=1,
+            role="gate",
+            job_name=f"{req.ref.lower()}-red-gate",
+            deadline_at=utcnow() + timedelta(minutes=5),
+        )
+        db.add(red_gate)
+        db.commit()
+        runner._grade(
+            db,
+            req,
+            red_gate,
+            "succeeded",
+            pass_verdict(),
+            moved,
+        )
+        assert red_gate.status == "succeeded"
+        req.stage = "review"
+        gate = StageJob(
+            request_id=req.id,
+            stage="review",
+            attempt=1,
+            role="gate",
+            job_name=f"{req.ref.lower()}-review-gate",
+            deadline_at=utcnow() + timedelta(minutes=5),
+        )
+        db.add(gate)
+        db.commit()
+        runner._grade(
+            db,
+            req,
+            gate,
+            "succeeded",
+            pass_verdict(metrics=GOOD_METRICS),
+            moved,
+        )
+        db.refresh(req)
+        assert req.gate == transitions.GATE_APPROVE_MERGE
+        event = db.scalar(
+            select(kube_runner_module.ProgressEvent)
+            .where(
+                kube_runner_module.ProgressEvent.request_id == req.id,
+                kube_runner_module.ProgressEvent.kind == "verification",
+            )
+            .order_by(kube_runner_module.ProgressEvent.id.desc())
+        )
+        assert event.payload["covered_count"] == 0
+        assert event.payload["ac_coverage"] == 0.0
+
+
 def test_review_escalates_when_gate_reports_no_evidence(client):
     """A green suite with no tests or an empty diff is not honest evidence —
     the merge gate must not be raised on it (mirrors the AgentRunner guard)."""
@@ -1078,6 +1149,114 @@ def _commit_all(ws, msg):
     _git(ws, "add", "-A")
     _git(ws, "commit", "-q", "-m", msg)
     return _git(ws, "rev-parse", "HEAD").stdout.strip()
+
+
+def test_git_backed_coverage_event_and_review_evidence_are_non_blocking(
+    client, monkeypatch, tmp_path
+):
+    _git_mode(monkeypatch, tmp_path)
+    monkeypatch.setattr(settings, "ACCEPTANCE", True)
+    runner = KubeJobRunner(client=FakeKubeClient())
+    request = _approved(client, "Git-backed structural acceptance evidence")
+
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner._prepare_workspace(db, req)
+        ws = workspace.workspace_for(req)
+        codes = [criterion.code for criterion in req.acceptance_criteria]
+        tests = ws / "tests" / "test_acceptance_contract.py"
+        tests.write_text(
+            "\n\n".join(
+                f"def test_ac_{index}():\n    assert True"
+                for index, _code in enumerate(codes, 1)
+            )
+            + "\n"
+        )
+        (ws / "tests" / "acceptance.json").write_text(
+            json.dumps(
+                {
+                    code: [
+                        f"tests/test_acceptance_contract.py::test_ac_{index}"
+                    ]
+                    for index, code in enumerate(codes, 1)
+                }
+            )
+        )
+        sha = _commit_all(ws, "RED acceptance manifest")
+        red = StageJob(
+            request_id=req.id,
+            stage="red",
+            attempt=1,
+            role="stage",
+            job_name=job_name(req.ref, "red", 1),
+            status="succeeded",
+            envelope={"sha": sha},
+            deadline_at=utcnow(),
+        )
+        review = StageJob(
+            request_id=req.id,
+            stage="review",
+            attempt=1,
+            role="stage",
+            job_name=job_name(req.ref, "review", 1),
+            status="succeeded",
+            envelope={"sha": sha},
+            deadline_at=utcnow(),
+        )
+        db.add_all([red, review])
+        req.stage = "review"
+        db.commit()
+
+        runner._emit_ac_coverage(db, req, stage="red")
+        runner._finish_review(
+            db, req, pass_verdict(metrics=GOOD_METRICS), moved=[]
+        )
+        db.refresh(req)
+        events = db.scalars(
+            select(kube_runner_module.ProgressEvent)
+            .where(kube_runner_module.ProgressEvent.request_id == req.id)
+            .order_by(kube_runner_module.ProgressEvent.id)
+        ).all()
+        coverage = next(event for event in events if event.kind == "acceptance_coverage")
+        verification_event = next(
+            event for event in events if event.kind == "verification"
+        )
+        assert coverage.payload["covered_count"] == len(codes)
+        assert coverage.payload["distinct_covering_nodes"] == len(codes)
+        assert coverage.payload["max_fanin"] == 1
+        assert verification_event.payload["ac_total"] == len(codes)
+        assert req.gate == transitions.GATE_APPROVE_MERGE
+
+
+def test_preview_change_refreshes_acceptance_contract_before_rerun(
+    client, monkeypatch, tmp_path
+):
+    _git_mode(monkeypatch, tmp_path)
+    monkeypatch.setattr(settings, "ACCEPTANCE", True)
+    runner = KubeJobRunner(client=FakeKubeClient())
+    request = _approved(client, "Preview acceptance refresh")
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner._prepare_workspace(db, req)
+        ws = workspace.workspace_for(req)
+        original = (ws / "ACCEPTANCE.md").read_text()
+        req.stage = "preview"
+        req.gate = transitions.GATE_ACCEPT_PREVIEW
+        db.commit()
+
+    response = client.post(
+        f"/api/requests/{request['id']}/preview/request-changes",
+        json={"operator_id": 1, "feedback": "Support the revised preview total"},
+    )
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        runner._prepare_workspace(db, req)
+        refreshed = (workspace.workspace_for(req) / "ACCEPTANCE.md").read_text()
+        versions = {criterion.version for criterion in req.acceptance_criteria}
+        assert versions == {0, 1}
+        assert "Support the revised preview total." in refreshed
+        assert refreshed != original
 
 
 def test_github_workspace_prep_creates_and_pushes_repo_once(

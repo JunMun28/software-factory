@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import settings, simulator, transitions
+from .. import acceptance, settings, simulator, transitions
 from ..agent_exec import runner_mode
 from ..api_helpers import conflict_response, get_request, pipeline, prospective_repo, to_out
 from ..db import get_db
@@ -27,10 +27,14 @@ from ..models import (
     PIPELINE_STAGES,
     AuditEvent,
     PreviewFeedback,
+    ProgressEvent,
     SpecLine,
+    SpecSnapshot,
     StageJob,
 )
 from ..schemas import (
+    AcceptanceItem,
+    AcceptanceOut,
     Note,
     OperatorNote,
     PreviewAcceptIn,
@@ -48,6 +52,48 @@ router = APIRouter()
 
 def _operator_actor(db: Session, operator_id: int) -> Actor:
     return Actor(name=resolve_operator(db, operator_id).name, operator_id=operator_id)
+
+
+@router.get("/api/requests/{rid}/acceptance", response_model=AcceptanceOut)
+def acceptance_contract(rid: int, db: Session = Depends(get_db)):
+    request = get_request(db, rid)
+    criteria = acceptance.active(db, request)
+    snapshot = db.scalar(
+        select(SpecSnapshot)
+        .where(SpecSnapshot.request_id == request.id)
+        .order_by(SpecSnapshot.version.desc())
+    )
+    coverage_events = db.scalars(
+        select(ProgressEvent)
+        .where(
+            ProgressEvent.request_id == request.id,
+            ProgressEvent.kind == "acceptance_coverage",
+        )
+        .order_by(ProgressEvent.id.desc())
+    ).all()
+    latest = next(
+        (
+            event
+            for event in coverage_events
+            if snapshot is not None
+            and (event.payload or {}).get("version") == snapshot.version
+        ),
+        None,
+    )
+    return AcceptanceOut(
+        version=snapshot.version if snapshot else 0,
+        content_hash=snapshot.content_hash if snapshot else None,
+        criteria=[
+            AcceptanceItem(
+                code=item.code,
+                text=item.text,
+                prov=item.prov,
+                assume=item.assume,
+            )
+            for item in criteria
+        ],
+        coverage=latest.payload if latest else None,
+    )
 
 
 @router.get("/api/requests/{rid}/preview", response_model=PreviewStatusOut)
@@ -179,6 +225,7 @@ def request_preview_changes(
         )
         if isinstance(escalated, transitions.Loss):
             return conflict_response(r, escalated)
+    acceptance.derive_and_snapshot(db, r)
     db.commit()
     changed.notify()
     return to_out(r, RequestDetail)
@@ -235,6 +282,7 @@ def approve(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
     # the flags themselves keep a replayed approve from double-firing.
     r.repo_ready = True
     r.spec_pr_open = True
+    acceptance.derive_and_snapshot(db, r)
     db.commit()
     if runner_mode() == "agent":
         pipeline().start(r.id)  # Stage 2 fires for real: the agent CLI in the Subject workspace

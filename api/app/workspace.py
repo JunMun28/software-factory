@@ -22,7 +22,9 @@ the orchestrator keeps it clean by construction).
 settings.WORKSPACES / settings.SAMPLE / settings.GIT_REMOTE_BASE are read
 at CALL time (not import) so tests can monkeypatch them.
 """
+import ast
 import hashlib
+import json
 import re
 import shutil
 from pathlib import Path
@@ -66,6 +68,33 @@ def spec_md(req) -> str:
             else f"(from: {sl.prov})"
         )
         lines.append(f"- {sl.text} {tag}")
+    return "\n".join(lines) + "\n"
+
+
+def acceptance_md(req) -> str:
+    lines = [
+        f"# ACCEPTANCE CRITERIA — {req.title}",
+        "",
+        f"Request {req.ref} · {req.app_name}",
+        "",
+        "Each criterion below has a STABLE id. Write >=1 failing test per",
+        "criterion and record the mapping in tests/acceptance.json.",
+        "",
+    ]
+    version = max(
+        (criterion.version for criterion in req.acceptance_criteria), default=0
+    )
+    criteria = sorted(
+        (
+            criterion
+            for criterion in req.acceptance_criteria
+            if criterion.version == version
+        ),
+        key=lambda criterion: criterion.ordinal,
+    )
+    for criterion in criteria:
+        flag = " (ASSUMPTION)" if criterion.assume else ""
+        lines.append(f"- **{criterion.code}**: {criterion.text}{flag}")
     return "\n".join(lines) + "\n"
 
 
@@ -208,6 +237,139 @@ def surface_hash_at(ws: Path, sha: str) -> str | None:
     if out.returncode != 0:
         return None
     return hashlib.sha256(out.stdout.encode()).hexdigest()
+
+
+def acceptance_manifest_at(ws: Path, sha: str) -> dict | None:
+    """Parse the committed RED manifest from the orchestrator's own git copy."""
+    if not re.fullmatch(r"[0-9a-fA-F]{7,40}", sha or ""):
+        return None
+    out = _git(ws, "show", f"{sha}:tests/acceptance.json")
+    if out.returncode == GIT_TIMEOUT_RC:
+        raise GitTimeout(out.stderr)
+    if out.returncode != 0:
+        return None
+    try:
+        data = json.loads(out.stdout)
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _node_exists_at(ws: Path, sha: str, node: str) -> bool:
+    """Validate path::[Class::]function against committed text at ``sha``."""
+    if "::" not in node:
+        return False
+    path, remainder = node.split("::", 1)
+    node_parts = [part.split("[", 1)[0] for part in remainder.split("::")]
+    name = node_parts[-1]
+    exists = _git(ws, "cat-file", "-e", f"{sha}:{path}")
+    if exists.returncode == GIT_TIMEOUT_RC:
+        raise GitTimeout(exists.stderr)
+    if exists.returncode != 0:
+        return False
+    blob = _git(ws, "show", f"{sha}:{path}")
+    if blob.returncode == GIT_TIMEOUT_RC:
+        raise GitTimeout(blob.stderr)
+    if blob.returncode != 0:
+        return False
+    try:
+        body = ast.parse(blob.stdout).body
+    except SyntaxError:
+        return False
+    for class_name in node_parts[:-1]:
+        owner = next(
+            (
+                item
+                for item in body
+                if isinstance(item, ast.ClassDef) and item.name == class_name
+            ),
+            None,
+        )
+        if owner is None:
+            return False
+        body = owner.body
+    return any(
+        isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and item.name == name
+        for item in body
+    )
+
+
+def acceptance_coverage_at(
+    ws: Path, sha: str, ac_codes: list[str]
+) -> dict | None:
+    """Compute v1 structural-only AC coverage from the graded git tree.
+
+    Nodes must exist and be distinctly mapped. This does not establish that a
+    test behaviorally asserts an AC: that semantic grading belongs to
+    REVIEW-04 (v2), because this orchestrator does not execute the tests and a
+    pod-authored pytest log is not trustworthy evidence.
+    """
+    manifest = acceptance_manifest_at(ws, sha)
+    if manifest is None:
+        return None
+
+    valid_by_ac: dict[str, set[str]] = {}
+    for code in ac_codes:
+        raw_nodes = manifest.get(code) or []
+        nodes = raw_nodes if isinstance(raw_nodes, list) else []
+        valid_by_ac[code] = {
+            node
+            for node in nodes
+            if isinstance(node, str) and _node_exists_at(ws, sha, node)
+        }
+
+    fanin: dict[str, int] = {}
+    for nodes in valid_by_ac.values():
+        for node in nodes:
+            fanin[node] = fanin.get(node, 0) + 1
+    total_count = len(ac_codes)
+    eligible_by_ac = {
+        code: {
+            node
+            for node in nodes
+            if total_count <= 1 or fanin[node] < total_count
+        }
+        for code, nodes in valid_by_ac.items()
+    }
+    per_ac = {code: bool(nodes) for code, nodes in eligible_by_ac.items()}
+    covered_count = sum(per_ac.values())
+    distinct_nodes = set().union(*eligible_by_ac.values()) if eligible_by_ac else set()
+    return {
+        "total_count": total_count,
+        "covered_count": covered_count,
+        "coverage": round(covered_count / total_count, 3) if total_count else 0.0,
+        "distinct_covering_nodes": len(distinct_nodes),
+        "max_fanin": max(fanin.values(), default=0),
+        "per_ac": per_ac,
+    }
+
+
+def refresh_contract(ws: Path, req) -> str | None:
+    """Commit the current round's contract after the stage reset.
+
+    This deliberately does not live in ensure_repo(), whose early return must
+    protect an existing agent branch. Every kube stage/rerun calls this after
+    reset, so preview re-derivations reach RED with fresh bytes.
+    """
+    acceptance_path = ws / "ACCEPTANCE.md"
+    if not settings.acceptance_enabled():
+        if not acceptance_path.exists():
+            return head_sha(ws)
+        acceptance_path.unlink()
+        _git(ws, "add", "-A", "--", "ACCEPTANCE.md")
+        if _git(ws, "diff", "--cached", "--quiet").returncode == 0:
+            return head_sha(ws)
+        _git(ws, "commit", "-q", "-m", f"{req.ref}: disable acceptance contract")
+        return head_sha(ws)
+
+    (ws / "SPEC.md").write_text(spec_md(req))
+    acceptance_path.write_text(acceptance_md(req))
+    _git(ws, "add", "-A", "--", "SPEC.md", "ACCEPTANCE.md")
+    if _git(ws, "diff", "--cached", "--quiet").returncode == 0:
+        return head_sha(ws)
+    _git(ws, "commit", "-q", "-m", f"{req.ref}: refresh acceptance contract")
+    return head_sha(ws)
 
 
 def reset_branch(ws: Path, ref: str, to_sha: str) -> bool:
