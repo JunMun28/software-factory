@@ -166,6 +166,13 @@ KUBE_APP_SA = os.environ.get("FACTORY_KUBE_APP_SA", "sf-app")
 BUILD_ACTIVE_DEADLINE = int(os.environ.get("FACTORY_BUILD_ACTIVE_DEADLINE", "900"))
 BUILD_WALL_CLOCK = int(os.environ.get("FACTORY_BUILD_WALL_CLOCK", "1200"))
 DEPLOY_WALL_CLOCK = int(os.environ.get("FACTORY_DEPLOY_WALL_CLOCK", "600"))
+# C8 post-deploy health supervision. Probes run from the leader tick, use the
+# same small bounded HTTP call as deploy verification, and only incident after
+# consecutive failures so one transient never flips fleet state.
+APP_HEALTH_INTERVAL = float(os.environ.get("FACTORY_APP_HEALTH_INTERVAL", "60"))
+APP_HEALTH_FAILURES = int(os.environ.get("FACTORY_APP_HEALTH_FAILURES", "3"))
+APP_HEALTH_TIMEOUT = float(os.environ.get("FACTORY_APP_HEALTH_TIMEOUT", "5"))
+APP_HEALTH_BATCH = int(os.environ.get("FACTORY_APP_HEALTH_BATCH", "5"))
 # Online manifest retention. Physical blob reclaim is an offline/suspended
 # CronJob workflow in deploy/base/registry.yaml, never raced from the tick.
 REGISTRY_RETENTION = os.environ.get("FACTORY_REGISTRY_RETENTION", "7d")

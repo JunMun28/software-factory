@@ -29,6 +29,7 @@ Orchestrator-owned hard lines (spec §5/§6):
 Tick order matters: reap (cancel wins) → observe running Jobs → spawn next
 work oldest-first under the Job cap.
 """
+import hashlib
 import json
 import logging
 import re
@@ -36,6 +37,7 @@ import urllib.request
 from datetime import timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import (
@@ -43,6 +45,7 @@ from . import (
     cost,
     deploy_manifests,
     intents,
+    registry,
     settings,
     simulator,
     transitions,
@@ -65,6 +68,7 @@ from .kube_jobs import (
 from .leader import get_elector
 from .log_scrub import scrub_secrets
 from .models import (
+    App,
     AuditEvent,
     Intent,
     PreviewFeedback,
@@ -168,8 +172,10 @@ def classify_infra(
 
 def _http_ok(url: str) -> bool:
     try:
-        with urllib.request.urlopen(url, timeout=5) as response:  # nosec: in-cluster probe
-            return 200 <= response.status < 400
+        with urllib.request.urlopen(  # nosec: in-cluster probe
+            url, timeout=settings.APP_HEALTH_TIMEOUT
+        ) as response:
+            return 200 <= response.status < 300
     except Exception:
         return False
 
@@ -199,6 +205,7 @@ class KubeJobRunner:
         self._client = client
         self._github = github
         self._observe_failures: dict[str, int] = {}
+        self._app_health: dict[int, dict] = {}
 
     @property
     def client(self) -> KubeClient:
@@ -222,6 +229,7 @@ class KubeJobRunner:
         defer_spawn: set[int] = set()
         ready_gates: dict[int, tuple[str, int]] = {}
         self._reap_dead_requests(db, moved)
+        self._drive_rollbacks(db, moved)
         # Observe/drain every existing build lane before allocating anything.
         # New work is started only by the single ordered candidate pass below.
         defer_spawn.update(self._drive_build_work(db, moved))
@@ -282,6 +290,8 @@ class KubeJobRunner:
                 log.exception("kube %s spawn failed for %s", candidate.kind, req.ref)
                 db.rollback()
                 self._escalate(db, req, f"Scheduler spawn failed: {exc}")
+        if settings.app_deploy_enabled():
+            self._monitor_app_health(db, moved)
         return moved
 
     def _start_scheduling_candidate(
@@ -1589,10 +1599,12 @@ class KubeJobRunner:
         *,
         allow_spawns: bool = True,
     ) -> bool:
-        slug = self._app_slug(req)
         if req.status != transitions.APPROVED or req.needs_human:
-            self._teardown_app(db, req, slug)
+            self._teardown_app(db, req, self._app_slug(req))
             return False
+        if req.app_id is None and not self._register_produced_app(db, req):
+            return False
+        slug = self._app_slug(req)
         rows = db.scalars(
             select(StageJob)
             .where(
@@ -1634,6 +1646,62 @@ class KubeJobRunner:
         if deploy is not None and deploy.status == "running":
             self._observe_deploy(db, req, deploy, slug, moved)
         return False
+
+    @staticmethod
+    def _stable_app_key(db: Session, req: Request) -> str:
+        raw = (req.new_app_name or req.title or req.ref).lower()
+        base = re.sub(r"[^a-z0-9]+", "-", raw).strip("-")[:40].rstrip("-")
+        base = base or "app"
+        if db.scalar(select(App.id).where(App.key == base)) is None:
+            return base
+        suffix = f"-{hashlib.sha256(req.ref.encode()).hexdigest()[:8]}"
+        return f"{base[: 40 - len(suffix)].rstrip('-')}{suffix}"
+
+    def _register_produced_app(self, db: Session, req: Request) -> bool:
+        """Attach a stable registry identity before the first produced-app apply."""
+        if req.app_id is not None:
+            return True
+        key = self._stable_app_key(db, req)
+        name = (req.new_app_name or req.title or key).strip()[:120] or key
+        app = None
+        candidates = [key]
+        suffix = f"-{hashlib.sha256(req.ref.encode()).hexdigest()[:8]}"
+        fallback = f"{key[: 40 - len(suffix)].rstrip('-')}{suffix}"
+        if fallback != key:
+            candidates.append(fallback)
+        for candidate in candidates:
+            app = App(
+                key=candidate,
+                name=name,
+                owner=(req.reporter or "Factory")[:120],
+                repo=f"micron/{candidate}",
+                provisioning="Auto",
+            )
+            try:
+                with db.begin_nested():
+                    db.add(app)
+                    db.flush()
+            except IntegrityError:
+                app = None
+                continue
+            key = candidate
+            break
+        if app is None:
+            raise RuntimeError(f"Could not allocate a stable app key for {req.ref}")
+        result = transitions.apply(
+            db,
+            req,
+            "register_produced_app",
+            actor=FACTORY,
+            params={"app_id": app.id, "key": key, "name": name},
+            epoch=get_elector().epoch,
+            expected_stage="deploy",
+        )
+        if isinstance(result, transitions.Loss):
+            log.info("%s: app registration lost (%s)", req.ref, result.detail)
+            return req.app_id is not None
+        db.commit()
+        return True
 
     def _spawn_build(
         self, db: Session, req: Request, slug: str, moved: list[str]
@@ -1742,6 +1810,18 @@ class KubeJobRunner:
         digest: str,
         moved: list[str],
     ) -> bool:
+        if req.app_id is not None and db.scalar(
+            select(StageJob.id)
+            .join(Request, Request.id == StageJob.request_id)
+            .where(
+                Request.app_id == req.app_id,
+                StageJob.role == "rollback",
+                StageJob.status == "running",
+            )
+            .limit(1)
+        ) is not None:
+            moved.append(f"{req.ref}: deploy waiting for the active rollback")
+            return False
         if self._build_slots_full(db):
             self._note_build_wait(db, req, moved)
             return False
@@ -1849,6 +1929,296 @@ class KubeJobRunner:
             else f"Produced app {name} rollout was not ready before the deploy deadline"
         )
         self._escalate(db, req, reason)
+
+    # ---------- driven rollback + post-deploy health (C8) ----------
+    def _drive_rollbacks(self, db: Session, moved: list[str]) -> None:
+        rows = db.scalars(
+            select(StageJob)
+            .where(StageJob.role == "rollback", StageJob.status == "running")
+            .order_by(StageJob.id)
+        ).all()
+        for row in rows:
+            req = db.get(Request, row.request_id)
+            try:
+                if req is None or req.app_id is None or req.app is None:
+                    if req is not None:
+                        self._fail_rollback(
+                            db, req, row, "Rollback lost its registered app owner"
+                        )
+                    continue
+                if not (row.envelope or {}).get("applied"):
+                    self._apply_rollback(db, req, row, moved)
+                else:
+                    self._observe_rollback(db, req, row, moved)
+            except Exception as exc:
+                db.rollback()
+                log.exception("rollback driver failed for row %s", row.id)
+                req = db.get(Request, row.request_id)
+                row = db.get(StageJob, row.id)
+                if req is not None and row is not None and row.status == "running":
+                    self._fail_rollback(db, req, row, f"Rollback driver failed: {exc}")
+
+    def _apply_rollback(
+        self, db: Session, req: Request, row: StageJob, moved: list[str]
+    ) -> None:
+        conflict = db.scalar(
+            select(StageJob.id)
+            .join(Request, Request.id == StageJob.request_id)
+            .where(
+                Request.app_id == req.app_id,
+                StageJob.role.in_(("deploy", "rollback")),
+                StageJob.status == "running",
+                StageJob.id != row.id,
+            )
+            .limit(1)
+        )
+        if conflict is not None:
+            moved.append(
+                f"{req.ref}: rollback deferred while deploy/rollback row "
+                f"{conflict} is running"
+            )
+            return
+
+        result = transitions.apply_committed(
+            db,
+            req,
+            "drive_rollback",
+            actor=FACTORY,
+            epoch=get_elector().epoch,
+            expected_stage="done",
+        )
+        if isinstance(result, transitions.Loss):
+            log.info("rollback %s fenced before apply (%s)", row.id, result.detail)
+            return
+
+        digest = row.envelope["digest"]
+        try:
+            for manifest in deploy_manifests.app_deploy_manifests(
+                req.app.key, digest, 1
+            ):
+                self.client.apply(manifest)
+        except Exception as exc:
+            self._fail_rollback(
+                db, req, row, f"Could not apply rollback manifests: {exc}"
+            )
+            return
+
+        row.envelope = {
+            **row.envelope,
+            "applied": True,
+            "applied_at": utcnow().isoformat(),
+        }
+        result = transitions.apply_committed(
+            db,
+            req,
+            "record_rollback_applied",
+            actor=FACTORY,
+            epoch=get_elector().epoch,
+            expected_stage="done",
+        )
+        if isinstance(result, transitions.Win):
+            moved.append(f"{req.ref}: rollback applied at {digest}")
+
+    def _observe_rollback(
+        self, db: Session, req: Request, row: StageJob, moved: list[str]
+    ) -> None:
+        name = deploy_manifests.app_name(req.app.key)
+        probe_url = f"http://{name}.{settings.KUBE_NAMESPACE}.svc:80/health"
+        rollout_ready = self.client.rollout_ready(name)
+        probe_ok = rollout_ready and _http_ok(probe_url)
+        digest = row.envelope["digest"]
+        live_images = (
+            self.client.list_deployment_images(f"app={name}")
+            if rollout_ready and probe_ok
+            else []
+        )
+        image_matches = (
+            len(live_images) == 1 and live_images[0].rpartition("@")[2] == digest
+        )
+        now = utcnow()
+        if rollout_ready and probe_ok and image_matches:
+            row.status = "succeeded"
+            row.completed_at = now
+            db.add(
+                StageJob(
+                    request_id=req.id,
+                    stage="deploy",
+                    attempt=1,
+                    role="deploy",
+                    job_name=name,
+                    epoch=get_elector().epoch,
+                    status="succeeded",
+                    deadline_at=now,
+                    completed_at=now,
+                    envelope={
+                        "digest": digest,
+                        "image": row.envelope["image"],
+                        "source": "rollback",
+                        "rollback_job_id": row.id,
+                    },
+                )
+            )
+            intent = db.get(Intent, row.envelope["intent_key"])
+            if intent is not None:
+                intent.status = "done"
+                intent.outcome_json = json.dumps(
+                    {"app": row.job_name, "digest": digest, "rollback": True}
+                )
+                intent.completed_at = now
+            url = f"http://{req.app.key}.{settings.APP_INGRESS_DOMAIN}"
+            result = transitions.apply_committed(
+                db,
+                req,
+                "finish_rollback",
+                actor=FACTORY,
+                params={
+                    "key": req.app.key,
+                    "digest": digest,
+                    "url": url,
+                },
+                epoch=get_elector().epoch,
+                expected_stage="done",
+            )
+            if isinstance(result, transitions.Win):
+                moved.append(f"{req.ref}: rollback verified at {digest}")
+            return
+        if now < row.deadline_at:
+            return
+        error = (
+            f"Rollback rollout was not ready before the deadline for {name}"
+            if not rollout_ready
+            else f"Rollback health probe failed before the deadline for {name}"
+            if not probe_ok
+            else f"Rollback live image did not match target {digest} for {name}"
+        )
+        self._fail_rollback(db, req, row, error, status="timed_out")
+
+    def _fail_rollback(
+        self,
+        db: Session,
+        req: Request,
+        row: StageJob,
+        error: str,
+        *,
+        status: str = "failed",
+    ) -> None:
+        error = scrub_secrets(error)[:300]
+        row.status = status
+        row.completed_at = utcnow()
+        row.envelope = {**(row.envelope or {}), "error": error}
+        result = transitions.apply_committed(
+            db,
+            req,
+            "fail_rollback",
+            actor=FACTORY,
+            params={
+                "key": req.app.key if req.app else "unknown",
+                "digest": (row.envelope or {}).get("digest", "unknown"),
+                "error": error,
+            },
+            epoch=get_elector().epoch,
+            expected_stage="done",
+        )
+        if isinstance(result, transitions.Loss):
+            log.info("rollback %s failure record fenced (%s)", row.id, result.detail)
+
+    def _monitor_app_health(self, db: Session, moved: list[str]) -> None:
+        latest_deploy_ids = (
+            select(
+                Request.app_id.label("app_id"),
+                func.max(StageJob.id).label("stage_job_id"),
+            )
+            .join(StageJob, StageJob.request_id == Request.id)
+            .where(
+                Request.app_id.is_not(None),
+                StageJob.role == "deploy",
+                StageJob.status == "succeeded",
+            )
+            .group_by(Request.app_id)
+            .subquery()
+        )
+        rows = db.execute(
+            select(StageJob, Request, App)
+            .join(
+                latest_deploy_ids,
+                latest_deploy_ids.c.stage_job_id == StageJob.id,
+            )
+            .join(Request, Request.id == StageJob.request_id)
+            .join(App, App.id == Request.app_id)
+            .order_by(latest_deploy_ids.c.app_id)
+        ).all()
+        probed = 0
+        now = utcnow()
+        durable = {item["app_id"]: item for item in registry.fleet_health(db)}
+        for deploy, req, app in rows:
+            state = self._app_health.setdefault(
+                app.id,
+                {
+                    "last_checked": None,
+                    "failures": 0,
+                    "degraded": durable.get(app.id, {}).get("status") == "degraded",
+                },
+            )
+            if deploy.completed_at is not None and (
+                now - deploy.completed_at
+            ).total_seconds() < settings.APP_HEALTH_INTERVAL:
+                state["last_checked"] = deploy.completed_at
+                continue
+            last_checked = state["last_checked"]
+            if last_checked is not None and (
+                now - last_checked
+            ).total_seconds() < settings.APP_HEALTH_INTERVAL:
+                continue
+            if probed >= settings.APP_HEALTH_BATCH:
+                continue
+            probed += 1
+            state["last_checked"] = now
+            name = deploy_manifests.app_name(app.key)
+            url = f"http://{name}.{settings.KUBE_NAMESPACE}.svc:80/health"
+            healthy = _http_ok(url)
+            if healthy:
+                state["failures"] = 0
+                if not state["degraded"]:
+                    continue
+                result = transitions.apply_committed(
+                    db,
+                    req,
+                    "record_app_health",
+                    actor=FACTORY,
+                    params={
+                        "key": app.key,
+                        "status": "live",
+                        "failures": 0,
+                        "url": url,
+                    },
+                    epoch=get_elector().epoch,
+                    expected_stage="done",
+                )
+                if isinstance(result, transitions.Win):
+                    state["degraded"] = False
+                    moved.append(f"{app.key}: app health recovered")
+                continue
+
+            state["failures"] += 1
+            if state["degraded"] or state["failures"] < settings.APP_HEALTH_FAILURES:
+                continue
+            result = transitions.apply_committed(
+                db,
+                req,
+                "record_app_health",
+                actor=FACTORY,
+                params={
+                    "key": app.key,
+                    "status": "degraded",
+                    "failures": state["failures"],
+                    "url": url,
+                },
+                epoch=get_elector().epoch,
+                expected_stage="done",
+            )
+            if isinstance(result, transitions.Win):
+                state["degraded"] = True
+                moved.append(f"{app.key}: app health degraded")
 
     def _teardown_app(self, db: Session, req: Request, slug: str) -> None:
         # OPERATE-02: a closed/escalated deploy request stays at stage=deploy and

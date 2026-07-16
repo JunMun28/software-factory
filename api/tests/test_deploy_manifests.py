@@ -54,6 +54,10 @@ def test_deploy_manifests_are_digest_pinned_app_tier_nonroot():
     assert dep["metadata"]["labels"]["sf/tier"] == "app"
     assert dep["metadata"]["labels"]["sf/instance"] == "northwind"
     assert dep["spec"]["replicas"] == 2
+    assert dep["spec"]["strategy"] == {
+        "type": "RollingUpdate",
+        "rollingUpdate": {"maxUnavailable": 0, "maxSurge": 1},
+    }
     c = dep["spec"]["template"]["spec"]["containers"][0]
     assert c["image"] == f"{dm.settings.REGISTRY}/sf-app-northwind@{DIGEST}"  # BY DIGEST
     assert dep["spec"]["template"]["spec"]["securityContext"]["runAsNonRoot"] is True

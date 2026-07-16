@@ -555,3 +555,34 @@ coordinator spot-check). 537 pytest + full verify green. Backend + API only.
   C1's watchdog folds here too.
 - progress_event ARCHIVAL/partitioning for the Azure 2GB ceiling -> C9 (office);
   never DELETE rows.
+
+## Plan C8 — operate lifecycle (2026-07-16)
+
+OPERATE-01 + OPERATE-03 + FAIL-07/DEPLOY-05 rollback. codex-built + codex-reviewed
+(1 CRITICAL + 2 HIGH + 2 MED found and fixed) + coordinator spot-check of the
+C2a interaction. 564 pytest + full verify green. Backend only, no schema change.
+
+- OPERATE-01: at first deploy of an app_id-None request, a fenced
+  register_produced_app transition creates a stable-key App (hash-suffixed on
+  collision) + sets req.app_id BEFORE _apply_deploy, so the app deploys under the
+  stable slug AND the succeeding request carries the shared app_id — satisfying
+  C2a's teardown precondition (a failed follow-up's teardown preserves the live
+  sibling). _teardown_app / _slug_has_live_app bodies UNCHANGED.
+- **Apply-time cutover safety (the C2a-deferred CRITICAL, armed by OPERATE-01):**
+  the produced-app Deployment is now RollingUpdate maxUnavailable:0 / maxSurge:1,
+  so a failed follow-up's new pods can NEVER displace the live old pods — the
+  rollout stalls, prod keeps serving, and _observe_deploy escalates. Last-good is
+  guaranteed to stay live.
+- OPERATE-03: a rate-limited, timeout-bounded tick-loop /health probe of live
+  apps; one incident event per state transition (not per tick); bounded SQL (no
+  N+1 / no loading the whole append-only log per tick).
+- FAIL-07/DEPLOY-05: rollback is HTTP-enqueue-only; the single-threaded tick does
+  the fenced apply + the "refuse while a deploy/rollback for the slug is running"
+  check (serial => atomic, no SQLite FOR UPDATE reliance); records success + the
+  durable succeeded-deploy witness ONLY after rollout_ready + /health 2xx + the
+  live image digest matches the rollback target; intent stays pending on failure.
+
+### Deferred (noted): BRAIN-01 (wire+test the FACTORY_BRAIN=agent real-LLM intake),
+SPA-01 (factory-self release pipeline — office), CONTRACT-01 (OpenAPI codegen —
+TS/parallel), A11Y-01 (SPA — parallel), OPERATE-04 (role in the console UI —
+parallel; server role wall already exists).

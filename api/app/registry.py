@@ -15,12 +15,28 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import Protocol
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import settings
 from .kube_client import KubeClient
-from .models import Request, StageJob, utcnow
+from .models import App, LeaderEpoch, ProgressEvent, Request, StageJob, utcnow
+
+
+class RollbackError(Exception):
+    """Base class for an operator-visible rollback refusal."""
+
+
+class RollbackNotFound(RollbackError):
+    pass
+
+
+class RollbackBusy(RollbackError):
+    pass
+
+
+class RollbackFenced(RollbackError):
+    pass
 
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _DURATION = re.compile(r"^(\d+)([smhdw])$")
@@ -165,6 +181,201 @@ def rollback_history(db: Session, app_id: int, *, limit: int | None = None) -> l
             }
         )
     return history
+
+
+def fleet_health(db: Session) -> list[dict]:
+    """Additive registry view of produced-app liveness from durable evidence."""
+    latest_deploy_ids = (
+        select(
+            Request.app_id.label("app_id"),
+            func.max(StageJob.id).label("stage_job_id"),
+        )
+        .join(StageJob, StageJob.request_id == Request.id)
+        .where(
+            Request.app_id.is_not(None),
+            StageJob.role == "deploy",
+            StageJob.status == "succeeded",
+        )
+        .group_by(Request.app_id)
+        .subquery()
+    )
+    latest_deploys = {
+        app_id: row
+        for app_id, row in db.execute(
+            select(latest_deploy_ids.c.app_id, StageJob).join(
+                StageJob, StageJob.id == latest_deploy_ids.c.stage_job_id
+            )
+        ).all()
+    }
+
+    health_status = ProgressEvent.payload["health_status"].as_string()
+    latest_event_ids = (
+        select(
+            ProgressEvent.subject_id.label("app_id"),
+            func.max(ProgressEvent.id).label("event_id"),
+        )
+        .where(
+            ProgressEvent.subject_id.is_not(None),
+            health_status.in_(("live", "degraded")),
+        )
+        .group_by(ProgressEvent.subject_id)
+        .subquery()
+    )
+    latest_events = {
+        app_id: row
+        for app_id, row in db.execute(
+            select(latest_event_ids.c.app_id, ProgressEvent).join(
+                ProgressEvent, ProgressEvent.id == latest_event_ids.c.event_id
+            )
+        ).all()
+    }
+
+    output: list[dict] = []
+    for app in db.scalars(select(App).order_by(App.id)).all():
+        live = latest_deploys.get(app.id)
+        event = latest_events.get(app.id)
+        output.append(
+            {
+                "app_id": app.id,
+                "key": app.key,
+                "status": (
+                    (event.payload or {})["health_status"]
+                    if event is not None
+                    else "live" if live is not None else "inactive"
+                ),
+                "digest": (
+                    _digest((live.envelope or {}).get("digest"))
+                    if live is not None
+                    else None
+                ),
+                "checked_at": event.created_at.isoformat() if event else None,
+            }
+        )
+    return output
+
+
+def enqueue_rollback(
+    db: Session,
+    app_id: int,
+    digest: str,
+    *,
+    epoch: int,
+    actor: str = "Operator",
+) -> StageJob:
+    """Persist one rollback command; the leader tick owns every kube side effect."""
+    from . import intents, transitions
+    from .deploy_manifests import app_name
+
+    if _digest(digest) is None:
+        raise RollbackNotFound("Rollback target must be a sha256 image digest")
+    current_epoch = db.scalar(
+        select(LeaderEpoch.epoch).where(LeaderEpoch.id == 1)
+    )
+    if epoch <= 0 or current_epoch != epoch:
+        raise RollbackFenced(
+            f"Rollback enqueue fenced (mine={epoch}, current={current_epoch})"
+        )
+
+    app = db.get(App, app_id)
+    if app is None:
+        raise RollbackNotFound("App not found")
+
+    deploys = db.execute(
+        select(StageJob, Request)
+        .join(Request, Request.id == StageJob.request_id)
+        .where(
+            Request.app_id == app.id,
+            StageJob.role == "deploy",
+            StageJob.status == "succeeded",
+        )
+        .order_by(StageJob.id.desc())
+    ).all()
+    target = next(
+        (
+            (row, request)
+            for row, request in deploys
+            if _digest((row.envelope or {}).get("digest")) == digest
+        ),
+        None,
+    )
+    if target is None:
+        raise RollbackNotFound(
+            "Rollback target is not backed by a succeeded deploy for this app"
+        )
+    if target[1].status != transitions.DONE or target[1].stage != "done":
+        raise RollbackNotFound(
+            "Rollback target has no completed request ownership record"
+        )
+
+    current = deploys[0] if deploys else None
+    if current is None:
+        raise RollbackNotFound("App has no live deploy to roll back")
+    if _digest((current[0].envelope or {}).get("digest")) == digest:
+        return current[0]
+
+    intent_key = f"rollback:{app.key}:{current[0].id}:{target[0].id}"
+    now = utcnow()
+    rollback = StageJob(
+        request_id=target[1].id,
+        stage="deploy",
+        attempt=1,
+        role="rollback",
+        job_name=app_name(app.key),
+        epoch=epoch,
+        status="running",
+        deadline_at=now + timedelta(seconds=settings.DEPLOY_WALL_CLOCK),
+        envelope={
+            "digest": digest,
+            "image": f"{settings.REGISTRY}/sf-app-{app.key}@{digest}",
+            "app_id": app.id,
+            "app_key": app.key,
+            "source_deploy_id": target[0].id,
+            "current_deploy_id": current[0].id,
+            "intent_key": intent_key,
+            "applied": False,
+        },
+    )
+    db.add(rollback)
+    result = transitions.apply(
+        db,
+        target[1],
+        "enqueue_rollback",
+        actor=transitions.Actor(name=actor),
+        params={"key": app.key, "digest": digest},
+        intent=transitions.IntentSpec(
+            key=intent_key,
+            kind=intents.APPLY_DEPLOY,
+            payload={
+                "app": rollback.job_name,
+                "digest": digest,
+                "rollback": True,
+            },
+        ),
+        epoch=epoch,
+        expected_stage="done",
+    )
+    if isinstance(result, transitions.Loss):
+        raise RollbackFenced(result.detail)
+    if result.intent is None:
+        db.rollback()
+        existing = db.scalars(
+            select(StageJob).where(
+                StageJob.role == "rollback", StageJob.status == "running"
+            )
+        ).all()
+        replay = next(
+            (
+                row
+                for row in existing
+                if (row.envelope or {}).get("intent_key") == intent_key
+            ),
+            None,
+        )
+        if replay is None:
+            raise RollbackBusy("Rollback intent already exists without a running row")
+        return replay
+    db.commit()
+    return rollback
 
 
 def _rollback_digests(db: Session) -> set[str]:

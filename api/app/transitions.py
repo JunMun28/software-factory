@@ -105,6 +105,7 @@ class Pre:
     status_not_in: tuple[str, ...] | None = None
     gate: object = ANY
     needs_human: bool | None = None
+    app_id: object = ANY
 
 
 @dataclass(frozen=True)
@@ -289,6 +290,92 @@ def _ev_advance_stage(db: Session, req: Request, actor: Actor, params: dict) -> 
     stage = params["stage"]
     emit(db, req, "milestone_summary", f"Stage advanced — now in {stage.capitalize()}",
          payload={"Stage": stage.capitalize(), "Ref": req.ref})
+
+
+def _ev_register_produced_app(
+    db: Session, req: Request, actor: Actor, params: dict
+) -> None:
+    emit(
+        db,
+        req,
+        "milestone_summary",
+        f"Produced app registered — {params['name']} joins the fleet",
+        stage="deploy",
+        payload={"Ref": req.ref, "app_id": req.app_id, "app_key": params["key"]},
+    )
+
+
+def _ev_app_health(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    degraded = params["status"] == "degraded"
+    emit(
+        db,
+        req,
+        "escalation" if degraded else "recovery_action",
+        (
+            f"App health incident — {params['key']} stopped answering /health"
+            if degraded
+            else f"App health recovered — {params['key']} is answering /health"
+        ),
+        stage="deploy",
+        broadcast=degraded,
+        payload={
+            "Ref": req.ref,
+            "app_key": params["key"],
+            "health_status": params["status"],
+            "failures": params.get("failures", 0),
+            "url": params["url"],
+        },
+    )
+
+
+def _ev_enqueue_rollback(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    emit(
+        db,
+        req,
+        "recovery_action",
+        f"Rollback queued — {params['key']} to {params['digest'][:19]}",
+        actor=actor.name,
+        bot=False,
+        stage="deploy",
+        payload={"Ref": req.ref, "app_key": params["key"], "digest": params["digest"]},
+    )
+
+
+def _ev_finish_rollback(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    emit(
+        db,
+        req,
+        "recovery_action",
+        f"Rollback verified — {params['key']} is live at {params['digest'][:19]}",
+        stage="deploy",
+        broadcast=True,
+        payload={
+            "Ref": req.ref,
+            "app_key": params["key"],
+            "digest": params["digest"],
+            "url": params["url"],
+            "health_status": "live",
+        },
+    )
+
+
+def _ev_fail_rollback(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    emit(
+        db,
+        req,
+        "escalation",
+        f"Rollback failed — {params['key']} was not verified live",
+        stage="deploy",
+        broadcast=True,
+        body=params["error"],
+        payload={
+            "Ref": req.ref,
+            "app_key": params["key"],
+            "digest": params["digest"],
+            "error": params["error"],
+            "health_status": "degraded",
+        },
+    )
 
 
 # late-binding wrappers so tests can monkeypatch app.notifications.*
@@ -533,6 +620,55 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
         events=_ev_advance_stage,
         conflict_detail=lambda r: f"Cannot advance (status={r.status!r}, needs_human={r.needs_human})",
     ),
+    Transition(
+        name="register_produced_app",
+        pre=Pre(status_in=(APPROVED,), gate=None, needs_human=False, app_id=None),
+        effects=lambda p: {"app_id": p["app_id"], "updated_at": utcnow()},
+        events=_ev_register_produced_app,
+        conflict_detail=lambda r: "Produced app registration precondition was consumed",
+    ),
+    Transition(
+        name="record_app_health",
+        pre=Pre(status_in=(DONE,)),
+        effects=lambda p: {"updated_at": utcnow()},
+        events=_ev_app_health,
+        conflict_detail=lambda r: f"Cannot record app health on a {r.status} request",
+    ),
+    Transition(
+        name="enqueue_rollback",
+        pre=Pre(status_in=(DONE,)),
+        effects=lambda p: {"updated_at": utcnow()},
+        events=_ev_enqueue_rollback,
+        audit_action="rollback_requested",
+        audit_note=lambda p: f"rollback {p['key']} to {p['digest']}",
+        conflict_detail=lambda r: f"Cannot enqueue rollback on a {r.status} request",
+    ),
+    Transition(
+        name="drive_rollback",
+        pre=Pre(status_in=(DONE,)),
+        effects=lambda p: {"updated_at": utcnow()},
+        conflict_detail=lambda r: f"Cannot drive rollback on a {r.status} request",
+    ),
+    Transition(
+        name="record_rollback_applied",
+        pre=Pre(status_in=(DONE,)),
+        effects=lambda p: {"updated_at": utcnow()},
+        conflict_detail=lambda r: f"Cannot record rollback apply on a {r.status} request",
+    ),
+    Transition(
+        name="finish_rollback",
+        pre=Pre(status_in=(DONE,)),
+        effects=lambda p: {"updated_at": utcnow()},
+        events=_ev_finish_rollback,
+        conflict_detail=lambda r: f"Cannot finish rollback on a {r.status} request",
+    ),
+    Transition(
+        name="fail_rollback",
+        pre=Pre(status_in=(DONE,)),
+        effects=lambda p: {"updated_at": utcnow()},
+        events=_ev_fail_rollback,
+        conflict_detail=lambda r: f"Cannot fail rollback on a {r.status} request",
+    ),
 )}
 
 
@@ -549,6 +685,10 @@ def _where(req_id: int, pre: Pre, expected_stage: str | None) -> list:
     if pre.needs_human is not None:
         # truthiness, not .is_(bool): SQLAlchemy renders `IS 0/1` on mssql (invalid T-SQL)
         clauses.append(Request.needs_human if pre.needs_human else ~Request.needs_human)
+    if pre.app_id is not ANY:
+        clauses.append(
+            Request.app_id.is_(None) if pre.app_id is None else Request.app_id == pre.app_id
+        )
     if expected_stage is not None:
         clauses.append(Request.stage == expected_stage)
     return clauses

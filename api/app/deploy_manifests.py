@@ -196,6 +196,10 @@ def app_deploy_manifests(slug: str, digest: str, replicas: int = 1) -> list[dict
         "metadata": {"name": name, "labels": labels},
         "spec": {
             "replicas": replicas,
+            "strategy": {
+                "type": "RollingUpdate",
+                "rollingUpdate": {"maxUnavailable": 0, "maxSurge": 1},
+            },
             "selector": {"matchLabels": selector},
             "template": {
                 "metadata": {"labels": labels},
