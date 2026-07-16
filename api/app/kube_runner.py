@@ -57,7 +57,7 @@ from .kube_jobs import (
     stage_job_manifest,
 )
 from .leader import get_elector
-from .models import PIPELINE_STAGES, Intent, Request, StageJob, utcnow
+from .models import PIPELINE_STAGES, AuditEvent, Intent, Request, StageJob, utcnow
 from .transitions import FACTORY, IntentSpec
 from .ws_exec import _git
 
@@ -65,6 +65,10 @@ log = logging.getLogger("factory.kube")
 
 LOGS_TAIL = 20_000  # chars of captured NDJSON persisted per Job
 GATE_INFRA_LIMIT = 3
+# How long a consumed merge gate shields the request from strand-repair: long
+# enough for any GitHub merge round-trip, short enough that a process that died
+# between claim and merge is still rescued by the re-raise.
+MERGE_CLAIM_GRACE = int(__import__("os").environ.get("FACTORY_MERGE_CLAIM_GRACE", "600"))
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -1105,6 +1109,28 @@ class KubeJobRunner:
             None,
         )
         if req.status == transitions.APPROVED and req.gate is None and review is not None:
+            # A HUMAN merge claim may be IN FLIGHT: claim_merge consumed the
+            # gate and approve_merge is mid-call — seconds, when the merge is a
+            # GitHub API round-trip (found live: the racing re-raise made the
+            # post-merge raise_deploy_gate lose its CAS). Only strand-repair
+            # when the newest decisive audit is NOT a fresh merge claim; a
+            # STALE claim means the approving process died mid-merge and the
+            # re-raise is the designed recovery.
+            claim = db.scalar(
+                select(AuditEvent)
+                .where(
+                    AuditEvent.request_id == req.id,
+                    AuditEvent.action.in_(transitions.DECISIVE_ACTIONS),
+                )
+                .order_by(AuditEvent.id.desc())
+            )
+            if (
+                claim is not None
+                and claim.action == "merge_claimed"
+                and claim.created_at is not None
+                and (utcnow() - claim.created_at).total_seconds() < MERGE_CLAIM_GRACE
+            ):
+                return None
             self._finish_review(db, req, review.envelope or {}, moved)
         return None
 
