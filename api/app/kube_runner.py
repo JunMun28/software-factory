@@ -432,18 +432,21 @@ class KubeJobRunner:
             self._escalate(db, req, f"Merge failed: {err}")
             return
         if settings.app_deploy_enabled():
-            res = transitions.apply(
+            # B4: merge landed — WAIT at the deploy gate (spec §4.10). The build
+            # is driven only after a human clears the gate; fenced + notified
+            # like the merge gate, and a raced Cancel wins the CAS.
+            res = transitions.apply_committed(
                 db,
                 req,
-                "begin_deploy",
+                "raise_deploy_gate",
                 actor=transitions.Actor(name=actor),
                 params={"sha": sha},
+                epoch=get_elector().epoch,
             )
             if isinstance(res, transitions.Loss):
-                log.info("%s: begin_deploy lost (%s)", req.ref, res.detail)
+                log.info("%s: raise_deploy_gate lost (%s)", req.ref, res.detail)
                 return
-            db.commit()
-            log.info("%s merged; build+deploy queued at %s", req.ref, sha[:12])
+            log.info("%s merged at %s — waiting at the deploy gate", req.ref, sha[:12])
             return
         res = transitions.apply(
             db,
@@ -474,7 +477,11 @@ class KubeJobRunner:
     def _drive_deploys(self, db: Session, moved: list[str]) -> None:
         if not settings.app_deploy_enabled():
             return
-        requests = db.scalars(select(Request).where(Request.stage == "deploy")).all()
+        # B4: only APPROVED (gate-cleared) deploy requests build. A request at
+        # gate=approve_deploy is WAITING for a human — never drive it.
+        requests = db.scalars(
+            select(Request).where(Request.stage == "deploy", Request.gate.is_(None))
+        ).all()
         for req in requests:
             try:
                 self._drive_one_deploy(db, req, moved)

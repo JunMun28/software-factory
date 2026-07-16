@@ -142,6 +142,19 @@ describe('ApproveModal', () => {
     expect(text).toContain('micron/northwind');
   });
 
+  it('renders the deploy-gate copy (Plan B4: the second human gate)', () => {
+    const f = TestBed.createComponent(ApproveHost);
+    f.componentInstance.r.set(
+      req({ gate: 'approve_deploy', repo: 'micron/northwind', app_key: 'northwind' }),
+    );
+    f.detectChanges();
+    const text = (f.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Approve this deploy?');
+    expect(text).toContain('Approve & deploy');
+    expect(text).toContain('Build the image from merged main');
+    expect(text).toContain('northwind.localtest.me');
+  });
+
   it('emits approved / cancelled from the two buttons', () => {
     const f = TestBed.createComponent(ApproveHost);
     f.detectChanges();

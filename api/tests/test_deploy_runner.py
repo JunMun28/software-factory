@@ -77,7 +77,18 @@ def _to_merge_gate(client, monkeypatch, tmp_path, title, *, deploy=True):
         f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
     )
     assert approved.status_code == 200, approved.text
-    return request, approved.json(), runner, fake
+    body = approved.json()
+    if deploy:
+        # B4: the merge approve leaves the request WAITING at the deploy gate;
+        # a second approve (the second human gate, spec §4.10) releases it.
+        assert body["gate"] == "approve_deploy" and body["stage"] == "deploy"
+        second = client.post(
+            f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+        )
+        assert second.status_code == 200, second.text
+        body = second.json()
+        assert body["gate"] is None and body["stage"] == "deploy"
+    return request, body, runner, fake
 
 
 def _spawn_and_finish_build(client, monkeypatch, tmp_path, title):
@@ -156,12 +167,13 @@ def test_merge_kicks_off_build_then_deploy_to_done(client, monkeypatch, tmp_path
         assert deploy.deadline_at > utcnow() + timedelta(
             seconds=settings.DEPLOY_WALL_CLOCK - 5
         )
-        audit = db.scalar(
-            select(AuditEvent)
+        actions = db.scalars(
+            select(AuditEvent.action)
             .where(AuditEvent.request_id == request["id"])
-            .order_by(AuditEvent.id.desc())
-        )
-        assert audit.action == "approved_merge"
+            .order_by(AuditEvent.id)
+        ).all()
+        # B4: two human gates, in order — merge then deploy
+        assert actions.index("approved_merge") < actions.index("approved_deploy")
         intent_rows = db.scalars(
             select(Intent).where(Intent.request_id == request["id"])
         ).all()
@@ -373,3 +385,96 @@ def test_build_absent_respawns_bounded(client, monkeypatch, tmp_path):
         req = db.get(Request, request["id"])
         assert req.needs_human
         assert "infra loop" in req.needs_human_reason
+
+
+def test_merge_raises_deploy_gate_and_it_holds(client, monkeypatch, tmp_path):
+    # B4: after the merge approve the request WAITS; a tick must not build.
+    with SessionLocal() as db:
+        for old in db.scalars(select(Request).where(Request.stage == "deploy")).all():
+            old.stage = "done"
+        db.commit()
+    _enable_deploy(monkeypatch, tmp_path)
+    runner = KubeJobRunner(client=(fake := FakeKubeClient()))
+    honest_build(fake, settings.WORKSPACES)
+    request = _northwind_request(client, "B4 deploy gate holds")
+    _tick_until(client, runner, request["id"], lambda item: item["gate"] == "approve_merge")
+    monkeypatch.setenv("FACTORY_RUNNER", "kube")
+    monkeypatch.setattr(api_helpers, "_pipeline", runner)
+    first = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    ).json()
+    assert first["gate"] == "approve_deploy" and first["stage"] == "deploy"
+    with SessionLocal() as db:
+        runner.tick(db)
+        runner.tick(db)
+        build = db.scalar(
+            select(StageJob).where(
+                StageJob.request_id == request["id"], StageJob.role == "build"
+            )
+        )
+        assert build is None, "build started before the deploy gate was approved"
+    assert fake.applied == []
+
+    # the second approve releases it and records the approver
+    second = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    ).json()
+    assert second["gate"] is None and second["stage"] == "deploy"
+    with SessionLocal() as db:
+        runner.tick(db)
+        build = db.scalar(
+            select(StageJob).where(
+                StageJob.request_id == request["id"], StageJob.role == "build"
+            )
+        )
+        assert build is not None and build.status == "running"
+        audits = db.scalars(
+            select(AuditEvent).where(AuditEvent.request_id == request["id"])
+        ).all()
+        actions = [a.action for a in audits]
+        assert "deploy_claimed" in actions and "approved_deploy" in actions
+
+    # replayed approve while building resolves cleanly, never double-fires
+    replay = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    )
+    assert replay.status_code in (200, 409)
+    with SessionLocal() as db:
+        builds = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == request["id"], StageJob.role == "build"
+            )
+        ).all()
+        assert len(builds) == 1
+
+
+def test_cancel_at_deploy_gate_builds_nothing(client, monkeypatch, tmp_path):
+    with SessionLocal() as db:
+        for old in db.scalars(select(Request).where(Request.stage == "deploy")).all():
+            old.stage = "done"
+        db.commit()
+    _enable_deploy(monkeypatch, tmp_path)
+    runner = KubeJobRunner(client=(fake := FakeKubeClient()))
+    honest_build(fake, settings.WORKSPACES)
+    request = _northwind_request(client, "B4 cancel at deploy gate")
+    _tick_until(client, runner, request["id"], lambda item: item["gate"] == "approve_merge")
+    monkeypatch.setenv("FACTORY_RUNNER", "kube")
+    monkeypatch.setattr(api_helpers, "_pipeline", runner)
+    first = client.post(
+        f"/api/requests/{request['id']}/approve", json={"operator_id": 1}
+    ).json()
+    assert first["gate"] == "approve_deploy"
+    cancelled = client.post(
+        f"/api/requests/{request['id']}/cancel", json={"operator_id": 1}
+    ).json()
+    assert cancelled["status"] == transitions.CANCELLED
+    with SessionLocal() as db:
+        runner.tick(db)
+    assert fake.applied == []
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(StageJob).where(
+                StageJob.request_id == request["id"],
+                StageJob.role.in_(("build", "deploy")),
+            )
+        ) is None

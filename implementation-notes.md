@@ -280,3 +280,17 @@ already emits it via begin_deploy).
 - "Steer next step" dropped from the home page (was on every lane card);
   still available per-request in the dossier, which is the scoped place
   for it. Conservative: no backend change, no feature loss.
+
+## Plan B4a — the approve-deploy human gate (2026-07-16)
+
+- Spec §4.10's second console gate is live: after a real merge (kube + git +
+  app-deploy mode) the request WAITS at `approve_deploy`; a second console
+  approval (approver identity in `deploy_claimed`/`approved_deploy` audit rows
+  and the release milestone) starts the kaniko build + deploy. The one
+  behavioral guard is `_drive_deploys`' `gate IS NULL` clause.
+- Routing: `stage=="deploy"` is the discriminator that peels the deploy family
+  off the merge family in the approve endpoint; a deploy replay landing after
+  `done` falls through to the merge family and resolves as a clean 409.
+- Console changes are additive only (gate union + one branch per site); the
+  merge gate's existing copy is untouched.
+- Half B (GitHub) is planned and user-approved but deferred — see the B4 plan.

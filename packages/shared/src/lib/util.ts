@@ -87,6 +87,7 @@ export function boardGlyph(r: FactoryRequest): { glyph: string; color: string; f
 export function gateLabel(r: FactoryRequest): string | null {
   if (r.gate === 'approve_spec') return 'Approve spec';
   if (r.gate === 'approve_merge') return 'Approve merge';
+  if (r.gate === 'approve_deploy') return 'Approve deploy';
   return null;
 }
 
@@ -106,6 +107,14 @@ export function confirmSteps(r: FactoryRequest): [string, string][] {
       ['Merge the PR to main', r.repo ?? ''],
       ['Promote main → production', 'protected-branch approval'],
       ['Trigger the deploy', 'Stage 6'],
+    ];
+  }
+  if (r.gate === 'approve_deploy') {
+    // pre-build evidence: nothing is built yet — this is what WILL happen
+    return [
+      ['Build the image from merged main', r.repo ?? ''],
+      ['Deploy to the cluster', `${r.app_key ?? r.ref.toLowerCase()} · 1 replica`],
+      ['Publish the live URL', `${r.app_key ?? r.ref.toLowerCase()}.localtest.me`],
     ];
   }
   return [
@@ -296,7 +305,12 @@ export function missionRowLabel(
 ): string {
   const where = `${r.app_name}, ${r.ref}`;
   if (kind === 'gate') {
-    const g = r.gate === 'approve_merge' ? 'Merge gate' : 'Spec gate';
+    const g =
+      r.gate === 'approve_merge'
+        ? 'Merge gate'
+        : r.gate === 'approve_deploy'
+          ? 'Deploy gate'
+          : 'Spec gate';
     return `${g}, needs your approval — ${r.title}, ${where}`;
   }
   if (kind === 'stalled') return `Stalled, needs a human — ${r.title}, ${where}`;
@@ -315,6 +329,7 @@ export function adminStateLine(r: RequestDetail): string {
   if (r.needs_human) return 'Stalled — needs a human';
   if (r.gate === 'approve_spec') return 'Waiting at the spec gate';
   if (r.gate === 'approve_merge') return 'Waiting at the merge gate';
+  if (r.gate === 'approve_deploy') return 'Waiting at the deploy gate';
   if (r.status === 'sent_back') return 'With the submitter';
   if (r.status === 'done') return 'Deployed';
   if (r.status === 'cancelled') return 'Cancelled';

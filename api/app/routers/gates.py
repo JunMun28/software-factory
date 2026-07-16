@@ -37,9 +37,30 @@ def _operator_actor(db: Session, operator_id: int) -> Actor:
 def approve(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
     r = get_request(db, rid)
     actor = _operator_actor(db, body.operator_id)
+    # B4: the deploy gate (spec §4.10). A live gate, OR a consumed gate whose
+    # request still sits at stage=deploy (a replay while the build runs), is
+    # the deploy family. stage=="deploy" only arises post-merge, so it never
+    # collides with the merge/spec routing. A deploy replay that lands after
+    # "done" falls through to the merge family and resolves as a clean 409.
+    if r.gate == transitions.GATE_APPROVE_DEPLOY or (r.gate is None and r.stage == "deploy"):
+        res = transitions.apply(db, r, "claim_deploy", actor=actor)
+        if isinstance(res, transitions.Loss):
+            return conflict_response(r, res)
+        # release to the driver + record the approver in ONE transaction; the
+        # begin_deploy milestone names the approver (spec §4.10 identity). A
+        # cancel racing between claim and release makes begin_deploy Lose —
+        # record the honest outcome, never "approved" on a closed request.
+        released = transitions.apply(db, r, "begin_deploy", actor=actor, params={})
+        outcome = ("approved_deploy" if isinstance(released, transitions.Win)
+                   else "deploy_approval_failed")
+        db.add(AuditEvent(request_id=r.id, operator_id=body.operator_id,
+                          actor=actor.name, action=outcome))
+        db.commit()
+        return to_out(r, RequestDetail)
+
     # A consumed merge gate has gate=None; stage/status retain enough context
     # to route a replay back to the merge action family.
-    if r.gate == transitions.GATE_APPROVE_MERGE or r.stage in ("review", "deploy", "done"):
+    if r.gate == transitions.GATE_APPROVE_MERGE or r.stage in ("review", "done"):
         res = transitions.apply(db, r, "claim_merge", actor=actor)
         if isinstance(res, transitions.Loss):
             return conflict_response(r, res)

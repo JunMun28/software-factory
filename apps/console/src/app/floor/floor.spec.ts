@@ -247,6 +247,12 @@ describe('Decision queue derivation', () => {
     expect(queue[1].facts.map((fact) => fact.text)).toContain('42/42 tests pass');
   });
 
+  it('surfaces the deploy gate (Plan B4) with go-live wording', () => {
+    const queue = deriveQueue(mission({ gates: [gate({ id: 3, gate: 'approve_deploy' })] }));
+    expect(queue[0].headline).toBe('Approve to go live');
+    expect(queue[0].consequence).toContain('builds and deploys');
+  });
+
   it('orders gates before stalled before human-owned', () => {
     const queue = deriveQueue(
       mission({

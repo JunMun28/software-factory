@@ -52,6 +52,7 @@ PRE_APPROVAL = (DRAFT, SUBMITTED, PENDING_APPROVAL, SENT_BACK)
 
 GATE_APPROVE_SPEC = "approve_spec"
 GATE_APPROVE_MERGE = "approve_merge"
+GATE_APPROVE_DEPLOY = "approve_deploy"  # B4: the second human gate (spec §4.10)
 
 # The audit actions a Loss resolves against (ADR 0006): the newest of these rows
 # identifies the winner of a consumed precondition.
@@ -60,6 +61,9 @@ DECISIVE_ACTIONS = (
     "merge_claimed",
     "approved_merge",
     "merge_approval_failed",
+    "deploy_claimed",
+    "approved_deploy",
+    "deploy_approval_failed",
     "sent_back",
     "retried",
     "taken_over",
@@ -151,9 +155,16 @@ def _ev_approve_spec(db: Session, req: Request, actor: Actor, params: dict) -> N
          payload={"gate": GATE_APPROVE_SPEC, "repo": params["repo"], "Ref": req.ref})
 
 
+def _ev_raise_deploy_gate(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    emit(db, req, "gate_event",
+         "Waiting at the deploy gate — merged to main, deploy needs approval",
+         broadcast=True,
+         payload={"gate": GATE_APPROVE_DEPLOY, "Ref": req.ref, "sha": params.get("sha")})
+
+
 def _ev_begin_deploy(db: Session, req: Request, actor: Actor, params: dict) -> None:
     emit(db, req, "milestone_summary",
-         "Merged to main — building and deploying the app",
+         f"Deploy approved by {actor.name} — building and deploying the app",
          stage="deploy",
          payload={"Stage": "Deploy", "Ref": req.ref, "sha": params.get("sha")})
 
@@ -268,9 +279,32 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
         conflict_detail=lambda r: f"Cannot merge a {r.status} request",
     ),
     Transition(
-        # Plan B3: after a real merge, the request builds+deploys before done.
-        # Only taken when settings.app_deploy_enabled(); otherwise approve_merge
-        # goes straight to finish_done (B2 behavior).
+        # B4 (machine, epoch-fenced by the caller): after a real merge, the
+        # request WAITS at the deploy gate instead of auto-building (spec §4.10).
+        # Stamps stage=deploy WITH the gate set, so _drive_deploys' gate-IS-NULL
+        # guard holds it until a human approves.
+        name="raise_deploy_gate",
+        pre=Pre(status_in=(APPROVED,), gate=None),
+        effects=lambda p: {"gate": GATE_APPROVE_DEPLOY, "stage": "deploy",
+                           "stage_entered_at": utcnow()},
+        events=_ev_raise_deploy_gate,
+        notify=_notify_gate_raised,
+        conflict_detail=lambda r: f"Cannot raise the deploy gate (status={r.status!r}, gate={r.gate!r})",
+    ),
+    Transition(
+        # B4 (HTTP): the human claims the deploy gate, mirroring claim_merge.
+        name="claim_deploy",
+        pre=Pre(status_in=(APPROVED,), gate=GATE_APPROVE_DEPLOY),
+        effects=lambda p: {"gate": None},
+        audit_action="deploy_claimed",
+        replay_actions=("deploy_claimed", "approved_deploy", "deploy_approval_failed"),
+        conflict_detail=lambda r: f"Cannot approve deploy on a {r.status} request",
+    ),
+    Transition(
+        # Plan B3 (reworked by B4): the RELEASE step the approve endpoint applies
+        # after claim_deploy — idempotent effects, approver-attributed milestone.
+        # When app_deploy_enabled() is false, approve_merge still goes straight
+        # to finish_done (B2 behavior) and neither deploy transition fires.
         name="begin_deploy",
         pre=Pre(status_in=(APPROVED,)),
         effects=lambda p: {"gate": None, "stage": "deploy", "status": APPROVED,
