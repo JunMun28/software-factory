@@ -33,6 +33,9 @@ def test_kube_settings_defaults():
     assert settings.GATE_WALL_CLOCK > settings.GATE_ACTIVE_DEADLINE
     assert settings.KUBE_MAX_ATTEMPTS == 2
     assert settings.KUBE_JOB_CAP == 10
+    assert settings.PER_APP_CAP == 3
+    assert settings.REQUEST_ATTEMPT_BUDGET == 12
+    assert settings.LOGS_TAIL_MAX == 20_000
     assert settings.BUILD_CAP == 4
     assert settings.REGISTRY_RETENTION == "7d"
     assert settings.KANIKO_IMAGE == "gcr.io/kaniko-project/executor:v1.23.2"
@@ -641,6 +644,76 @@ def test_entrypoint_push_and_review_paths_cannot_leak_the_token():
     push_line = next(line for line in src.splitlines() if "git push -q origin" in line)
     assert "2>&1" in push_line or "2>/dev/null" in push_line
     assert 'remote set-url origin "$SF_REPO_URL"' in src  # review keeps the clean URL
+
+
+@pytest.mark.parametrize(
+    ("cli", "cli_output", "expected_usage"),
+    [
+        (
+            "opencode",
+            '{"type":"step_finish","part":{"tokens":{"input":120,"output":30}}}\n'
+            "APPROVE\n",
+            {"tokens_in": 120, "tokens_out": 30},
+        ),
+        ("codex", "APPROVE\ntokens used\n1,234\n", {"tokens_total": 1234}),
+    ],
+)
+def test_entrypoint_captures_cli_token_usage_in_stage_envelope(
+    tmp_path, cli, cli_output, expected_usage
+):
+    source = tmp_path / "source"
+    source.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "work/req-2999"], cwd=source, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=source, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=source, check=True)
+    (source / "README.md").write_text("fixture\n")
+    subprocess.run(["git", "add", "."], cwd=source, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=source, check=True)
+
+    prompt_dir = tmp_path / "prompts"
+    prompt_dir.mkdir()
+    (prompt_dir / "review.md").write_text("Review the change.")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_cli = fake_bin / cli
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%b' {json.dumps(cli_output)}\n"
+    )
+    fake_cli.chmod(0o755)
+    auth = tmp_path / "auth.json"
+    auth.write_text("{}")
+    termlog = tmp_path / "termination-log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "SF_TERMLOG": str(termlog),
+        "SF_REPO_DIR": str(tmp_path / "clone"),
+        "SF_OUTPUT_FILE": str(tmp_path / "agent-output.txt"),
+        "SF_PROMPT_DIR": str(prompt_dir),
+        "SF_REF": "REQ-2999",
+        "SF_STAGE": "review",
+        "SF_ROLE": "stage",
+        "SF_REPO_URL": str(source),
+        "SF_BRANCH": "work/req-2999",
+        "SF_CLI": cli,
+        "SF_CODEX_AUTH_FILE": str(auth),
+        "SF_CODEX_HOME": str(tmp_path / "codex-home"),
+    }
+    entrypoint = Path(__file__).resolve().parents[2] / "docker/sf-agent/entrypoint.sh"
+
+    result = subprocess.run(
+        ["bash", str(entrypoint)],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    envelope = json.loads(termlog.read_text())
+    assert envelope["outcome"] == "ok"
+    assert envelope["usage"] == expected_usage
 
 
 def _run_gate(tmp_path, *, test_source: str, gitleaks_rc: int = 0):

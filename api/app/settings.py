@@ -86,6 +86,17 @@ KUBE_MAX_ATTEMPTS = int(
 )
 # Concurrent Jobs the orchestrator will run (spec §2).
 KUBE_JOB_CAP = int(os.environ.get("FACTORY_JOB_CAP", "10"))
+# Fair-share bound inside the global pool. Requests without a registered app
+# fall back to their proposed app name, then reporter identity.
+PER_APP_CAP = int(os.environ.get("FACTORY_PER_APP_CAP", "3"))
+# Lifetime agent-work ceiling across every stage and preview rewind. Infra
+# re-spawns keep the same (stage, attempt) and remain retry-neutral.
+REQUEST_ATTEMPT_BUDGET = int(
+    os.environ.get("FACTORY_REQUEST_ATTEMPT_BUDGET", "12")
+)
+# Persist only a bounded UTF-8 tail from pod logs. progress_event remains
+# append-only; this cap applies solely to StageJob diagnostic evidence.
+LOGS_TAIL_MAX = int(os.environ.get("FACTORY_LOGS_TAIL_MAX", "20000"))
 # Build/app rollout work has a separate, smaller pool: kaniko is materially
 # heavier than a stage/gate Job and must not bypass the general runner bound.
 BUILD_CAP = int(os.environ.get("FACTORY_BUILD_CAP", "4"))

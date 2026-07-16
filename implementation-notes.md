@@ -513,3 +513,30 @@ GC safety invariant). 528 pytest + ruff + kustomize + JS + lifecycle smoke green
 - factory-api Guaranteed-QoS + a high PriorityClass so it's never evicted under
   quota pressure -> office hardening (numeric fit confirmed for kind; not a
   correctness bug). kaniko digest-pin -> resolve the digest at image-build time.
+
+## Plan C7 — observability & cost (2026-07-16)
+
+COST-01/02/03 + OBS-03/04. codex-implemented (opus review capped; codex review +
+coordinator spot-check). 537 pytest + full verify green. Backend + API only.
+
+- COST-01: per-stage job-minutes (StageJob timestamps) + best-effort codex/opencode
+  token usage captured into the envelope; aggregated in a new cost.py; exposed via
+  GET /api/requests/{rid}/cost + /api/cost/fleet (events.py router — mission.py
+  untouched). No schema change.
+- COST-02: per-app in-flight cap (FACTORY_PER_APP_CAP) so one requester can't
+  monopolize KUBE_JOB_CAP; queue position surfaced. COST-03: per-request lifetime
+  attempt budget (FACTORY_REQUEST_ATTEMPT_BUDGET) — an exhausted budget makes Retry
+  ESCALATE instead of re-running. Neither deadlocks the tick (running work still
+  observed/drained).
+- OBS-03: kube-mode run_state health is now based on time-in-stage vs deadline_at,
+  not 30s step-recency (which made every healthy 35-min stage read "slow").
+- OBS-04: StageJob.logs_tail byte-capped at capture (FACTORY_LOGS_TAIL_MAX);
+  backward trace cursor (before_cursor keyset) for navigating a long append-only
+  log without loading it all. progress_event is NEVER mutated (ADR 0008).
+
+### Deferred (parallel-collision / office)
+- OBS-02 livenessProbe + tick-age WATCHDOG (main.py + routers/system.py + the
+  parallel session's api/app/heartbeat.py) — reconcile after the stack merges;
+  C1's watchdog folds here too.
+- progress_event ARCHIVAL/partitioning for the Azure 2GB ceiling -> C9 (office);
+  never DELETE rows.

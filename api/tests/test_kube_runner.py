@@ -27,13 +27,24 @@ from fake_kube import (
 from helpers import approved_request
 from sqlalchemy import select
 
-from app import intents, settings, simulator, transitions, workspace
+from app import cost, intents, settings, simulator, transitions, workspace
 from app import kube_runner as kube_runner_module
 from app.db import SessionLocal
 from app.kube_jobs import job_name
 from app.kube_runner import GATE_INFRA_LIMIT, KubeJobRunner
+from app.leader import get_elector
 from app.models import Intent, Request, StageJob, utcnow
 from app.ws_exec import _git
+
+
+@pytest.fixture(autouse=True)
+def _legacy_tests_do_not_share_a_fairness_pool(monkeypatch):
+    """Each test creates a fresh fake cluster but the module shares one DB.
+
+    Keep unrelated historical tests work-conserving despite fake-cluster
+    orphans. The dedicated fairness test overrides this with the real cap.
+    """
+    monkeypatch.setattr(settings, "PER_APP_CAP", 10_000)
 
 
 def make_runner() -> tuple[KubeJobRunner, FakeKubeClient]:
@@ -298,19 +309,431 @@ def test_review_escalates_when_gate_reports_no_evidence(client):
     assert out["gate"] != "approve_merge"
 
 
-def test_fairness_and_job_cap(client, monkeypatch):
-    """Oldest-runnable-first under the concurrent-Job cap (spec §2, §3.6)."""
-    monkeypatch.setattr(settings, "KUBE_JOB_CAP", 1)
+def test_fairness_per_app_cap_and_queue_position(client, monkeypatch):
+    """One app cannot consume the fleet; capped siblings remain discoverable."""
+    monkeypatch.setattr(settings, "KUBE_JOB_CAP", 3)
+    monkeypatch.setattr(settings, "PER_APP_CAP", 2)
     runner, fake = make_runner()  # nothing completes: jobs stay running
-    a = _approved(client, "Kube fairness A")
-    b = _approved(client, "Kube fairness B")
+    with SessionLocal() as db:
+        for row in db.scalars(
+            select(StageJob).where(StageJob.status == "running")
+        ).all():
+            row.status = "reaped"
+            row.completed_at = utcnow()
+        db.commit()
+    apps = client.get("/api/apps").json()
+    a = [
+        approved_request(client, title=f"Kube fairness A{i}", app_id=apps[0]["id"])
+        for i in range(4)
+    ]
+    b = approved_request(client, title="Kube fairness B", app_id=apps[1]["id"])
+    target_ids = [request["id"] for request in [*a, b]]
+    monkeypatch.setattr(
+        cost,
+        "runnable_requests",
+        lambda db: [db.get(Request, request_id) for request_id in target_ids],
+    )
     with SessionLocal() as db:
         runner.tick(db)
         runner.tick(db)
     spawned = [m["metadata"]["name"] for m in fake.creations]
-    assert len(spawned) == 1                       # the cap held across ticks
-    assert f"sf-{a['ref'].lower()}-" in spawned[0]  # and the OLDEST request won
-    assert b["ref"]  # (b exists, still queued)
+    assert len(spawned) == 3
+    assert sum(any(item["ref"].lower() in name for item in a) for name in spawned) == 2
+    assert any(b["ref"].lower() in name for name in spawned)
+
+    first_waiter = client.get(f"/api/requests/{a[2]['id']}/cost").json()
+    second_waiter = client.get(f"/api/requests/{a[3]['id']}/cost").json()
+    assert first_waiter["queue_position"] == 1
+    assert second_waiter["queue_position"] == 2
+    for request in [*a, b]:
+        client.post(
+            f"/api/requests/{request['id']}/cancel", json={"operator_id": 1}
+        )
+    with SessionLocal() as db:
+        for row in db.scalars(
+            select(StageJob).where(
+                StageJob.request_id.in_([request["id"] for request in [*a, b]]),
+                StageJob.status == "running",
+            )
+        ).all():
+            row.status = "reaped"
+            row.completed_at = utcnow()
+        db.commit()
+
+
+def _make_pipeline_build_ready(db, request_id: int) -> None:
+    req = db.get(Request, request_id)
+    now = utcnow()
+    req.stage = "build"
+    req.gate = None
+    req.needs_human = False
+    req.stage_entered_at = now
+    db.add(
+        StageJob(
+            request_id=req.id,
+            stage="architecture",
+            attempt=1,
+            role="gate",
+            job_name=f"{req.ref.lower()}-architecture-gate-complete",
+            status="succeeded",
+            created_at=now,
+            completed_at=now,
+            deadline_at=now,
+        )
+    )
+
+
+def _make_preview_build_ready(db, request_id: int) -> None:
+    req = db.get(Request, request_id)
+    req.stage = "preview"
+    req.gate = None
+    req.needs_human = False
+
+
+def _clear_scheduler_candidates(db) -> None:
+    now = utcnow()
+    for req in db.scalars(select(Request)).all():
+        if req.status == transitions.APPROVED:
+            req.status = transitions.DONE
+    for row in db.scalars(
+        select(StageJob).where(StageJob.status == "running")
+    ).all():
+        row.status = "reaped"
+        row.completed_at = now
+    db.commit()
+
+
+def test_build_slot_goes_to_older_pipeline_before_newer_preview(
+    client, monkeypatch
+):
+    monkeypatch.setattr(settings, "BUILD_CAP", 1)
+    monkeypatch.setattr(settings, "KUBE_JOB_CAP", 10)
+    monkeypatch.setattr(settings, "preview_enabled", lambda: True)
+    monkeypatch.setattr(settings, "app_deploy_enabled", lambda: False)
+    runner, fake = make_runner()
+    monkeypatch.setattr(runner, "_last_graded_sha", lambda *_args: "a" * 40)
+    with SessionLocal() as db:
+        _clear_scheduler_candidates(db)
+
+    older = approved_request(client, title="Older pipeline build")
+    newer = approved_request(client, title="Newer preview build")
+    with SessionLocal() as db:
+        _make_pipeline_build_ready(db, older["id"])
+        _make_preview_build_ready(db, newer["id"])
+        db.commit()
+
+        assert cost.queue_position(db, older["id"]) is None
+        assert cost.queue_position(db, newer["id"]) == 1
+        runner.tick(db)
+
+        running = db.scalars(
+            select(StageJob).where(
+                StageJob.status == "running",
+                StageJob.request_id.in_((older["id"], newer["id"])),
+            )
+        ).all()
+
+    assert [(row.request_id, row.role, row.stage) for row in running] == [
+        (older["id"], "stage", "red")
+    ]
+    assert [manifest["metadata"]["name"] for manifest in fake.creations] == [
+        job_name(older["ref"], "red", 1)
+    ]
+
+
+def test_preview_backlog_cannot_starve_older_pipeline_build(client, monkeypatch):
+    monkeypatch.setattr(settings, "BUILD_CAP", 1)
+    monkeypatch.setattr(settings, "KUBE_JOB_CAP", 20)
+    monkeypatch.setattr(settings, "preview_enabled", lambda: True)
+    monkeypatch.setattr(settings, "app_deploy_enabled", lambda: False)
+    runner, fake = make_runner()
+    monkeypatch.setattr(runner, "_last_graded_sha", lambda *_args: "b" * 40)
+    with SessionLocal() as db:
+        _clear_scheduler_candidates(db)
+
+    holder = approved_request(client, title="Existing build-slot holder")
+    older = approved_request(client, title="Pipeline waiting behind holder")
+    previews = [
+        approved_request(client, title=f"Sustained preview backlog {index}")
+        for index in range(3)
+    ]
+    with SessionLocal() as db:
+        holder_req = db.get(Request, holder["id"])
+        holder_req.stage = "deploy"
+        holder_req.gate = transitions.GATE_APPROVE_DEPLOY
+        now = utcnow()
+        holder_job = StageJob(
+            request_id=holder_req.id,
+            stage="deploy",
+            attempt=1,
+            role="build",
+            job_name=f"{holder_req.ref.lower()}-build-holder",
+            status="running",
+            deadline_at=now + timedelta(minutes=5),
+        )
+        db.add(holder_job)
+        _make_pipeline_build_ready(db, older["id"])
+        for preview in previews:
+            _make_preview_build_ready(db, preview["id"])
+        db.commit()
+
+        for _ in range(3):
+            runner.tick(db)
+            assert not db.scalars(
+                select(StageJob).where(
+                    StageJob.request_id.in_(
+                        [older["id"], *(preview["id"] for preview in previews)]
+                    ),
+                    StageJob.status == "running",
+                )
+            ).all()
+
+        holder_job.status = "succeeded"
+        holder_job.completed_at = utcnow()
+        db.commit()
+        runner.tick(db)
+
+        started = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id.in_(
+                    [older["id"], *(preview["id"] for preview in previews)]
+                ),
+                StageJob.status == "running",
+            )
+        ).all()
+
+    assert [(row.request_id, row.role, row.stage) for row in started] == [
+        (older["id"], "stage", "red")
+    ]
+    assert [manifest["metadata"]["name"] for manifest in fake.creations] == [
+        job_name(older["ref"], "red", 1)
+    ]
+
+
+def test_finished_newer_build_stage_cannot_keep_slot_for_its_gate(
+    client, monkeypatch
+):
+    monkeypatch.setattr(settings, "BUILD_CAP", 1)
+    monkeypatch.setattr(settings, "KUBE_JOB_CAP", 10)
+    runner, fake = make_runner()
+    with SessionLocal() as db:
+        _clear_scheduler_candidates(db)
+
+    older = approved_request(client, title="Older build waiting for slot")
+    newer = approved_request(client, title="Newer build finishing stage")
+    with SessionLocal() as db:
+        _make_pipeline_build_ready(db, older["id"])
+        _make_pipeline_build_ready(db, newer["id"])
+        db.commit()
+        newer_req = db.get(Request, newer["id"])
+        assert runner._spawn_next(db, newer_req, []) is True
+
+    newer_stage_name = job_name(newer["ref"], "red", 1)
+    fake.finish(newer_stage_name, stage_ok())
+    with SessionLocal() as db:
+        runner.tick(db)
+        running = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id.in_((older["id"], newer["id"])),
+                StageJob.status == "running",
+            )
+        ).all()
+
+    assert [(row.request_id, row.role, row.stage) for row in running] == [
+        (older["id"], "stage", "red")
+    ]
+    assert [manifest["metadata"]["name"] for manifest in fake.creations] == [
+        newer_stage_name,
+        job_name(older["ref"], "red", 1),
+    ]
+
+
+def test_review_to_build_rewind_is_classified_as_build_slot_work(
+    client, monkeypatch
+):
+    monkeypatch.setattr(settings, "BUILD_CAP", 1)
+    monkeypatch.setattr(settings, "KUBE_JOB_CAP", 10)
+    runner, fake = make_runner()
+    with SessionLocal() as db:
+        _clear_scheduler_candidates(db)
+
+    holder = approved_request(client, title="Rewind build-slot holder")
+    rewind = approved_request(client, title="Review sent back to build")
+    with SessionLocal() as db:
+        now = utcnow()
+        holder_req = db.get(Request, holder["id"])
+        holder_req.stage = "deploy"
+        holder_req.gate = transitions.GATE_APPROVE_DEPLOY
+        db.add(
+            StageJob(
+                request_id=holder_req.id,
+                stage="deploy",
+                attempt=1,
+                role="build",
+                job_name=f"{holder_req.ref.lower()}-rewind-holder",
+                status="running",
+                deadline_at=now + timedelta(minutes=5),
+            )
+        )
+        req = db.get(Request, rewind["id"])
+        req.stage = "build"
+        req.gate = None
+        req.stage_entered_at = now
+        old = now - timedelta(minutes=1)
+        db.add_all(
+            [
+                StageJob(
+                    request_id=req.id,
+                    stage=stage,
+                    attempt=1,
+                    role=role,
+                    job_name=f"{req.ref.lower()}-{stage}-{role}-before-rewind",
+                    status="succeeded",
+                    created_at=old,
+                    completed_at=old,
+                    deadline_at=old,
+                )
+                for stage, role in (
+                    ("architecture", "gate"),
+                    ("red", "gate"),
+                    ("green", "gate"),
+                    ("review", "stage"),
+                )
+            ]
+        )
+        db.commit()
+
+        assert cost.queue_position(db, req.id) == 1
+        runner.tick(db)
+        assert not db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == req.id,
+                StageJob.status == "running",
+            )
+        ).all()
+
+    assert fake.creations == []
+
+
+def test_preview_capacity_wait_does_not_reserve_build_queue_position(
+    client, monkeypatch
+):
+    monkeypatch.setattr(settings, "BUILD_CAP", 1)
+    monkeypatch.setattr(settings, "KUBE_JOB_CAP", 10)
+    monkeypatch.setattr(settings, "PREVIEW_CAP", 1)
+    monkeypatch.setattr(settings, "preview_enabled", lambda: True)
+    monkeypatch.setattr(settings, "app_deploy_enabled", lambda: False)
+    runner, fake = make_runner()
+    with SessionLocal() as db:
+        _clear_scheduler_candidates(db)
+
+    active = approved_request(client, title="Active preview environment")
+    blocked = approved_request(client, title="Preview waiting for environment")
+    pipeline = approved_request(client, title="Pipeline behind preview-cap waiter")
+    with SessionLocal() as db:
+        _make_preview_build_ready(db, active["id"])
+        _make_preview_build_ready(db, blocked["id"])
+        now = utcnow()
+        db.add(
+            StageJob(
+                request_id=active["id"],
+                stage="preview",
+                attempt=1,
+                role="pdeploy",
+                job_name=f"{active['ref'].lower()}-active-preview",
+                status="succeeded",
+                deadline_at=now,
+                completed_at=now,
+                envelope={"round": 0, "digest": "sha256:" + "c" * 64},
+            )
+        )
+        db.commit()
+
+        assert cost.queue_position(db, blocked["id"]) is None
+        assert cost.queue_position(db, pipeline["id"]) is None
+        runner.tick(db)
+
+        pipeline_job = db.scalar(
+            select(StageJob).where(
+                StageJob.request_id == pipeline["id"],
+                StageJob.status == "running",
+            )
+        )
+
+    assert pipeline_job is not None and pipeline_job.stage == "architecture"
+    assert [manifest["metadata"]["name"] for manifest in fake.creations] == [
+        job_name(pipeline["ref"], "architecture", 1)
+    ]
+
+
+def test_preview_build_spawn_respects_per_app_kube_cap(client, monkeypatch):
+    monkeypatch.setattr(settings, "KUBE_JOB_CAP", 10)
+    monkeypatch.setattr(settings, "PER_APP_CAP", 2)
+    monkeypatch.setattr(settings, "preview_enabled", lambda: True)
+    runner, fake = make_runner()
+    app_id = client.get("/api/apps").json()[0]["id"]
+    requests = [
+        approved_request(client, title=f"Preview fair share {i}", app_id=app_id)
+        for i in range(3)
+    ]
+    now = utcnow()
+    with SessionLocal() as db:
+        for request in requests[:2]:
+            req = db.get(Request, request["id"])
+            started = transitions.apply(
+                db,
+                req,
+                "begin_preview",
+                actor=transitions.FACTORY,
+                epoch=get_elector().epoch,
+            )
+            assert isinstance(started, transitions.Win)
+            db.add(
+                StageJob(
+                    request_id=request["id"],
+                    stage="preview",
+                    attempt=1,
+                    role="pbuild",
+                    job_name=f"preview-cap-{request['id']}",
+                    status="running",
+                    created_at=now,
+                    deadline_at=now + timedelta(minutes=5),
+                    envelope={"round": 0},
+                )
+            )
+        target = db.get(Request, requests[2]["id"])
+        started = transitions.apply(
+            db,
+            target,
+            "begin_preview",
+            actor=transitions.FACTORY,
+            epoch=get_elector().epoch,
+        )
+        assert isinstance(started, transitions.Win)
+        db.commit()
+        moved = []
+        runner._spawn_preview_build(db, target, "preview-cap", 0, moved)
+
+    assert fake.creations == []
+    assert moved == [f"{requests[2]['ref']}: waiting for a build slot"]
+    assert client.get(f"/api/requests/{requests[2]['id']}/cost").json()[
+        "queue_position"
+    ] is not None
+
+    for request in requests:
+        client.post(
+            f"/api/requests/{request['id']}/cancel", json={"operator_id": 1}
+        )
+    with SessionLocal() as db:
+        for row in db.scalars(
+            select(StageJob).where(
+                StageJob.request_id.in_([request["id"] for request in requests]),
+                StageJob.status == "running",
+            )
+        ).all():
+            row.status = "reaped"
+            row.completed_at = utcnow()
+        db.commit()
 
 
 # ---------- the four AGENTS.md §7 witness behaviors, kube edition ----------
@@ -489,6 +912,55 @@ def test_human_retry_grants_one_fresh_attempt(client):
                     and not m["metadata"]["name"].endswith("-gate")]
     assert red_attempts == [f"sf-{ref}-red-1", f"sf-{ref}-red-2", f"sf-{ref}-red-3"]
     assert out["needs_human"] is True  # the fresh attempt also failed → back to a human
+
+
+def test_request_attempt_budget_blocks_a_further_human_retry(client, monkeypatch):
+    monkeypatch.setattr(settings, "REQUEST_ATTEMPT_BUDGET", 2)
+    runner, fake = make_runner()
+    d = _approved(client, "Kube lifetime attempt budget")
+    now = utcnow()
+    with SessionLocal() as db:
+        req = db.get(Request, d["id"])
+        db.add_all(
+            [
+                StageJob(
+                    request_id=req.id,
+                    stage="architecture",
+                    attempt=attempt,
+                    role="stage",
+                    job_name=f"{req.ref.lower()}-architecture-{attempt}",
+                    status="failed",
+                    created_at=now - timedelta(minutes=attempt),
+                    completed_at=now,
+                    deadline_at=now + timedelta(minutes=5),
+                )
+                for attempt in (1, 2)
+            ]
+        )
+        escalated = transitions.apply(
+            db,
+            req,
+            "escalate",
+            actor=transitions.FACTORY,
+            params={"reason": "prior attempts failed"},
+            epoch=get_elector().epoch,
+        )
+        assert isinstance(escalated, transitions.Win)
+        db.commit()
+
+    response = client.post(
+        f"/api/requests/{d['id']}/retry",
+        json={"operator_id": 1, "note": "one more"},
+    )
+    assert response.status_code == 200
+    with SessionLocal() as db:
+        req = db.get(Request, d["id"])
+        runner._spawn_next(db, req, [])
+
+    out = client.get(f"/api/requests/{d['id']}").json()
+    assert out["needs_human"] is True
+    assert "attempt budget exhausted" in out["needs_human_reason"].lower()
+    assert not any(d["ref"].lower() in m["metadata"]["name"] for m in fake.creations)
 
 
 # ---------- final-review recovery and hardening fixes ----------
@@ -1095,6 +1567,24 @@ def test_wall_clock_timeout_captures_running_logs(client, monkeypatch):
         assert row.status == "timed_out"
         assert "mid-flight" in (row.logs_tail or "")  # captured BEFORE delete
     assert name in fake.deletions
+
+
+def test_captured_logs_tail_is_capped_by_utf8_bytes(client, monkeypatch):
+    monkeypatch.setattr(settings, "LOGS_TAIL_MAX", 5)
+    runner, fake = make_runner()
+    d = _approved(client, "Kube bounded log tail")
+    name = f"sf-{d['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        req = db.get(Request, d["id"])
+        assert runner._spawn_next(db, req, []) is True
+    fake.finish(name, stage_ok(), logs="0123456789")
+
+    with SessionLocal() as db:
+        req = db.get(Request, d["id"])
+        row = db.scalar(select(StageJob).where(StageJob.job_name == name))
+        runner._observe(db, req, row, [])
+        assert row.logs_tail == "56789"
+        assert len(row.logs_tail.encode()) <= settings.LOGS_TAIL_MAX
 
 
 def test_reap_captures_running_logs(client):

@@ -1,6 +1,8 @@
 """Supervision revamp backend (spec 2026-06-12): step events, run-state,
 steer, trace, mission aggregate, gate evidence."""
 
+from datetime import timedelta
+
 from helpers import approved_request, submitted_request
 
 
@@ -187,14 +189,26 @@ def test_steer_409_when_not_in_flight(client):
 
 def test_trace_keyset(client):
     hero = approved_request(client, title="Trace probe")
-    client.post("/api/simulator/tick")
+    for _ in range(3):
+        client.post("/api/simulator/tick")
 
-    page = client.get(f"/api/requests/{hero['id']}/trace").json()
+    page = client.get(
+        f"/api/requests/{hero['id']}/trace", params={"limit": 2}
+    ).json()
     assert page["items"] and page["cursor"] > 0
-    kinds = {e["kind"] for e in page["items"]}
-    assert "step_summary" in kinds and "gate_event" in kinds
     ids = [e["id"] for e in page["items"]]
     assert ids == sorted(ids), "ascending within the page"
+    assert page["before_cursor"] == ids[0]
+
+    older = client.get(
+        f"/api/requests/{hero['id']}/trace",
+        params={"before": page["before_cursor"], "limit": 2},
+    ).json()
+    older_ids = [event["id"] for event in older["items"]]
+    assert older_ids and max(older_ids) < page["before_cursor"]
+    assert not set(older_ids) & set(ids)
+    kinds = {event["kind"] for event in [*older["items"], *page["items"]]}
+    assert "step_summary" in kinds
 
     cursor = page["cursor"]
     assert client.get(f"/api/requests/{hero['id']}/trace",
@@ -295,6 +309,59 @@ def test_run_state_slow_health(client, monkeypatch):
     monkeypatch.setattr(settings, "RUN_SLOW_AFTER_SECONDS", 0.0)
     with SessionLocal() as db:
         r = db.get(Request, hero["id"])
+        assert run_state(db, r)["health"] == "slow"
+
+
+def test_kube_run_state_uses_job_deadline_not_step_recency(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import ProgressEvent, Request, StageJob, utcnow
+    from app.supervision import run_state
+
+    monkeypatch.setenv("FACTORY_RUNNER", "kube")
+    hero = approved_request(client, title="Kube deadline health probe")
+    now = utcnow()
+    with SessionLocal() as db:
+        r = db.get(Request, hero["id"])
+        r.stage_entered_at = now - timedelta(minutes=35)
+        db.add(
+            ProgressEvent(
+                request_id=r.id,
+                subject_id=r.app_id,
+                kind="step_summary",
+                stage="architecture",
+                title="architecture agent Job spawned",
+                payload={"step": 1, "of": 2, "label": "architecture agent running"},
+                created_at=now - timedelta(minutes=34),
+            )
+        )
+        job = StageJob(
+            request_id=r.id,
+            stage="architecture",
+            attempt=1,
+            role="stage",
+            job_name=f"sf-{r.ref.lower()}-architecture-1",
+            status="running",
+            created_at=now - timedelta(minutes=34),
+            deadline_at=now + timedelta(minutes=1),
+        )
+        db.add(job)
+        db.add(
+            StageJob(
+                request_id=r.id,
+                stage="red",
+                attempt=1,
+                role="stage",
+                job_name=f"sf-{r.ref.lower()}-stale-red-1",
+                status="running",
+                created_at=now,
+                deadline_at=now - timedelta(seconds=1),
+            )
+        )
+        db.commit()
+
+        assert run_state(db, r)["health"] == "healthy"
+        job.deadline_at = now - timedelta(seconds=1)
+        db.commit()
         assert run_state(db, r)["health"] == "slow"
 
 

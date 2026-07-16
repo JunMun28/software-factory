@@ -6,12 +6,22 @@ and the log is never UPDATEd.
 A steer note is "consumed" when a later step_summary lists its id in
 payload.acked_steer_ids; pending notes are computed, never flagged in place.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import settings, transitions
-from .models import PIPELINE_STAGES, STEP_PLANS, ProgressEvent, Request, utcnow
+from .agent_exec import runner_mode
+from .kube_jobs import REQUEST_STAGE
+from .models import (
+    PIPELINE_STAGES,
+    STEP_PLANS,
+    ProgressEvent,
+    Request,
+    StageJob,
+    utcnow,
+)
 
 
 def _aware(dt: datetime | None) -> datetime | None:
@@ -78,7 +88,32 @@ def run_state(db: Session, r: Request) -> dict | None:
         return {"step": 0, "of": plan_len, "label": None,
                 "health": "no_signal", "seconds_since_event": seconds}
     p = ev.payload or {}
-    health = "healthy" if seconds < settings.RUN_SLOW_AFTER_SECONDS else "slow"
+    if runner_mode() == "kube":
+        now = utcnow()
+        kube_stages = [
+            stage for stage, request_stage in REQUEST_STAGE.items()
+            if request_stage == r.stage
+        ]
+        entered_at = _aware(r.stage_entered_at)
+        job = db.scalar(
+            select(StageJob)
+            .where(
+                StageJob.request_id == r.id,
+                StageJob.stage.in_(kube_stages),
+                StageJob.status == "running",
+                StageJob.role.in_(("stage", "gate")),
+                StageJob.created_at >= entered_at,
+            )
+            .order_by(StageJob.id.desc())
+        )
+        deadline = _aware(job.deadline_at) if job is not None else None
+        if deadline is None and r.stage_entered_at is not None:
+            deadline = _aware(r.stage_entered_at) + timedelta(
+                seconds=settings.STAGE_WALL_CLOCK
+            )
+        health = "healthy" if deadline is None or now < deadline else "slow"
+    else:
+        health = "healthy" if seconds < settings.RUN_SLOW_AFTER_SECONDS else "slow"
     return {"step": p.get("step", 0), "of": p.get("of", plan_len),
             "label": p.get("label"), "health": health,
             "seconds_since_event": seconds}

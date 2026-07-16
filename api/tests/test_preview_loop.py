@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+import pytest
 from fake_kube import FakeKubeClient, pass_verdict
 from helpers import approved_request
 from sqlalchemy import select
@@ -14,6 +15,12 @@ from app.models import AuditEvent, Intent, ProgressEvent, Request, StageJob, utc
 
 DIGEST = "sha256:" + "d" * 64
 SHA = "a" * 40
+
+
+@pytest.fixture(autouse=True)
+def _legacy_preview_tests_do_not_share_a_fairness_pool(monkeypatch):
+    """Each preview test uses a fresh fake cluster over the shared test DB."""
+    monkeypatch.setattr(settings, "PER_APP_CAP", 10_000)
 
 
 def _enable_preview(monkeypatch, tmp_path) -> None:

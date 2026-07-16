@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import transitions
+from .. import cost, transitions
 from ..api_helpers import get_request, to_out
 from ..db import get_db
 from ..events import emit
@@ -34,6 +34,12 @@ from ..supervision import classify
 from .operators import resolve_operator
 
 router = APIRouter()
+
+
+class TracePage(FeedPage):
+    """Forward polling cursor plus an exclusive cursor for older trace rows."""
+
+    before_cursor: int | None = None
 
 # Firehose guard (ADR 0014): step-level kinds render only in the per-request
 # trace; the channel feed stays milestone-level so app surfaces stay calm.
@@ -138,21 +144,44 @@ def subject_feed(key: str, after: int = 0, limit: int = 100, db: Session = Depen
     return FeedPage(items=items, cursor=cursor)
 
 
-@router.get("/api/requests/{rid}/trace", response_model=FeedPage)
-def request_trace(rid: int, after: int = 0, limit: int = 200, db: Session = Depends(get_db)):
+@router.get("/api/requests/{rid}/trace", response_model=TracePage)
+def request_trace(
+    rid: int,
+    after: int = 0,
+    before: int | None = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
     """The per-request trace (ADR 0014): with no cursor, the LATEST `limit`
     items (ascending); with ?after=, only newer. Same keyset shape as the
     subject feed, so the poll seam is identical."""
     get_request(db, rid)  # 404 before reading the log
-    limit = min(limit, 500)
+    if after > 0 and before is not None:
+        raise HTTPException(400, "Use either after or before, not both")
+    limit = max(1, min(limit, 500))
     base = joined_events(db).filter(ProgressEvent.request_id == rid)
     if after > 0:
         rows = base.filter(ProgressEvent.id > after).order_by(ProgressEvent.id).limit(limit).all()
     else:
-        rows = list(reversed(base.order_by(ProgressEvent.id.desc()).limit(limit).all()))
+        if before is not None:
+            base = base.filter(ProgressEvent.id < before)
+        newest = base.order_by(ProgressEvent.id.desc()).limit(limit + 1).all()
+        has_older = len(newest) > limit
+        rows = list(reversed(newest[:limit]))
     items = serialize_events(rows)
     cursor = items[-1].id if items else after
-    return FeedPage(items=items, cursor=cursor)
+    before_cursor = items[0].id if after == 0 and items and has_older else None
+    return TracePage(items=items, cursor=cursor, before_cursor=before_cursor)
+
+
+@router.get("/api/requests/{rid}/cost")
+def request_cost(rid: int, db: Session = Depends(get_db)):
+    return cost.request_cost(db, get_request(db, rid))
+
+
+@router.get("/api/cost/fleet")
+def fleet_cost(db: Session = Depends(get_db)):
+    return cost.fleet_cost(db)
 
 
 @router.get("/api/requests/{rid}/jobs", response_model=JobsOut)

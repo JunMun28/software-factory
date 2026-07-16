@@ -4,21 +4,29 @@
 # termination message and structured NDJSON on stdout.
 #
 # Output contract (B1 parsers):
-#   stage envelope: {"v":1,"outcome":"ok"|"fail","detail":str,"sha":str|null}
+#   stage envelope: {"v":1,"outcome":"ok"|"fail","detail":str,"sha":str|null,
+#                    "usage":{"tokens_in":int,"tokens_out":int}?}
 #   NDJSON logs:    {"type":"note"|"review"|"pytest","text":str} per line
 set -uo pipefail
 
 TERMLOG="${SF_TERMLOG:-/dev/termination-log}"
+USAGE_JSON=""
 write_envelope() { printf '%s' "$1" > "$TERMLOG" 2>/dev/null || printf 'ENVELOPE %s\n' "$1"; }
 note() { jq -cn --arg t "$1" '{type:"note",text:$t}'; }
+stage_envelope() {
+  jq -cn --arg o "$1" --arg d "$2" --arg s "$3" \
+    --argjson u "${USAGE_JSON:-null}" \
+    '{v:1,outcome:$o,detail:$d,sha:(if $s == "" then null else $s end)}
+     + (if $u == null then {} else {usage:$u} end)'
+}
 die_stage() {
   note "$1"
-  write_envelope "$(jq -cn --arg d "$1" '{v:1,outcome:"fail",detail:$d,sha:null}')"
+  write_envelope "$(stage_envelope "fail" "$1" "")"
   exit 1
 }
 
 : "${SF_REF:?}" "${SF_STAGE:?}" "${SF_ROLE:?}" "${SF_REPO_URL:?}" "${SF_BRANCH:?}"
-REPO=/workspace/repo
+REPO="${SF_REPO_DIR:-/workspace/repo}"
 
 note "cloning $SF_REPO_URL ($SF_BRANCH)"
 if [ -n "${SF_GITHUB_TOKEN:-}" ] && [[ "$SF_REPO_URL" == https://github.com/* ]]; then
@@ -53,7 +61,7 @@ if [ "$SF_ROLE" = "gate" ]; then
 fi
 
 # ---------------- stage ----------------
-PROMPT_FILE="/opt/sf/prompts/${SF_STAGE}.md"
+PROMPT_FILE="${SF_PROMPT_DIR:-/opt/sf/prompts}/${SF_STAGE}.md"
 [ -f "$PROMPT_FILE" ] || die_stage "unknown stage $SF_STAGE"
 PROMPT="$(cat "$PROMPT_FILE")"
 if [ -n "${SF_GATE_FEEDBACK:-}" ]; then
@@ -80,14 +88,54 @@ ${SF_PREVIEW_FEEDBACK}"
 fi
 
 OUT=/workspace/agent-output.txt
+OUT="${SF_OUTPUT_FILE:-$OUT}"
 CLI="${SF_CLI:-codex}"
+
+capture_usage() {
+  if [ "$CLI" = "opencode" ]; then
+    jq -Rsc '
+      [split("\n")[] | fromjson? | .part? | .tokens?
+       | select(type == "object")] as $rows
+      | ($rows | map(.input // .input_tokens // 0) | add // 0) as $tin
+      | ($rows | map(.output // .output_tokens // 0) | add // 0) as $tout
+      | if ($tin + $tout) > 0
+        then {tokens_in:$tin,tokens_out:$tout}
+        else empty
+        end
+    ' "$OUT"
+    return
+  fi
+  if [ "$CLI" = "codex" ]; then
+    lowered="$(tr '[:upper:]' '[:lower:]' < "$OUT")"
+    tin="$(printf '%s\n' "$lowered" | sed -nE 's/.*input tokens[^0-9]*([0-9][0-9,]*).*/\1/p' | tail -1 | tr -d ',')"
+    tout="$(printf '%s\n' "$lowered" | sed -nE 's/.*output tokens[^0-9]*([0-9][0-9,]*).*/\1/p' | tail -1 | tr -d ',')"
+    total="$(printf '%s\n' "$lowered" | awk '
+      /tokens used/ {
+        if (match($0, /[0-9][0-9,]*/)) print substr($0, RSTART, RLENGTH)
+        else next_line=1
+        next
+      }
+      next_line && match($0, /[0-9][0-9,]*/) {
+        print substr($0, RSTART, RLENGTH); next_line=0
+      }
+    ' | tail -1 | tr -d ',')"
+    jq -cn --arg i "$tin" --arg o "$tout" --arg t "$total" '
+      {} + (if $i == "" then {} else {tokens_in:($i|tonumber)} end)
+         + (if $o == "" then {} else {tokens_out:($o|tonumber)} end)
+         + (if $t == "" then {} else {tokens_total:($t|tonumber)} end)
+      | if length == 0 then empty else . end
+    '
+  fi
+}
+
 case "$CLI" in
   codex)
-    export CODEX_HOME=/workspace/.codex
+    export CODEX_HOME="${SF_CODEX_HOME:-/workspace/.codex}"
     mkdir -p "$CODEX_HOME"
-    if [ -f /secrets/codex/auth.json ]; then
+    CODEX_AUTH_FILE="${SF_CODEX_AUTH_FILE:-/secrets/codex/auth.json}"
+    if [ -f "$CODEX_AUTH_FILE" ]; then
       # copied, not mounted: codex refreshes tokens in place and the mount is read-only
-      cp /secrets/codex/auth.json "$CODEX_HOME/auth.json"
+      cp "$CODEX_AUTH_FILE" "$CODEX_HOME/auth.json"
     else
       die_stage "SF_CLI=codex but no /secrets/codex/auth.json — run 'task sync-codex-auth'"
     fi
@@ -99,15 +147,19 @@ case "$CLI" in
     # the gate grades the pinned SHA on the orchestrator's own repo).
     SANDBOX=danger-full-access
     codex exec --skip-git-repo-check -s "$SANDBOX" --cd "$REPO" \
-      ${SF_MODEL:+-m "$SF_MODEL"} "$PROMPT" > "$OUT" 2>&1 \
-      || die_stage "codex exec failed: $(tail -c 400 "$OUT")"
+      ${SF_MODEL:+-m "$SF_MODEL"} "$PROMPT" > "$OUT" 2>&1
+    CLI_RC=$?
+    USAGE_JSON="$(capture_usage)"
+    [ "$CLI_RC" -eq 0 ] || die_stage "codex exec failed: $(tail -c 400 "$OUT")"
     ;;
   opencode)
     CFG=/opt/sf/opencode/factory-write.json
     [ "$SF_STAGE" = "review" ] && CFG=/opt/sf/opencode/factory-readonly.json
     OPENCODE_CONFIG="$CFG" opencode run --format json --dir "$REPO" \
-      ${SF_MODEL:+-m "$SF_MODEL"} "$PROMPT" > "$OUT" 2>&1 \
-      || die_stage "opencode run failed: $(tail -c 400 "$OUT")"
+      ${SF_MODEL:+-m "$SF_MODEL"} "$PROMPT" > "$OUT" 2>&1
+    CLI_RC=$?
+    USAGE_JSON="$(capture_usage)"
+    [ "$CLI_RC" -eq 0 ] || die_stage "opencode run failed: $(tail -c 400 "$OUT")"
     ;;
   *)
     die_stage "unsupported SF_CLI '$CLI'"
@@ -123,8 +175,7 @@ if [ "$SF_STAGE" = "review" ]; then
   # ("I would not APPROVE") must not count as a verdict
   VERDICT="$(grep -m1 -oE '^(APPROVE|REQUEST-CHANGES)\b' "$OUT" || echo 'no explicit verdict')"
   SHA="$(git rev-parse HEAD)"
-  write_envelope "$(jq -cn --arg d "$VERDICT" --arg s "$SHA" \
-    '{v:1,outcome:"ok",detail:$d,sha:$s}')"
+  write_envelope "$(stage_envelope "ok" "$VERDICT" "$SHA")"
   exit 0
 fi
 
@@ -133,4 +184,4 @@ git commit -q -m "$SF_REF: $SF_STAGE (attempt ${SF_ATTEMPT:-1})" 2>/dev/null \
   || note "stage produced no changes — the gate will judge the unchanged SHA"
 git push -q origin "HEAD:$SF_BRANCH" >/dev/null 2>&1 || die_stage "push to $SF_BRANCH failed"
 SHA="$(git rev-parse HEAD)"
-write_envelope "$(jq -cn --arg s "$SHA" '{v:1,outcome:"ok",detail:"stage complete",sha:$s}')"
+write_envelope "$(stage_envelope "ok" "stage complete" "$SHA")"

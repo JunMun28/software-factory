@@ -40,6 +40,7 @@ from sqlalchemy.orm import Session
 
 from . import (
     acceptance,
+    cost,
     deploy_manifests,
     intents,
     settings,
@@ -64,7 +65,6 @@ from .kube_jobs import (
 from .leader import get_elector
 from .log_scrub import scrub_secrets
 from .models import (
-    PIPELINE_STAGES,
     AuditEvent,
     Intent,
     PreviewFeedback,
@@ -78,7 +78,6 @@ from .ws_exec import _git
 
 log = logging.getLogger("factory.kube")
 
-LOGS_TAIL = 20_000  # chars of captured NDJSON persisted per Job
 GATE_INFRA_LIMIT = int(
     __import__("os").environ.get("FACTORY_GATE_INFRA_LIMIT", "3")
 )
@@ -120,6 +119,14 @@ _QUOTA_SIGNATURES = (
     "insufficient_quota",
     "quota exceeded",
 )
+
+
+def _bounded_logs_tail(logs: str | None) -> str | None:
+    """Return a UTF-8 tail no larger than the configured byte ceiling."""
+    if not logs or settings.LOGS_TAIL_MAX <= 0:
+        return None
+    raw = logs.encode("utf-8")
+    return raw[-settings.LOGS_TAIL_MAX :].decode("utf-8", errors="ignore") or None
 
 
 def _looks_like_quota(envelope: dict | None) -> bool:
@@ -213,8 +220,11 @@ class KubeJobRunner:
     def tick(self, db: Session) -> list[str]:
         moved: list[str] = []
         defer_spawn: set[int] = set()
+        ready_gates: dict[int, tuple[str, int]] = {}
         self._reap_dead_requests(db, moved)
-        self._drive_build_work(db, moved)
+        # Observe/drain every existing build lane before allocating anything.
+        # New work is started only by the single ordered candidate pass below.
+        defer_spawn.update(self._drive_build_work(db, moved))
         self._reap_finished_previews(db, moved)
         self._sweep_preview_ttl(db, moved)
         for sj in db.scalars(
@@ -236,6 +246,8 @@ class KubeJobRunner:
                 continue
             try:
                 should_defer_spawn = self._observe(db, req, sj, moved)
+                if sj.role == "stage" and sj.status == "succeeded":
+                    ready_gates[req.id] = (sj.stage, sj.attempt)
                 if should_defer_spawn or sj.status in ("failed", "timed_out", "infra"):
                     # Failure and infra recovery are next-tick work. This is
                     # especially important for deterministic-name 409s: the
@@ -252,37 +264,47 @@ class KubeJobRunner:
                 self._observe_failures.pop(sj.job_name, None)
                 req = db.get(Request, sj.request_id)
                 self._escalate(db, req, f"Job observation failed for {sj.job_name}: {exc}")
-        running = db.scalars(
-            select(StageJob).where(
-                StageJob.status == "running",
-                StageJob.role.in_(("stage", "gate", "pbuild")),
-            )
-        ).all()
-        busy = {r.request_id for r in running} | defer_spawn
-        capacity = settings.KUBE_JOB_CAP - len(running)
-        runnable = db.scalars(
-            select(Request)
-            .where(
-                Request.status == transitions.APPROVED,
-                ~Request.needs_human,
-                Request.gate.is_(None),
-                Request.stage.in_(PIPELINE_STAGES),
-            )
-            .order_by(Request.id)  # oldest-runnable-first fairness (spec §3.6)
-        ).all()
-        for req in runnable:
-            if capacity <= 0:
-                break
-            if req.id in busy:
+        pool = cost.scheduling_pool(db, extra_busy=defer_spawn)
+        for candidate in cost.scheduling_candidates(db):
+            req = candidate.request
+            if req.id in pool.busy:
+                continue
+            if not pool.can_start(candidate):
+                if candidate.uses_build_slot:
+                    self._note_build_wait(db, req, moved)
                 continue
             try:
-                if self._spawn_next(db, req, moved):
-                    capacity -= 1
+                if self._start_scheduling_candidate(
+                    db, candidate, moved, ready_gate=ready_gates.get(req.id)
+                ):
+                    pool.record_start(candidate)
             except Exception as exc:
-                log.exception("kube spawn failed for %s", req.ref)
+                log.exception("kube %s spawn failed for %s", candidate.kind, req.ref)
                 db.rollback()
-                self._escalate(db, req, f"Pipeline spawn failed: {exc}")
+                self._escalate(db, req, f"Scheduler spawn failed: {exc}")
         return moved
+
+    def _start_scheduling_candidate(
+        self,
+        db: Session,
+        candidate: cost.SchedulingCandidate,
+        moved: list[str],
+        *,
+        ready_gate: tuple[str, int] | None = None,
+    ) -> bool:
+        req = candidate.request
+        if candidate.kind == "pipeline" and ready_gate is not None:
+            stage, attempt = ready_gate
+            return self._spawn_gate(db, req, stage, attempt, moved)
+        if candidate.kind in ("pipeline", "pipeline_repair"):
+            return self._spawn_next(db, req, moved)
+        if candidate.kind in ("pbuild", "pdeploy"):
+            if not settings.preview_enabled():
+                return False
+            return self._drive_one_preview(db, req, moved, allow_spawns=True)
+        if candidate.kind in ("build", "deploy"):
+            return self._drive_one_deploy(db, req, moved, allow_spawns=True)
+        raise ValueError(f"unknown scheduling candidate kind {candidate.kind!r}")
 
     # ---------- reap: cancel (or any exit from the runnable set) wins ----------
     def _reap_dead_requests(self, db: Session, moved: list[str]) -> None:
@@ -302,7 +324,7 @@ class KubeJobRunner:
                 continue
             try:
                 view = self.client.get_job(sj.job_name, capture=True)
-                sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+                sj.logs_tail = _bounded_logs_tail(view.logs)
                 sj.envelope = parse_envelope(view.termination_message)
                 self.client.delete_job(sj.job_name, uid=sj.job_uid)
                 sj.status = "reaped"
@@ -346,7 +368,7 @@ class KubeJobRunner:
             # first, including logs from a pod whose Job is still running.
             view = self.client.get_job(sj.job_name, capture=True)
             sj.envelope = parse_envelope(view.termination_message)
-            sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+            sj.logs_tail = _bounded_logs_tail(view.logs)
             self.client.delete_job(sj.job_name, uid=sj.job_uid)
             sj.status = "timed_out"
             sj.completed_at = now
@@ -376,7 +398,7 @@ class KubeJobRunner:
         # lifecycle and never loses an outcome (spec §5, §8)
         envelope = parse_envelope(view.termination_message)
         sj.envelope = envelope
-        sj.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+        sj.logs_tail = _bounded_logs_tail(view.logs)
         self.client.delete_job(sj.job_name, uid=sj.job_uid)
         sj.completed_at = now
         if sj.role == "gate":
@@ -417,7 +439,7 @@ class KubeJobRunner:
             sj.status = "succeeded"
             db.commit()
             moved.append(f"{req.ref}: {sj.job_name} succeeded")
-            return not self._spawn_gate(db, req, sj.stage, sj.attempt, moved)
+            return False
         infra = classify_infra(view, envelope, sj.logs_tail)
         if infra is not None:
             return self._record_stage_infra(db, req, sj, infra, moved)
@@ -903,8 +925,18 @@ class KubeJobRunner:
         return req.app.key if req.app else req.ref.lower()
 
     # ---------- pre-merge preview + requester feedback (C1) ----------
-    def _drive_build_work(self, db: Session, moved: list[str]) -> None:
-        """Drive production and preview build work in one oldest-request-first queue."""
+    def _drive_build_work(
+        self,
+        db: Session,
+        moved: list[str],
+    ) -> set[int]:
+        """Observe build lanes; tick-time starts use the shared scheduler pass."""
+        running_before = db.scalars(
+            select(StageJob).where(
+                StageJob.status == "running",
+                StageJob.role.in_(("build", "pbuild", "deploy", "pdeploy")),
+            )
+        ).all()
         requests = db.scalars(
             select(Request)
             .where(
@@ -916,14 +948,19 @@ class KubeJobRunner:
         for req in requests:
             try:
                 if req.stage == "deploy" and settings.app_deploy_enabled():
-                    self._drive_one_deploy(db, req, moved)
+                    self._drive_one_deploy(db, req, moved, allow_spawns=False)
                 elif req.stage == "preview" and settings.preview_enabled():
-                    self._drive_one_preview(db, req, moved)
+                    self._drive_one_preview(db, req, moved, allow_spawns=False)
             except Exception as exc:
                 db.rollback()
                 label = "Build/deploy" if req.stage == "deploy" else "Preview"
                 log.exception("%s driver failed for %s", label.lower(), req.ref)
                 self._escalate(db, req, f"{label} failed: {exc}")
+        return {
+            row.request_id
+            for row in running_before
+            if row.status in ("failed", "timed_out", "infra")
+        }
 
     def _drive_previews(self, db: Session, moved: list[str]) -> None:
         if not settings.preview_enabled():
@@ -942,19 +979,24 @@ class KubeJobRunner:
                 self._escalate(db, req, f"Preview failed: {exc}")
 
     def _drive_one_preview(
-        self, db: Session, req: Request, moved: list[str]
-    ) -> None:
+        self,
+        db: Session,
+        req: Request,
+        moved: list[str],
+        *,
+        allow_spawns: bool = True,
+    ) -> bool:
         slug = self._app_slug(req)
         if req.status != transitions.APPROVED:
             self._teardown_preview(db, req, slug, moved=moved, reason=req.status)
-            return
+            return False
         if req.needs_human:
-            return
+            return False
         newest = self._newest_decisive(db, req)
         action = newest.action if newest else None
         if action in ("preview_accepted", "merge_claimed"):
             if action == "merge_claimed" and self._within_merge_grace(newest):
-                return
+                return False
             res = transitions.apply_committed(
                 db,
                 req,
@@ -965,8 +1007,10 @@ class KubeJobRunner:
             )
             if isinstance(res, transitions.Loss):
                 log.info("%s: preview merge re-raise lost (%s)", req.ref, res.detail)
-            return
-        self._preview_state_machine(db, req, slug, moved)
+            return False
+        return self._preview_state_machine(
+            db, req, slug, moved, allow_spawns=allow_spawns
+        )
 
     @staticmethod
     def _within_merge_grace(audit: AuditEvent) -> bool:
@@ -1028,8 +1072,14 @@ class KubeJobRunner:
         }
 
     def _preview_state_machine(
-        self, db: Session, req: Request, slug: str, moved: list[str]
-    ) -> None:
+        self,
+        db: Session,
+        req: Request,
+        slug: str,
+        moved: list[str],
+        *,
+        allow_spawns: bool = True,
+    ) -> bool:
         round_number = req.preview_round
         rows = db.scalars(
             select(StageJob)
@@ -1058,7 +1108,7 @@ class KubeJobRunner:
         )
         if pbuild is None and not has_live_pdeploy and self._preview_slots_full(db, req):
             self._note_preview_wait(db, req, moved)
-            return
+            return False
         if pbuild is None or pbuild.status in ("failed", "timed_out", "infra"):
             if self._infra_loop_escalated(
                 db,
@@ -1069,32 +1119,35 @@ class KubeJobRunner:
                 moved,
                 label="Preview build",
             ):
-                return
-            self._spawn_preview_build(db, req, slug, round_number, moved)
-            return
+                return False
+            if not allow_spawns:
+                return False
+            return self._spawn_preview_build(db, req, slug, round_number, moved)
         if pbuild.status == "running":
-            self._observe_preview_build(
-                db, req, pbuild, slug, round_number, moved
+            return self._observe_preview_build(
+                db,
+                req,
+                pbuild,
+                slug,
+                round_number,
+                moved,
+                apply_after=allow_spawns,
             )
-            return
         pdeploy_live = pdeploy is not None and pdeploy.status in (
             "running",
             "succeeded",
         )
         if pbuild.status == "succeeded" and not pdeploy_live:
-            self._apply_preview(
-                db,
-                req,
-                slug,
-                pbuild.envelope["digest"],
-                round_number,
-                moved,
+            if not allow_spawns:
+                return False
+            return self._apply_preview(
+                db, req, slug, pbuild.envelope["digest"], round_number, moved
             )
-            return
         if pdeploy is not None and pdeploy.status == "running":
             self._observe_preview_deploy(
                 db, req, pdeploy, slug, round_number, moved
             )
+        return False
 
     def _spawn_preview_build(
         self,
@@ -1103,14 +1156,18 @@ class KubeJobRunner:
         slug: str,
         round_number: int,
         moved: list[str],
-    ) -> None:
+    ) -> bool:
+        candidate = cost.SchedulingCandidate(req, "pbuild")
+        if not cost.scheduling_pool(db).can_start(candidate):
+            self._note_build_wait(db, req, moved)
+            return False
         if self._build_slots_full(db):
             self._note_build_wait(db, req, moved)
-            return
+            return False
         sha = self._last_graded_sha(db, req)
         if not (isinstance(sha, str) and SHA40.fullmatch(sha)):
             self._escalate(db, req, "Preview source SHA could not be read from review")
-            return
+            return False
         name = deploy_manifests.preview_build_job_name(req.ref, round_number)
         intent_key = f"build_preview:{req.ref}:{sha}:r{round_number}"
         intents.begin(
@@ -1142,6 +1199,7 @@ class KubeJobRunner:
             moved,
             intent_key=intent_key,
         )
+        return True
 
     def _observe_preview_build(
         self,
@@ -1151,13 +1209,15 @@ class KubeJobRunner:
         slug: str,
         round_number: int,
         moved: list[str],
-    ) -> None:
+        *,
+        apply_after: bool = True,
+    ) -> bool:
         view = self.client.get_job(pbuild.job_name)
         now = utcnow()
         if view.phase == "running" and now < pbuild.deadline_at:
-            return
+            return False
         view = self.client.get_job(pbuild.job_name, capture=True)
-        pbuild.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+        pbuild.logs_tail = _bounded_logs_tail(view.logs)
         if (
             view.phase != "absent"
             and pbuild.job_uid
@@ -1169,7 +1229,7 @@ class KubeJobRunner:
             self.client.delete_job(pbuild.job_name, uid=pbuild.job_uid)
             db.commit()
             self._escalate(db, req, f"Preview build Job {pbuild.job_name} uid changed")
-            return
+            return False
         self.client.delete_job(pbuild.job_name, uid=pbuild.job_uid)
         pbuild.completed_at = now
         if view.phase == "running":
@@ -1178,23 +1238,23 @@ class KubeJobRunner:
             self._escalate(
                 db, req, f"Preview build Job {pbuild.job_name} exceeded its wall clock"
             )
-            return
+            return False
         if view.phase == "absent":
             pbuild.status = "infra"
             db.commit()
             moved.append(f"{req.ref}: preview build Job absent — re-running")
-            return
+            return False
         if view.phase != "succeeded":
             pbuild.status = "failed"
             db.commit()
             self._escalate(db, req, f"Preview build Job {pbuild.job_name} failed")
-            return
+            return False
         digest = parse_digest(view.termination_message)
         if digest is None:
             pbuild.status = "infra"
             db.commit()
             self._escalate(db, req, "preview image digest could not be captured")
-            return
+            return False
         pbuild.status = "succeeded"
         pbuild.envelope = {
             **(pbuild.envelope or {}),
@@ -1203,7 +1263,9 @@ class KubeJobRunner:
         }
         db.commit()
         moved.append(f"{req.ref}: preview image captured at {digest}")
-        self._apply_preview(db, req, slug, digest, round_number, moved)
+        if not apply_after:
+            return False
+        return self._apply_preview(db, req, slug, digest, round_number, moved)
 
     def _apply_preview(
         self,
@@ -1213,10 +1275,10 @@ class KubeJobRunner:
         digest: str,
         round_number: int,
         moved: list[str],
-    ) -> None:
+    ) -> bool:
         if self._build_slots_full(db):
             self._note_build_wait(db, req, moved)
-            return
+            return False
         name = deploy_manifests.preview_app_name(slug)
         image = f"{settings.REGISTRY}/sf-app-{slug}@{digest}"
         intent_key = f"deploy_preview:{slug}:{digest}:r{round_number}"
@@ -1263,9 +1325,10 @@ class KubeJobRunner:
             row.completed_at = utcnow()
             intents.fail(db, intent_key, {"error": str(exc)[:300]})
             self._escalate(db, req, f"Could not apply preview {name}: {exc}")
-            return
+            return False
         intents.complete(db, intent_key, {"app": name, "digest": digest})
         moved.append(f"{req.ref}: applied preview {name} at {digest}")
+        return True
 
     def _observe_preview_deploy(
         self,
@@ -1385,7 +1448,7 @@ class KubeJobRunner:
             if row.role == "pbuild" and row.status == "running":
                 try:
                     view = self.client.get_job(row.job_name, capture=True)
-                    row.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+                    row.logs_tail = _bounded_logs_tail(view.logs)
                     if pdeploy is not None and row.logs_tail:
                         pdeploy.logs_tail = row.logs_tail
                     self.client.delete_job(row.job_name, uid=row.job_uid)
@@ -1519,12 +1582,17 @@ class KubeJobRunner:
                 self._escalate(db, req, f"Build/deploy failed: {exc}")
 
     def _drive_one_deploy(
-        self, db: Session, req: Request, moved: list[str]
-    ) -> None:
+        self,
+        db: Session,
+        req: Request,
+        moved: list[str],
+        *,
+        allow_spawns: bool = True,
+    ) -> bool:
         slug = self._app_slug(req)
         if req.status != transitions.APPROVED or req.needs_human:
             self._teardown_app(db, req, slug)
-            return
+            return False
         rows = db.scalars(
             select(StageJob)
             .where(
@@ -1545,33 +1613,39 @@ class KubeJobRunner:
                 moved,
                 label="Build",
             ):
-                return
-            self._spawn_build(db, req, slug, moved)
-            return
+                return False
+            if not allow_spawns:
+                return False
+            return self._spawn_build(db, req, slug, moved)
         if build.status == "running":
-            self._observe_build(db, req, build, slug, moved)
-            return
+            return self._observe_build(
+                db, req, build, slug, moved, apply_after=allow_spawns
+            )
         # a dead deploy row (timed_out/infra) must not dead-end the request:
         # after a human Retry the manifests are re-applied — intents.begin is
         # idempotent on the deterministic key and apply is create-or-update
         deploy_live = deploy is not None and deploy.status in ("running", "succeeded")
         if build.status == "succeeded" and not deploy_live:
-            self._apply_deploy(db, req, slug, build.envelope["digest"], moved)
-            return
+            if not allow_spawns:
+                return False
+            return self._apply_deploy(
+                db, req, slug, build.envelope["digest"], moved
+            )
         if deploy is not None and deploy.status == "running":
             self._observe_deploy(db, req, deploy, slug, moved)
+        return False
 
     def _spawn_build(
         self, db: Session, req: Request, slug: str, moved: list[str]
-    ) -> None:
+    ) -> bool:
         if self._build_slots_full(db):
             self._note_build_wait(db, req, moved)
-            return
+            return False
         ws = workspace.workspace_for(req)
         sha = workspace.head_sha(ws, "main")
         if not (isinstance(sha, str) and SHA40.fullmatch(sha)):
             self._escalate(db, req, "Build source SHA could not be read from merged main")
-            return
+            return False
         name = deploy_manifests.build_job_name(req.ref)
         intent_key = f"build:{req.ref}:{sha}"
         intents.begin(
@@ -1601,6 +1675,7 @@ class KubeJobRunner:
             moved,
             intent_key=intent_key,
         )
+        return True
 
     def _observe_build(
         self,
@@ -1609,27 +1684,29 @@ class KubeJobRunner:
         build: StageJob,
         slug: str,
         moved: list[str],
-    ) -> None:
+        *,
+        apply_after: bool = True,
+    ) -> bool:
         view = self.client.get_job(build.job_name)
         now = utcnow()
         if view.phase == "running" and now < build.deadline_at:
-            return
+            return False
         view = self.client.get_job(build.job_name, capture=True)
-        build.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+        build.logs_tail = _bounded_logs_tail(view.logs)
         if view.phase != "absent" and build.job_uid and view.uid and view.uid != build.job_uid:
             build.status = "infra"
             build.completed_at = now
             self.client.delete_job(build.job_name, uid=build.job_uid)
             db.commit()
             self._escalate(db, req, f"Build Job {build.job_name} uid changed under us")
-            return
+            return False
         self.client.delete_job(build.job_name, uid=build.job_uid)
         build.completed_at = now
         if view.phase == "running":
             build.status = "timed_out"
             db.commit()
             self._escalate(db, req, f"Build Job {build.job_name} exceeded its wall clock")
-            return
+            return False
         if view.phase == "absent":
             # crash between the row commit and create_job, or an external
             # delete: benign — re-spawn next tick (deterministic name, digest
@@ -1637,23 +1714,25 @@ class KubeJobRunner:
             build.status = "infra"
             db.commit()
             moved.append(f"{req.ref}: build Job absent — re-running")
-            return
+            return False
         if view.phase != "succeeded":
             build.status = "failed"
             db.commit()
             self._escalate(db, req, f"Build Job {build.job_name} failed")
-            return
+            return False
         digest = parse_digest(view.termination_message)
         if digest is None:
             build.status = "infra"
             db.commit()
             self._escalate(db, req, "build image digest could not be captured")
-            return
+            return False
         build.status = "succeeded"
         build.envelope = {**(build.envelope or {}), "digest": digest}
         db.commit()
         moved.append(f"{req.ref}: build image captured at {digest}")
-        self._apply_deploy(db, req, slug, digest, moved)
+        if not apply_after:
+            return False
+        return self._apply_deploy(db, req, slug, digest, moved)
 
     def _apply_deploy(
         self,
@@ -1662,10 +1741,10 @@ class KubeJobRunner:
         slug: str,
         digest: str,
         moved: list[str],
-    ) -> None:
+    ) -> bool:
         if self._build_slots_full(db):
             self._note_build_wait(db, req, moved)
-            return
+            return False
         name = deploy_manifests.app_name(slug)
         image = f"{settings.REGISTRY}/sf-app-{slug}@{digest}"
         intent_key = f"deploy:{slug}:{digest}"
@@ -1696,19 +1775,14 @@ class KubeJobRunner:
             row.completed_at = utcnow()
             intents.fail(db, intent_key, {"error": str(exc)[:300]})
             self._escalate(db, req, f"Could not apply produced app {name}: {exc}")
-            return
+            return False
         intents.complete(db, intent_key, {"app": name, "digest": digest})
         moved.append(f"{req.ref}: applied {name} at {digest}")
+        return True
 
     @staticmethod
     def _build_slots_full(db: Session) -> bool:
-        running = db.scalar(
-            select(func.count(StageJob.id)).where(
-                StageJob.status == "running",
-                StageJob.role.in_(("build", "pbuild", "deploy", "pdeploy")),
-            )
-        )
-        return (running or 0) >= settings.BUILD_CAP
+        return cost.build_slots_full(db)
 
     @staticmethod
     def _note_build_wait(db: Session, req: Request, moved: list[str]) -> None:
@@ -2425,7 +2499,7 @@ class KubeJobRunner:
                     # it continues to run (and bill) after the rewind.
                     try:
                         view = self.client.get_job(row.job_name, capture=True)
-                        row.logs_tail = (view.logs or "")[-LOGS_TAIL:] or None
+                        row.logs_tail = _bounded_logs_tail(view.logs)
                         row.envelope = row.envelope or parse_envelope(
                             view.termination_message
                         )
@@ -2524,6 +2598,17 @@ class KubeJobRunner:
         feedback: str,
         moved: list[str],
     ) -> bool:
+        if not cost.can_start_agent_attempt(db, req.id, stage, attempt):
+            used = cost.agent_attempt_count(db, req.id)
+            self._escalate(
+                db,
+                req,
+                "Request attempt budget exhausted "
+                f"({used}/{settings.REQUEST_ATTEMPT_BUDGET} agent attempts) — "
+                "operator decision needed",
+            )
+            moved.append(f"{req.ref}: escalated — attempt budget exhausted")
+            return False
         name = job_name(req.ref, stage, attempt)
         # the fenced CAS + intent + StageJob row + heartbeat event land in ONE
         # transaction (spec §3.3); the external create happens after commit
