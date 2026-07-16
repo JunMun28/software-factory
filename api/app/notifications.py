@@ -83,7 +83,10 @@ def _notify(db: Session, req: Request, subject: str, body: str) -> None:
 
 
 def notify_gate_raised(db: Session, req: Request) -> None:
-    gate_name = "merge gate" if req.gate == "approve_merge" else "spec gate"
+    gate_name = {
+        "approve_merge": "merge gate",
+        "approve_deploy": "deploy gate",
+    }.get(req.gate, "spec gate")
     _notify(
         db,
         req,
