@@ -801,3 +801,42 @@ def test_cancel_at_deploy_gate_builds_nothing(client, monkeypatch, tmp_path):
                 StageJob.role.in_(("build", "deploy")),
             )
         ) is None
+
+
+def test_fresh_merge_claim_shields_against_gate_re_raise(client, monkeypatch, tmp_path):
+    # Found live (GitHub smoke REQ-2047): during a slow GitHub merge the tick's
+    # strand-repair re-raised the merge gate, making raise_deploy_gate lose its
+    # CAS. A FRESH merge_claimed audit must shield the request; a STALE one
+    # (crashed approver) must still repair.
+    with SessionLocal() as db:
+        for old in db.scalars(select(Request).where(Request.stage == "deploy")).all():
+            old.stage = "done"
+        db.commit()
+    _enable_deploy(monkeypatch, tmp_path)
+    runner = KubeJobRunner(client=(fake := FakeKubeClient()))
+    honest_build(fake, settings.WORKSPACES)
+    request = _northwind_request(client, "B4 merge-claim race shield")
+    _tick_until(client, runner, request["id"], lambda item: item["gate"] == "approve_merge")
+
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        actor = transitions.Actor(name="Ada", operator_id=1)
+        assert isinstance(transitions.apply(db, req, "claim_merge", actor=actor),
+                          transitions.Win)
+        db.commit()
+        # the approve endpoint is now "mid-GitHub-merge": gate consumed, stage=review
+        runner.tick(db)
+        db.refresh(req)
+        assert req.gate is None, "tick re-raised the merge gate under a fresh claim"
+
+        # a STALE claim (the approving process died) must still strand-repair
+        claim = db.scalar(
+            select(AuditEvent)
+            .where(AuditEvent.request_id == req.id, AuditEvent.action == "merge_claimed")
+            .order_by(AuditEvent.id.desc())
+        )
+        claim.created_at = utcnow() - timedelta(seconds=kube_runner.MERGE_CLAIM_GRACE + 60)
+        db.commit()
+        runner.tick(db)
+        db.refresh(req)
+        assert req.gate == "approve_merge", "stale claim was not repaired"
