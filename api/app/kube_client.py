@@ -11,6 +11,7 @@ Running-pod capture is best-effort but real: callers can opt into pod-log
 transfer before a Job reaches a terminal phase.
 """
 
+import contextlib
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -29,12 +30,20 @@ class JobView:
     uid: str = ""
     termination_message: str = ""
     logs: str = ""
+    reason: str = ""
+    exit_code: int | None = None
+
+
+class KubeTimeout(Exception):
+    """A cluster API call returned no usable answer within its client bound."""
 
 
 class KubeClient(Protocol):
     def create_job(self, manifest: dict) -> str | None: ...
 
-    def get_job(self, name: str, *, capture: bool = False) -> JobView: ...
+    def get_job(
+        self, name: str, *, capture: bool = False, probe: bool = False
+    ) -> JobView: ...
 
     def delete_job(self, name: str, *, uid: str | None = None) -> None: ...
 
@@ -64,52 +73,117 @@ class RealKubeClient:
         self._types = client
         self._ApiException = client.exceptions.ApiException
 
+        import urllib3
+
+        self._request_timeout = (
+            settings.KUBE_CONNECT_TIMEOUT,
+            settings.KUBE_READ_TIMEOUT,
+        )
+        self._timeout_excs = (
+            urllib3.exceptions.TimeoutError,
+            urllib3.exceptions.MaxRetryError,
+            urllib3.exceptions.ProtocolError,
+            TimeoutError,
+        )
+
+    @contextlib.contextmanager
+    def _bounded(self, op: str):
+        try:
+            yield
+        except self._timeout_excs as exc:
+            raise KubeTimeout(
+                f"kube {op} exceeded client timeout {self._request_timeout}: "
+                f"{type(exc).__name__}"
+            ) from exc
+
     def create_job(self, manifest: dict) -> str | None:
         """Returns the created Job's uid. None = 409: a live Job with this
         name already exists — the CALLER decides whether that is its own
         intent replay (adopt) or a dying predecessor (park and re-run)."""
         try:
-            job = self._batch.create_namespaced_job(self.ns, manifest)
+            with self._bounded("create_job"):
+                job = self._batch.create_namespaced_job(
+                    self.ns,
+                    manifest,
+                    _request_timeout=self._request_timeout,
+                )
             return job.metadata.uid or ""
         except self._ApiException as e:
             if e.status != 409:
                 raise
             return None
 
-    def get_job(self, name: str, *, capture: bool = False) -> JobView:
-        try:
-            job = self._batch.read_namespaced_job(name, self.ns)
-        except self._ApiException as e:
-            if e.status == 404:
-                return JobView(name=name, phase="absent")
-            raise
+    def get_job(
+        self, name: str, *, capture: bool = False, probe: bool = False
+    ) -> JobView:
+        with self._bounded("read_job"):
+            try:
+                job = self._batch.read_namespaced_job(
+                    name,
+                    self.ns,
+                    _request_timeout=self._request_timeout,
+                )
+            except self._ApiException as e:
+                if e.status == 404:
+                    return JobView(name=name, phase="absent")
+                raise
         status = job.status
         phase = "succeeded" if status.succeeded else "failed" if status.failed else "running"
         uid = job.metadata.uid or ""
-        termination_message, logs = "", ""
-        if capture or phase != "running":
-            pods = self._core.list_namespaced_pod(
-                self.ns, label_selector=f"job-name={name}"
-            ).items
+        termination_message, logs, reason, exit_code = "", "", "", None
+        read_pods = capture or probe or phase != "running"
+        read_logs = capture or phase != "running"
+        if read_pods:
+            with self._bounded("list_pods"):
+                pods = self._core.list_namespaced_pod(
+                    self.ns,
+                    label_selector=f"job-name={name}",
+                    _request_timeout=self._request_timeout,
+                ).items
             pods.sort(key=lambda p: p.metadata.creation_timestamp or 0)
             if pods:
                 pod = pods[-1]
-                for container_status in pod.status.container_statuses or []:
-                    terminated = container_status.state.terminated
-                    if terminated and terminated.message:
-                        termination_message = terminated.message
-                try:
-                    # read_namespaced_pod_log works on RUNNING pods too — the
-                    # B1 gap: wall-clock kills and reaps can now capture output
-                    logs = self._core.read_namespaced_pod_log(pod.metadata.name, self.ns)
-                except self._ApiException:
-                    logs = ""
+                for cs in pod.status.container_statuses or []:
+                    state = cs.state
+                    if state.terminated:
+                        if state.terminated.message:
+                            termination_message = state.terminated.message
+                        if state.terminated.reason and not reason:
+                            reason = state.terminated.reason
+                        if (
+                            state.terminated.exit_code is not None
+                            and exit_code is None
+                        ):
+                            exit_code = state.terminated.exit_code
+                    elif state.waiting and state.waiting.reason and not reason:
+                        reason = state.waiting.reason
+                if not reason:
+                    for cond in pod.status.conditions or []:
+                        if (
+                            cond.type == "PodScheduled"
+                            and cond.status != "True"
+                            and cond.reason
+                        ):
+                            reason = cond.reason
+                            break
+                if read_logs:
+                    try:
+                        with self._bounded("read_pod_log"):
+                            logs = self._core.read_namespaced_pod_log(
+                                pod.metadata.name,
+                                self.ns,
+                                _request_timeout=self._request_timeout,
+                            )
+                    except (self._ApiException, KubeTimeout):
+                        logs = ""
         return JobView(
             name=name,
             phase=phase,
             uid=uid,
             termination_message=termination_message,
             logs=logs,
+            reason=reason,
+            exit_code=exit_code,
         )
 
     def delete_job(self, name: str, *, uid: str | None = None) -> None:
@@ -122,7 +196,13 @@ class RealKubeClient:
         if uid:
             body.preconditions = self._types.V1Preconditions(uid=uid)
         try:
-            self._batch.delete_namespaced_job(name, self.ns, body=body)
+            with self._bounded("delete_job"):
+                self._batch.delete_namespaced_job(
+                    name,
+                    self.ns,
+                    body=body,
+                    _request_timeout=self._request_timeout,
+                )
         except self._ApiException as e:
             if e.status != 404:
                 raise
@@ -139,18 +219,25 @@ class RealKubeClient:
             "Ingress": self._net.patch_namespaced_ingress,
             "NetworkPolicy": self._net.patch_namespaced_network_policy,
         }[kind]
-        patch(
-            name,
-            self.ns,
-            manifest,
-            field_manager="software-factory",
-            force=True,
-            _content_type="application/apply-patch+yaml",
-        )
+        with self._bounded("apply"):
+            patch(
+                name,
+                self.ns,
+                manifest,
+                field_manager="software-factory",
+                force=True,
+                _content_type="application/apply-patch+yaml",
+                _request_timeout=self._request_timeout,
+            )
 
     def rollout_ready(self, name: str) -> bool:
         try:
-            d = self._apps.read_namespaced_deployment_status(name, self.ns)
+            with self._bounded("rollout_ready"):
+                d = self._apps.read_namespaced_deployment_status(
+                    name,
+                    self.ns,
+                    _request_timeout=self._request_timeout,
+                )
         except self._ApiException as e:
             if e.status == 404:
                 return False
@@ -168,11 +255,27 @@ class RealKubeClient:
         # without Foreground propagation orphans the Deployment's ReplicaSets and
         # Pods. Pass it in the body so the produced-app teardown actually reaps.
         fg = self._types.V1DeleteOptions(propagation_policy="Foreground")
-        self._apps.delete_collection_namespaced_deployment(
-            self.ns, label_selector=selector, body=fg
-        )
-        for item in self._core.list_namespaced_service(self.ns, label_selector=selector).items:
-            self._core.delete_namespaced_service(item.metadata.name, self.ns)
-        self._net.delete_collection_namespaced_ingress(
-            self.ns, label_selector=selector, body=fg
-        )
+        with self._bounded("delete_by_label"):
+            self._apps.delete_collection_namespaced_deployment(
+                self.ns,
+                label_selector=selector,
+                body=fg,
+                _request_timeout=self._request_timeout,
+            )
+            services = self._core.list_namespaced_service(
+                self.ns,
+                label_selector=selector,
+                _request_timeout=self._request_timeout,
+            ).items
+            for item in services:
+                self._core.delete_namespaced_service(
+                    item.metadata.name,
+                    self.ns,
+                    _request_timeout=self._request_timeout,
+                )
+            self._net.delete_collection_namespaced_ingress(
+                self.ns,
+                label_selector=selector,
+                body=fg,
+                _request_timeout=self._request_timeout,
+            )

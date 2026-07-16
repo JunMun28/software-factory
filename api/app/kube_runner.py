@@ -15,8 +15,10 @@ Orchestrator-owned hard lines (spec §5/§6):
   * the orchestrator attempts output capture before every Job deletion,
     including timeout, reap, and supersede paths; running-pod capture is best-effort
     because log transfer itself can still fail;
-  * a missing gate verdict re-runs the same attempt, but three consecutive infra outcomes
-    consume that attempt as a gate failure instead of churning forever;
+  * a missing gate verdict re-runs the same attempt; three consecutive INFRA
+    outcomes (C2b: incl. stage-infra + 409-park) escalate to a human
+    retry-neutrally — the agent attempt is kept, not consumed — instead of
+    churning forever;
   * frozen surface: green's gate must report exactly the surface_hash red's
     succeeded gate recorded — a weakened test surface fails the attempt even
     when the (untrusted) gate pod claims a pass;
@@ -64,12 +66,83 @@ from .ws_exec import _git
 log = logging.getLogger("factory.kube")
 
 LOGS_TAIL = 20_000  # chars of captured NDJSON persisted per Job
-GATE_INFRA_LIMIT = 3
+GATE_INFRA_LIMIT = int(
+    __import__("os").environ.get("FACTORY_GATE_INFRA_LIMIT", "3")
+)
+PARK_PREDECESSOR_GRACE = int(
+    __import__("os").environ.get("FACTORY_PARK_PREDECESSOR_GRACE", "120")
+)
 # How long a consumed merge gate shields the request from strand-repair: long
 # enough for any GitHub merge round-trip, short enough that a process that died
 # between claim and merge is still rescued by the re-raise.
 MERGE_CLAIM_GRACE = int(__import__("os").environ.get("FACTORY_MERGE_CLAIM_GRACE", "600"))
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+STAGE_INFRA_LIMIT = GATE_INFRA_LIMIT
+INFRA_DETECT_GRACE = int(
+    __import__("os").environ.get("FACTORY_INFRA_DETECT_GRACE", "90")
+)
+INFRA_DETECT_WINDOW = int(
+    __import__("os").environ.get("FACTORY_INFRA_DETECT_WINDOW", "900")
+)
+INFRA_REASONS = {
+    "OOMKilled": "oom",
+    "ImagePullBackOff": "image_pull",
+    "ErrImagePull": "image_pull",
+    "ErrImageNeverPull": "image_pull",
+    "InvalidImageName": "image_pull",
+    "CreateContainerError": "container_start",
+    "CreateContainerConfigError": "container_start",
+    "Unschedulable": "unschedulable",
+}
+_PROBE_INFRA_CLASSES = frozenset(
+    {"image_pull", "container_start", "unschedulable"}
+)
+_CLI_FAIL_PREFIXES = ("codex exec failed", "opencode run failed")
+_QUOTA_SIGNATURES = (
+    "usage limit",
+    "rate limit exceeded",
+    "rate_limit_exceeded",
+    "too many requests",
+    "insufficient_quota",
+    "quota exceeded",
+)
+
+
+def _looks_like_quota(envelope: dict | None) -> bool:
+    detail = ((envelope or {}).get("detail") or "").lower()
+    if not any(detail.startswith(prefix) for prefix in _CLI_FAIL_PREFIXES):
+        return False
+    return any(signature in detail for signature in _QUOTA_SIGNATURES)
+
+
+def classify_infra(
+    view, envelope: dict | None, logs_tail: str | None
+) -> tuple[str, str] | None:
+    """Classify a non-success observation that is infrastructure, not work."""
+    del logs_tail  # log text is agent-controlled and never a quota signal
+    if envelope and envelope.get("outcome") == "infra":
+        reason = (
+            envelope.get("reason")
+            or envelope.get("detail")
+            or "agent reported an infra fault"
+        )
+        return ("agent_infra", reason)
+    infra_class = INFRA_REASONS.get(view.reason or "")
+    if infra_class:
+        reason = (
+            view.reason
+            if view.exit_code is None
+            else f"{view.reason} (exit {view.exit_code})"
+        )
+        return (infra_class, reason)
+    if view.exit_code == 137:
+        return (
+            "oom",
+            "container killed with exit 137 (out of memory / SIGKILL)",
+        )
+    if _looks_like_quota(envelope):
+        return ("quota", "agent CLI hit a usage/rate limit")
+    return None
 
 
 def _http_ok(url: str) -> bool:
@@ -232,12 +305,24 @@ class KubeJobRunner:
             # Same name, different Job — not ours (out-of-band recreate).
             # Never grade a stranger: infra, re-run (spec §5 stale-discard).
             sj.status = "infra"
+            sj.envelope = {**(sj.envelope or {}), "infra_cause": "stranger"}
             sj.completed_at = utcnow()
             db.commit()
             moved.append(f"{req.ref}: {sj.job_name} uid changed under us — will re-run")
             return False
         now = utcnow()
         if view.phase == "running":
+            if sj.role == "stage" and self._schedule_probe_due(sj, now):
+                probe = self.client.get_job(sj.job_name, probe=True)
+                infra = classify_infra(probe, None, None)
+                if infra is not None and infra[0] in _PROBE_INFRA_CLASSES:
+                    # A state observed just after GRACE may self-heal, but this
+                    # retry is neutral and bounded; normal scheduling latency is
+                    # excluded by the default 90-second grace.
+                    self.client.delete_job(sj.job_name, uid=sj.job_uid)
+                    return self._record_stage_infra(
+                        db, req, sj, infra, moved
+                    )
             if now < sj.deadline_at:
                 return False
             # orchestrator wall clock (spec §5): fires regardless of Job status —
@@ -263,9 +348,10 @@ class KubeJobRunner:
             # vanished under us (external deletion / create replay that never landed):
             # infra, not a domain failure — the same attempt re-runs
             if sj.role == "gate":
-                self._grade(db, req, sj, view.phase, None, moved)
+                self._grade(db, req, sj, view.phase, None, moved, view)
                 return sj.status in ("failed", "timed_out", "infra")
             sj.status = "infra"
+            sj.envelope = {**(sj.envelope or {}), "infra_cause": "vanish"}
             sj.completed_at = now
             db.commit()
             moved.append(f"{req.ref}: {sj.job_name} vanished — will re-run")
@@ -278,10 +364,17 @@ class KubeJobRunner:
         self.client.delete_job(sj.job_name, uid=sj.job_uid)
         sj.completed_at = now
         if sj.role == "gate":
-            self._grade(db, req, sj, view.phase, envelope, moved)
+            self._grade(db, req, sj, view.phase, envelope, moved, view)
             return sj.status in ("failed", "timed_out", "infra")
         else:
-            return self._finish_stage_job(db, req, sj, view.phase, envelope, moved)
+            return self._finish_stage_job(
+                db, req, sj, view.phase, envelope, moved, view
+            )
+
+    @staticmethod
+    def _schedule_probe_due(sj: StageJob, now) -> bool:
+        age = (now - sj.created_at).total_seconds()
+        return INFRA_DETECT_GRACE <= age <= INFRA_DETECT_WINDOW
 
     def _finish_stage_job(
         self,
@@ -291,6 +384,7 @@ class KubeJobRunner:
         phase: str,
         envelope: dict | None,
         moved: list[str],
+        view,
     ) -> bool:
         if phase == "succeeded" and envelope is None:
             # log/envelope-capture failure is its own escalation reason (spec §5)
@@ -308,6 +402,9 @@ class KubeJobRunner:
             db.commit()
             moved.append(f"{req.ref}: {sj.job_name} succeeded")
             return not self._spawn_gate(db, req, sj.stage, sj.attempt, moved)
+        infra = classify_infra(view, envelope, sj.logs_tail)
+        if infra is not None:
+            return self._record_stage_infra(db, req, sj, infra, moved)
         sj.status = "failed"
         db.commit()
         detail = (envelope or {}).get("detail") or f"agent Job {sj.job_name} failed"
@@ -323,30 +420,59 @@ class KubeJobRunner:
         phase: str,
         envelope: dict | None,
         moved: list[str],
+        view=None,
     ) -> None:
-        if envelope is None:
-            infra_count = db.scalar(
-                select(func.count(StageJob.id)).where(
+        if envelope is None or envelope.get("outcome") == "infra":
+            infra = (
+                classify_infra(view, envelope, sj.logs_tail)
+                if view is not None
+                else None
+            )
+            named = f" — {infra[1]}" if infra else ""
+            last_retry = db.scalar(
+                select(func.max(AuditEvent.created_at)).where(
+                    AuditEvent.request_id == req.id,
+                    AuditEvent.action == "retried",
+                )
+            )
+            candidates = db.scalars(
+                select(StageJob).where(
                     StageJob.request_id == req.id,
                     StageJob.stage == sj.stage,
                     StageJob.attempt == sj.attempt,
                     StageJob.role == sj.role,
                     StageJob.status == "infra",
                 )
+            ).all()
+            infra_count = sum(
+                1
+                for row in candidates
+                if last_retry is None or row.created_at >= last_retry
             )
-            if (infra_count or 0) + 1 < GATE_INFRA_LIMIT:
-                sj.status = "infra"
-                db.commit()
-                moved.append(f"{req.ref}: {sj.job_name} produced no verdict — gate re-runs")
+            sj.status = "infra"
+            sj.envelope = {
+                "outcome": "infra" if infra else "unknown",
+                **(
+                    {"infra_class": infra[0], "reason": infra[1]}
+                    if infra
+                    else {}
+                ),
+                "infra_cause": "gate_absent",
+            }
+            db.commit()
+            if infra_count + 1 < GATE_INFRA_LIMIT:
+                moved.append(
+                    f"{req.ref}: {sj.job_name} produced no verdict{named} — "
+                    "gate re-runs"
+                )
                 return
             reason = (
                 f"{sj.stage} gate produced no verdict after {GATE_INFRA_LIMIT} "
-                f"consecutive infra outcomes (last phase: {phase})"
+                "consecutive infra outcomes "
+                f"(last: {infra[1] if infra else phase})"
             )
-            sj.status = "failed"
-            sj.envelope = {"outcome": "fail", "reason": reason}
-            db.commit()
-            self._after_failure(db, req, sj, reason, moved)
+            self._escalate(db, req, reason)
+            moved.append(f"{req.ref}: escalated — persistent gate infra")
             return
         verdict = envelope.get("outcome")
         if verdict == "pass" and sj.stage == "green":
@@ -358,6 +484,35 @@ class KubeJobRunner:
                     "reason": "Test-isolation gate: the frozen test surface changed after RED — change rejected",
                 }
                 sj.envelope = envelope
+            elif source == "infra":
+                infra_count = db.scalar(
+                    select(func.count(StageJob.id)).where(
+                        StageJob.request_id == req.id,
+                        StageJob.stage == sj.stage,
+                        StageJob.attempt == sj.attempt,
+                        StageJob.role == sj.role,
+                        StageJob.status == "infra",
+                    )
+                )
+                if (infra_count or 0) + 1 < GATE_INFRA_LIMIT:
+                    sj.status = "infra"
+                    db.commit()
+                    moved.append(
+                        f"{req.ref}: surface check unavailable (git timeout) — "
+                        "gate re-runs"
+                    )
+                    return
+                reason = (
+                    "green gate could not verify the frozen test surface "
+                    f"after {GATE_INFRA_LIMIT} consecutive git timeouts"
+                )
+                sj.status = "infra"
+                db.commit()
+                self._escalate(db, req, reason)
+                moved.append(
+                    f"{req.ref}: escalated — surface check kept timing out"
+                )
+                return
             elif source == "unavailable":
                 # B1 fallback: no git backbone/SHAs — compare the (untrusted)
                 # gate-envelope hashes, better than nothing
@@ -629,18 +784,15 @@ class KubeJobRunner:
         build = next((row for row in reversed(rows) if row.role == "build"), None)
         deploy = next((row for row in reversed(rows) if row.role == "deploy"), None)
         if build is None or build.status in ("failed", "timed_out", "infra"):
-            # bounded like the stage machinery: 3 consecutive infra rounds end
-            # in a human, never a silent create/observe loop
-            tail_infra = 0
-            for row in reversed([r for r in rows if r.role == "build"]):
-                if row.status != "infra":
-                    break
-                tail_infra += 1
-            if tail_infra >= 3:
-                self._escalate(
-                    db, req,
-                    "Build re-ran 3 times without completing — infra loop",
-                )
+            if self._infra_loop_escalated(
+                db,
+                req,
+                rows,
+                "deploy",
+                "build",
+                moved,
+                label="Build",
+            ):
                 return
             self._spawn_build(db, req, slug, moved)
             return
@@ -929,6 +1081,80 @@ class KubeJobRunner:
         return db.scalar(q) is not None
 
     # ---------- failure policy: retry-with-feedback (N=2), then a human ----------
+    def _record_stage_infra(
+        self,
+        db: Session,
+        req: Request,
+        sj: StageJob,
+        infra: tuple[str, str],
+        moved: list[str],
+    ) -> bool:
+        """Persist a named, retry-neutral stage fault and bound recurrence."""
+        infra_class, reason = infra
+        sj.status = "infra"
+        sj.envelope = {
+            **(sj.envelope or {}),
+            "outcome": "infra",
+            "infra_class": infra_class,
+            "reason": reason,
+        }
+        sj.completed_at = utcnow()
+        db.commit()
+
+        last_retry = db.scalar(
+            select(func.max(AuditEvent.created_at)).where(
+                AuditEvent.request_id == req.id,
+                AuditEvent.action == "retried",
+            )
+        )
+        candidates = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == req.id,
+                StageJob.stage == sj.stage,
+                StageJob.attempt == sj.attempt,
+                StageJob.role == sj.role,
+                StageJob.status == "infra",
+            )
+        ).all()
+        infra_count = sum(
+            1
+            for row in candidates
+            if (row.envelope or {}).get("infra_class")
+            and (last_retry is None or row.created_at >= last_retry)
+        )
+        if infra_count >= STAGE_INFRA_LIMIT:
+            self._escalate(
+                db,
+                req,
+                f"{sj.stage} {sj.role} Job hit a recurring infrastructure "
+                f"fault ({infra_class}) {infra_count}x without completing: "
+                f"{reason}",
+            )
+            moved.append(
+                f"{req.ref}: escalated — persistent {infra_class} at {sj.stage}"
+            )
+            return True
+
+        emit(
+            db,
+            req,
+            "milestone_summary",
+            f"{sj.stage} hit an infrastructure fault ({infra_class}) — "
+            "re-running without consuming an attempt",
+            payload={
+                "Ref": req.ref,
+                "stage": sj.stage,
+                "attempt": sj.attempt,
+                "infra_class": infra_class,
+                "reason": reason[:300],
+            },
+        )
+        db.commit()
+        moved.append(
+            f"{req.ref}: {sj.job_name} infra ({infra_class}) — will re-run"
+        )
+        return True
+
     def _after_failure(
         self,
         db: Session,
@@ -1121,8 +1347,12 @@ class KubeJobRunner:
         green_sha = _stage_sha("green", sj.attempt)
         if not red_sha or not green_sha:
             return "unavailable"
-        red_hash = workspace.surface_hash_at(ws, red_sha)
-        green_hash = workspace.surface_hash_at(ws, green_sha)
+        try:
+            red_hash = workspace.surface_hash_at(ws, red_sha)
+            green_hash = workspace.surface_hash_at(ws, green_sha)
+        except workspace.GitTimeout as exc:
+            log.warning("surface hash timed out for %s: %s", req.ref, exc)
+            return "infra"
         if red_hash is None or green_hash is None:
             return "violated"  # an agent claiming an unknown SHA never passes
         return "ok" if red_hash == green_hash else "violated"
@@ -1153,13 +1383,27 @@ class KubeJobRunner:
                 return None  # the observe pass owns it
             attempt = max(r.attempt for r in rows)
             latest = [r for r in rows if r.attempt == attempt]
-            stage_row = next((r for r in latest if r.role == "stage"), None)
+            stage_rows = [r for r in latest if r.role == "stage"]
+            # Once a same-attempt stage output succeeded, grade it. Otherwise
+            # inspect the newest outcome rather than an older infra park.
+            stage_row = next(
+                (r for r in stage_rows if r.status == "succeeded"),
+                stage_rows[-1] if stage_rows else None,
+            )
             gate_row = next((r for r in reversed(latest) if r.role == "gate"), None)
             if gate_row is not None and gate_row.status == "infra":
+                if self._infra_loop_escalated(
+                    db, req, rows, stage, "gate", moved
+                ):
+                    return None
                 return ("gate", stage, attempt)  # verdict absent: re-run, attempt kept (spec §6)
             if stage_row is not None and stage_row.status == "succeeded" and gate_row is None:
                 return ("gate", stage, attempt)  # crashed between stage success and gate spawn
             if stage_row is not None and stage_row.status == "infra":
+                if self._infra_loop_escalated(
+                    db, req, rows, stage, "stage", moved
+                ):
+                    return None
                 return ("stage", stage, attempt, "")  # Job vanished/never landed: same attempt
             # failed / timed_out / reaped → next attempt (escalation, if due,
             # already happened at failure time; a human Retry cleared it)
@@ -1253,6 +1497,62 @@ class KubeJobRunner:
                     or f"{r.stage} attempt {r.attempt} {r.status}"
                 )
         return ""
+
+    def _infra_loop_escalated(
+        self,
+        db: Session,
+        req: Request,
+        rows: list[StageJob],
+        stage: str,
+        role: str,
+        moved: list[str],
+        *,
+        label: str | None = None,
+    ) -> bool:
+        """Bound consecutive infra re-spawns; return True after escalation."""
+        last_retry = db.scalar(
+            select(func.max(AuditEvent.created_at)).where(
+                AuditEvent.request_id == req.id,
+                AuditEvent.action == "retried",
+            )
+        )
+        streak = []
+        role_rows = [
+            row
+            for row in rows
+            if row.role == role
+            and (last_retry is None or row.created_at >= last_retry)
+        ]
+        for row in reversed(role_rows):
+            if row.status != "infra" or (row.envelope or {}).get("infra_class"):
+                break
+            streak.append(row)
+        if not streak:
+            return False
+        causes = {(row.envelope or {}).get("infra_cause") for row in streak}
+        if causes == {"predecessor"}:
+            oldest = min(streak, key=lambda row: row.id)
+            since = oldest.completed_at or oldest.created_at
+            if (utcnow() - since).total_seconds() < PARK_PREDECESSOR_GRACE:
+                return False
+        elif len(streak) < GATE_INFRA_LIMIT:
+            return False
+        if "stranger" in causes:
+            blocker = "a foreign Job holds its name"
+        elif "predecessor" in causes:
+            blocker = "a predecessor never terminated"
+        elif "gate_absent" in causes:
+            blocker = "the gate never wrote a verdict"
+        else:
+            blocker = "its Job kept vanishing"
+        self._escalate(
+            db,
+            req,
+            f"{label or f'{stage} {role}'} re-ran {len(streak)} times without "
+            f"completing — infra loop ({blocker})",
+        )
+        moved.append(f"{req.ref}: escalated at {stage} — infra loop")
+        return True
 
     def _spawn_next(self, db: Session, req: Request, moved: list[str]) -> bool:
         work = self._next_work(db, req, moved)
@@ -1506,6 +1806,10 @@ class KubeJobRunner:
                 )
                 row.status = "infra"
                 row.completed_at = utcnow()
+                row.envelope = {
+                    **(row.envelope or {}),
+                    "infra_cause": "stranger" if stranger else "predecessor",
+                }
                 db.commit()
                 blocker = "a uid stranger" if stranger else "a dying predecessor"
                 moved.append(f"{req.ref}: {name} blocked by {blocker} — will re-run")

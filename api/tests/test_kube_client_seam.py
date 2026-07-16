@@ -38,3 +38,24 @@ def test_rollout_ready_gate_and_delete_by_label():
     f.delete_by_label("sf/instance=nw")
     assert "Deployment/sf-app-nw" not in f.objects
     assert "Service/sf-app-nw" not in f.objects
+
+
+def test_fake_probe_visibility_matches_real_rule():
+    from app.kube_jobs import stage_job_manifest
+
+    fake = FakeKubeClient()
+    name = "sf-req-2999-red-1"
+    fake.create_job(stage_job_manifest("REQ-2999", "red", 1))
+    fake.jobs[name].logs = "pending logs must not leak through a probe"
+    fake.pending_unschedulable(name)
+
+    assert fake.get_job(name).reason == ""
+    assert fake.get_job(name, probe=True).reason == "Unschedulable"
+    assert fake.get_job(name, capture=True).reason == "Unschedulable"
+    assert fake.get_job(name, probe=True).logs == ""
+
+    fake.jobs[name].phase = "failed"
+    assert fake.get_job(name).reason == ""  # deadline deleted Pending pod
+    fake.fail_infra(name)
+    terminal = fake.get_job(name)
+    assert terminal.reason == "OOMKilled" and terminal.exit_code == 137

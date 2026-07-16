@@ -359,3 +359,30 @@ mandated preview & feedback loop (pre-merge placement).
 - **31 pre-existing orphaned pods** (no ownerReference, uncollectable by the
   Foreground/ttl fix) cleaned out-of-band via kubectl; the code fix prevents
   future orphans. teardown "once" is once-per-episode (idempotent under crash).
+
+### Deviations — C2b (runner reliability: FAIL-01/02/04)
+
+- **Implemented by codex gpt-5.5** from the v2 specs (all 3 came back READY from
+  the design→verify workflow); coordinator reviewed + verified.
+- **Tick-age WATCHDOG deferred to C7.** The FAIL-01 v2 design added a
+  `heartbeat.py` liveness module + a main.py watchdog loop that alerts when a
+  git/k8s call ignores its own timeout. Two problems: (1) it overlaps OBS-02
+  (C7's livenessProbe) — same concern; (2) BASELINE CONTAMINATION — the design
+  workflow read the MAIN checkout, which carries the parallel session's
+  UNTRACKED `api/app/heartbeat.py` + modified `main.py`, so the design assumed a
+  heartbeat module my clean-HEAD worktree doesn't have. codex reconstructed a
+  different heartbeat.py, which would collide with the parallel session's. Fix:
+  dropped the watchdog trio (heartbeat.py/main.py/system.py + test_watchdog.py)
+  from C2b → C7, keeping FAIL-01's CORE (git+k8s timeouts classified as infra),
+  which is fully self-contained. **Lesson: point design workflows at a CLEAN
+  worktree, not the main checkout, so parallel WIP never contaminates a spec.**
+- FAIL-01 core kept: GIT_TIMEOUT + KUBE_CONNECT/READ_TIMEOUT bound every git
+  subprocess + k8s call; a git timeout during surface hashing is classified
+  INFRA (retry-neutral), never a test-isolation "violation" that would flip a
+  passing green to fail; no authed URL/token in any error string.
+- FAIL-02: single shared GATE_INFRA_LIMIT cap now binds the _next_work
+  stage-infra + 409-park paths (were uncapped). FAIL-04: OOM/Unschedulable/
+  ImagePullBackOff/quota classified as infra with a named reason, reading pod
+  conditions for the never-scheduled family (which hits the Job deadline with no
+  container); FakeKubeClient models the real no-container terminal shape.
+- Stacked on c2-hotfixes (branch c2b-reliability); shares C2a's merge-hold.

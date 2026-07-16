@@ -49,6 +49,9 @@ class FakeJob:
     phase: str = "running"
     termination_message: str = ""
     logs: str = ""
+    reason: str = ""
+    exit_code: int | None = None
+    scheduling_reason: str = ""
     deleted: bool = False
 
 
@@ -86,7 +89,9 @@ class FakeKubeClient:
         self.creations.append(manifest)
         return job.uid
 
-    def get_job(self, name: str, *, capture: bool = False) -> JobView:
+    def get_job(
+        self, name: str, *, capture: bool = False, probe: bool = False
+    ) -> JobView:
         self.observations.append(name)
         if name in self.raise_once:
             self.raise_once.remove(name)
@@ -99,12 +104,20 @@ class FakeKubeClient:
         if self.on_observe:
             self.on_observe(name, job)
         terminal = job.phase in ("succeeded", "failed")
+        read_pods = capture or probe or terminal
+        pending_reason = (
+            job.scheduling_reason
+            if read_pods and job.phase == "running"
+            else ""
+        )
         return JobView(
             name=name,
             phase=job.phase,
             uid=job.uid,
             termination_message=job.termination_message if terminal else "",
             logs=job.logs if (capture or terminal) else "",
+            reason=job.reason if terminal else pending_reason,
+            exit_code=job.exit_code if terminal else None,
         )
 
     def delete_job(self, name: str, *, uid: str | None = None) -> None:
@@ -145,6 +158,31 @@ class FakeKubeClient:
         job.phase = phase
         job.termination_message = json.dumps(envelope)
         job.logs = logs
+
+    def fail_infra(
+        self,
+        name: str,
+        *,
+        reason: str = "OOMKilled",
+        exit_code: int | None = 137,
+        message: str = "",
+        logs: str = "",
+    ) -> None:
+        """A terminal infra fault whose failed pod is still observable."""
+        job = self.jobs[name]
+        job.phase = "failed"
+        job.reason = reason
+        job.exit_code = exit_code
+        job.termination_message = message
+        job.logs = logs
+
+    def pending_unschedulable(
+        self, name: str, *, reason: str = "Unschedulable"
+    ) -> None:
+        """A running Pending pod; only a probe/capture exposes its reason."""
+        job = self.jobs[name]
+        job.phase = "running"
+        job.scheduling_reason = reason
 
 
 def _complete(job: FakeJob, envelope: dict) -> None:

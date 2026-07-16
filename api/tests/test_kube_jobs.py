@@ -200,6 +200,8 @@ def test_real_delete_job_uses_uid_precondition_when_known():
     real._batch = Batch()
     real._types = Types
     real._ApiException = RuntimeError
+    real._request_timeout = (5.0, 30.0)
+    real._timeout_excs = (TimeoutError,)
 
     real.delete_job("sf-req-2050-red-1", uid="uid-original")
 
@@ -210,6 +212,7 @@ def test_real_delete_job_uses_uid_precondition_when_known():
     assert kwargs["body"].propagation_policy == "Foreground"
     assert kwargs["body"].preconditions.uid == "uid-original"
     assert "propagation_policy" not in kwargs
+    assert kwargs["_request_timeout"] == (5.0, 30.0)
 
     # no-uid path still deletes Foreground (just without the precondition)
     real.delete_job("sf-req-2050-red-1")

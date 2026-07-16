@@ -2,15 +2,41 @@
 
 Shared by the runner's gates (agent_runner) and the merge-gate evidence
 builder (verification) so the venv / timeout / missing-pytest handling lives in
-ONE place. Imports no app modules, so either side can import it without a cycle.
+ONE place.
 """
 import subprocess
 import sys
 from pathlib import Path
 
+from . import settings
+
+GIT_TIMEOUT_RC = 124
+
+
+class GitTimeout(Exception):
+    """A git subprocess exceeded its bound; always an infrastructure fault."""
+
 
 def _git(ws: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(ws), *args], capture_output=True, text=True)
+    cmd = ["git", "-C", str(ws), *args]
+    verb = args[0] if args else "git"
+    try:
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=settings.GIT_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            cmd,
+            returncode=GIT_TIMEOUT_RC,
+            stdout="",
+            stderr=(
+                f"git timed out after {settings.GIT_TIMEOUT}s "
+                f"(op: {verb})"
+            ),
+        )
 
 
 def _pytest(ws: Path) -> subprocess.CompletedProcess:

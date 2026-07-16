@@ -31,7 +31,7 @@ from app import intents, settings, simulator, transitions, workspace
 from app import kube_runner as kube_runner_module
 from app.db import SessionLocal
 from app.kube_jobs import job_name
-from app.kube_runner import KubeJobRunner
+from app.kube_runner import GATE_INFRA_LIMIT, KubeJobRunner
 from app.models import Intent, Request, StageJob, utcnow
 from app.ws_exec import _git
 
@@ -389,7 +389,7 @@ def test_tick_repairs_review_grade_committed_before_merge_gate(client, monkeypat
     assert repaired["gate"] == "approve_merge"
 
 
-def test_hung_gate_infra_loop_consumes_attempt_and_escalates(client):
+def test_hung_gate_infra_loop_escalates_without_consuming_attempt(client):
     """A deadline-killed gate with no envelope cannot churn forever."""
     runner, fake = make_runner()
 
@@ -417,44 +417,78 @@ def test_hung_gate_infra_loop_consumes_attempt_and_escalates(client):
         f"sf-{ref}-architecture-1-gate",
         f"sf-{ref}-architecture-1-gate",
         f"sf-{ref}-architecture-1-gate",
-        f"sf-{ref}-architecture-2-gate",
-        f"sf-{ref}-architecture-2-gate",
-        f"sf-{ref}-architecture-2-gate",
     ]
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(StageJob).where(StageJob.request_id == d["id"])
+        ).all()
+    assert {row.attempt for row in rows} == {1}
+    assert all(row.status == "infra" for row in rows if row.role == "gate")
 
 
-def test_gate_infra_bound_resets_for_a_new_attempt(client):
+def test_gate_infra_bound_resets_after_human_retry(client):
     runner, fake = make_runner()
-    failures: dict[str, int] = {}
 
-    def recover_on_second_attempt(name, job):
+    def fail_gate(name, job):
         if job.phase != "running":
             return
         if not name.endswith("-gate"):
             job.phase = "succeeded"
             job.termination_message = json.dumps(stage_ok())
             return
-        failures[name] = failures.get(name, 0) + 1
-        if "-architecture-1-gate" in name or failures[name] < 3:
-            job.phase = "failed"
-            return
-        job.phase = "succeeded"
-        job.termination_message = json.dumps(pass_verdict())
+        job.phase = "failed"
 
-    fake.on_observe = recover_on_second_attempt
+    fake.on_observe = fail_gate
     d = _approved(client, "Kube gate infra resets")
     ref = d["ref"].lower()
+    tick_until(client, runner, d["id"], lambda out: out["needs_human"])
+    response = client.post(
+        f"/api/requests/{d['id']}/retry",
+        json={"operator_id": 1, "note": "gate infrastructure recovered"},
+    )
+    assert response.status_code == 200, response.text
+    honest_cluster(fake)
     tick_until(
-        client,
-        runner,
-        d["id"],
-        lambda _o: f"sf-{ref}-red-1" in fake.jobs,
-        limit=30,
+        client, runner, d["id"], lambda _out: f"sf-{ref}-red-1" in fake.jobs
     )
 
     out = client.get(f"/api/requests/{d['id']}").json()
     assert out["needs_human"] is False
-    assert failures[f"sf-{ref}-architecture-2-gate"] == 3
+    gates = [
+        manifest["metadata"]["name"]
+        for manifest in fake.creations
+        if manifest["metadata"]["name"].endswith("architecture-1-gate")
+    ]
+    assert gates == [f"sf-{ref}-architecture-1-gate"] * 4
+
+
+def test_gate_infra_sentinel_escalates_without_burning_attempt(client):
+    runner, fake = make_runner()
+
+    def quota_gate(name, job):
+        if job.phase != "running":
+            return
+        if name.endswith("-gate"):
+            fake.finish(
+                name,
+                {"outcome": "infra", "reason": "quota"},
+                phase="failed",
+            )
+        else:
+            fake.finish(name, stage_ok())
+
+    fake.on_observe = quota_gate
+    request = _approved(client, "Kube gate quota infra")
+    out = tick_until(
+        client, runner, request["id"], lambda value: value["needs_human"]
+    )
+    assert "quota" in out["needs_human_reason"]
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(StageJob).where(StageJob.request_id == request["id"])
+        ).all()
+    assert {row.attempt for row in rows} == {1}
+    assert all(row.status == "infra" for row in rows if row.role == "gate")
 
 
 def test_observe_tolerates_one_transient_get_job_failure(client):
@@ -476,6 +510,197 @@ def test_observe_tolerates_one_transient_get_job_failure(client):
     with SessionLocal() as db:
         runner.tick(db)
     assert f"{name}-gate" in fake.jobs
+
+
+def test_infra_then_succeeded_stage_spawns_gate_not_respawn(client):
+    runner, fake = make_runner()
+    request = _approved(client, "Kube infra-then-succeeded")
+    name = f"sf-{request['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+        row = db.scalar(select(StageJob).where(StageJob.job_name == name))
+        row.status = "infra"
+        row.completed_at = utcnow()
+        db.add(
+            StageJob(
+                request_id=request["id"],
+                stage="architecture",
+                attempt=1,
+                role="stage",
+                job_name=name,
+                epoch=row.epoch,
+                status="succeeded",
+                envelope={"outcome": "ok", "sha": "0" * 40},
+                deadline_at=utcnow() + timedelta(seconds=60),
+            )
+        )
+        db.commit()
+    with SessionLocal() as db:
+        runner.tick(db)
+
+    assert f"{name}-gate" in fake.jobs
+    with SessionLocal() as db:
+        stage_rows = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == request["id"],
+                StageJob.role == "stage",
+            )
+        ).all()
+    assert len(stage_rows) == 2
+
+
+def test_infra_then_failed_stage_uses_newest_failure(client):
+    """Adjacent review case: newest failed beats an older same-attempt park."""
+    runner, _fake = make_runner()
+    request = _approved(client, "Kube infra-then-failed")
+    with SessionLocal() as db:
+        req = db.get(Request, request["id"])
+        deadline = utcnow() + timedelta(seconds=60)
+        for status in ("infra", "failed"):
+            db.add(
+                StageJob(
+                    request_id=req.id,
+                    stage="architecture",
+                    attempt=1,
+                    role="stage",
+                    job_name=f"sf-{req.ref.lower()}-architecture-1",
+                    epoch=1,
+                    status=status,
+                    deadline_at=deadline,
+                )
+            )
+        db.commit()
+        assert runner._next_work(db, req, [])[:3] == ("stage", "architecture", 2)
+
+
+def test_stage_stranger_park_loop_caps_and_escalates(client):
+    from fake_kube import FakeJob
+
+    from app.kube_jobs import stage_job_manifest
+
+    runner, fake = make_runner()
+    request = _approved(client, "Kube stage stranger loop")
+    name = f"sf-{request['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+    fake.jobs[name] = FakeJob(
+        manifest=stage_job_manifest(request["ref"], "architecture", 1),
+        uid="uid-stranger",
+    )
+    with SessionLocal() as db:
+        runner.tick(db)
+    for _ in range(6):
+        fake.conflicts.add(name)
+        with SessionLocal() as db:
+            runner.tick(db)
+        if client.get(f"/api/requests/{request['id']}").json()["needs_human"]:
+            break
+
+    out = client.get(f"/api/requests/{request['id']}").json()
+    assert out["needs_human"] is True
+    assert "infra loop" in out["needs_human_reason"]
+    with SessionLocal() as db:
+        infra = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == request["id"],
+                StageJob.role == "stage",
+                StageJob.status == "infra",
+            )
+        ).all()
+    assert len(infra) == GATE_INFRA_LIMIT
+    assert f"{name}-gate" not in fake.jobs
+
+
+def test_gate_stranger_park_loop_caps_and_escalates(client):
+    from fake_kube import FakeJob
+
+    from app.kube_jobs import gate_job_manifest
+
+    runner, fake = make_runner()
+    request = _approved(client, "Kube gate stranger loop")
+    name = f"sf-{request['ref'].lower()}-architecture-1"
+    gate_name = f"{name}-gate"
+    with SessionLocal() as db:
+        runner.tick(db)
+    fake.finish(name, stage_ok())
+    with SessionLocal() as db:
+        runner.tick(db)
+    fake.jobs[gate_name] = FakeJob(
+        manifest=gate_job_manifest(request["ref"], "architecture", 1),
+        uid="uid-stranger",
+    )
+    with SessionLocal() as db:
+        runner.tick(db)
+    for _ in range(6):
+        fake.conflicts.add(gate_name)
+        with SessionLocal() as db:
+            runner.tick(db)
+        if client.get(f"/api/requests/{request['id']}").json()["needs_human"]:
+            break
+
+    out = client.get(f"/api/requests/{request['id']}").json()
+    assert out["needs_human"] is True
+    assert "infra loop" in out["needs_human_reason"]
+
+
+def test_dying_predecessor_park_is_time_bounded_not_count_bounded(client):
+    runner, fake = make_runner()
+    request = _approved(client, "Kube predecessor grace")
+    name = f"sf-{request['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+        first = db.scalar(select(StageJob).where(StageJob.job_name == name))
+        first_uid = fake.jobs[name].uid
+        first.status = "infra"
+        first.completed_at = utcnow()
+        first.envelope = {"infra_cause": "predecessor"}
+        db.commit()
+    for _ in range(5):
+        fake.conflicts.add(name)
+        with SessionLocal() as db:
+            runner.tick(db)
+    assert client.get(f"/api/requests/{request['id']}").json()["needs_human"] is False
+    with SessionLocal() as db:
+        parks = db.scalars(
+            select(StageJob).where(
+                StageJob.job_name == name,
+                StageJob.status == "infra",
+            )
+        ).all()
+    assert len(parks) >= 4
+    assert all((row.envelope or {}).get("infra_cause") == "predecessor" for row in parks)
+    fake.jobs[name].deleted = True
+    with SessionLocal() as db:
+        runner.tick(db)
+        fresh = db.scalar(
+            select(StageJob)
+            .where(StageJob.job_name == name)
+            .order_by(StageJob.id.desc())
+        )
+    assert fresh.status == "running" and fresh.job_uid not in (None, first_uid)
+
+
+def test_stuck_predecessor_past_grace_escalates(monkeypatch, client):
+    monkeypatch.setattr(kube_runner_module, "PARK_PREDECESSOR_GRACE", 0)
+    runner, fake = make_runner()
+    request = _approved(client, "Kube stuck predecessor")
+    name = f"sf-{request['ref'].lower()}-architecture-1"
+    with SessionLocal() as db:
+        runner.tick(db)
+        first = db.scalar(select(StageJob).where(StageJob.job_name == name))
+        first.status = "infra"
+        first.completed_at = utcnow()
+        first.envelope = {"infra_cause": "predecessor"}
+        db.commit()
+    for _ in range(6):
+        fake.conflicts.add(name)
+        with SessionLocal() as db:
+            runner.tick(db)
+        if client.get(f"/api/requests/{request['id']}").json()["needs_human"]:
+            break
+    out = client.get(f"/api/requests/{request['id']}").json()
+    assert out["needs_human"] is True
+    assert "infra loop" in out["needs_human_reason"]
 
 
 def test_send_back_to_build_supersedes_later_rows_and_restarts_red(client):

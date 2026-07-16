@@ -28,7 +28,7 @@ import shutil
 from pathlib import Path
 
 from . import settings
-from .ws_exec import _git
+from .ws_exec import GIT_TIMEOUT_RC, GitTimeout, _git
 
 BASELINE_TAG = "sf-baseline"
 
@@ -193,12 +193,18 @@ def head_sha(ws: Path, refname: str = "HEAD") -> str | None:
 def surface_hash_at(ws: Path, sha: str) -> str | None:
     """sha256 over `git ls-tree <sha> -- SURFACE_PATHS` — the tree hash of
     tests/ covers every file under it; the config blobs cover deselection.
-    None = the SHA does not resolve in this repo (never a pass)."""
+    None = the SHA does not resolve in this repo (never a pass). A timeout is
+    infra, not evidence that the frozen surface changed."""
     if not re.fullmatch(r"[0-9a-fA-F]{7,40}", sha or ""):
         return None
-    if _git(ws, "cat-file", "-e", f"{sha}^{{commit}}").returncode != 0:
+    exists = _git(ws, "cat-file", "-e", f"{sha}^{{commit}}")
+    if exists.returncode == GIT_TIMEOUT_RC:
+        raise GitTimeout(exists.stderr)
+    if exists.returncode != 0:
         return None
     out = _git(ws, "ls-tree", sha, "--", *SURFACE_PATHS)
+    if out.returncode == GIT_TIMEOUT_RC:
+        raise GitTimeout(out.stderr)
     if out.returncode != 0:
         return None
     return hashlib.sha256(out.stdout.encode()).hexdigest()
