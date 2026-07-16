@@ -210,3 +210,13 @@ tasks:
     desc: "One request end-to-end on kind (needs codex auth secret; ~10-25 min, spends codex usage)"
     cmds:
       - ./scripts/kind-smoke.sh
+
+  sync-github-token:
+    desc: Sync a fine-grained PAT into the sf-github-token Secret (single-developer, spec §5)
+    cmds:
+      - kubectl -n software-factory create secret generic sf-github-token --from-literal=token="$FACTORY_GITHUB_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
+
+  github-smoke:
+    desc: "One request end-to-end over REAL GitHub (creates a private repo + PR; needs FACTORY_GITHUB_TOKEN/OWNER + GITHUB_SMOKE_CONFIRMED=1)"
+    cmds:
+      - ./scripts/github-smoke.sh

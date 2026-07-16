@@ -21,7 +21,13 @@ die_stage() {
 REPO=/workspace/repo
 
 note "cloning $SF_REPO_URL ($SF_BRANCH)"
-git clone -q --branch "$SF_BRANCH" "$SF_REPO_URL" "$REPO" || die_stage "clone failed: $SF_REPO_URL"
+if [ -n "${SF_GITHUB_TOKEN:-}" ] && [[ "$SF_REPO_URL" == https://github.com/* ]]; then
+  AUTHED_URL="https://x-access-token:${SF_GITHUB_TOKEN}@${SF_REPO_URL#https://}"
+  git clone -q --branch "$SF_BRANCH" "$AUTHED_URL" "$REPO" >/dev/null 2>&1 || die_stage "clone failed"
+  git -C "$REPO" remote set-url origin "$AUTHED_URL" || die_stage "origin setup failed"
+else
+  git clone -q --branch "$SF_BRANCH" "$SF_REPO_URL" "$REPO" || die_stage "clone failed: $SF_REPO_URL"
+fi
 cd "$REPO"
 git config user.email agent@sf.local
 git config user.name "sf-agent"

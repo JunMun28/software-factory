@@ -86,6 +86,24 @@ KUBE_JOB_CAP = int(os.environ.get("FACTORY_JOB_CAP", "10"))
 # Base URL agent/gate Jobs clone from (the git-daemon sidecar). Empty = no git
 # backbone configured: the kube runner behaves exactly like B1 (unit tests).
 GIT_REMOTE_BASE = os.environ.get("FACTORY_GIT_REMOTE_BASE", "").rstrip("/")
+# ---------- GitHub as the real remote (Plan B4, spec §5/§6) ----------
+# Local profile: a personal github.com account + a fine-grained PAT. Empty token
+# = no GitHub: agents push to the git-daemon and the merge is local (B2/B3),
+# byte-for-byte. The office/Phase-2 GitHub App swaps in behind github.py's seam.
+GITHUB_TOKEN = os.environ.get("FACTORY_GITHUB_TOKEN", "").strip()
+GITHUB_OWNER = os.environ.get("FACTORY_GITHUB_OWNER", "").strip()
+GITHUB_API = os.environ.get("FACTORY_GITHUB_API", "https://api.github.com").rstrip("/")
+GITHUB_TOKEN_SECRET = os.environ.get(
+    "FACTORY_GITHUB_TOKEN_SECRET", "sf-github-token"
+)
+
+
+def github_enabled() -> bool:
+    """GitHub mode needs a git backbone (the local mirror the orchestrator fetches
+    into) AND a token AND an owner. Any unset -> git-daemon remote + local merge."""
+    return bool(GIT_REMOTE_BASE and GITHUB_TOKEN and GITHUB_OWNER)
+
+
 # Forced non-root UID for agent/gate pods — restricted-SCC behavior is proven
 # locally, not discovered at the office (spec §2). Any high UID works; the
 # image is built to arbitrary-UID conventions (root group, g=u, HOME=/workspace).

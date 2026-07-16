@@ -51,6 +51,15 @@ spec:
           envFrom:
             - configMapRef:
                 name: factory-config
+          env:
+            # GitHub mode (Plan B4b): the PAT rides a Secret, never the ConfigMap.
+            # optional: a token-less cluster runs in git-daemon mode unchanged.
+            - name: FACTORY_GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sf-github-token
+                  key: token
+                  optional: true
           ports:
             - containerPort: 8000
           readinessProbe:
