@@ -1,5 +1,6 @@
 """Kube building blocks: settings, StageJob rows, names, manifests, envelopes."""
 
+import json
 import os
 import subprocess
 import sys
@@ -32,6 +33,9 @@ def test_kube_settings_defaults():
     assert settings.GATE_WALL_CLOCK > settings.GATE_ACTIVE_DEADLINE
     assert settings.KUBE_MAX_ATTEMPTS == 2
     assert settings.KUBE_JOB_CAP == 10
+    assert settings.BUILD_CAP == 4
+    assert settings.REGISTRY_RETENTION == "7d"
+    assert settings.KANIKO_IMAGE == "gcr.io/kaniko-project/executor:v1.23.2"
 
 
 def test_stage_job_row_roundtrip():
@@ -637,3 +641,76 @@ def test_entrypoint_push_and_review_paths_cannot_leak_the_token():
     push_line = next(line for line in src.splitlines() if "git push -q origin" in line)
     assert "2>&1" in push_line or "2>/dev/null" in push_line
     assert 'remote set-url origin "$SF_REPO_URL"' in src  # review keeps the clean URL
+
+
+def _run_gate(tmp_path, *, test_source: str, gitleaks_rc: int = 0):
+    repo = tmp_path / "repo"
+    tests = repo / "tests"
+    tests.mkdir(parents=True)
+    (tests / "test_gate_deps.py").write_text(test_source)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_gitleaks = fake_bin / "gitleaks"
+    fake_gitleaks.write_text(f"#!/usr/bin/env bash\nexit {gitleaks_rc}\n")
+    fake_gitleaks.chmod(0o755)
+    termlog = tmp_path / "termination-log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "SF_REPO_DIR": str(repo),
+        "SF_STAGE": "green",
+        "SF_TERMLOG": str(termlog),
+    }
+    gate = Path(__file__).resolve().parents[2] / "docker/sf-agent/gate.sh"
+    result = subprocess.run(
+        ["bash", str(gate)],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result, json.loads(termlog.read_text())
+
+
+def test_gate_image_prebakes_runtime_deps_and_importing_them_grades_normally(tmp_path):
+    dockerfile = (
+        Path(__file__).resolve().parents[2] / "docker/sf-agent/Dockerfile"
+    ).read_text()
+    for dependency in ("fastapi", "uvicorn", "httpx", "pydantic", "pytest"):
+        assert dependency in dockerfile
+    assert "gitleaks" in dockerfile
+
+    result, envelope = _run_gate(
+        tmp_path,
+        test_source=(
+            "from fastapi import FastAPI\n"
+            "import httpx\n"
+            "from pydantic import BaseModel\n\n"
+            "def test_runtime_imports():\n"
+            "    assert FastAPI and httpx and BaseModel\n"
+        ),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert envelope["outcome"] == "pass"
+
+
+def test_gate_classifies_collection_import_error_distinctly(tmp_path):
+    _result, envelope = _run_gate(
+        tmp_path,
+        test_source="import package_that_is_not_prebaked\n",
+    )
+
+    assert envelope["outcome"] == "fail"
+    assert "collection/import" in envelope["reason"]
+
+
+def test_gate_fails_when_gitleaks_finds_a_committed_secret(tmp_path):
+    _result, envelope = _run_gate(
+        tmp_path,
+        test_source="def test_ok():\n    assert True\n",
+        gitleaks_rc=1,
+    )
+
+    assert envelope["outcome"] == "fail"
+    assert "committed secret" in envelope["reason"]

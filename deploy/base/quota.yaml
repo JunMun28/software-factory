@@ -1,0 +1,40 @@
+# DEPLOY-06: namespace-wide ceilings sized for the always-on control plane,
+# four concurrent kaniko builds, the stage/gate pool, and several produced apps.
+# ResourceQuota rejects excess work; it does not evict the already-running API.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: software-factory-capacity
+spec:
+  hard:
+    requests.cpu: "12"
+    requests.memory: 24Gi
+    limits.cpu: "40"
+    limits.memory: 64Gi
+    requests.storage: 20Gi
+    persistentvolumeclaims: "8"
+    pods: "40"
+    count/jobs.batch: "24"
+    count/deployments.apps: "24"
+---
+# Produced apps are factory-rendered with explicit resources today. These
+# defaults protect the node if a later profile or maintenance pod omits them.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: software-factory-container-defaults
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+      max:
+        cpu: "4"
+        memory: 8Gi
+      min:
+        cpu: 10m
+        memory: 32Mi

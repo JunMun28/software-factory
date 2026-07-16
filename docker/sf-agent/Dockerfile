@@ -6,18 +6,42 @@
 #   docker build -t sf-agent:dev -f docker/sf-agent/Dockerfile .
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
+ARG TARGETARCH
+ARG GITLEAKS_VERSION=8.24.2
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git curl ca-certificates jq \
   && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
   && apt-get install -y --no-install-recommends nodejs \
   && rm -rf /var/lib/apt/lists/*
 
+# Pinned, multi-arch gitleaks binary. Gate pods have no internet egress, so the
+# scanner must be present in the image before the committed diff is graded.
+RUN case "$TARGETARCH" in \
+      amd64) gitleaks_arch=x64 ;; \
+      arm64) gitleaks_arch=arm64 ;; \
+      *) echo "unsupported gitleaks architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+  && curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${gitleaks_arch}.tar.gz" \
+    | tar -xz -C /usr/local/bin gitleaks \
+  && gitleaks version
+
 # the two agent CLIs + the Angular CLI for the golden template's web half
 RUN npm install -g opencode-ai @openai/codex @angular/cli \
   && npm cache clean --force
 
-# the gate runs the factory-owned test command with the system interpreter
-RUN uv pip install --system pytest
+# BUILD-02 v1: gates remain network-closed. Pre-bake the golden runtime/test
+# stack so collection can import common app dependencies. Arbitrary per-app
+# requirements.txt installation remains phased until a controlled package
+# mirror can be added without weakening gate-pod egress.
+# C5 implementation note: full Trivy IMAGE scanning is also PHASED/office;
+# gitleaks covers committed-diff secrets in the merge gate here.
+RUN uv pip install --system \
+      "pytest>=9,<10" \
+      "fastapi>=0.115,<0.116" \
+      "uvicorn[standard]>=0.32,<0.33" \
+      "httpx>=0.27,<1" \
+      "pydantic>=2.9,<3"
 
 # arbitrary-UID pods and local fixture tests clone repos owned by OTHER uids;
 # git's dubious-ownership check would refuse them (the pod uid never matches)

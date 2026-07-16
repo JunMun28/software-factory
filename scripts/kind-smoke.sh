@@ -35,6 +35,15 @@ done
 POD=$(kubectl -n $NS get pod -l app=api -o jsonpath='{.items[0].metadata.name}')
 dbpy() { kubectl -n "$NS" exec "$POD" -c api -- uv run --no-sync python -c "$1"; }
 ok "cluster healthy, runner=kube, preview loop enabled"
+PVC_MODE=$(kubectl -n $NS get pvc sf-registry-data -o jsonpath='{.spec.accessModes[0]}')
+[ "$PVC_MODE" = "ReadWriteOnce" ] || fail "registry PVC is not ReadWriteOnce"
+PVC_SIZE=$(kubectl -n $NS get pvc sf-registry-data -o jsonpath='{.spec.resources.requests.storage}')
+[ "$PVC_SIZE" = "5Gi" ] || fail "registry PVC is not the expected durable 5Gi volume"
+REGISTRY_STRATEGY=$(kubectl -n $NS get deploy sf-registry -o jsonpath='{.spec.strategy.type}')
+[ "$REGISTRY_STRATEGY" = "Recreate" ] || fail "RWO registry Deployment is not Recreate"
+BUILD_CAP=$(kubectl -n $NS get configmap factory-config -o jsonpath='{.data.FACTORY_BUILD_CAP}')
+[ "$BUILD_CAP" = "4" ] || fail "FACTORY_BUILD_CAP is not configured to 4"
+ok "registry PVC is durable/Recreate; build capacity is bounded"
 
 echo "▸ submitter flow (mirrors scripts/smoke.sh)"
 NW_ID=$(curl -s "$API/apps" | jqpy "print(next(a['id'] for a in d if a['key']=='northwind'))")
@@ -212,6 +221,21 @@ kubectl -n $NS get deploy/sf-app-$SLUG -o jsonpath='{.spec.template.spec.contain
   | grep -q "sf-registry:5000/sf-app-$SLUG@sha256:" \
   || fail "app image is not digest-pinned to the local registry"
 ok "app image is digest-pinned (sf-registry:5000/sf-app-$SLUG@sha256:…)"
+
+# DEPLOY-02: force a zero-retention online manifest-GC pass. The live digest
+# must be in the factory-computed protection set and therefore never selected.
+LIVE_IMAGE=$(kubectl -n $NS get deploy/sf-app-$SLUG -o jsonpath='{.spec.template.spec.containers[0].image}')
+LIVE_DIGEST=${LIVE_IMAGE##*@}
+GC_RESULT=$(dbpy "import json; from app import registry, settings; from app.db import SessionLocal; from app.kube_client import RealKubeClient; settings.REGISTRY_RETENTION='0s'; db=SessionLocal(); result=registry.gc_unreferenced(db, RealKubeClient()); print(json.dumps({'protected': sorted(result.protected), 'deleted': result.deleted, 'skipped_reason': result.skipped_reason})); db.close()")
+[ "$(echo "$GC_RESULT" | jqpy "print(d['skipped_reason'])")" = "None" ] \
+  || fail "registry GC failed closed during smoke: $GC_RESULT"
+echo "$GC_RESULT" | jq -e --arg digest "$LIVE_DIGEST" '.protected | index($digest) != null' >/dev/null \
+  || fail "live Deployment digest was absent from the GC protection set"
+echo "$GC_RESULT" | jq -e --arg digest "$LIVE_DIGEST" 'all(.deleted[]?; .[1] != $digest)' >/dev/null \
+  || fail "registry GC selected the live Deployment digest"
+MANIFEST_STATUS=$(dbpy "import urllib.request; request=urllib.request.Request('http://sf-registry:5000/v2/sf-app-$SLUG/manifests/$LIVE_DIGEST', method='HEAD', headers={'Accept':'application/vnd.docker.distribution.manifest.v2+json'}); print(urllib.request.urlopen(request, timeout=10).status)")
+[ "$MANIFEST_STATUS" = "200" ] || fail "live registry manifest disappeared after GC"
+ok "zero-retention GC preserved the live digest"
 
 echo "▸ the orchestrator owned the Job lifecycle: nothing left behind"
 LEFT=$(kubectl -n $NS get jobs -o name 2>/dev/null | grep "sf-$LREF" || true)

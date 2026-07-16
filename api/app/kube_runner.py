@@ -214,8 +214,7 @@ class KubeJobRunner:
         moved: list[str] = []
         defer_spawn: set[int] = set()
         self._reap_dead_requests(db, moved)
-        self._drive_deploys(db, moved)
-        self._drive_previews(db, moved)
+        self._drive_build_work(db, moved)
         self._reap_finished_previews(db, moved)
         self._sweep_preview_ttl(db, moved)
         for sj in db.scalars(
@@ -904,13 +903,35 @@ class KubeJobRunner:
         return req.app.key if req.app else req.ref.lower()
 
     # ---------- pre-merge preview + requester feedback (C1) ----------
+    def _drive_build_work(self, db: Session, moved: list[str]) -> None:
+        """Drive production and preview build work in one oldest-request-first queue."""
+        requests = db.scalars(
+            select(Request)
+            .where(
+                Request.stage.in_(("preview", "deploy")),
+                Request.gate.is_(None),
+            )
+            .order_by(Request.id)
+        ).all()
+        for req in requests:
+            try:
+                if req.stage == "deploy" and settings.app_deploy_enabled():
+                    self._drive_one_deploy(db, req, moved)
+                elif req.stage == "preview" and settings.preview_enabled():
+                    self._drive_one_preview(db, req, moved)
+            except Exception as exc:
+                db.rollback()
+                label = "Build/deploy" if req.stage == "deploy" else "Preview"
+                log.exception("%s driver failed for %s", label.lower(), req.ref)
+                self._escalate(db, req, f"{label} failed: {exc}")
+
     def _drive_previews(self, db: Session, moved: list[str]) -> None:
         if not settings.preview_enabled():
             return
         requests = db.scalars(
-            select(Request).where(
-                Request.stage == "preview", Request.gate.is_(None)
-            )
+            select(Request)
+            .where(Request.stage == "preview", Request.gate.is_(None))
+            .order_by(Request.id)
         ).all()
         for req in requests:
             try:
@@ -1083,6 +1104,9 @@ class KubeJobRunner:
         round_number: int,
         moved: list[str],
     ) -> None:
+        if self._build_slots_full(db):
+            self._note_build_wait(db, req, moved)
+            return
         sha = self._last_graded_sha(db, req)
         if not (isinstance(sha, str) and SHA40.fullmatch(sha)):
             self._escalate(db, req, "Preview source SHA could not be read from review")
@@ -1190,6 +1214,9 @@ class KubeJobRunner:
         round_number: int,
         moved: list[str],
     ) -> None:
+        if self._build_slots_full(db):
+            self._note_build_wait(db, req, moved)
+            return
         name = deploy_manifests.preview_app_name(slug)
         image = f"{settings.REGISTRY}/sf-app-{slug}@{digest}"
         intent_key = f"deploy_preview:{slug}:{digest}:r{round_number}"
@@ -1479,7 +1506,9 @@ class KubeJobRunner:
         # B4: only APPROVED (gate-cleared) deploy requests build. A request at
         # gate=approve_deploy is WAITING for a human — never drive it.
         requests = db.scalars(
-            select(Request).where(Request.stage == "deploy", Request.gate.is_(None))
+            select(Request)
+            .where(Request.stage == "deploy", Request.gate.is_(None))
+            .order_by(Request.id)
         ).all()
         for req in requests:
             try:
@@ -1535,6 +1564,9 @@ class KubeJobRunner:
     def _spawn_build(
         self, db: Session, req: Request, slug: str, moved: list[str]
     ) -> None:
+        if self._build_slots_full(db):
+            self._note_build_wait(db, req, moved)
+            return
         ws = workspace.workspace_for(req)
         sha = workspace.head_sha(ws, "main")
         if not (isinstance(sha, str) and SHA40.fullmatch(sha)):
@@ -1631,6 +1663,9 @@ class KubeJobRunner:
         digest: str,
         moved: list[str],
     ) -> None:
+        if self._build_slots_full(db):
+            self._note_build_wait(db, req, moved)
+            return
         name = deploy_manifests.app_name(slug)
         image = f"{settings.REGISTRY}/sf-app-{slug}@{digest}"
         intent_key = f"deploy:{slug}:{digest}"
@@ -1664,6 +1699,36 @@ class KubeJobRunner:
             return
         intents.complete(db, intent_key, {"app": name, "digest": digest})
         moved.append(f"{req.ref}: applied {name} at {digest}")
+
+    @staticmethod
+    def _build_slots_full(db: Session) -> bool:
+        running = db.scalar(
+            select(func.count(StageJob.id)).where(
+                StageJob.status == "running",
+                StageJob.role.in_(("build", "pbuild", "deploy", "pdeploy")),
+            )
+        )
+        return (running or 0) >= settings.BUILD_CAP
+
+    @staticmethod
+    def _note_build_wait(db: Session, req: Request, moved: list[str]) -> None:
+        existing = db.scalar(
+            select(ProgressEvent.id).where(
+                ProgressEvent.request_id == req.id,
+                ProgressEvent.title == "Waiting for a build slot",
+            )
+        )
+        if existing is not None:
+            return
+        emit(
+            db,
+            req,
+            "step_summary",
+            "Waiting for a build slot",
+            payload={"Ref": req.ref, "cap": settings.BUILD_CAP},
+        )
+        db.commit()
+        moved.append(f"{req.ref}: waiting for a build slot")
 
     def _observe_deploy(
         self,

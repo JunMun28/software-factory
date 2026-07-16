@@ -18,7 +18,11 @@ data:
   FACTORY_LOG_LEVEL: "INFO"
   FACTORY_REGISTRY: "sf-registry:5000"
   FACTORY_APP_DEPLOY: "1"
-  FACTORY_KANIKO_IMAGE: "gcr.io/kaniko-project/executor:latest"
+  FACTORY_BUILD_CAP: "4"
+  FACTORY_REGISTRY_RETENTION: "7d"
+  # TODO(SEC-06): replace this fixed tag with @sha256 after the office mirror
+  # exposes a digest verified for both amd64 and arm64.
+  FACTORY_KANIKO_IMAGE: "gcr.io/kaniko-project/executor:v1.23.2"
   FACTORY_APP_INGRESS_DOMAIN: "localtest.me"
   FACTORY_REGISTRY_PROXY: "sf-registry-proxy:5000"
   FACTORY_GITHUB_OWNER: "JunMun28"    # GitHub mode activates only when the

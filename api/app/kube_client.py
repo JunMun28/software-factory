@@ -52,6 +52,8 @@ class KubeClient(Protocol):
 
     def rollout_ready(self, name: str) -> bool: ...  # Deployment fully rolled out
 
+    def list_deployment_images(self, selector: str) -> list[str]: ...
+
     def delete_by_label(self, selector: str) -> None: ...  # produced-app teardown
 
 
@@ -249,6 +251,21 @@ class RealKubeClient:
             and (s.available_replicas or 0) >= want
             and (s.observed_generation or 0) >= (d.metadata.generation or 0)
         )
+
+    def list_deployment_images(self, selector: str) -> list[str]:
+        """Return images from produced-app Deployments for registry protection."""
+        with self._bounded("list_deployments"):
+            deployments = self._apps.list_namespaced_deployment(
+                self.ns,
+                label_selector=selector,
+                _request_timeout=self._request_timeout,
+            ).items
+        return [
+            container.image
+            for deployment in deployments
+            for container in (deployment.spec.template.spec.containers or [])
+            if container.image
+        ]
 
     def delete_by_label(self, selector: str) -> None:
         # Same Orphan-default trap as delete_job (DEPLOY-03): a collection delete

@@ -484,3 +484,32 @@ reviewed SOUND. 497 pytest + full verify green.
 - Migration a1b2c3d4e5f6 chains from the C1 head f6a8c0e2b4d6. Stacked on
   c1-preview; shares the merge-hold. A merge migration reconciling the parallel
   session's c9d1f3a5b7e2 is expected at integration.
+
+## Plan C5 — production-parity infra (2026-07-16)
+
+DEPLOY-01/02/04/06 + SEC-06[kind] + BUILD-02. codex-implemented (opus review
+capped this session; codex adversarial review + coordinator spot-check of the
+GC safety invariant). 528 pytest + ruff + kustomize + JS + lifecycle smoke green.
+
+- **Registry GC is FAIL-CLOSED and never deletes a live digest** (registry.py):
+  protected set = every non-terminal request's build/pbuild/deploy/pdeploy digest
+  + every live sf/tier=app Deployment image + rollback history; RAISES on a
+  missing/malformed live digest; double-snapshots protection around the manifest
+  listing; on ANY snapshot failure deletes NOTHING. Only unprotected digests past
+  REGISTRY_RETENTION are manifest-deleted (online); blob reclaim is a documented
+  scale-down maintenance step, never a live-racing op.
+- Registry PVC (RWO, /var/lib/registry, strategy Recreate). FACTORY_BUILD_CAP=4
+  gates build/pbuild/deploy spawns oldest-first (no tick deadlock — running work
+  is still observed and drains via deadlines). ResourceQuota + LimitRange
+  (deploy/base/quota.yaml). kaniko pinned to executor:v1.23.2 (digest-pin TODO —
+  gcr.io DNS blocked offline). gitleaks committed-diff gate (absent-binary skips;
+  exit 1 = block, other exit = inconclusive-skip not false-block). Gate pre-bakes
+  fastapi/uvicorn/httpx/pydantic/pytest so dep-importing tests grade; RED now
+  requires a genuine 'failed' (not a collection/setup ERROR) before passing.
+
+### Phased / deferred (noted, not built)
+- Full Trivy IMAGE scan + registry AUTH -> office overlay.
+- Arbitrary per-app requirements.txt install (needs gate-pod egress) -> phased.
+- factory-api Guaranteed-QoS + a high PriorityClass so it's never evicted under
+  quota pressure -> office hardening (numeric fit confirmed for kind; not a
+  correctness bug). kaniko digest-pin -> resolve the digest at image-build time.

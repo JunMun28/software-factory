@@ -40,6 +40,34 @@ def test_rollout_ready_gate_and_delete_by_label():
     assert "Service/sf-app-nw" not in f.objects
 
 
+def test_fake_lists_only_selected_deployment_images():
+    f = FakeKubeClient()
+    f.apply(
+        {
+            "kind": "Deployment",
+            "metadata": {"name": "sf-app-nw", "labels": {"sf/tier": "app"}},
+            "spec": {
+                "template": {
+                    "spec": {"containers": [{"image": f"registry/sf-app-nw@{DIGEST}"}]}
+                }
+            },
+        }
+    )
+    f.apply(
+        {
+            "kind": "Deployment",
+            "metadata": {"name": "factory-api", "labels": {"sf/tier": "factory"}},
+            "spec": {
+                "template": {"spec": {"containers": [{"image": "sf-api:dev"}]}}
+            },
+        }
+    )
+
+    assert f.list_deployment_images("sf/tier=app") == [
+        f"registry/sf-app-nw@{DIGEST}"
+    ]
+
+
 def test_fake_probe_visibility_matches_real_rule():
     from app.kube_jobs import stage_job_manifest
 

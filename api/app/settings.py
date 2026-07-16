@@ -86,6 +86,9 @@ KUBE_MAX_ATTEMPTS = int(
 )
 # Concurrent Jobs the orchestrator will run (spec §2).
 KUBE_JOB_CAP = int(os.environ.get("FACTORY_JOB_CAP", "10"))
+# Build/app rollout work has a separate, smaller pool: kaniko is materially
+# heavier than a stage/gate Job and must not bypass the general runner bound.
+BUILD_CAP = int(os.environ.get("FACTORY_BUILD_CAP", "4"))
 
 # ---------- FAIL-01: orchestrator-call timeouts ----------
 # So a hung git subprocess or k8s call can't freeze the single-threaded tick
@@ -136,7 +139,11 @@ CODEX_AUTH_SECRET = os.environ.get("FACTORY_CODEX_AUTH_SECRET", "sf-codex-auth")
 REGISTRY = os.environ.get("FACTORY_REGISTRY", "").rstrip("/")
 # Master switch for the post-merge deploy flow. Requires REGISTRY + GIT_REMOTE_BASE.
 APP_DEPLOY = os.environ.get("FACTORY_APP_DEPLOY", "").lower() in ("1", "true", "yes")
-KANIKO_IMAGE = os.environ.get("FACTORY_KANIKO_IMAGE", "gcr.io/kaniko-project/executor:latest")
+# TODO(SEC-06): replace the fixed tag with a verified sha256 digest when the
+# office registry/mirror supplies one. Never return to a mutable :latest tag.
+KANIKO_IMAGE = os.environ.get(
+    "FACTORY_KANIKO_IMAGE", "gcr.io/kaniko-project/executor:v1.23.2"
+)
 # Pull-through proxy for BASE images: build pods have no internet (build-walls),
 # so kaniko's --registry-mirror routes docker.io pulls through this one
 # controlled door. Empty = no mirror flag (kaniko pulls direct — office/AKS
@@ -148,6 +155,11 @@ KUBE_APP_SA = os.environ.get("FACTORY_KUBE_APP_SA", "sf-app")
 BUILD_ACTIVE_DEADLINE = int(os.environ.get("FACTORY_BUILD_ACTIVE_DEADLINE", "900"))
 BUILD_WALL_CLOCK = int(os.environ.get("FACTORY_BUILD_WALL_CLOCK", "1200"))
 DEPLOY_WALL_CLOCK = int(os.environ.get("FACTORY_DEPLOY_WALL_CLOCK", "600"))
+# Online manifest retention. Physical blob reclaim is an offline/suspended
+# CronJob workflow in deploy/base/registry.yaml, never raced from the tick.
+REGISTRY_RETENTION = os.environ.get("FACTORY_REGISTRY_RETENTION", "7d")
+REGISTRY_ROLLBACK_DEPTH = int(os.environ.get("FACTORY_REGISTRY_ROLLBACK_DEPTH", "5"))
+REGISTRY_HTTP_TIMEOUT = float(os.environ.get("FACTORY_REGISTRY_HTTP_TIMEOUT", "15"))
 
 # ---------- acceptance-criteria contract (Plan C4) ----------
 # Default-on because v1 only records structural evidence and never changes a

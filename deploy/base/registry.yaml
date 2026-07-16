@@ -1,6 +1,18 @@
 # In-cluster image registry (Plan B3): kaniko pushes here via cluster DNS
 # (sf-registry:5000); the node pulls the SAME name via a containerd mirror to
 # NodePort 30500 (deploy/kind/cluster.yaml). One image name both sides.
+# C5 implementation note: registry authentication and full Trivy IMAGE scans
+# are PHASED/office work; this local slice adds durability + safe retention only.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sf-registry-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -10,6 +22,10 @@ metadata:
     sf/tier: factory
 spec:
   replicas: 1
+  # The registry owns one RWO volume. Recreate prevents an old and a new pod
+  # from contending for it during rollout.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: registry
@@ -19,12 +35,22 @@ spec:
         app: registry
         sf/tier: factory
     spec:
+      volumes:
+        - name: registry-data
+          persistentVolumeClaim:
+            claimName: sf-registry-data
       containers:
         - name: registry
           image: registry:2
           imagePullPolicy: IfNotPresent
+          env:
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
           ports:
             - containerPort: 5000
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/registry
           resources:
             requests: {cpu: 50m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}
@@ -44,6 +70,54 @@ spec:
       port: 5000
       targetPort: 5000
       nodePort: 30500
+---
+# Offline blob reclaim scaffold. It is SUSPENDED on purpose: registry:2's
+# garbage-collect command must never race the serving Deployment. Maintenance
+# runbook: scale sf-registry to 0, create a one-off Job from this CronJob, wait
+# for success, then scale sf-registry back to 1. The factory's online GC only
+# deletes old unprotected manifests; this job reclaims their orphaned blobs.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sf-registry-blob-gc
+  labels:
+    app: registry-maintenance
+    sf/tier: factory
+spec:
+  schedule: "0 3 * * 0"
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: registry-maintenance
+            sf/tier: factory
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          volumes:
+            - name: registry-data
+              persistentVolumeClaim:
+                claimName: sf-registry-data
+          containers:
+            - name: garbage-collect
+              image: registry:2
+              imagePullPolicy: IfNotPresent
+              args:
+                - garbage-collect
+                - --delete-untagged=true
+                - /etc/docker/registry/config.yml
+              volumeMounts:
+                - name: registry-data
+                  mountPath: /var/lib/registry
+              resources:
+                requests: {cpu: 100m, memory: 128Mi}
+                limits: {cpu: 500m, memory: 512Mi}
 ---
 # Pull-through proxy cache (Plan B3): the ONLY door out for build pods' base
 # images. kaniko pulls FROM docker.io logically, but --registry-mirror routes

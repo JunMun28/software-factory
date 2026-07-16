@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from .. import registry as registry_service
 from ..db import get_db
 from ..models import App, Request
 from ..revision import bump_revision
@@ -59,3 +60,10 @@ def update_app(app_id: int, body: AppIn, db: Session = Depends(get_db)):
         db.commit()
         bump_revision()
     return AppOut.model_validate(a, from_attributes=True)
+
+
+@router.get("/api/apps/{app_id}/deployments")
+def deployment_history(app_id: int, db: Session = Depends(get_db)):
+    if db.get(App, app_id) is None:
+        raise HTTPException(404, "App not found")
+    return registry_service.rollback_history(db, app_id)

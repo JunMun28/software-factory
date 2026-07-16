@@ -135,6 +135,26 @@ class FakeKubeClient:
     def rollout_ready(self, name: str) -> bool:
         return f"Deployment/{name}" in self.objects and name in self._ready
 
+    def list_deployment_images(self, selector: str) -> list[str]:
+        key, _, value = selector.partition("=")
+        images: list[str] = []
+        for object_key, manifest in self.objects.items():
+            if not object_key.startswith("Deployment/"):
+                continue
+            labels = manifest.get("metadata", {}).get("labels", {})
+            if labels.get(key) != value:
+                continue
+            containers = (
+                manifest.get("spec", {})
+                .get("template", {})
+                .get("spec", {})
+                .get("containers", [])
+            )
+            images.extend(
+                container["image"] for container in containers if container.get("image")
+            )
+        return images
+
     def delete_by_label(self, selector: str) -> None:
         self.label_deletions.append(selector)
         k, _, v = selector.partition("=")

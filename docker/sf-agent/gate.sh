@@ -4,7 +4,7 @@
 # input to the orchestrator; the frozen-surface decision is computed on the
 # orchestrator's own git copy, so surface_hash here is always null.
 set -uo pipefail
-cd /workspace/repo
+cd "${SF_REPO_DIR:-/workspace/repo}"
 
 TERMLOG="${SF_TERMLOG:-/dev/termination-log}"
 write_envelope() { printf '%s' "$1" > "$TERMLOG" 2>/dev/null || printf 'ENVELOPE %s\n' "$1"; }
@@ -20,7 +20,8 @@ if [ -n "${SF_SHA:-}" ]; then
   note "grading pinned SHA $SF_SHA"
 fi
 
-PYTEST_OUT=/workspace/pytest.txt
+GATE_WORK="${SF_GATE_WORK_DIR:-$(dirname "$PWD")}" # /workspace in the gate pod
+PYTEST_OUT="$GATE_WORK/pytest.txt"
 run_pytest() {
   python3 -m pytest -q --no-header > "$PYTEST_OUT" 2>&1
   echo $?
@@ -28,6 +29,39 @@ run_pytest() {
 emit_pytest_log() {
   jq -cn --arg t "$(tail -c 8000 "$PYTEST_OUT")" '{type:"pytest",text:$t}'
 }
+pytest_problem() {
+  rc="$1"
+  if grep -Eq 'ERROR collecting|ImportError|ModuleNotFoundError|error during collection' "$PYTEST_OUT"; then
+    printf 'test collection/import error'
+  elif [ "$rc" = "5" ]; then
+    printf 'no tests were collected'
+  elif [ "$rc" -ge 2 ]; then
+    printf 'pytest collection/infrastructure error'
+  else
+    printf 'test assertions failed'
+  fi
+}
+scan_committed_diff() {
+  if ! command -v gitleaks >/dev/null 2>&1; then
+    note "WARNING: gitleaks unavailable — committed-diff secret scan skipped"
+    return
+  fi
+  GITLEAKS_OUT="$GATE_WORK/gitleaks.txt"
+  gitleaks git --no-banner --redact --log-opts="origin/main...HEAD" . >"$GITLEAKS_OUT" 2>&1
+  gl_rc=$?
+  if [ "$gl_rc" = "0" ]; then
+    note "gitleaks committed-diff scan passed"
+    return
+  fi
+  # gitleaks exit 1 == leaks found (block); any OTHER nonzero == scanner/infra
+  # error (missing ref, bad config) — must NOT false-block a green run.
+  if [ "$gl_rc" = "1" ]; then
+    verdict fail "secret gate: committed secret detected (gitleaks); remove it before merge"
+  fi
+  note "WARNING: gitleaks errored (rc=$gl_rc) — committed-diff scan inconclusive, skipped"
+}
+
+scan_committed_diff
 
 case "${SF_STAGE:?}" in
   architecture)
@@ -37,13 +71,19 @@ case "${SF_STAGE:?}" in
   red)
     rc="$(run_pytest)"; emit_pytest_log
     [ "$rc" = "0" ] && verdict fail "RED gate: new tests did not fail — nothing pins the new behavior"
-    [ "$rc" = "1" ] && verdict pass "tests fail for the right reason"
-    verdict fail "RED gate: tests broke instead of failing (pytest rc=$rc)"
+    # rc=1 must be a GENUINE assertion FAILURE, not a collection/import/fixture
+    # ERROR (which also exits nonzero and would falsely satisfy RED). Require the
+    # summary to report >=1 real 'failed' before passing.
+    red_failed="$(grep -oE '[0-9]+ failed' "$PYTEST_OUT" | grep -oE '[0-9]+' | head -1)"; red_failed="${red_failed:-0}"
+    { [ "$rc" = "1" ] && [ "$red_failed" -ge 1 ]; } \
+      && verdict pass "tests fail for the right reason ($red_failed failed)"
+    verdict fail "RED gate: $(pytest_problem "$rc") (pytest rc=$rc): $(tail -c 300 "$PYTEST_OUT")"
     ;;
   green)
     rc="$(run_pytest)"; emit_pytest_log
     [ "$rc" = "0" ] && verdict pass "suite green at the pinned SHA"
-    verdict fail "GREEN gate: suite still failing (rc=$rc): $(tail -c 300 "$PYTEST_OUT")"
+    [ "$rc" = "1" ] && verdict fail "GREEN gate: suite still failing (rc=$rc): $(tail -c 300 "$PYTEST_OUT")"
+    verdict fail "GREEN gate: $(pytest_problem "$rc") (pytest rc=$rc): $(tail -c 300 "$PYTEST_OUT")"
     ;;
   review)
     rc="$(run_pytest)"; emit_pytest_log
@@ -62,7 +102,8 @@ EOF2
     [ "${SF_REVIEW_VERDICT:-}" = "APPROVE" ] || \
       verdict fail "review gate: reviewer did not APPROVE (${SF_REVIEW_VERDICT:-no review})" "$METRICS"
     [ "$rc" = "0" ] && verdict pass "review gate metrics computed" "$METRICS"
-    verdict fail "review gate: suite not green at the pinned SHA (rc=$rc)" "$METRICS"
+    [ "$rc" = "1" ] && verdict fail "review gate: suite not green at the pinned SHA (rc=$rc)" "$METRICS"
+    verdict fail "review gate: $(pytest_problem "$rc") (pytest rc=$rc)" "$METRICS"
     ;;
   *)
     verdict fail "unknown gate stage ${SF_STAGE}"

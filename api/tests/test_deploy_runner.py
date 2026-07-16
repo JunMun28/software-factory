@@ -24,7 +24,7 @@ from app import (
 )
 from app.db import SessionLocal
 from app.kube_runner import KubeJobRunner
-from app.models import App, AuditEvent, Intent, Request, StageJob, utcnow
+from app.models import App, AuditEvent, Intent, ProgressEvent, Request, StageJob, utcnow
 from app.ws_exec import _git
 
 DIGEST = "sha256:" + "d" * 64
@@ -212,6 +212,100 @@ def test_merge_disabled_still_ends_at_done(client, monkeypatch, tmp_path):
             select(StageJob.role).where(StageJob.request_id == request["id"])
         ).all()
     assert "build" not in roles and "deploy" not in roles
+
+
+def test_build_cap_queues_n_plus_one_once_and_releases_without_deadlock(
+    client, monkeypatch, tmp_path
+):
+    _enable_deploy(monkeypatch, tmp_path)
+    monkeypatch.setattr(settings, "BUILD_CAP", 1)
+    monkeypatch.setattr(workspace, "head_sha", lambda _ws, _branch: "a" * 40)
+    with SessionLocal() as db:
+        for old in db.scalars(select(Request).where(Request.stage == "deploy")).all():
+            old.stage = "done"
+        for old in db.scalars(
+            select(StageJob).where(
+                StageJob.status == "running",
+                StageJob.role.in_(("build", "pbuild", "deploy", "pdeploy")),
+            )
+        ).all():
+            old.status = "succeeded"
+        db.commit()
+
+    first = _northwind_request(client, "Build cap holder")
+    second = _northwind_request(client, "Build cap queued")
+    fake = FakeKubeClient()
+    runner = KubeJobRunner(client=fake)
+    holder_manifest = deploy_manifests.build_job_manifest(
+        first["ref"], "northwind", "b" * 40
+    )
+    holder_uid = fake.create_job(holder_manifest)
+    with SessionLocal() as db:
+        now = utcnow()
+        for rid in (first["id"], second["id"]):
+            req = db.get(Request, rid)
+            req.stage = "deploy"
+            req.gate = None
+            req.status = transitions.APPROVED
+            req.needs_human = False
+        db.add(
+            StageJob(
+                request_id=first["id"],
+                stage="deploy",
+                attempt=1,
+                role="build",
+                job_name=holder_manifest["metadata"]["name"],
+                job_uid=holder_uid,
+                deadline_at=now + timedelta(minutes=10),
+                envelope={"sha": "b" * 40},
+            )
+        )
+        db.commit()
+
+        runner._drive_deploys(db, [])
+        runner._drive_deploys(db, [])
+        queued_builds = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == second["id"], StageJob.role == "build"
+            )
+        ).all()
+        waits = db.scalars(
+            select(ProgressEvent).where(
+                ProgressEvent.request_id == second["id"],
+                ProgressEvent.title == "Waiting for a build slot",
+            )
+        ).all()
+        assert queued_builds == []
+        assert len(waits) == 1
+
+        holder = db.scalar(
+            select(StageJob).where(
+                StageJob.request_id == first["id"], StageJob.role == "build"
+            )
+        )
+        holder.status = "succeeded"
+        holder.envelope = {"sha": "b" * 40, "digest": DIGEST}
+        db.add(
+            StageJob(
+                request_id=first["id"],
+                stage="deploy",
+                attempt=1,
+                role="deploy",
+                job_name="sf-app-northwind",
+                status="succeeded",
+                deadline_at=now,
+                completed_at=now,
+                envelope={"digest": DIGEST},
+            )
+        )
+        db.commit()
+        runner._drive_deploys(db, [])
+        released = db.scalar(
+            select(StageJob).where(
+                StageJob.request_id == second["id"], StageJob.role == "build"
+            )
+        )
+        assert released is not None and released.status == "running"
 
 
 def test_github_merge_resolves_pr_intent_before_fallback_lookup(

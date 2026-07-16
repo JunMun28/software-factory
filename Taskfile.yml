@@ -184,9 +184,9 @@ tasks:
       - docker build -t sf-agent:dev -f docker/sf-agent/Dockerfile .
       # B3: kaniko + registry are pre-pulled and loaded so build pods never need
       # image-pull egress (build-walls allow only git + registry)
-      - docker pull gcr.io/kaniko-project/executor:latest
+      - docker pull gcr.io/kaniko-project/executor:v1.23.2
       - docker pull registry:2
-      - kind load docker-image sf-api:dev sf-intake:dev sf-console:dev sf-agent:dev gcr.io/kaniko-project/executor:latest registry:2 --name software-factory
+      - kind load docker-image sf-api:dev sf-intake:dev sf-console:dev sf-agent:dev gcr.io/kaniko-project/executor:v1.23.2 registry:2 --name software-factory
 
   kind-down:
     desc: Delete the software-factory kind cluster
