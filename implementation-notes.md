@@ -877,3 +877,37 @@ Deviations / notes:
 
 Backend verify: 689 pytest passed / 3 skipped + ruff clean. Frontend (MSAL in
 console+intake) NOT started — paused for review per plan.
+
+## 2026-07-18 — Console Overview total redesign ("the line" cockpit)
+
+User rejected the previous Overview (decision queue + 5-column kanban board)
+and asked for: (1) one bird's-eye view of ALL progress across the five stages
+(Intake & Spec, Architecture, Build, Review & Preview, Deploy), (2) a
+user-actions surface with the approvals before Build and Deploy explicit.
+
+New home (worktree admin-console-redesign, floor/* only):
+- **The line (left):** one row per request; a 5-segment track with two ◆
+  approval joints drawn into the geometry (Build approval between Intake &
+  Spec → Architecture, Deploy approval between Review & Preview → Deploy).
+  Filled = done, tinted = current (live-run progress fills purple, red =
+  needs-human, dashed = interview/draft), amber pulsing ◆ = holding for
+  approval. Stage header carries per-stage counts + per-gate waiting counts.
+  Rows sort closest-to-shipping first; shipped (last 5) sit faded below.
+- **Needs you (right, sticky):** every decision as a card — Build/Deploy
+  approval chips + evidence facts + Approve[A]/Send back[S], stalled cards
+  with the four recovery verbs, human-owned cards. App filters kept.
+  J/K/A/S/Enter keyboard flow unchanged (focus target: article.need).
+- floor-view: deriveBoard/deriveCard/BOARD_COLUMNS replaced by
+  deriveLine/deriveTrack/STAGES; deriveQueue/deriveTallies kept; queueChip added.
+
+### Deviations
+- Scope kept to the Overview page (both user requirements live there);
+  Library/Studio/Dossier untouched. Shell/nav unchanged.
+- The first gate is labelled "Build approval" (user's mental model: approval
+  before build) although it technically opens Architecture; the queue already
+  said "Approve to build", so vocabulary is consistent.
+- Visual review ran on port 4203 (another session held 4202/8000; reused that
+  session's API on 8000 — same seeded DB).
+
+Verify: ng test console 71/71 green, ng lint clean, ng build clean; visually
+reviewed live at 1440/1280/390 in light + dark. Not committed.

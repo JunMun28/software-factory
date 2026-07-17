@@ -10,7 +10,7 @@ import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
 import { FloorContent } from './floor-content';
 import { FloorPage } from './floor-page';
-import { BOARD_COLUMNS, deriveBoard, deriveCard, deriveQueue } from './floor-view';
+import { STAGES, deriveLine, deriveQueue, deriveTrack } from './floor-view';
 
 const simulatedHealth = () =>
   of({ status: 'ok', brain: 'scripted', runner: 'sim' as const, cli: 'codex' as const });
@@ -120,56 +120,64 @@ async function renderContent(m: MissionOut, requests: FactoryRequest[] = []) {
   return fixture;
 }
 
-describe('Board card derivation', () => {
+describe('Track derivation', () => {
   it('overlays a live run as step-of and in-stage progress', () => {
-    const card = deriveCard(
+    const track = deriveTrack(
       request({ stage: 'architecture', status: 'approved', gate: null }),
       run(),
     );
-    expect(card).toMatchObject({
+    expect(track).toMatchObject({
       tone: 'run',
       glyph: 'ring',
       state: 'drafting PLAN.md · 2/4',
       progress: 0.5,
     });
+    expect(track.segs).toEqual(['done', 'current', 'todo', 'todo', 'todo']);
+    expect(track.gates).toEqual(['passed', 'todo']);
   });
 
-  it('speaks the spec gate as the approval that starts the build', () => {
-    const card = deriveCard(request({ stage: 'spec', gate: 'approve_spec' }), null);
-    expect(card).toMatchObject({ tone: 'gate', state: 'Approval starts the build' });
+  it('parks a spec gate at the build-approval joint', () => {
+    const track = deriveTrack(request({ stage: 'spec', gate: 'approve_spec' }), null);
+    expect(track).toMatchObject({ tone: 'gate', state: 'Holding for build approval' });
+    expect(track.segs).toEqual(['done', 'todo', 'todo', 'todo', 'todo']);
+    expect(track.gates).toEqual(['waiting', 'todo']);
   });
 
-  it('speaks the merge gate as the approval that deploys', () => {
-    const card = deriveCard(request({ stage: 'review', gate: 'approve_merge' }), null);
-    expect(card).toMatchObject({ tone: 'gate', state: 'Approval deploys it' });
+  it('parks a merge gate at the deploy-approval joint', () => {
+    const track = deriveTrack(request({ stage: 'review', gate: 'approve_merge' }), null);
+    expect(track).toMatchObject({ tone: 'gate', state: 'Holding for deploy approval' });
+    expect(track.segs).toEqual(['done', 'done', 'done', 'done', 'todo']);
+    expect(track.gates).toEqual(['passed', 'waiting']);
   });
 
   it('flags needs-human with the recorded reason', () => {
-    const card = deriveCard(
+    const track = deriveTrack(
       request({ needs_human: true, needs_human_reason: 'Review timed out', gate: null }),
       null,
     );
-    expect(card).toMatchObject({ tone: 'human', glyph: 'flag', state: 'Review timed out' });
+    expect(track).toMatchObject({ tone: 'human', glyph: 'flag', state: 'Review timed out' });
   });
 
-  it('shows a shipped card with a check and no stage age', () => {
-    const card = deriveCard(request({ status: 'done', stage: 'done', gate: null }), null);
-    expect(card.tone).toBe('done');
-    expect(card.glyph).toBe('check');
-    expect(card.state).toContain('Shipped');
-    expect(card.age).toBeNull();
+  it('shows a shipped track fully filled with no stage age', () => {
+    const track = deriveTrack(request({ status: 'done', stage: 'done', gate: null }), null);
+    expect(track.tone).toBe('done');
+    expect(track.glyph).toBe('check');
+    expect(track.state).toContain('Shipped');
+    expect(track.age).toBeNull();
+    expect(track.segs).toEqual(['done', 'done', 'done', 'done', 'done']);
+    expect(track.gates).toEqual(['passed', 'passed']);
   });
 
   it('states an honest quiet line when a run loses signal', () => {
-    const card = deriveCard(
+    const track = deriveTrack(
       request({ stage: 'build', status: 'approved', gate: null }),
       run({ health: 'no_signal', label: null }),
     );
-    expect(card.state).toContain('Quiet');
+    expect(track.state).toContain('Quiet');
   });
 });
 
-describe('Board derivation', () => {
+describe('Line derivation', () => {
   const requests = [
     request({ id: 1, ref: 'SF-1', stage: 'intake', status: 'submitted', gate: null }),
     request({
@@ -187,30 +195,33 @@ describe('Board derivation', () => {
     request({ id: 8, ref: 'SF-8', stage: 'build', status: 'cancelled', gate: null }),
   ];
 
-  it('buckets every open request into the five fixed columns', () => {
-    const board = deriveBoard(requests, new Map());
-    expect(board.map((col) => col.key)).toEqual([
-      'intake',
-      'architecture',
-      'build',
-      'review',
-      'deploy',
+  it('orders live rows closest-to-shipping first and keeps shipped separate', () => {
+    const line = deriveLine(requests, new Map());
+    expect(line.rows.map((row) => row.ref)).toEqual([
+      'SF-6',
+      'SF-5',
+      'SF-4',
+      'SF-3',
+      'SF-2',
+      'SF-1',
     ]);
-    expect(board[0].cards.map((card) => card.ref)).toEqual(['SF-1', 'SF-2']);
-    expect(board[1].cards.map((card) => card.ref)).toEqual(['SF-3']);
-    expect(board[2].cards.map((card) => card.ref)).toEqual(['SF-4']);
-    expect(board[3].cards.map((card) => card.ref)).toEqual(['SF-5']);
-    expect(board[4].cards.map((card) => card.ref)).toEqual(['SF-6', 'SF-7']);
+    expect(line.shipped.map((row) => row.ref)).toEqual(['SF-7']);
   });
 
-  it('excludes cancelled requests and keeps shipped out of the live deploy count', () => {
-    const board = deriveBoard(requests, new Map());
-    expect(board.flatMap((col) => col.cards.map((card) => card.ref))).not.toContain('SF-8');
-    expect(board[4].count).toBe(1);
+  it('excludes cancelled requests entirely', () => {
+    const line = deriveLine(requests, new Map());
+    expect(line.rows.map((row) => row.ref)).not.toContain('SF-8');
+    expect(line.shipped.map((row) => row.ref)).not.toContain('SF-8');
   });
 
-  it('sorts a column oldest-in-stage first', () => {
-    const board = deriveBoard(
+  it('counts live requests per stage and waiting requests per gate', () => {
+    const line = deriveLine(requests, new Map());
+    expect(line.counts).toEqual([2, 1, 1, 1, 1]);
+    expect(line.gateCounts).toEqual([1, 1]);
+  });
+
+  it('breaks same-stage ties by longest-in-stage first', () => {
+    const line = deriveLine(
       [
         request({
           id: 10,
@@ -231,13 +242,17 @@ describe('Board derivation', () => {
       ],
       new Map(),
     );
-    expect(board[2].cards.map((card) => card.ref)).toEqual(['SF-11', 'SF-10']);
+    expect(line.rows.map((row) => row.ref)).toEqual(['SF-11', 'SF-10']);
   });
 
-  it('marks exactly the architecture and deploy columns as approval-gated', () => {
-    expect(BOARD_COLUMNS.filter((col) => col.gate).map((col) => col.key)).toEqual([
+  it('marks exactly the architecture and deploy stages as approval-gated', () => {
+    expect(STAGES.filter((stage) => stage.gate).map((stage) => stage.key)).toEqual([
       'architecture',
       'deploy',
+    ]);
+    expect(STAGES.filter((stage) => stage.gate).map((stage) => stage.gate)).toEqual([
+      'Build approval',
+      'Deploy approval',
     ]);
   });
 });
@@ -309,18 +324,18 @@ describe('Overview rendering', () => {
     expect(fixture.nativeElement.textContent).toContain('1 on the line');
   });
 
-  it('renders a gate row with evidence facts and both decisions', async () => {
+  it('renders a gate card with evidence facts and both decisions', async () => {
     const fixture = await renderContent(mission({ gates: [gate()] }), [request()]);
-    const row = fixture.nativeElement.querySelector('.q-row.is-gate');
-    expect(row.textContent).toContain('Approve to deploy');
-    expect(row.textContent).toContain('42/42 tests pass');
-    expect(row.textContent).toContain('diff +214 −38 · 6 files');
-    expect(row.textContent).toContain('waiting');
-    expect(row.textContent).toContain('Approve');
-    expect(row.textContent).toContain('Send back');
+    const card = fixture.nativeElement.querySelector('.need.is-gate');
+    expect(card.textContent).toContain('Deploy approval');
+    expect(card.textContent).toContain('Approve to deploy');
+    expect(card.textContent).toContain('42/42 tests pass');
+    expect(card.textContent).toContain('diff +214 −38 · 6 files');
+    expect(card.textContent).toContain('waiting');
+    expect(card.textContent).toContain('Send back');
   });
 
-  it('renders all four recovery verbs on a stalled row', async () => {
+  it('renders all four recovery verbs on a stalled card', async () => {
     const stalled = request({
       stage: 'review',
       status: 'approved',
@@ -329,7 +344,7 @@ describe('Overview rendering', () => {
       needs_human_reason: 'Review timed out',
     });
     const fixture = await renderContent(mission({ stalled: [stalled] }), [stalled]);
-    const actions = fixture.nativeElement.querySelector('.q-row.is-stalled .q-actions').textContent;
+    const actions = fixture.nativeElement.querySelector('.need.is-stalled .n-actions').textContent;
     expect(actions).toContain('Retry stage');
     expect(actions).toContain('Send back to…');
     expect(actions).toContain('Take over');
@@ -347,23 +362,44 @@ describe('Overview rendering', () => {
       }),
       [owned],
     );
-    const row = fixture.nativeElement.querySelector('.q-row.is-owned');
-    expect(row.textContent).toContain('Human-owned');
-    expect(row.textContent).toContain('Avery Stone is finishing this by hand in the PR.');
-    expect(row.textContent).toContain('Cancel');
+    const card = fixture.nativeElement.querySelector('.need.is-owned');
+    expect(card.textContent).toContain('Human-owned');
+    expect(card.textContent).toContain('Avery Stone is finishing this by hand in the PR.');
+    expect(card.textContent).toContain('Cancel');
   });
 
-  it('draws the five columns with approval captions on architecture and deploy', async () => {
+  it('draws the five stages with both approval joints named in the header', async () => {
     const fixture = await renderContent(mission(), []);
-    const heads = [...fixture.nativeElement.querySelectorAll('.col-name h3')].map(
-      (el) => (el as HTMLElement).textContent,
-    );
-    expect(heads).toEqual(['Intake & Spec', 'Architecture', 'Build', 'Review & Preview', 'Deploy']);
-    const caps = [...fixture.nativeElement.querySelectorAll('.gatecap')].map((el) =>
+    const names = [...fixture.nativeElement.querySelectorAll('.lhead .sname')].map((el) =>
       (el as HTMLElement).textContent?.trim(),
     );
-    expect(caps[0]).toContain('opens by spec approval');
-    expect(caps[1]).toContain('opens by merge approval');
+    expect(names).toHaveLength(5);
+    ['Intake & Spec', 'Architecture', 'Build', 'Review & Preview', 'Deploy'].forEach((label, i) =>
+      expect(names[i]).toContain(label),
+    );
+    const gates = [...fixture.nativeElement.querySelectorAll('.lhead .gname')].map((el) =>
+      (el as HTMLElement).textContent?.trim(),
+    );
+    expect(gates[0]).toContain('Build approval');
+    expect(gates[1]).toContain('Deploy approval');
+  });
+
+  it('draws one track row per live request with its state', async () => {
+    const fixture = await renderContent(mission(), [
+      request({ id: 21, ref: 'SF-21', stage: 'build', status: 'approved', gate: null }),
+      request({
+        id: 22,
+        ref: 'SF-22',
+        stage: 'spec',
+        status: 'pending_approval',
+        gate: 'approve_spec',
+      }),
+    ]);
+    const rows = [...fixture.nativeElement.querySelectorAll('a.lrow.live')] as HTMLElement[];
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toContain('SF-21');
+    expect(rows[1].textContent).toContain('Holding for build approval');
+    expect(rows[1].querySelectorAll('.dia.hot')).toHaveLength(1);
   });
 
   it('renders the server-computed gauges in the header pulse', async () => {
@@ -379,7 +415,7 @@ describe('Overview rendering', () => {
 });
 
 describe('Overview conflict outcomes', () => {
-  it('renders a mocked 409 with the winner and local time on the queue row', async () => {
+  it('renders a mocked 409 with the winner and local time on the rail card', async () => {
     const actedAt = '2026-07-11T06:02:00Z';
     const api = {
       health: simulatedHealth,
@@ -421,7 +457,7 @@ describe('Overview conflict outcomes', () => {
       hour: '2-digit',
       minute: '2-digit',
     });
-    const outcome = fixture.nativeElement.querySelector('.q-row .action-outcome');
+    const outcome = fixture.nativeElement.querySelector('.need .action-outcome');
     expect(outcome?.textContent).toContain(`Already approved by Kim Park at ${localTime}`);
     expect(poll.nudge).toHaveBeenCalledOnce();
   });
@@ -455,7 +491,7 @@ describe('Overview scoped recovery', () => {
     fixture.detectChanges();
 
     const buttons = [
-      ...fixture.nativeElement.querySelectorAll('.q-row .q-actions button'),
+      ...fixture.nativeElement.querySelectorAll('.need .n-actions button'),
     ] as HTMLButtonElement[];
     buttons.find((button) => button.textContent?.includes('Send back to…'))?.click();
     fixture.detectChanges();
@@ -471,7 +507,7 @@ describe('Overview scoped recovery', () => {
     );
   });
 
-  it('renders a mocked take-over 409 on the stalled row', async () => {
+  it('renders a mocked take-over 409 on the stalled card', async () => {
     const actedAt = '2026-07-11T06:02:00Z';
     const stalled = request({ status: 'approved', gate: null, needs_human: true });
     const api = {
