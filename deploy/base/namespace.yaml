@@ -2,3 +2,18 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: software-factory
+  labels:
+    # SEC-03 [kind]: Pod Security Admission. `baseline` is the strongest built-in
+    # profile this namespace can ENFORCE today — it blocks privileged pods,
+    # hostPath/hostNetwork/hostPID, and host ports, while still allowing pods to
+    # run as root, which the kaniko BUILD pods require (they write the image layers
+    # as uid 0). `restricted` would forbid root and break kaniko; moving to it is
+    # the office/Phase-2 step, gated on rootless-kaniko or Buildah userns builds.
+    # We also WARN+AUDIT at `restricted` so every new manifest that would fail the
+    # stricter bar is visible now, before the cutover.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest

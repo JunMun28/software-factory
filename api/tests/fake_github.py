@@ -21,6 +21,12 @@ class FakeGitHub:
         self.repos.setdefault(name, {"private": True, "clone_url": clone_url})
         return clone_url
 
+    def protect_main(self, slug: str) -> bool:
+        self.calls.append(("protect_main", slug))
+        self._require_repo(slug)
+        self.repos[repo_name(slug)]["ruleset"] = "sf-protect-main"
+        return True
+
     def find_open_pr(self, slug: str, branch: str) -> int | None:
         self.calls.append(("find_open_pr", slug, branch))
         self._require_repo(slug)

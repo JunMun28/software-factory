@@ -790,3 +790,40 @@ Accepted (documented, not fixed here):
   against a RE-RAISED gate acts on the new artifact) — inherent to ADR 0006.
 - Human pressure buckets carry no stage/version split (send-backs collapse
   into one bucket) — v1 scope; machine buckets carry full attribution.
+
+## Office hardening (MERGE-05 + SEC-03 in code; SEC-01 + prod SQL = runbook)
+
+Branch `office-hardening` off merged main. The Azure/Entra portal work was
+blocked live by Micron Conditional Access (automated browser can't satisfy the
+compliant-device policy), so the office half splits: what's expressible in code
+ships now, the portal steps become a handoff runbook.
+
+- **MERGE-05 (branch protection, coded):** `GitHub.protect_main(slug)` sets a
+  Rulesets policy (block deletion + non_fast_forward + require PR, 0 approvals)
+  on each produced repo. Rulesets are FREE on private personal repos (classic
+  branch protection is not), so this is the durable `[kind]` control.
+  Best-effort by contract: any failure logs and returns False — protection is
+  defense-in-depth, never on the request's happy path, so it must not strand
+  repo prep. Idempotent (skips if the sf-protect-main ruleset already exists).
+  Wired in `kube_runner._prepare_workspace` right AFTER `_push_github_baseline`
+  (the `main:main` push creates the branch a ruleset needs to reference).
+  Tests: real seam via httpx MockTransport (payload shape, idempotency, 403 →
+  False, transport error → False) + FakeGitHub contract + the runner repo-prep
+  test asserts protect_main runs once, after the baseline.
+  0 required approvals is deliberate — the factory's own SHA-precondition API
+  merge (writer == merger token) must still land. A GENUINELY independent
+  reviewer needs the office GitHub App issuing per-request identities = Phase-2,
+  same 4-method seam, unchanged callers (documented in the runbook).
+- **SEC-03 (Pod Security Admission, coded):** namespace enforces `baseline`
+  (blocks privileged/hostPath/hostNetwork; ALLOWS root, which kaniko build pods
+  need) and WARNS+AUDITS at `restricted` so every manifest that would fail the
+  stricter bar is visible now. `restricted` cutover needs rootless build +
+  per-pod securityContext = office (runbook §3).
+- **Runbook** `docs/runbooks/office-hardening-handoff.md`: click-by-click Entra
+  app registration (SEC-01, returns tenant/client IDs + audience for the API
+  JWT validator), Azure SQL PROD cutover (online DATA-01 Unicode migration via
+  the gated pre-deploy Job, PITR), PSA restricted path, and the GitHub App
+  branch-protection Phase-2 — all requiring a Micron-compliant device.
+
+Verify: 674 passed / 3 skipped, ruff clean, `kubectl kustomize deploy/base`
++ `deploy/overlays/prod` both parse (PSA labels render on the namespace).
