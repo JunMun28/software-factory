@@ -81,6 +81,7 @@ def auth_me(db: Session = Depends(get_db)):
         "operator": {
             "id": operator.id, "name": operator.name, "role": operator.role,
             "initials": operator.initials, "hue": operator.hue,
+            "email": operator.email,
         },
     }
 

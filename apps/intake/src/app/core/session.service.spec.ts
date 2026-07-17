@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ADMIN, SUBMITTER, Session } from './session.service';
+import { ADMIN, SUBMITTER, Session, userFromAccount } from './session.service';
 
 // The Angular unit-test runner uses Node.js 25 with a stub localStorage that
 // has no standard Web Storage API methods (setItem/getItem/removeItem/clear).
@@ -62,5 +62,26 @@ describe('Session', () => {
     s.signIn('submitter');
     expect(s.user()).toEqual(SUBMITTER);
     expect(JSON.parse(localStorage.getItem('sf-user')!)).toEqual(SUBMITTER);
+  });
+});
+
+describe('userFromAccount (SEC-01 Entra mapping)', () => {
+  it('maps name, initials, email, and the admin role', () => {
+    const u = userFromAccount('Jun Mun Wong', 'someone@example.com', ['admin']);
+    expect(u.name).toBe('Jun Mun Wong');
+    expect(u.initials).toBe('JMW');
+    expect(u.email).toBe('someone@example.com');
+    expect(u.role).toBe('admin');
+  });
+
+  it('everyone without the admin role is a submitter here', () => {
+    expect(userFromAccount('A Person', 'a@example.com', ['submitter']).role).toBe('submitter');
+    expect(userFromAccount('A Person', 'a@example.com', []).role).toBe('submitter');
+  });
+
+  it('falls back to the email localpart when the account has no name', () => {
+    const u = userFromAccount('', 'jordan.diaz@example.com', []);
+    expect(u.name).toBe('jordan.diaz');
+    expect(u.initials).toBe('J');
   });
 });

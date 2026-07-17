@@ -255,6 +255,29 @@ def test_token_identity_overrides_the_path_id(client, entra):
         assert db.get(OperatorAppMute, (other, app_id)) is None, "client-sent id must be ignored"
 
 
+def test_create_request_reporter_comes_from_the_token(client, entra):
+    """A submitter-only token (no operator row) creates a request; the reporter
+    fields are stamped from the TOKEN, not the body."""
+    token = mint("real-submitter@example.com", ["submitter"], name="Real Submitter")
+    response = client.post("/api/requests", headers=bearer(token), json={
+        "title": "Identity test", "description": "who am I really",
+        "type": "new", "reporter": "Spoofed Name", "reporter_initials": "XX",
+    })
+    assert response.status_code == 201
+    body = response.json()
+    assert body["reporter"] == "Real Submitter"
+    assert body["reporter_initials"] == "RS"
+
+
+def test_create_request_keeps_body_reporter_when_auth_off(client):
+    response = client.post("/api/requests", json={
+        "title": "Off-mode test", "description": "demo user path",
+        "type": "new", "reporter": "Demo User", "reporter_initials": "DU",
+    })
+    assert response.status_code == 201
+    assert response.json()["reporter"] == "Demo User"
+
+
 def test_require_approver_uses_token_identity_not_body(client, entra, monkeypatch):
     """The admin wall judges the AUTHENTICATED operator: a viewer naming an
     admin's id in the body still gets 403."""

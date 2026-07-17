@@ -71,7 +71,10 @@ export class FactoryAuth {
     const account = result?.account ?? msal.getAllAccounts()[0] ?? null;
     if (!account) {
       await msal.loginRedirect({ scopes: this.scopes });
-      return; // navigating away
+      // The page is navigating to the sign-in — never resolve, so the app
+      // initializer keeps Angular from bootstrapping and firing naked /api
+      // calls in the gap (observed live: brief 401 bursts pre-redirect).
+      return new Promise<never>(() => undefined);
     }
     msal.setActiveAccount(account);
     this.account.set(account);

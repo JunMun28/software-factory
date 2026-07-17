@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from .. import acceptance, settings, simulator, transitions
 from ..agent_exec import runner_mode
 from ..api_helpers import conflict_response, get_request, pipeline, prospective_repo, to_out
+from ..auth import current_identity
 from ..db import get_db
 from ..events import emit
 from ..models import (
@@ -339,7 +340,9 @@ def send_back(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
 @router.post("/api/requests/{rid}/respond", response_model=RequestDetail)
 def respond(rid: int, body: Note, db: Session = Depends(get_db)):
     r = get_request(db, rid)
-    actor = Actor(name=body.actor or r.reporter)
+    # SEC-01: authenticated caller's name wins over the client-sent actor.
+    identity = current_identity()
+    actor = Actor(name=identity["name"] if identity else (body.actor or r.reporter))
     res = transitions.apply(db, r, "respond", actor=actor, params={"note": body.note})
     if isinstance(res, transitions.Loss):
         raise HTTPException(409, "Nothing to respond to")

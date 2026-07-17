@@ -50,6 +50,10 @@ log = logging.getLogger("factory")
 # (auth off, or a submitter-only token). Set by the middleware, read via
 # effective_operator_id().
 _current_operator_id: ContextVar[int | None] = ContextVar("sf_operator_id", default=None)
+# The validated token's DISPLAY identity — set for every authenticated caller,
+# including submitter-only tokens that get no operator row. Lets requester-facing
+# routes (create request, respond) stamp who really acted.
+_current_identity: ContextVar[dict | None] = ContextVar("sf_identity", default=None)
 
 # liveness must stay probe-able, and the SPAs must be able to DISCOVER auth
 # config (tenant + client ids — public identifiers) before they hold a token.
@@ -211,6 +215,12 @@ def current_operator_id() -> int | None:
     return _current_operator_id.get()
 
 
+def current_identity() -> dict | None:
+    """{name, email, initials} from the validated token, or None when auth is
+    off. Present for EVERY authenticated caller, operator row or not."""
+    return _current_identity.get()
+
+
 def effective_operator_id(fallback: int | None) -> int | None:
     """THE override seam. Auth off -> the caller-supplied id (today's
     behavior). Auth on -> the authenticated identity, always; a token with no
@@ -256,10 +266,16 @@ class EntraAuthMiddleware:
             await self._reject(scope, receive, send, str(exc))
             return
 
+        email = _claim_email(claims)
+        name = (claims.get("name") or email.split("@")[0] or "Unknown").strip()
         reset = _current_operator_id.set(_resolve_operator(claims))
+        reset_identity = _current_identity.set(
+            {"name": name, "email": email, "initials": _initials(name, email)}
+        )
         try:
             await self.app(scope, receive, send)
         finally:
+            _current_identity.reset(reset_identity)
             _current_operator_id.reset(reset)
 
     @staticmethod

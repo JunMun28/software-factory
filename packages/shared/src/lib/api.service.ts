@@ -61,6 +61,11 @@ export class Api {
   operators(): Observable<Operator[]> {
     return this.http.get<Operator[]>(`${BASE}/operators`);
   }
+  /** SEC-01: who the auth wall says I am. operator is null when auth is off
+   *  or the token has no console role. */
+  authMe(): Observable<{ mode: string; operator: Operator | null }> {
+    return this.http.get<{ mode: string; operator: Operator | null }>(`${BASE}/auth/me`);
+  }
   createOperator(body: Pick<Operator, 'name' | 'initials' | 'hue' | 'email'>) {
     return this.http.post<Operator>(`${BASE}/operators`, body);
   }

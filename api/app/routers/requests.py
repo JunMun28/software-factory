@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from .. import interview_gen, prototype_gen, settings, summary_gen, transitions
 from ..api_helpers import get_request, next_ref, to_out
+from ..auth import current_identity
 from ..db import SessionLocal, get_db
 from ..events import emit
 from ..interview import (
@@ -304,6 +305,11 @@ def request_detail(rid: int, db: Session = Depends(get_db)):
 
 @router.post("/api/requests", response_model=RequestDetail, status_code=201)
 def create_request(body: RequestCreate, db: Session = Depends(get_db)):
+    # SEC-01: with the auth wall on, the reporter is WHO SIGNED IN — the body
+    # fields degrade to untrusted UI state (same rule as operator override).
+    identity = current_identity()
+    reporter = identity["name"] if identity else body.reporter
+    reporter_initials = identity["initials"] if identity else body.reporter_initials
     # persist-first (PRD hardening #4): the Request exists before anything else
     for attempt in (0, 1):
         r = Request(
@@ -312,7 +318,7 @@ def create_request(body: RequestCreate, db: Session = Depends(get_db)):
             impact_metric=body.impact_metric, impact_value=body.impact_value, app_id=body.app_id,
             new_app_name=body.new_app_name, bug_where=body.bug_where,
             status=transitions.DRAFT, stage="intake",
-            reporter=body.reporter, reporter_initials=body.reporter_initials,
+            reporter=reporter, reporter_initials=reporter_initials,
         )
         db.add(r)
         try:

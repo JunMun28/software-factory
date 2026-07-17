@@ -930,3 +930,27 @@ Also observed, deferred:
   requests while mode==='unknown'. → fold into E2E-1.
 - Stale pre-auth tabs in the user's Chrome keep naked-polling /api/events
   every 4s (401 noise in dev logs). Cosmetic; close old tabs.
+
+## E2E-1 Stage-1 intake with real identity (2026-07-18)
+
+Built: requester identity is now server-authoritative under the wall —
+current_identity() contextvar (name/email/initials from the validated token,
+set for EVERY authenticated caller incl. submitter-only) stamps
+create_request.reporter and respond's actor; body fields degrade to UI state.
+Intake Session derives the user from the Entra account when auth is on
+(userFromAccount pure mapper; demo/localStorage path byte-identical when off;
+demo users renamed to non-real people). Console Session resolves via NEW
+GET /api/auth/me (+email) instead of the operator picker when auth is on.
+loginRedirect race fixed: the app initializer never resolves when navigating
+to sign-in, so zero naked /api calls pre-redirect.
+
+Live walk (signed in, scripted brain): idea -> 3-question wizard -> interview
+(live Plan rewrite) -> prototype (chat + edit ack) -> review -> submit.
+REQ-2136 pending_approval@approve_spec, 7 spec lines, reporter Jun Mun Wong
+(JMW) from the token — spoofed body values ignored (tested).
+
+Gaps logged for later slices:
+- New-app path never asks an APP NAME -> "No app yet" shows in the mock
+  heading + review chip. Candidate: derive from title or add to Edit details.
+- Scripted-brain prototype edits ack ("Applied: ...") without visual change —
+  honest scripted behavior; real edits need FACTORY_BRAIN=agent (E2E-2+).
