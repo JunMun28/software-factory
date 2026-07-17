@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..auth import effective_operator_id
 from ..db import get_db
 from ..models import App, Operator, OperatorAppMute
 from ..revision import bump_revision
@@ -13,6 +14,10 @@ router = APIRouter()
 
 
 def resolve_operator(db: Session, operator_id: int) -> Operator:
+    # SEC-01: with FACTORY_AUTH=entra the token's identity replaces whatever id
+    # the client sent — the body/path value is untrusted UI state. Auth off is
+    # a passthrough (today's behavior). One seam, both chokepoints.
+    operator_id = effective_operator_id(operator_id)
     operator = db.get(Operator, operator_id)
     if operator is None:
         raise HTTPException(404, f"Unknown operator id {operator_id}")
@@ -53,7 +58,9 @@ def create_operator(body: OperatorIn, db: Session = Depends(get_db)):
     response_model=list[AppSubscriptionOut],
 )
 def list_subscriptions(operator_id: int, db: Session = Depends(get_db)):
-    resolve_operator(db, operator_id)
+    # rebind to the RESOLVED id — under FACTORY_AUTH=entra the path id is
+    # untrusted and the token identity wins (auth.py seam).
+    operator_id = resolve_operator(db, operator_id).id
     muted = set(
         db.scalars(
             select(OperatorAppMute.app_id).where(OperatorAppMute.operator_id == operator_id)
@@ -80,7 +87,7 @@ def update_subscription(
     body: AppSubscriptionIn,
     db: Session = Depends(get_db),
 ):
-    resolve_operator(db, operator_id)
+    operator_id = resolve_operator(db, operator_id).id  # token identity wins (auth.py)
     app = db.get(App, app_id)
     if app is None:
         raise HTTPException(404, f"Unknown app id {app_id}")

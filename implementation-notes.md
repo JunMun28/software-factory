@@ -827,3 +827,53 @@ ships now, the portal steps become a handoff runbook.
 
 Verify: 674 passed / 3 skipped, ruff clean, `kubectl kustomize deploy/base`
 + `deploy/overlays/prod` both parse (PSA labels render on the namespace).
+
+## SEC-01 Phase 2 backend — Entra auth wall (branch entra-auth)
+
+Portal Phase 1 was completed live 2026-07-18 in the personal dev tenant (three
+registrations + scope + app roles + admin consent + Factory.Admin assigned;
+IDs in the GITIGNORED api/.env.azure, never in the repo). Backend:
+
+- `app/auth.py`: pure-ASGI middleware (NOT BaseHTTPMiddleware — contextvars
+  set there wouldn't reach the endpoint; anyio copies context into the
+  threadpool so sync endpoints see it). FACTORY_AUTH=off (default) = no-op
+  byte-for-byte; entra = Bearer JWT required on everything except /api/health
+  and OPTIONS. Validation: RS256 vs tenant JWKS (1h cache, unknown-kid single
+  refresh, thread-safe), iss+aud+exp required. JWKS fetch is a module seam so
+  tests inject a locally generated keyset — zero network.
+- Identity: email claim -> Operator row (the models.py:75 comment's seam).
+  Token `roles` claim is source of truth: synced onto Operator.role per
+  request; first-seen admin/viewer AUTO-PROVISIONED (the Entra role
+  assignment is the grant — only tenant admins assign; also solves the
+  SEED_DEMO=0 fresh-prod bootstrap). Submitter-only tokens: valid caller, no
+  operator identity -> operator actions 403, intake reads fine.
+- Override: effective_operator_id() in ONE place, consumed by
+  resolve_operator (and require_approver through it). Call sites that used
+  the RAW client-sent id after resolving now use the resolved row's id
+  (gates._operator_actor -> audit rows record who really acted;
+  operators.py subscriptions read+write). registry/events/requests already
+  used the resolved row's fields.
+- Middleware added BEFORE CORSMiddleware in create_app: last-added is
+  outermost, so CORS answers preflight before the wall (plus OPTIONS skip).
+- Auth mode is a per-call read (FACTORY_BRAIN pattern) so tests flip it with
+  monkeypatch mid-process.
+- Tests (15): off-default open; 401 matrix (missing/garbage/wrong-aud/
+  wrong-iss/expired/wrong-key); health+preflight open; role sync; admin
+  auto-provision; submitter limits; the two override proofs (mute lands on
+  token identity; require_approver judges the token, ignores body id).
+- New dep pyjwt[crypto] (uv add).
+
+Deviations / notes:
+- gates.py `body.operator_id is None` still falls to the default actor even
+  when authenticated (could use the token identity) — v1 keeps the touch
+  small; the wall itself is correct.
+- POST /api/operators (create) has NO admin wall (pre-existing); with auth on
+  any valid token could create operators. Flagged for a follow-up, not
+  expanded here.
+- Deploy ConfigMap wiring for the kind flip (AZURE_* + FACTORY_AUTH) deferred
+  until we actually turn it on in-cluster.
+- test-isolation: suite shares one sqlite; auth tests clean up their
+  @example.com operators or test_roles' all-admins assertion trips.
+
+Backend verify: 689 pytest passed / 3 skipped + ruff clean. Frontend (MSAL in
+console+intake) NOT started — paused for review per plan.
