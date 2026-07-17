@@ -27,6 +27,16 @@
       "autoPort": false
     },
     {
+      "name": "api-auth",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "set -a; . api/.env.azure; set +a; SIM_INTERVAL=8 uv run --directory api uvicorn app.main:app --port 8000 --reload"
+      ],
+      "port": 8000,
+      "autoPort": false
+    },
+    {
       "name": "intake",
       "runtimeExecutable": "npx",
       "runtimeArgs": [

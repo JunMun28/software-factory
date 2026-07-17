@@ -911,3 +911,22 @@ New home (worktree admin-console-redesign, floor/* only):
 
 Verify: ng test console 71/71 green, ng lint clean, ng build clean; visually
 reviewed live at 1440/1280/390 in light + dark. Not committed.
+
+## E2E-0 live auth proof (2026-07-18)
+
+Live sign-in surfaced ONE real bug: Entra issues **v1-format access tokens**
+for custom APIs by default (requestedAccessTokenVersion=null) — iss =
+https://sts.windows.net/<tenant>/ and the email lives in the `email` claim,
+not preferred_username. The wall pinned the v2 issuer → every real token got
+401 "Invalid issuer". Fix: validate signature/aud/exp via PyJWT with BOTH
+audience shapes (api://<id> v1, bare <id> v2), then check iss against BOTH
+tenant issuer formats manually. Proven live: real browser token → 200 on
+/api/auth/me → operator auto-provisioned (role admin from the roles claim).
+
+Also observed, deferred:
+- loginRedirect race: between msal.loginRedirect() resolving and the actual
+  navigation, the app briefly bootstraps and fires 1-2 naked /api calls (one
+  401 in the log, self-healing). Hardening option: interceptor holds /api
+  requests while mode==='unknown'. → fold into E2E-1.
+- Stale pre-auth tabs in the user's Chrome keep naked-polling /api/events
+  every 4s (401 noise in dev logs). Cosmetic; close old tabs.

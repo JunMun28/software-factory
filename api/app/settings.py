@@ -143,14 +143,23 @@ def github_enabled() -> bool:
 # Per-call read (FACTORY_BRAIN pattern) so tests flip it with monkeypatch.
 AZURE_TENANT_ID = os.environ.get("AZURE_TENANT_ID", "").strip()
 AZURE_API_AUDIENCE = os.environ.get("AZURE_API_AUDIENCE", "").strip()
+AZURE_API_CLIENT_ID = os.environ.get("AZURE_API_CLIENT_ID", "").strip()
 # SPA client ids, served to the browsers via GET /api/auth/config so no ID
 # ever lives in the repo or a bundle — the API env is the single source.
 AZURE_CONSOLE_CLIENT_ID = os.environ.get("AZURE_CONSOLE_CLIENT_ID", "").strip()
 AZURE_INTAKE_CLIENT_ID = os.environ.get("AZURE_INTAKE_CLIENT_ID", "").strip()
 # Issuer/JWKS derive from the tenant; overridable for tests and sovereign clouds.
+# Entra issues BOTH token formats depending on the API registration's
+# requestedAccessTokenVersion (default null = v1): v1 tokens carry
+# iss=https://sts.windows.net/<tenant>/, v2 carry .../v2.0 — same tenant, same
+# keys. The wall accepts either (proven live 2026-07-18: SPA tokens arrived v1).
 AUTH_ISSUER = os.environ.get(
     "FACTORY_AUTH_ISSUER",
     f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/v2.0" if AZURE_TENANT_ID else "",
+)
+AUTH_ISSUER_V1 = os.environ.get(
+    "FACTORY_AUTH_ISSUER_V1",
+    f"https://sts.windows.net/{AZURE_TENANT_ID}/" if AZURE_TENANT_ID else "",
 )
 AUTH_JWKS_URL = os.environ.get(
     "FACTORY_AUTH_JWKS_URL",

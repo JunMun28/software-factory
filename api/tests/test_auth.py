@@ -22,7 +22,9 @@ from app.models import Operator, OperatorAppMute
 
 KID = "test-key-1"
 ISSUER = "https://login.microsoftonline.com/test-tenant/v2.0"
+ISSUER_V1 = "https://sts.windows.net/test-tenant/"
 AUDIENCE = "api://test-audience"
+CLIENT_ID_AUD = "test-audience"  # v2 tokens carry the bare client id as aud
 
 _private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
@@ -60,7 +62,9 @@ def entra(monkeypatch):
     """Flip the wall on against a locally generated keyset."""
     monkeypatch.setenv("FACTORY_AUTH", "entra")
     monkeypatch.setattr(settings, "AUTH_ISSUER", ISSUER)
+    monkeypatch.setattr(settings, "AUTH_ISSUER_V1", ISSUER_V1)
     monkeypatch.setattr(settings, "AZURE_API_AUDIENCE", AUDIENCE)
+    monkeypatch.setattr(settings, "AZURE_API_CLIENT_ID", CLIENT_ID_AUD)
     monkeypatch.setattr(settings, "AUTH_JWKS_URL", "https://unit.test/jwks")
     monkeypatch.setattr(auth, "fetch_jwks", lambda url: _jwks())
     monkeypatch.setattr(auth, "_jwks", auth._JwksCache())  # no cross-test key cache
@@ -135,6 +139,27 @@ def test_cors_preflight_bypasses_the_wall(client, entra):
 ])
 def test_invalid_tokens_are_401(client, entra, bad):
     assert client.get("/api/operators", headers=bearer(bad)).status_code == 401
+
+
+def test_v1_format_token_is_accepted(client, entra):
+    """Entra's DEFAULT for custom APIs (requestedAccessTokenVersion=null) issues
+    v1 tokens: iss=sts.windows.net, aud=api://<id>, email claim instead of
+    preferred_username. Found live 2026-07-18 — the wall must take them."""
+    _add_operator("v1-token@example.com", role="admin")
+    now = int(time.time())
+    token = pyjwt.encode(
+        {"iss": ISSUER_V1, "aud": AUDIENCE, "exp": now + 600, "iat": now - 60,
+         "email": "v1-token@example.com", "name": "V One", "roles": ["admin"]},
+        _private_key, algorithm="RS256", headers={"kid": KID},
+    )
+    body = client.get("/api/auth/me", headers=bearer(token)).json()
+    assert body["operator"]["role"] == "admin"
+
+
+def test_v2_format_token_with_guid_audience_is_accepted(client, entra):
+    _add_operator("v2-token@example.com", role="admin")
+    token = mint("v2-token@example.com", ["admin"], audience=CLIENT_ID_AUD)
+    assert client.get("/api/auth/me", headers=bearer(token)).json()["operator"] is not None
 
 
 # ---------- 3. identity mapping ----------

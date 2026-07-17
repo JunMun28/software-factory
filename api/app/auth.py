@@ -111,25 +111,42 @@ def fetch_jwks(url: str) -> dict:
 _jwks = _JwksCache()
 
 
+def _accepted_audiences() -> list[str]:
+    """v1 tokens carry aud=api://<client-id>, v2 carry the bare client-id GUID.
+    Accept both shapes of THIS api's identity — nothing else."""
+    return [a for a in (settings.AZURE_API_AUDIENCE, settings.AZURE_API_CLIENT_ID) if a]
+
+
+def _accepted_issuers() -> set[str]:
+    return {i for i in (settings.AUTH_ISSUER, settings.AUTH_ISSUER_V1) if i}
+
+
 def validate_token(token: str) -> dict:
     """Full validation: RS256 signature against the tenant JWKS + issuer +
-    audience + expiry, all required. Returns the claims dict."""
+    audience + expiry, all required. Returns the claims dict.
+
+    Issuer is checked manually against BOTH tenant issuer formats (v1
+    sts.windows.net / v2 login.microsoftonline.com) — same tenant, same JWKS;
+    which one a token carries depends on the API registration's
+    requestedAccessTokenVersion, not on anything the caller controls."""
     try:
         kid = pyjwt.get_unverified_header(token).get("kid", "")
     except pyjwt.InvalidTokenError as exc:
         raise AuthError(f"malformed token: {exc}") from exc
     key = _jwks.signing_key(kid)
     try:
-        return pyjwt.decode(
+        claims = pyjwt.decode(
             token,
             key=key,
             algorithms=["RS256"],
-            audience=settings.AZURE_API_AUDIENCE,
-            issuer=settings.AUTH_ISSUER,
+            audience=_accepted_audiences(),
             options={"require": ["exp", "iss", "aud"]},
         )
     except pyjwt.InvalidTokenError as exc:
         raise AuthError(f"token rejected: {exc}") from exc
+    if claims.get("iss") not in _accepted_issuers():
+        raise AuthError("token rejected: unknown issuer")
+    return claims
 
 
 def _claim_email(claims: dict) -> str:
