@@ -244,7 +244,7 @@ export class FloorPage {
     return request.stage;
   }
   private focusRow() {
-    const rows = this.host.nativeElement.querySelectorAll<HTMLElement>('article.q-row');
+    const rows = this.host.nativeElement.querySelectorAll<HTMLElement>('article.need');
     rows[Math.min(this.focusIndex(), rows.length - 1)]?.focus();
   }
   @HostListener('window:keydown', ['$event'])

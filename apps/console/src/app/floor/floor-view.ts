@@ -8,78 +8,122 @@ import {
   timeAgo,
 } from '@sf/shared';
 
-/* ── Pipeline board: five fixed columns, two approval boundaries ──
-   The two human gates live in the geometry: Architecture opens only by
-   spec approval, Deploy only by merge approval. Everything between runs
-   on its own. */
+/* ── The line: every request as one track across five stages ──
+   The two human gates live in the geometry: a ◆ joint between
+   Intake & Spec → Architecture (build approval) and between
+   Review & Preview → Deploy (deploy approval). Everything between
+   the joints runs on its own. */
 
-export interface BoardColumnDef {
+export interface StageDef {
   key: 'intake' | 'architecture' | 'build' | 'review' | 'deploy';
   label: string;
-  sub: string;
-  /** Non-null → entering this column requires a human approval. */
+  /** Non-null → a human approval opens this stage; drawn as a ◆ joint on the track. */
   gate: string | null;
 }
 
-export const BOARD_COLUMNS: readonly BoardColumnDef[] = [
-  { key: 'intake', label: 'Intake & Spec', sub: 'interview → grounded spec', gate: null },
-  {
-    key: 'architecture',
-    label: 'Architecture',
-    sub: 'plan from the approved spec',
-    gate: 'spec approval',
-  },
-  { key: 'build', label: 'Build', sub: 'failing tests → green → refactor', gate: null },
-  { key: 'review', label: 'Review & Preview', sub: 'independent read of the diff', gate: null },
-  { key: 'deploy', label: 'Deploy', sub: 'merge → image → live pod', gate: 'merge approval' },
+export const STAGES: readonly StageDef[] = [
+  { key: 'intake', label: 'Intake & Spec', gate: null },
+  { key: 'architecture', label: 'Architecture', gate: 'Build approval' },
+  { key: 'build', label: 'Build', gate: null },
+  { key: 'review', label: 'Review & Preview', gate: null },
+  { key: 'deploy', label: 'Deploy', gate: 'Deploy approval' },
 ];
 
-/** How many shipped requests the Deploy column keeps visible under the live ones. */
-const SHIPPED_SHOWN = 5;
+const STAGE_INDEX: Record<FactoryRequest['stage'], number> = {
+  intake: 0,
+  spec: 0,
+  architecture: 1,
+  build: 2,
+  review: 3,
+  deploy: 4,
+  done: 5,
+};
 
-export type CardTone = 'run' | 'wait' | 'gate' | 'human' | 'owned' | 'draft' | 'done';
+export type SegState = 'done' | 'current' | 'todo';
+export type GateState = 'todo' | 'waiting' | 'passed';
+export type RowTone = 'run' | 'wait' | 'gate' | 'human' | 'owned' | 'draft' | 'done';
 
-export interface BoardCard {
+export interface TrackRow {
   id: number;
   ref: string;
   title: string;
   app: string;
-  tone: CardTone;
-  /** sf-glyph type; gates render their own ◆ marker instead. */
-  glyph: 'dotted' | 'ring' | 'check' | 'flag' | null;
-  state: string;
+  tone: RowTone;
+  /** one entry per stage; 'current' is where the request sits right now */
+  segs: SegState[];
+  /** the two approval joints: [build approval, deploy approval] */
+  gates: [GateState, GateState];
   /** in-stage progress 0..1, only when a live run reports steps */
   progress: number | null;
-  /** compact time in current stage, e.g. "4h" — null for shipped cards */
+  /** right-hand status text, in the admin's words */
+  state: string;
+  glyph: 'dotted' | 'ring' | 'check' | 'flag' | null;
+  /** compact time in current stage, e.g. "4h" — null for shipped rows */
   age: string | null;
   /** sort keys, not rendered */
+  stageIndex: number;
   enteredMs: number;
   updatedMs: number;
 }
 
-export interface BoardColumn extends BoardColumnDef {
-  cards: BoardCard[];
-  count: number;
+export interface LineView {
+  /** live rows, closest-to-shipping first */
+  rows: TrackRow[];
+  /** recently shipped, newest first (capped) */
+  shipped: TrackRow[];
+  /** live requests sitting in each of the five stages */
+  counts: number[];
+  /** requests parked at [build approval, deploy approval] right now */
+  gateCounts: [number, number];
 }
 
-const COLUMN_OF: Record<FactoryRequest['stage'], BoardColumnDef['key'] | 'done'> = {
-  intake: 'intake',
-  spec: 'intake',
-  architecture: 'architecture',
-  build: 'build',
-  review: 'review',
-  deploy: 'deploy',
-  done: 'done',
+/** How many shipped requests stay visible under the live rows. */
+const SHIPPED_SHOWN = 5;
+
+const TONE_RANK: Record<RowTone, number> = {
+  human: 0,
+  gate: 1,
+  owned: 2,
+  run: 3,
+  wait: 4,
+  draft: 5,
+  done: 6,
 };
 
-export function deriveCard(r: FactoryRequest, run: RunState | null): BoardCard {
+function gateStates(r: FactoryRequest, stageIndex: number): [GateState, GateState] {
+  const atGate1 = r.gate === 'approve_spec';
+  const atGate2 = r.gate === 'approve_merge' || r.gate === 'approve_deploy';
+  const gate1: GateState = atGate1 ? 'waiting' : stageIndex >= 1 ? 'passed' : 'todo';
+  const gate2: GateState = atGate2
+    ? 'waiting'
+    : stageIndex >= 5 || (stageIndex === 4 && !r.gate)
+      ? 'passed'
+      : 'todo';
+  return [gate1, gate2];
+}
+
+function segStates(stageIndex: number, parkedAtGate: boolean): SegState[] {
+  return STAGES.map((_, i) => {
+    if (stageIndex >= 5) return 'done';
+    if (i < stageIndex) return 'done';
+    if (i === stageIndex) return parkedAtGate ? 'done' : 'current';
+    return 'todo';
+  });
+}
+
+export function deriveTrack(r: FactoryRequest, run: RunState | null): TrackRow {
+  const stageIndex = STAGE_INDEX[r.stage] ?? 0;
+  const parkedAtGate = r.gate !== null;
   const base = {
     id: r.id,
     ref: r.ref,
     title: r.title,
     app: r.app_name || r.new_app_name || 'New app',
+    segs: segStates(stageIndex, parkedAtGate),
+    gates: gateStates(r, stageIndex),
     progress: null as number | null,
     age: r.stage_entered_at ? timeAgo(r.stage_entered_at) : null,
+    stageIndex,
     enteredMs: r.stage_entered_at ? Date.parse(r.stage_entered_at) : 0,
     updatedMs: Date.parse(r.updated_at) || 0,
   };
@@ -101,11 +145,9 @@ export function deriveCard(r: FactoryRequest, run: RunState | null): BoardCard {
   if (r.status === 'human_owned')
     return { ...base, tone: 'owned', glyph: 'flag', state: 'Human-owned · automation off' };
   if (r.gate === 'approve_spec')
-    return { ...base, tone: 'gate', glyph: null, state: 'Approval starts the build' };
-  if (r.gate === 'approve_merge')
-    return { ...base, tone: 'gate', glyph: null, state: 'Approval deploys it' };
-  if (r.gate === 'approve_deploy')
-    return { ...base, tone: 'gate', glyph: null, state: 'Approval deploys it' };
+    return { ...base, tone: 'gate', glyph: null, state: 'Holding for build approval' };
+  if (r.gate === 'approve_merge' || r.gate === 'approve_deploy')
+    return { ...base, tone: 'gate', glyph: null, state: 'Holding for deploy approval' };
   if (r.status === 'sent_back')
     return { ...base, tone: 'wait', glyph: 'dotted', state: 'With the submitter · question open' };
   if (r.status === 'draft')
@@ -117,7 +159,7 @@ export function deriveCard(r: FactoryRequest, run: RunState | null): BoardCard {
       tone: 'run',
       glyph: 'ring',
       state: quiet
-        ? `Quiet · no signal recently`
+        ? 'Quiet · no signal recently'
         : `${run.label || 'Working'} · ${run.step}/${run.of}`,
       progress: run.of ? Math.min(1, run.step / run.of) : null,
     };
@@ -139,36 +181,36 @@ export function deriveCard(r: FactoryRequest, run: RunState | null): BoardCard {
   return { ...base, tone: 'run', glyph: 'ring', state: r.last_event || 'Working' };
 }
 
-/** The whole board from the requests projection + mission run overlays. */
-export function deriveBoard(
-  requests: FactoryRequest[],
-  runs: Map<number, RunState>,
-): BoardColumn[] {
+/** The whole line from the requests projection + mission run overlays. */
+export function deriveLine(requests: FactoryRequest[], runs: Map<number, RunState>): LineView {
   const open = requests.filter((r) => r.status !== 'cancelled');
-  const columns = BOARD_COLUMNS.map((def) => ({ ...def, cards: [] as BoardCard[], count: 0 }));
-  const byKey = new Map(columns.map((c) => [c.key, c]));
-  const shipped: BoardCard[] = [];
+  const rows: TrackRow[] = [];
+  const shipped: TrackRow[] = [];
+  const counts = STAGES.map(() => 0);
+  const gateCounts: [number, number] = [0, 0];
   for (const r of open) {
-    const key = COLUMN_OF[r.stage] ?? 'intake';
-    if (key === 'done') {
-      shipped.push(deriveCard(r, null));
+    const track = deriveTrack(r, runs.get(r.id) ?? null);
+    if (track.tone === 'done') {
+      shipped.push(track);
       continue;
     }
-    byKey.get(key)!.cards.push(deriveCard(r, runs.get(r.id) ?? null));
+    counts[Math.min(track.stageIndex, 4)] += 1;
+    if (track.gates[0] === 'waiting') gateCounts[0] += 1;
+    if (track.gates[1] === 'waiting') gateCounts[1] += 1;
+    rows.push(track);
   }
-  for (const col of columns) {
-    // Oldest in stage first: the card closest to needing attention leads.
-    col.cards.sort((a, b) => a.enteredMs - b.enteredMs);
-    col.count = col.cards.length;
-  }
+  // Closest to shipping on top; urgency breaks ties; then longest in stage.
+  rows.sort(
+    (a, b) =>
+      b.stageIndex - a.stageIndex ||
+      TONE_RANK[a.tone] - TONE_RANK[b.tone] ||
+      a.enteredMs - b.enteredMs,
+  );
   shipped.sort((a, b) => b.updatedMs - a.updatedMs);
-  const deploy = byKey.get('deploy')!;
-  deploy.count = deploy.cards.length;
-  deploy.cards = [...deploy.cards, ...shipped.slice(0, SHIPPED_SHOWN)];
-  return columns;
+  return { rows, shipped: shipped.slice(0, SHIPPED_SHOWN), counts, gateCounts };
 }
 
-/* ── Waiting on you: the decision queue ── */
+/* ── Needs you: the decision rail ── */
 
 export type QueueKind = 'gate' | 'stalled' | 'owned';
 
@@ -249,6 +291,13 @@ export function deriveQueue(m: MissionOut): QueueItem[] {
     ...queueMeta(o.request),
   }));
   return [...gates, ...stalled, ...owned].map(({ entered: _entered, ...item }) => item);
+}
+
+/** The rail chip: which approval (or condition) this card is about. */
+export function queueChip(item: QueueItem): string {
+  if (item.kind === 'stalled') return 'Needs human';
+  if (item.kind === 'owned') return 'Human-owned';
+  return item.request.gate === 'approve_spec' ? 'Build approval' : 'Deploy approval';
 }
 
 /** Compact hours for the pulse line: <1h · 7h · 3d. */
