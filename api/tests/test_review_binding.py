@@ -229,19 +229,20 @@ def test_red_retry_feedback_contains_actual_scrubbed_pytest_failure(client):
 
     fake.on_observe = run
     request = approved_request(client, title="Pytest retry evidence")
-    out = _tick_until(
+    red_two_name = f"sf-{request['ref'].lower()}-red-2"
+    _tick_until(
         client,
         runner,
         request["id"],
         lambda _value: any(
-            manifest["metadata"]["name"].endswith("-red-2")
+            manifest["metadata"]["name"] == red_two_name
             for manifest in fake.creations
         ),
     )
     red_two = next(
         manifest
         for manifest in fake.creations
-        if manifest["metadata"]["name"] == f"sf-{out['ref'].lower()}-red-2"
+        if manifest["metadata"]["name"] == red_two_name
     )
 
     feedback = _manifest_env(red_two)["SF_GATE_FEEDBACK"]

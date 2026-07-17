@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 import { FactoryRequest, Glyph, MissionGate, MissionOut, RunState } from '@sf/shared';
 
 import { FloorActionOutcome } from '../shared/action-outcome';
-import { deriveBoard, deriveQueue, deriveTallies } from './floor-view';
+import { QueueItem, deriveBoard, deriveTallies } from './floor-view';
 
 @Component({
   selector: 'sf-floor-content',
@@ -26,6 +26,18 @@ import { deriveBoard, deriveQueue, deriveTallies } from './floor-view';
           need attention
           <span class="sep" aria-hidden="true"></span>
           <b class="mono">{{ tallies().shipped }}</b> shipped this week
+          @if (tallies().cycle; as cycle) {
+            <span class="sep" aria-hidden="true"></span>
+            <span class="quiet-stat"
+              >median cycle <b class="mono">{{ cycle }}</b></span
+            >
+          }
+          @if (tallies().gateWait; as wait) {
+            <span class="sep" aria-hidden="true"></span>
+            <span class="quiet-stat"
+              >gates answered in <b class="mono">~{{ wait }}</b></span
+            >
+          }
         </p>
       </header>
 
@@ -36,10 +48,32 @@ import { deriveBoard, deriveQueue, deriveTallies } from './floor-view';
             <span class="zcount mono">{{ queue().length }}</span>
           }
         </div>
-        @if (queue().length === 0) {
+        @if (queue().length === 0 && activeFilter() === 'all') {
           <p class="all-clear">
             Nothing is waiting on you — the line runs itself until the next gate.
           </p>
+        }
+        @if (appOptions().length > 0) {
+          <nav class="q-filters" aria-label="Filter the queue by app">
+            <button
+              type="button"
+              [class.on]="activeFilter() === 'all'"
+              [attr.aria-pressed]="activeFilter() === 'all'"
+              (click)="filterChanged.emit('all')"
+            >
+              All
+            </button>
+            @for (option of appOptions(); track option.key) {
+              <button
+                type="button"
+                [class.on]="activeFilter() === option.key"
+                [attr.aria-pressed]="activeFilter() === option.key"
+                (click)="filterChanged.emit(option.key)"
+              >
+                {{ option.label }} <span class="mono">{{ option.count }}</span>
+              </button>
+            }
+          </nav>
         }
         @for (item of queue(); track item.request.id) {
           <article
@@ -57,6 +91,14 @@ import { deriveBoard, deriveQueue, deriveTallies } from './floor-view';
                 <span class="q-meta mono"
                   >{{ item.request.ref }} · {{ item.request.app_name }}</span
                 >
+                @if (item.age) {
+                  <span
+                    class="q-age mono"
+                    [class.aged]="item.aged"
+                    [title]="'waiting since ' + (item.request.stage_entered_at ?? '')"
+                    >waiting {{ item.age }}</span
+                  >
+                }
               </div>
               @if (item.kind === 'gate') {
                 <p class="q-facts mono">
@@ -64,7 +106,6 @@ import { deriveBoard, deriveQueue, deriveTallies } from './floor-view';
                     <span [class]="fact.tone">{{ fact.text }}</span>
                   }
                 </p>
-                <p class="q-why">Approving {{ item.consequence }}.</p>
               } @else if (item.kind === 'stalled') {
                 <p class="q-why">
                   {{
@@ -94,6 +135,15 @@ import { deriveBoard, deriveQueue, deriveTallies } from './floor-view';
                 <button class="act" type="button" (click)="sentBack.emit(asGate(item))">
                   Send back <kbd>S</kbd>
                 </button>
+                @if (item.request.repo) {
+                  <a
+                    class="act link"
+                    [href]="'https://github.com/' + item.request.repo"
+                    target="_blank"
+                    rel="noopener"
+                    >Repo ↗</a
+                  >
+                }
               } @else if (item.kind === 'stalled') {
                 <button
                   class="act primary"
@@ -262,6 +312,49 @@ import { deriveBoard, deriveQueue, deriveTallies } from './floor-view';
       margin: 0 0 0 auto;
       color: var(--faint);
       font-size: 12px;
+    }
+    .quiet-stat {
+      color: var(--faint);
+    }
+    .quiet-stat b {
+      color: var(--fg2);
+      font-weight: 600;
+    }
+    .q-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 0 0 10px;
+    }
+    .q-filters button {
+      padding: 4px 11px;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-pill);
+      font: 600 12px var(--body);
+      cursor: pointer;
+    }
+    .q-filters button:hover {
+      color: var(--fg1);
+      border-color: var(--border-strong);
+    }
+    .q-filters button.on {
+      color: var(--fg1);
+      background: var(--surface-2);
+      border-color: var(--border-strong);
+    }
+    .q-filters .mono {
+      color: var(--faint);
+      font-size: 10.5px;
+    }
+    .q-age {
+      color: var(--faint);
+      font-size: 11px;
+    }
+    .q-age.aged {
+      color: var(--amber-tx);
+      font-weight: 600;
     }
     .all-clear {
       margin: 0;
@@ -627,7 +720,11 @@ export class FloorContent {
   takeOverRequested = output<FactoryRequest>();
   cancelled = output<FactoryRequest>();
 
-  queue = computed(() => deriveQueue(this.mission()));
+  /** The visible queue — derived and filtered by the page so keyboard order matches. */
+  queue = input.required<QueueItem[]>();
+  appOptions = input<{ key: string; label: string; count: number }[]>([]);
+  activeFilter = input('all');
+  filterChanged = output<string>();
   board = computed(() => {
     const runs = new Map<number, RunState>(
       this.mission().runs.map((run) => [run.request.id, run.run]),

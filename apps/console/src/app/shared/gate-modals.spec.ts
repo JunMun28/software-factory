@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { FactoryRequest } from '@sf/shared';
+import { Evidence, FactoryRequest } from '@sf/shared';
 
 import {
   ApproveModal,
@@ -54,16 +54,32 @@ function req(over: Partial<FactoryRequest> = {}): FactoryRequest {
   };
 }
 
+const MERGE_EVIDENCE: Evidence = {
+  kind: 'merge',
+  grounded_lines: null,
+  total_lines: null,
+  interview_count: null,
+  tests_passed: 12,
+  tests_total: 12,
+  diff_added: 40,
+  diff_removed: 3,
+  files_changed: 2,
+  reviewer_verdict: 'approved',
+  assumptions: [],
+};
+
 @Component({
   imports: [ApproveModal],
   template: `<sf-approve-modal
     [r]="r()"
+    [evidence]="evidence()"
     (approved)="approvals = approvals + 1"
     (cancelled)="cancels = cancels + 1"
   />`,
 })
 class ApproveHost {
   r = signal(req({ gate: 'approve_spec', prospective_repo: 'micron/new-app' }));
+  evidence = signal<Evidence | null>(null);
   approvals = 0;
   cancels = 0;
 }
@@ -132,14 +148,33 @@ describe('ApproveModal', () => {
     expect(text).toContain('micron/new-app'); // prospective_repo via confirmSteps
   });
 
-  it('renders the merge-gate copy', () => {
+  it('renders the merge-gate copy when evidence is present', () => {
     const f = TestBed.createComponent(ApproveHost);
     f.componentInstance.r.set(req({ gate: 'approve_merge', repo: 'micron/northwind' }));
+    f.componentInstance.evidence.set(MERGE_EVIDENCE);
     f.detectChanges();
     const text = (f.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Approve this merge?');
     expect(text).toContain('Approve & deploy');
     expect(text).toContain('micron/northwind');
+    expect(text).not.toContain('No evidence is recorded');
+  });
+
+  it('says out loud when a merge gate would be approved blind (gap #1)', () => {
+    const f = TestBed.createComponent(ApproveHost);
+    f.componentInstance.r.set(req({ gate: 'approve_merge', repo: 'micron/northwind' }));
+    f.componentInstance.evidence.set(null);
+    f.detectChanges();
+    const text = (f.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('No evidence is recorded for this gate');
+    expect(text).toContain('Approve without evidence');
+    expect(text).not.toContain('Approve & deploy');
+  });
+
+  it('never warns a spec gate about evidence (grounding rides the spec itself)', () => {
+    const f = TestBed.createComponent(ApproveHost);
+    f.detectChanges();
+    expect((f.nativeElement as HTMLElement).textContent).not.toContain('No evidence is recorded');
   });
 
   it('renders the deploy-gate copy (Plan B4: the second human gate)', () => {
@@ -147,6 +182,7 @@ describe('ApproveModal', () => {
     f.componentInstance.r.set(
       req({ gate: 'approve_deploy', repo: 'micron/northwind', app_key: 'northwind' }),
     );
+    f.componentInstance.evidence.set(MERGE_EVIDENCE);
     f.detectChanges();
     const text = (f.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Approve this deploy?');

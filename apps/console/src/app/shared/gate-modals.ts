@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { Autofocus, FactoryRequest, Icon, confirmSteps } from '@sf/shared';
+import { Autofocus, Evidence, FactoryRequest, Icon, confirmSteps } from '@sf/shared';
 
 /* ---- gate UI — the irreversible-action modals (floor/dossier consume these).
    Moved verbatim out of @sf/shared (deepening candidate 2, D9): the console is
@@ -53,13 +53,23 @@ import { Autofocus, FactoryRequest, Icon, confirmSteps } from '@sf/shared';
             </li>
           }
         </ul>
+        @if (blind()) {
+          <p
+            class="sig red"
+            role="alert"
+            style="display:flex;margin:0 0 14px;font-size:12.5px;line-height:1.45;white-space:normal"
+          >
+            No evidence is recorded for this gate — nothing here proves tests ran or a review
+            happened. Read the dossier before approving.
+          </p>
+        }
         <div class="row" style="gap:9px;justify-content:flex-end">
           <button class="btn" (click)="cancelled.emit()">Cancel</button>
           <button class="btn primary" (click)="approved.emit()">
             {{
-              r().gate === 'approve_merge'
-                ? 'Approve & deploy'
-                : r().gate === 'approve_deploy'
+              blind()
+                ? 'Approve without evidence'
+                : r().gate === 'approve_merge' || r().gate === 'approve_deploy'
                   ? 'Approve & deploy'
                   : 'Approve & start build'
             }}
@@ -71,9 +81,16 @@ import { Autofocus, FactoryRequest, Icon, confirmSteps } from '@sf/shared';
 })
 export class ApproveModal {
   r = input.required<FactoryRequest>();
+  /** null on a merge/deploy gate = approving blind; the modal says so out loud. */
+  evidence = input<Evidence | null>(null);
   cancelled = output<void>();
   approved = output<void>();
   steps = computed(() => confirmSteps(this.r()));
+  blind = computed(
+    () =>
+      this.evidence() === null &&
+      (this.r().gate === 'approve_merge' || this.r().gate === 'approve_deploy'),
+  );
 }
 
 /** The "Send back to {reporter}?" modal — emits the blocking question. */

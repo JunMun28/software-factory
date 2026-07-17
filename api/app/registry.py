@@ -38,6 +38,12 @@ class RollbackBusy(RollbackError):
 class RollbackFenced(RollbackError):
     pass
 
+
+class RollbackNeverLive(RollbackError):
+    """A valid digest has no completed production-deploy witness for this app."""
+
+    pass
+
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _DURATION = re.compile(r"^(\d+)([smhdw])$")
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
@@ -299,17 +305,18 @@ def enqueue_rollback(
         None,
     )
     if target is None:
-        raise RollbackNotFound(
-            "Rollback target is not backed by a succeeded deploy for this app"
+        raise RollbackNeverLive(
+            "Rollback target was never live for this app "
+            "(no succeeded deploy witness)"
         )
     if target[1].status != transitions.DONE or target[1].stage != "done":
-        raise RollbackNotFound(
+        raise RollbackNeverLive(
             "Rollback target has no completed request ownership record"
         )
 
     current = deploys[0] if deploys else None
     if current is None:
-        raise RollbackNotFound("App has no live deploy to roll back")
+        raise RollbackNeverLive("App has no live deploy to roll back")
     if _digest((current[0].envelope or {}).get("digest")) == digest:
         return current[0]
 

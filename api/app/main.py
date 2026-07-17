@@ -7,7 +7,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import api_helpers, settings, simulator, startup
+from . import api_helpers, heartbeat, settings, simulator, startup
 from .agent_exec import runner_mode
 from .agent_runner import AgentRunner
 from .db import SessionLocal, migrate
@@ -15,6 +15,7 @@ from .leader import LeaderElector, get_elector
 from .routers import attachments as attachments_router
 from .routers import events as events_router
 from .routers import gates, operators, registry, system
+from .routers import harness as harness_router
 from .routers import mission as mission_router
 from .routers import requests as requests_router
 from .seed import seed
@@ -30,6 +31,7 @@ def _tick_once(elector: LeaderElector) -> None:
             api_helpers.pipeline().tick(db)
         else:
             simulator.tick(db)
+    heartbeat.beat()  # a beat means a full leader pass completed, not merely "process up"
 
 
 def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = None) -> FastAPI:
@@ -103,6 +105,7 @@ def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = N
     app.include_router(attachments_router.router)
     app.include_router(gates.router)
     app.include_router(mission_router.router)
+    app.include_router(harness_router.router)
 
     return app
 

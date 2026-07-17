@@ -30,7 +30,11 @@ const HUES = ['#6E5A8A', '#7C5CFC', '#0F766E', '#B45309', '#B42318', '#2563EB'];
             >
               <span class="avatar" [style.background]="operator.hue">{{ operator.initials }}</span>
               <span
-                ><b>{{ operator.name }}</b
+                ><b
+                  >{{ operator.name }}
+                  @if (operator.role === 'viewer') {
+                    <i class="role-chip">viewer · read-only</i>
+                  }</b
                 ><small>{{ operator.email }}</small></span
               >
               <span class="pick">{{
@@ -537,6 +541,17 @@ const HUES = ['#6E5A8A', '#7C5CFC', '#0F766E', '#B45309', '#B42318', '#2563EB'];
       font-size: 12px;
       font-weight: 700;
     }
+    .role-chip {
+      margin-left: 6px;
+      padding: 1px 8px;
+      color: var(--muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-pill);
+      font: 600 10.5px var(--body);
+      font-style: normal;
+      vertical-align: 2px;
+    }
     form {
       padding: 24px;
       background: var(--surface);
@@ -766,6 +781,7 @@ export class StudioPage {
       muted: false,
       open_requests: 0,
       unread: false,
+      last_deploy: null,
     });
   }
   editApp(app: AppEntry) {

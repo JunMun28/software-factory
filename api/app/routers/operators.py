@@ -19,6 +19,15 @@ def resolve_operator(db: Session, operator_id: int) -> Operator:
     return operator
 
 
+def require_approver(db: Session, operator_id: int) -> Operator:
+    """Gate decisions and rollbacks are admin-only. The wall lives server-side:
+    a viewer with devtools still gets a 403, whatever the UI showed them."""
+    operator = resolve_operator(db, operator_id)
+    if getattr(operator, "role", "admin") != "admin":
+        raise HTTPException(403, f"{operator.name} is a viewer — this action needs an admin")
+    return operator
+
+
 @router.get("/api/operators", response_model=list[OperatorOut])
 def list_operators(db: Session = Depends(get_db)):
     return db.scalars(select(Operator).order_by(Operator.name, Operator.id)).all()
@@ -30,7 +39,7 @@ def create_operator(body: OperatorIn, db: Session = Depends(get_db)):
         raise HTTPException(409, "An operator with that email already exists")
     operator = Operator(
         name=body.name.strip(), initials=body.initials.strip().upper(),
-        hue=body.hue.upper(), email=body.email.strip().lower(),
+        hue=body.hue.upper(), email=body.email.strip().lower(), role=body.role,
     )
     db.add(operator)
     db.commit()

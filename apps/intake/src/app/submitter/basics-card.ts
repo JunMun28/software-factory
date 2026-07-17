@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, OnInit, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { Api, AppEntry, TrackChip } from '@sf/shared';
+import { Api, AppEntry } from '@sf/shared';
 import { IntakeDraft } from './intake-draft.service';
 
 /** all basics answered for this request type (identity + the two facts) */
@@ -23,686 +23,700 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
   );
 }
 
-/** The Clarify step's BASICS — the "card sort + blast radius" redesign
- *  (mockups/basics-form verdict, 2026-07-11): staged numbered sections with
- *  illustrated type cards, a concentric-rings audience picker, and impact
- *  cards. Later sections sit blurred until the earlier ones are answered.
- *  Edits PATCH the request through the shared IntakeDraft; a dirty check
- *  keeps no-op blurs free. The blast radius collapses the old six reach
- *  options to four rings — legacy site/network values light the outer ring. */
+/** The Clarify step's BASICS as a one-question-at-a-time wizard: progress dots
+ *  on top, a single centered question, Back/Next below (2026-07-15 redesign of
+ *  the staged numbered-sections layout). Nothing is pre-selected — the type
+ *  cards start blank and need an explicit pick; the inferred type is never
+ *  shown as a default. There is no Next button — answering a question advances
+ *  the wizard (card/ring clicks and landed screenshots immediately, text
+ *  answers on Enter); Back and the progress dots step backward or across
+ *  answered questions. The question set re-shapes by request type; edits PATCH
+ *  through the shared IntakeDraft with a dirty check. The blast radius keeps
+ *  the four-ring audience picker. */
 @Component({
   selector: 'sf-basics-card',
-  imports: [FormsModule, TrackChip],
+  imports: [FormsModule],
   template: `
     <div class="basics">
-      <!-- S1 · TYPE (chip-collapsed; cards open when unsure or correcting) -->
-      <section class="sec answered">
-        <div class="sechead">
-          <span class="snum"></span>
-          <div class="htxt">
-            <h2>What kind of request is this?</h2>
-            <p class="sub">We inferred this from your description — change it if it's off.</p>
-          </div>
-          <sf-track-chip
-            [t]="draft.type ?? rtype() ?? 'new'"
-            [state]="cardsOpen() ? 'unsure' : 'confident'"
-            (correct)="cardsOpen.set(!cardsOpen())"
-          />
+      <div class="wiz__top">
+        <span class="wiz__count">Question {{ dispIdx() + 1 }} of {{ steps().length }}</span>
+        <div class="wiz__dots">
+          @for (s of steps(); track s; let i = $index) {
+            <button
+              type="button"
+              class="dot"
+              [class.on]="i === dispIdx()"
+              [class.done]="stepAnswered(s)"
+              [disabled]="!canJump(i)"
+              [attr.aria-label]="'Question ' + (i + 1)"
+              [attr.aria-current]="i === dispIdx() ? 'step' : null"
+              (click)="goStep(i)"
+            ></button>
+          }
         </div>
-        @if (cardsOpen()) {
-          <div class="typegrid">
-            <button
-              type="button"
-              class="tcard"
-              [class.sel]="picked() === 'bug'"
-              (click)="pickType('bug')"
-            >
-              <span class="glow"></span>
-              <span class="art">
-                <svg
-                  viewBox="0 0 48 48"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M30 12a7 7 0 0 0-9.4 8.3L9 31.9a3.4 3.4 0 0 0 4.8 4.8l11.6-11.6A7 7 0 0 0 34 15.6l-4 4-4.3-1.4L24.3 14z"
-                  />
-                  <circle cx="12.2" cy="33.6" r="1" />
-                </svg>
-              </span>
-              <span class="tl">Fix a problem</span>
-              <span class="ex">Something's broken, slow, or wrong and needs a fix.</span>
-              <span class="tick">✓</span>
-            </button>
-            <button
-              type="button"
-              class="tcard"
-              [class.sel]="picked() === 'enh'"
-              (click)="pickType('enh')"
-            >
-              <span class="glow"></span>
-              <span class="art">
-                <svg
-                  viewBox="0 0 48 48"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <rect x="8" y="10" width="32" height="22" rx="3" />
-                  <path d="M8 16h32" />
-                  <path d="M18 40h12M24 32v8" />
-                  <path d="M20 25l4-5 4 3 4-6" />
-                </svg>
-              </span>
-              <span class="tl">Improve an app</span>
-              <span class="ex">An app already exists but should do more or better.</span>
-              <span class="tick">✓</span>
-            </button>
-            <button
-              type="button"
-              class="tcard"
-              [class.sel]="picked() === 'new'"
-              (click)="pickType('new')"
-            >
-              <span class="glow"></span>
-              <span class="art">
-                <svg
-                  viewBox="0 0 48 48"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M24 7l14 8v18l-14 8-14-8V15z" />
-                  <path d="M10 15l14 8 14-8M24 23v18" />
-                  <path d="M24 16v6M21 19h6" stroke-width="2.2" />
-                </svg>
-              </span>
-              <span class="tl">Build a new app</span>
-              <span class="ex">Nothing exists yet. Start from a blank page.</span>
-              <span class="tick">✓</span>
-            </button>
-            <button
-              type="button"
-              class="tcard"
-              [class.sel]="picked() === 'other'"
-              (click)="pickType('other')"
-            >
-              <span class="glow"></span>
-              <span class="art">
-                <svg
-                  viewBox="0 0 48 48"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M12 14a10 10 0 0 1 20 0c0 5-4 6-6 8s-2 4-2 4" />
-                  <circle cx="24" cy="39" r="1.4" />
-                </svg>
-              </span>
-              <span class="tl">Something else</span>
-              <span class="ex">Not sure yet. We'll figure it out together.</span>
-              <span class="tick">✓</span>
-            </button>
-          </div>
-        }
-      </section>
+      </div>
 
-      <!-- S2 · APP (bug / enh only) -->
-      @if (rtype() === 'bug' || rtype() === 'enh') {
-        <section class="sec" [class.answered]="appAnswered()">
-          <div class="sechead">
-            <span class="snum"><i>2</i></span>
-            <div class="htxt">
+      @switch (cur()) {
+        @case ('type') {
+          <section class="qstep">
+            <div class="qhead">
+              <h2>What kind of request is this?</h2>
+              <p class="sub">Pick the one that fits best.</p>
+            </div>
+            <div class="typegrid">
+              <button
+                type="button"
+                class="tcard"
+                [class.sel]="picked() === 'bug'"
+                (click)="pickType('bug')"
+              >
+                <span class="glow"></span>
+                <span class="art">
+                  <svg
+                    viewBox="0 0 48 48"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M30 12a7 7 0 0 0-9.4 8.3L9 31.9a3.4 3.4 0 0 0 4.8 4.8l11.6-11.6A7 7 0 0 0 34 15.6l-4 4-4.3-1.4L24.3 14z"
+                    />
+                    <circle cx="12.2" cy="33.6" r="1" />
+                  </svg>
+                </span>
+                <span class="tl">Fix a problem</span>
+                <span class="ex">Something's broken, slow, or wrong and needs a fix.</span>
+                <span class="tick">✓</span>
+              </button>
+              <button
+                type="button"
+                class="tcard"
+                [class.sel]="picked() === 'enh'"
+                (click)="pickType('enh')"
+              >
+                <span class="glow"></span>
+                <span class="art">
+                  <svg
+                    viewBox="0 0 48 48"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <rect x="8" y="10" width="32" height="22" rx="3" />
+                    <path d="M8 16h32" />
+                    <path d="M18 40h12M24 32v8" />
+                    <path d="M20 25l4-5 4 3 4-6" />
+                  </svg>
+                </span>
+                <span class="tl">Improve an app</span>
+                <span class="ex">An app already exists but should do more or better.</span>
+                <span class="tick">✓</span>
+              </button>
+              <button
+                type="button"
+                class="tcard"
+                [class.sel]="picked() === 'new'"
+                (click)="pickType('new')"
+              >
+                <span class="glow"></span>
+                <span class="art">
+                  <svg
+                    viewBox="0 0 48 48"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M24 7l14 8v18l-14 8-14-8V15z" />
+                    <path d="M10 15l14 8 14-8M24 23v18" />
+                    <path d="M24 16v6M21 19h6" stroke-width="2.2" />
+                  </svg>
+                </span>
+                <span class="tl">Build a new app</span>
+                <span class="ex">Nothing exists yet. Start from a blank page.</span>
+                <span class="tick">✓</span>
+              </button>
+              <button
+                type="button"
+                class="tcard"
+                [class.sel]="picked() === 'other'"
+                (click)="pickType('other')"
+              >
+                <span class="glow"></span>
+                <span class="art">
+                  <svg
+                    viewBox="0 0 48 48"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 14a10 10 0 0 1 20 0c0 5-4 6-6 8s-2 4-2 4" />
+                    <circle cx="24" cy="39" r="1.4" />
+                  </svg>
+                </span>
+                <span class="tl">Something else</span>
+                <span class="ex">Not sure yet. We'll figure it out together.</span>
+                <span class="tick">✓</span>
+              </button>
+            </div>
+          </section>
+        }
+        @case ('app') {
+          <section class="qstep">
+            <div class="qhead">
               <h2>Which app is this about?</h2>
               <p class="sub">{{ appPlaceholder() }}</p>
             </div>
-            @if (appAnswered()) {
-              <span class="tag">{{ draft.appName || 'Selected' }}</span>
-            }
-          </div>
-          <div class="panel">
-            <span class="dd-wrap">
-              <input
-                id="nr-app-dd"
-                class="input basics__in"
-                role="combobox"
-                autocomplete="off"
-                aria-autocomplete="list"
-                aria-controls="nr-app-list"
-                [attr.aria-expanded]="appsMenuOpen() && !customApp()"
-                maxlength="120"
-                [placeholder]="customApp() ? 'Type the app name' : appPlaceholder()"
-                [ngModel]="appQuery()"
-                (ngModelChange)="customApp() ? onCustomInput($event) : onAppInput($event)"
-                (focus)="!customApp() && appsMenuOpen.set(true)"
-                (blur)="appsMenuOpen.set(false); save()"
-                (keydown.escape)="appsMenuOpen.set(false)"
-              />
-              @if (appsMenuOpen() && !customApp()) {
-                <div class="pop pop--fill" role="listbox" id="nr-app-list">
-                  @for (a of filteredApps(); track a.id) {
+            <div class="panel">
+              <span class="dd-wrap">
+                <input
+                  id="nr-app-dd"
+                  class="input basics__in"
+                  role="combobox"
+                  autocomplete="off"
+                  aria-autocomplete="list"
+                  aria-controls="nr-app-list"
+                  [attr.aria-expanded]="appsMenuOpen() && !customApp()"
+                  maxlength="120"
+                  [placeholder]="customApp() ? 'Type the app name' : appPlaceholder()"
+                  [ngModel]="appQuery()"
+                  (ngModelChange)="customApp() ? onCustomInput($event) : onAppInput($event)"
+                  (focus)="!customApp() && appsMenuOpen.set(true)"
+                  (blur)="appsMenuOpen.set(false); save()"
+                  (keydown.escape)="appsMenuOpen.set(false)"
+                  (keydown.enter)="appEnter()"
+                />
+                @if (appsMenuOpen() && !customApp()) {
+                  <div class="pop pop--fill" role="listbox" id="nr-app-list">
+                    @for (a of filteredApps(); track a.id) {
+                      <button
+                        class="pop__opt"
+                        role="option"
+                        [attr.aria-selected]="draft.appId === a.id"
+                        [class.on]="draft.appId === a.id"
+                        (mousedown)="$event.preventDefault(); pickApp(a)"
+                      >
+                        {{ a.name }}
+                      </button>
+                    } @empty {
+                      @if (!appQuery().trim()) {
+                        <div class="dd__empty">No apps registered yet.</div>
+                      }
+                    }
                     <button
-                      class="pop__opt"
-                      role="option"
-                      [attr.aria-selected]="draft.appId === a.id"
-                      [class.on]="draft.appId === a.id"
-                      (mousedown)="$event.preventDefault(); pickApp(a)"
+                      class="pop__opt dd__other"
+                      (mousedown)="$event.preventDefault(); chooseOther()"
                     >
-                      {{ a.name }}
+                      @if (appQuery().trim() && !exactApp()) {
+                        Add “{{ appQuery().trim() }}” as a new app
+                      } @else {
+                        My app isn’t listed
+                      }
                     </button>
-                  } @empty {
-                    @if (!appQuery().trim()) {
-                      <div class="dd__empty">No apps registered yet.</div>
-                    }
-                  }
-                  <button
-                    class="pop__opt dd__other"
-                    (mousedown)="$event.preventDefault(); chooseOther()"
-                  >
-                    @if (appQuery().trim() && !exactApp()) {
-                      Add “{{ appQuery().trim() }}” as a new app
-                    } @else {
-                      My app isn’t listed
-                    }
-                  </button>
-                </div>
-              }
-            </span>
-          </div>
-        </section>
-      }
-
-      @if (rtype() === 'bug') {
-        <!-- S3 · EVIDENCE -->
-        <section
-          class="sec"
-          [class.locked]="!appAnswered()"
-          [class.answered]="bugEvidenceAnswered()"
-        >
-          <div class="sechead">
-            <span class="snum"><i>3</i></span>
-            <div class="htxt">
+                  </div>
+                }
+              </span>
+            </div>
+          </section>
+        }
+        @case ('evidence') {
+          <section class="qstep">
+            <div class="qhead">
               <h2>Show us where it happens</h2>
               <p class="sub">A link or a screenshot — either works.</p>
             </div>
-            @if (bugEvidenceAnswered()) {
-              <span class="tag">{{
-                screenshots().length ? 'Screenshot added' : 'Link added'
-              }}</span>
-            }
-          </div>
-          <div class="panel">
-            <span class="evidence" (paste)="onEvidencePaste($event)">
-              <input
-                class="input basics__in evidence__link"
-                inputmode="url"
-                autocomplete="url"
-                placeholder="Paste a page link"
-                [(ngModel)]="draft.bugWhere"
-                (blur)="save()"
-              />
-              <button type="button" class="evidence__add" (click)="screenshotInput.click()">
-                Add screenshot
-              </button>
-              <input
-                #screenshotInput
-                type="file"
-                accept="image/*"
-                hidden
-                (change)="onScreenshotPick($event)"
-              />
-              @if (screenshots().length) {
-                <span class="evidence__files">
-                  @for (shot of screenshots(); track shot.id) {
-                    <span class="evidence__file">
-                      {{ shot.filename }}
-                      <button
-                        type="button"
-                        aria-label="Remove {{ shot.filename }}"
-                        (click)="removeScreenshot(shot.id)"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  }
-                </span>
-              }
-              @if (draft.lastError()) {
-                <span class="evidence__error" role="alert">{{ draft.lastError() }}</span>
-              }
-            </span>
-          </div>
-        </section>
-
-        <!-- S4 · FREQUENCY -->
-        <section
-          class="sec"
-          [class.locked]="!appAnswered() || !bugEvidenceAnswered()"
-          [class.answered]="!!draft.bugFreq"
-        >
-          <div class="sechead">
-            <span class="snum"><i>4</i></span>
-            <div class="htxt">
+            <div class="panel">
+              <span class="evidence" (paste)="onEvidencePaste($event)">
+                <input
+                  class="input basics__in evidence__link"
+                  inputmode="url"
+                  autocomplete="url"
+                  placeholder="Paste a page link"
+                  [(ngModel)]="draft.bugWhere"
+                  (blur)="save()"
+                  (keydown.enter)="save(); advanceIfAnswered()"
+                />
+                <button type="button" class="evidence__add" (click)="screenshotInput.click()">
+                  Add screenshot
+                </button>
+                <input
+                  #screenshotInput
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  (change)="onScreenshotPick($event)"
+                />
+                @if (screenshots().length) {
+                  <span class="evidence__files">
+                    @for (shot of screenshots(); track shot.id) {
+                      <span class="evidence__file">
+                        {{ shot.filename }}
+                        <button
+                          type="button"
+                          aria-label="Remove {{ shot.filename }}"
+                          (click)="removeScreenshot(shot.id)"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    }
+                  </span>
+                }
+                @if (draft.lastError()) {
+                  <span class="evidence__error" role="alert">{{ draft.lastError() }}</span>
+                }
+              </span>
+            </div>
+          </section>
+        }
+        @case ('freq') {
+          <section class="qstep">
+            <div class="qhead">
               <h2>How often does it happen?</h2>
               <p class="sub">Roughly how often it shows up.</p>
             </div>
-            @if (draft.bugFreq) {
-              <span class="tag">{{ freqLabel() }}</span>
-            }
-          </div>
-          <div class="freqgrid">
-            @for (f of freqs; track f[0]) {
-              <button
-                type="button"
-                class="fcard"
-                [class.sel]="draft.bugFreq === f[0]"
-                (click)="pickFreq(f[0])"
-              >
-                {{ f[1] }}
-              </button>
-            }
-          </div>
-        </section>
-      } @else {
-        <!-- S2/S3 · AUDIENCE (blast radius) -->
-        <section
-          class="sec"
-          [class.locked]="rtype() === 'enh' && !appAnswered()"
-          [class.answered]="audAnswered()"
-        >
-          <div class="sechead">
-            <span class="snum"
-              ><i>{{ rtype() === 'enh' ? 3 : 2 }}</i></span
-            >
-            <div class="htxt">
+            <div class="freqgrid">
+              @for (f of freqs; track f[0]) {
+                <button
+                  type="button"
+                  class="fcard"
+                  [class.sel]="draft.bugFreq === f[0]"
+                  (click)="pickFreq(f[0])"
+                >
+                  {{ f[1] }}
+                </button>
+              }
+            </div>
+          </section>
+        }
+        @case ('aud') {
+          <section class="qstep qstep--wide">
+            <div class="qhead">
               <h2>{{ audienceLabel() }}</h2>
               <p class="sub">Click the ring that matches the blast radius.</p>
             </div>
-            @if (audAnswered()) {
-              <span class="tag">{{ audTag() }}</span>
-            }
-          </div>
-          <div class="radius">
-            <div class="ringwrap">
-              <svg
-                viewBox="0 0 400 400"
-                role="group"
-                aria-label="How many people this touches"
-                aria-hidden="true"
-              >
-                <!-- painted largest→smallest so inner disks form annulus hit-zones -->
-                <circle
-                  class="ring-band"
-                  [class.reach]="selIdx() >= 3"
-                  [class.edge]="selIdx() === 3"
-                  cx="200"
-                  cy="200"
-                  r="190"
-                  (click)="pickRing('wider')"
-                />
-                <circle
-                  class="ring-band"
-                  [class.reach]="selIdx() >= 2"
-                  [class.edge]="selIdx() === 2"
-                  cx="200"
-                  cy="200"
-                  r="142"
-                  (click)="pickRing('dept')"
-                />
-                <circle
-                  class="ring-band"
-                  [class.reach]="selIdx() >= 1"
-                  [class.edge]="selIdx() === 1"
-                  cx="200"
-                  cy="200"
-                  r="92"
-                  (click)="pickRing('team')"
-                />
-                <circle
-                  class="ring-band"
-                  [class.reach]="selIdx() >= 0"
-                  [class.edge]="selIdx() === 0"
-                  cx="200"
-                  cy="200"
-                  r="46"
-                  (click)="pickRing('me')"
-                />
-                <g pointer-events="none">
+            <div class="radius">
+              <div class="ringwrap">
+                <svg
+                  viewBox="0 0 400 400"
+                  role="group"
+                  aria-label="How many people this touches"
+                  aria-hidden="true"
+                >
+                  <!-- painted largest→smallest so inner disks form annulus hit-zones -->
                   <circle
-                    class="dot-people"
-                    [class.lit]="selIdx() >= 1"
+                    class="ring-band"
+                    [class.reach]="selIdx() >= 3"
+                    [class.edge]="selIdx() === 3"
                     cx="200"
-                    cy="128"
-                    r="4.5"
+                    cy="200"
+                    r="190"
+                    (click)="pickRing('wider')"
                   />
                   <circle
-                    class="dot-people"
-                    [class.lit]="selIdx() >= 1"
-                    cx="255"
-                    cy="230"
-                    r="4.5"
+                    class="ring-band"
+                    [class.reach]="selIdx() >= 2"
+                    [class.edge]="selIdx() === 2"
+                    cx="200"
+                    cy="200"
+                    r="142"
+                    (click)="pickRing('dept')"
                   />
                   <circle
-                    class="dot-people"
-                    [class.lit]="selIdx() >= 1"
-                    cx="150"
-                    cy="245"
-                    r="4.5"
-                  />
-                  <circle class="dot-people" [class.lit]="selIdx() >= 2" cx="200" cy="90" r="4.5" />
-                  <circle
-                    class="dot-people"
-                    [class.lit]="selIdx() >= 2"
-                    cx="300"
-                    cy="170"
-                    r="4.5"
+                    class="ring-band"
+                    [class.reach]="selIdx() >= 1"
+                    [class.edge]="selIdx() === 1"
+                    cx="200"
+                    cy="200"
+                    r="92"
+                    (click)="pickRing('team')"
                   />
                   <circle
-                    class="dot-people"
-                    [class.lit]="selIdx() >= 2"
-                    cx="285"
-                    cy="270"
-                    r="4.5"
+                    class="ring-band"
+                    [class.reach]="selIdx() >= 0"
+                    [class.edge]="selIdx() === 0"
+                    cx="200"
+                    cy="200"
+                    r="46"
+                    (click)="pickRing('me')"
                   />
-                  <circle
-                    class="dot-people"
-                    [class.lit]="selIdx() >= 2"
-                    cx="120"
-                    cy="285"
-                    r="4.5"
-                  />
-                  <circle
-                    class="dot-people"
-                    [class.lit]="selIdx() >= 2"
-                    cx="102"
-                    cy="150"
-                    r="4.5"
-                  />
-                  <circle class="dot-people" [class.lit]="selIdx() >= 3" cx="200" cy="48" r="4.5" />
-                  <circle
-                    class="dot-people"
-                    [class.lit]="selIdx() >= 3"
-                    cx="335"
-                    cy="120"
-                    r="4.5"
-                  />
-                  <circle
-                    class="dot-people"
-                    [class.lit]="selIdx() >= 3"
-                    cx="360"
-                    cy="235"
-                    r="4.5"
-                  />
-                  <circle
-                    class="dot-people"
-                    [class.lit]="selIdx() >= 3"
-                    cx="290"
-                    cy="330"
-                    r="4.5"
-                  />
-                  <circle
-                    class="dot-people"
-                    [class.lit]="selIdx() >= 3"
-                    cx="160"
-                    cy="352"
-                    r="4.5"
-                  />
-                  <circle class="dot-people" [class.lit]="selIdx() >= 3" cx="62" cy="290" r="4.5" />
-                  <circle class="dot-people" [class.lit]="selIdx() >= 3" cx="45" cy="165" r="4.5" />
-                  <circle class="dot-people" [class.lit]="selIdx() >= 3" cx="88" cy="70" r="4.5" />
-                </g>
-                <g pointer-events="none">
-                  <circle class="you-body" [class.lit]="selIdx() >= 0" cx="200" cy="188" r="9" />
-                  <path
-                    class="you-body"
-                    [class.lit]="selIdx() >= 0"
-                    d="M184 216c0-9 7-15 16-15s16 6 16 15z"
-                  />
-                </g>
-              </svg>
-            </div>
-            <div class="aud-side">
-              <div class="readout" aria-live="polite">
-                <div class="count">
-                  {{ aud()?.count ?? '—' }}
-                  @if (aud(); as a) {
-                    <span class="u">{{ a.unit }}</span>
+                  <g pointer-events="none">
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 1"
+                      cx="200"
+                      cy="128"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 1"
+                      cx="255"
+                      cy="230"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 1"
+                      cx="150"
+                      cy="245"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 2"
+                      cx="200"
+                      cy="90"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 2"
+                      cx="300"
+                      cy="170"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 2"
+                      cx="285"
+                      cy="270"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 2"
+                      cx="120"
+                      cy="285"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 2"
+                      cx="102"
+                      cy="150"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 3"
+                      cx="200"
+                      cy="48"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 3"
+                      cx="335"
+                      cy="120"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 3"
+                      cx="360"
+                      cy="235"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 3"
+                      cx="290"
+                      cy="330"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 3"
+                      cx="160"
+                      cy="352"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 3"
+                      cx="62"
+                      cy="290"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 3"
+                      cx="45"
+                      cy="165"
+                      r="4.5"
+                    />
+                    <circle
+                      class="dot-people"
+                      [class.lit]="selIdx() >= 3"
+                      cx="88"
+                      cy="70"
+                      r="4.5"
+                    />
+                  </g>
+                  <g pointer-events="none">
+                    <circle class="you-body" [class.lit]="selIdx() >= 0" cx="200" cy="188" r="9" />
+                    <path
+                      class="you-body"
+                      [class.lit]="selIdx() >= 0"
+                      d="M184 216c0-9 7-15 16-15s16 6 16 15z"
+                    />
+                  </g>
+                </svg>
+              </div>
+              <div class="aud-side">
+                <div class="readout" aria-live="polite">
+                  <div class="count">
+                    {{ aud()?.count ?? '—' }}
+                    @if (aud(); as a) {
+                      <span class="u">{{ a.unit }}</span>
+                    }
+                  </div>
+                  <div class="scope">{{ audScope() }}</div>
+                  <div class="hint">{{ audHint() }}</div>
+                </div>
+                <div class="legend" role="group" [attr.aria-label]="audienceLabel()">
+                  @for (rc of reaches; track rc.v) {
+                    <button type="button" [class.on]="legendOn(rc.v)" (click)="pickRing(rc.v)">
+                      <span class="sw"></span><b>{{ rc.label }}</b
+                      ><small>{{ rc.count }}</small>
+                    </button>
                   }
                 </div>
-                <div class="scope">{{ audScope() }}</div>
-                <div class="hint">{{ audHint() }}</div>
+                <input
+                  class="input basics__in aud-free"
+                  placeholder="Or describe the group"
+                  [ngModel]="draft.reachText"
+                  (ngModelChange)="onReachInput($event)"
+                  (blur)="save()"
+                  (keydown.enter)="save(); advanceIfAnswered()"
+                />
               </div>
-              <div class="legend" role="group" [attr.aria-label]="audienceLabel()">
-                @for (rc of reaches; track rc.v) {
-                  <button type="button" [class.on]="legendOn(rc.v)" (click)="pickRing(rc.v)">
-                    <span class="sw"></span><b>{{ rc.label }}</b
-                    ><small>{{ rc.count }}</small>
-                  </button>
-                }
-              </div>
-              <input
-                class="input basics__in aud-free"
-                placeholder="Or describe the group"
-                [ngModel]="draft.reachText"
-                (ngModelChange)="onReachInput($event)"
-                (blur)="save()"
-              />
             </div>
-          </div>
-        </section>
-
-        <!-- S3/S4 · IMPACT -->
-        <section
-          class="sec"
-          [class.locked]="!audAnswered() || (rtype() === 'enh' && !appAnswered())"
-          [class.answered]="impAnswered()"
-        >
-          <div class="sechead">
-            <span class="snum"
-              ><i>{{ rtype() === 'enh' ? 4 : 3 }}</i></span
-            >
-            <div class="htxt">
+          </section>
+        }
+        @case ('impact') {
+          <section class="qstep">
+            <div class="qhead">
               <h2>{{ benefitLabel() }}</h2>
               <p class="sub">The main payoff — roughly.</p>
             </div>
-            @if (impAnswered()) {
-              <span class="tag">{{ impTag() }}</span>
-            }
-          </div>
-          <div class="impgrid">
-            <button
-              type="button"
-              class="icard"
-              [class.sel]="draft.impactMetric === 'hours'"
-              (click)="pickMetric('hours')"
-            >
-              <span class="glow"></span>
-              <span class="art">
-                <svg
-                  viewBox="0 0 48 48"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <circle cx="24" cy="26" r="15" />
-                  <path d="M24 26V17M24 26l6 4" />
-                  <path d="M18 6h12M24 6v5" />
-                </svg>
-              </span>
-              <span class="tl">Saves time</span>
-              <span class="ex">Kills a recurring time-sink.</span>
-            </button>
-            <button
-              type="button"
-              class="icard"
-              [class.sel]="draft.impactMetric === 'cost'"
-              (click)="pickMetric('cost')"
-            >
-              <span class="glow"></span>
-              <span class="art">
-                <svg
-                  viewBox="0 0 48 48"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <ellipse cx="24" cy="14" rx="14" ry="5" />
-                  <path d="M10 14v9c0 2.8 6.3 5 14 5s14-2.2 14-5v-9" />
-                  <path d="M10 23v9c0 2.8 6.3 5 14 5s14-2.2 14-5v-9" />
-                </svg>
-              </span>
-              <span class="tl">Saves money</span>
-              <span class="ex">Cuts cost or unlocks revenue.</span>
-            </button>
-            <button
-              type="button"
-              class="icard"
-              [class.sel]="draft.impactMetric === 'other'"
-              (click)="pickMetric('other')"
-            >
-              <span class="glow"></span>
-              <span class="art">
-                <svg
-                  viewBox="0 0 48 48"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <circle cx="19" cy="20" r="9" />
-                  <path d="M25.5 26.5L38 39M31 33l-4 4M35 29l-4 4" />
-                </svg>
-              </span>
-              <span class="tl">Unlocks something</span>
-              <span class="ex">Makes possible what wasn't before.</span>
-            </button>
-          </div>
-          @if (draft.impactMetric) {
-            <div class="imp-est">
-              <label for="imp-est-in">{{ estQuestion() }}</label>
-              <input
-                id="imp-est-in"
-                class="input basics__in"
-                [placeholder]="metricPlaceholder()"
-                [ngModel]="draft.impactValue"
-                (ngModelChange)="onImpactInput($event)"
-                (blur)="save()"
-              />
+            <div class="impgrid">
+              <button
+                type="button"
+                class="icard"
+                [class.sel]="draft.impactMetric === 'hours'"
+                (click)="pickMetric('hours')"
+              >
+                <span class="glow"></span>
+                <span class="art">
+                  <svg
+                    viewBox="0 0 48 48"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="24" cy="26" r="15" />
+                    <path d="M24 26V17M24 26l6 4" />
+                    <path d="M18 6h12M24 6v5" />
+                  </svg>
+                </span>
+                <span class="tl">Saves time</span>
+                <span class="ex">Kills a recurring time-sink.</span>
+              </button>
+              <button
+                type="button"
+                class="icard"
+                [class.sel]="draft.impactMetric === 'cost'"
+                (click)="pickMetric('cost')"
+              >
+                <span class="glow"></span>
+                <span class="art">
+                  <svg
+                    viewBox="0 0 48 48"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <ellipse cx="24" cy="14" rx="14" ry="5" />
+                    <path d="M10 14v9c0 2.8 6.3 5 14 5s14-2.2 14-5v-9" />
+                    <path d="M10 23v9c0 2.8 6.3 5 14 5s14-2.2 14-5v-9" />
+                  </svg>
+                </span>
+                <span class="tl">Saves money</span>
+                <span class="ex">Cuts cost or unlocks revenue.</span>
+              </button>
+              <button
+                type="button"
+                class="icard"
+                [class.sel]="draft.impactMetric === 'other'"
+                (click)="pickMetric('other')"
+              >
+                <span class="glow"></span>
+                <span class="art">
+                  <svg
+                    viewBox="0 0 48 48"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="19" cy="20" r="9" />
+                    <path d="M25.5 26.5L38 39M31 33l-4 4M35 29l-4 4" />
+                  </svg>
+                </span>
+                <span class="tl">Unlocks something</span>
+                <span class="ex">Makes possible what wasn't before.</span>
+              </button>
             </div>
-          }
-        </section>
+            @if (draft.impactMetric) {
+              <div class="imp-est">
+                <label for="imp-est-in">{{ estQuestion() }}</label>
+                <input
+                  id="imp-est-in"
+                  class="input basics__in"
+                  [placeholder]="metricPlaceholder()"
+                  [ngModel]="draft.impactValue"
+                  (ngModelChange)="onImpactInput($event)"
+                  (blur)="save()"
+                />
+              </div>
+            }
+          </section>
+        }
       }
+
+      <div class="wiz__nav">
+        <button
+          type="button"
+          class="wiz__back"
+          [style.visibility]="dispIdx() > 0 ? 'visible' : 'hidden'"
+          (click)="prev()"
+        >
+          ← Back
+        </button>
+      </div>
     </div>
   `,
   styles: `
     .basics {
       display: flex;
       flex-direction: column;
-      gap: 30px;
+      gap: 22px;
     }
 
-    /* ---- sections / staging ---- */
-    .sec {
-      transition:
-        filter 0.5s var(--ease),
-        opacity 0.5s var(--ease),
-        transform 0.5s var(--ease);
-    }
-    .sec.locked {
-      filter: blur(6px) saturate(0.5);
-      opacity: 0.5;
-      pointer-events: none;
-      transform: scale(0.99);
-      user-select: none;
-    }
-    .sechead {
+    /* ---- wizard chrome ---- */
+    .wiz__top {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 13px;
-      margin-bottom: 14px;
+      gap: 8px;
     }
-    .snum {
-      width: 28px;
-      height: 28px;
-      flex: none;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .wiz__count {
       font-family: var(--mono);
-      font-size: 12.5px;
+      font-size: 11px;
       color: var(--muted);
-      background: var(--surface-2);
-      border: 1px solid var(--border);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .wiz__dots {
+      display: flex;
+      gap: 8px;
+    }
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+      background: var(--border-strong);
       transition:
-        background 0.3s,
-        color 0.3s,
-        border-color 0.3s;
+        background 0.2s,
+        transform 0.2s;
     }
-    .sec.answered .snum {
-      background: var(--green-bg);
-      border-color: var(--green-line);
-      color: var(--green);
+    .dot.done {
+      background: var(--green);
     }
-    .sec.answered .snum::after {
-      content: '✓';
-      font-weight: 700;
+    .dot.on {
+      background: var(--accent);
+      transform: scale(1.3);
     }
-    .sec.answered .snum i {
-      display: none;
+    .dot:disabled {
+      cursor: default;
+      opacity: 0.55;
     }
-    .snum i {
-      font-style: normal;
+    .qstep {
+      width: 100%;
+      max-width: 600px;
+      margin: 0 auto;
+      text-align: center;
+      animation: qin 0.35s var(--ease);
     }
-    .sechead h2 {
-      font-size: 17px;
-      font-weight: 650;
-      letter-spacing: -0.015em;
+    .qstep--wide {
+      max-width: 660px;
+    }
+    @keyframes qin {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+    }
+    /* the question IS the headline of the whole intro screen */
+    .qhead {
+      margin-bottom: 22px;
+    }
+    .qhead h2 {
+      font-size: clamp(22px, 3.2vw, 30px);
+      font-weight: 750;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
       margin: 0;
       color: var(--fg1);
     }
-    .sechead .sub {
-      font-size: 12.5px;
+    .qhead .sub {
+      font-size: 13px;
       color: var(--muted);
-      margin: 1px 0 0;
+      margin: 8px 0 0;
     }
-    .htxt {
-      flex: 1;
-      min-width: 0;
+    .wiz__nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      min-height: 38px;
     }
-    .tag {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--accent-tx);
-      background: var(--accent-tint);
-      border: 1px solid var(--accent-tint-bd);
-      padding: 4px 10px;
-      border-radius: 999px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 180px;
+    .wiz__back {
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: 500 13px var(--body);
+      cursor: pointer;
+      padding: 8px 10px;
+      border-radius: 8px;
+    }
+    .wiz__back:hover {
+      color: var(--fg1);
+      background: var(--surface-2);
     }
 
     /* ---- type cards ---- */
@@ -778,9 +792,11 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
       font-size: 12px;
       transition: all 0.2s;
     }
+    /* selected states keep the accent border + tick, neutral fill (CLAUDE.md:
+       no purple background fills on selection) */
     .tcard.sel {
       border-color: var(--accent);
-      background: var(--accent-tint);
+      background: var(--surface);
       box-shadow: 0 0 0 1px var(--accent) inset;
     }
     .tcard.sel .art {
@@ -792,15 +808,7 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
       color: #fff;
     }
     .tcard .glow {
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(120% 80% at 15% 0%, var(--accent-tint), transparent 60%);
-      opacity: 0;
-      transition: opacity 0.3s;
-      pointer-events: none;
-    }
-    .tcard.sel .glow {
-      opacity: 1;
+      display: none; /* the old selected-state purple wash — retired with the tint fill */
     }
 
     /* ---- app / evidence panels ---- */
@@ -809,6 +817,7 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
       border-radius: 14px;
       background: var(--surface);
       padding: 16px;
+      text-align: left;
     }
 
     /* ---- blast radius ---- */
@@ -821,6 +830,7 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
       border-radius: 14px;
       background: var(--surface);
       padding: 22px;
+      text-align: left;
     }
     .ringwrap {
       position: relative;
@@ -950,8 +960,8 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
       font-size: 10.5px;
     }
     .legend button.on {
-      background: var(--accent-tint);
-      border-color: var(--accent-tint-bd);
+      background: var(--surface-2);
+      border-color: var(--border);
     }
     .legend button.on .sw {
       background: var(--accent);
@@ -1022,22 +1032,14 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
     }
     .icard.sel {
       border-color: var(--accent);
-      background: var(--accent-tint);
+      background: var(--surface);
       box-shadow: 0 0 0 1px var(--accent) inset;
     }
     .icard.sel .art {
       color: var(--accent-tx);
     }
     .icard .glow {
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(100% 70% at 50% 0%, var(--accent-tint), transparent 65%);
-      opacity: 0;
-      transition: opacity 0.3s;
-      pointer-events: none;
-    }
-    .icard.sel .glow {
-      opacity: 1;
+      display: none; /* the old selected-state purple wash — retired with the tint fill */
     }
     .imp-est {
       display: flex;
@@ -1048,6 +1050,7 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
       border-radius: 14px;
       background: var(--surface);
       padding: 12px 16px;
+      text-align: left;
     }
     .imp-est label {
       font-size: 13px;
@@ -1088,7 +1091,7 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
     }
     .fcard.sel {
       border-color: var(--accent);
-      background: var(--accent-tint);
+      background: var(--surface);
       color: var(--accent-tx);
       box-shadow: 0 0 0 1px var(--accent) inset;
     }
@@ -1214,10 +1217,12 @@ export function bugEvidenceAnswered(d: IntakeDraft): boolean {
       }
     }
     @media (prefers-reduced-motion: reduce) {
-      .sec,
+      .qstep,
+      .dot,
       .tcard,
       .icard,
       .fcard {
+        animation: none;
         transition: none;
       }
     }
@@ -1232,6 +1237,9 @@ export class BasicsCard implements OnInit {
   typeChanged = output<string>();
   /** any basics edit was PATCHed — parents refresh what depends on the spec */
   saved = output<void>();
+  /** a keystroke changed an answer (not yet PATCHed) — parents re-check
+   *  answered-state live, e.g. to reveal the continue button as you type */
+  edited = output<void>();
 
   draft = inject(IntakeDraft);
   private api = inject(Api);
@@ -1276,11 +1284,70 @@ export class BasicsCard implements OnInit {
     },
   };
 
-  /** the type cards are shown when the guess is unsure or the submitter opens them to correct */
-  cardsOpen = signal(false);
-  /** which card the submitter has explicitly clicked — starts empty so NO card is pre-selected
-   *  (the inferred type lives in the chip; the grid is for an active choice, not a default nudge) */
+  /** which card the submitter has explicitly clicked — starts empty so NO card
+   *  is pre-selected; the inferred type is never shown as a default */
   picked = signal<string | null>(null);
+
+  /* ---- wizard state (one question at a time) ---- */
+  /** ordered question keys for the current type; tracks the local pick so the
+   *  step list re-shapes instantly on a type click, before the PATCH lands */
+  steps = computed<string[]>(() => {
+    const t = this.picked() ?? this.rtype();
+    if (t === 'bug') return ['type', 'app', 'evidence', 'freq'];
+    if (t === 'enh') return ['type', 'app', 'aud', 'impact'];
+    return ['type', 'aud', 'impact'];
+  });
+  private stepIdx = signal(0);
+  /** display index, clamped — the step list shrinks when the type changes */
+  dispIdx = computed(() => Math.min(this.stepIdx(), this.steps().length - 1));
+  cur = computed(() => this.steps()[this.dispIdx()]);
+  /** the submitter has navigated — stop auto-placing on late hydration */
+  private touched = false;
+
+  stepAnswered(s: string): boolean {
+    switch (s) {
+      case 'type':
+        return this.picked() !== null;
+      case 'app':
+        return this.appAnswered();
+      case 'evidence':
+        return this.bugEvidenceAnswered();
+      case 'freq':
+        return !!this.draft.bugFreq;
+      case 'aud':
+        return this.audAnswered();
+      case 'impact':
+        return this.impAnswered();
+      default:
+        return false;
+    }
+  }
+  /** back is always allowed; forward only over answered questions */
+  canJump(i: number): boolean {
+    if (i <= this.dispIdx()) return true;
+    return this.steps()
+      .slice(0, i)
+      .every((s) => this.stepAnswered(s));
+  }
+  goStep(i: number) {
+    this.touched = true;
+    this.stepIdx.set(Math.max(0, Math.min(i, this.steps().length - 1)));
+  }
+  next() {
+    this.goStep(this.dispIdx() + 1);
+  }
+  prev() {
+    this.goStep(this.dispIdx() - 1);
+  }
+  /** there is no Next button — every answer moves the wizard forward itself */
+  advanceIfAnswered() {
+    if (this.stepAnswered(this.cur())) this.next();
+  }
+  private placeAtFirstUnanswered() {
+    const s = this.steps();
+    const i = s.findIndex((st) => !this.stepAnswered(st));
+    this.stepIdx.set(i === -1 ? s.length - 1 : i);
+  }
 
   apps = signal<AppEntry[]>([]);
   appsMenuOpen = signal(false);
@@ -1321,13 +1388,14 @@ export class BasicsCard implements OnInit {
   ngOnInit() {
     this.api.apps().subscribe((a) => this.apps.set(a.filter((x) => !x.muted)));
     this.seedFromDraft();
-    this.cardsOpen.set(this.draft.typeConfidence < 0.5);
+    this.placeAtFirstUnanswered();
     // hydration may still be in flight when the card mounts (two parallel GETs) —
     // one late reseed covers the deep-link/reload race
     setTimeout(() => {
       if (!this.appQuery() && this.draft.appName) this.seedFromDraft();
       this.savedSnapshot = this.snapshot();
       this.rev.update((n) => n + 1);
+      if (!this.touched) this.placeAtFirstUnanswered();
     }, 500);
     this.savedSnapshot = this.snapshot();
   }
@@ -1336,7 +1404,7 @@ export class BasicsCard implements OnInit {
     this.customApp.set(!!this.draft.appName && this.draft.appId === null);
   }
 
-  /* ---- answered states (drive staging + section checks) ---- */
+  /* ---- answered states (drive the wizard + section checks) ---- */
   appAnswered() {
     return this.draft.appId !== null || !!this.draft.appName.trim();
   }
@@ -1439,12 +1507,14 @@ export class BasicsCard implements OnInit {
     this.draft.appId = ex ? ex.id : null;
     this.draft.appName = ex ? ex.name : '';
     this.appsMenuOpen.set(true);
+    this.edited.emit();
   }
   /** custom mode: the text IS the new app name. */
   onCustomInput(text: string) {
     this.appQuery.set(text);
     this.draft.appName = text;
     this.draft.appId = null;
+    this.edited.emit();
   }
   pickApp(a: AppEntry) {
     this.customApp.set(false);
@@ -1453,6 +1523,13 @@ export class BasicsCard implements OnInit {
     this.appQuery.set(a.name);
     this.appsMenuOpen.set(false);
     this.save();
+    this.advanceIfAnswered();
+  }
+  /** Enter in the app field: commit what's typed and move on if it answers */
+  appEnter() {
+    this.appsMenuOpen.set(false);
+    this.save();
+    this.advanceIfAnswered();
   }
   /** "Other" — switch to free-text entry, carrying over anything already typed. */
   chooseOther() {
@@ -1462,28 +1539,30 @@ export class BasicsCard implements OnInit {
     this.appsMenuOpen.set(false);
   }
 
+  /** an explicit card pick: select, advance, and PATCH if the type changed */
   pickType(t: string) {
-    this.picked.set(t); // reflect the explicit choice (the grid starts with none selected)
-    if (this.draft.type === t) {
-      this.cardsOpen.set(false);
-      return;
-    }
+    this.picked.set(t);
+    const changed = this.draft.type !== t;
     this.draft.type = t as never;
     this.draft.typeConfidence = 1; // an explicit choice is certain
-    this.cardsOpen.set(false);
-    void this.save(true).then((didSave) => {
-      if (didSave) this.typeChanged.emit(t);
-    });
+    this.next();
+    if (changed) {
+      void this.save(true).then((didSave) => {
+        if (didSave) this.typeChanged.emit(t);
+      });
+    }
   }
   pickReach(r: string) {
     this.draft.reach = this.draft.reach === r && !this.draft.reachText ? null : (r as never);
     this.draft.reachText = '';
     this.save();
+    this.advanceIfAnswered(); // deselecting a ring leaves the question open
   }
   onReachInput(text: string) {
     this.draft.reachText = text;
     this.draft.reach = null;
     this.rev.update((n) => n + 1);
+    this.edited.emit();
   }
   pickMetric(m: string) {
     this.draft.impactMetric = this.draft.impactMetric === m ? null : (m as never);
@@ -1493,6 +1572,7 @@ export class BasicsCard implements OnInit {
   onImpactInput(text: string) {
     this.draft.impactValue = text;
     this.rev.update((n) => n + 1);
+    this.edited.emit();
   }
   async onScreenshotPick(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -1517,6 +1597,7 @@ export class BasicsCard implements OnInit {
     await this.draft.addFiles(images, 'interview');
     this.rev.update((n) => n + 1);
     await this.save(true);
+    this.advanceIfAnswered(); // a landed screenshot answers the evidence question
   }
   async removeScreenshot(id: number) {
     await this.draft.removeAttachment(id);
@@ -1526,6 +1607,7 @@ export class BasicsCard implements OnInit {
   pickFreq(f: string) {
     this.draft.bugFreq = this.draft.bugFreq === f ? '' : f;
     this.save();
+    this.advanceIfAnswered(); // no-op today (frequency is last) — kept for reordering
   }
 
   /** PATCH the basics onto the request; skips clean saves and un-hydrated drafts */

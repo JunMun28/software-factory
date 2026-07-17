@@ -545,7 +545,10 @@ def test_rollback_apply_failure_records_error_without_live_witness(
     assert "apiserver refused rollback" in incidents[0].payload["error"]
 
 
-def test_registry_rollback_endpoint_only_enqueues(client):
+def test_registry_rollback_endpoint_only_enqueues(client, monkeypatch):
+    monkeypatch.setattr(settings, "GIT_REMOTE_BASE", "git://api:9418")
+    monkeypatch.setattr(settings, "REGISTRY", "sf-registry:5000")
+    monkeypatch.setattr(settings, "APP_DEPLOY", True)
     suffix = "9401"
     with SessionLocal() as db:
         app = App(
@@ -568,7 +571,8 @@ def test_registry_rollback_endpoint_only_enqueues(client):
         app_id = app.id
 
     response = client.post(
-        f"/api/apps/{app_id}/rollback", json={"digest": OLD_DIGEST}
+        f"/api/apps/{app_id}/rollback",
+        json={"digest": OLD_DIGEST, "operator_id": 1},
     )
     assert response.status_code == 202, response.text
     with SessionLocal() as db:

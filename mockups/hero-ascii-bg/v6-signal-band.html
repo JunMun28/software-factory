@@ -1,0 +1,252 @@
+<!doctype html>
+<!-- THROWAWAY PROTOTYPE — intake hero ASCII background, v6 "Signal band".
+     Different geometry: a horizontal aurora ribbon runs across the middle of
+     the screen behind the composer, hue shifting left → right
+     (magenta → violet → cyan). Dark page; headline above the band. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROTOTYPE v6 — Signal band</title>
+<style>
+  @font-face { font-family: 'Micron Basis'; src: url('fonts/MicronBasis-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+  @font-face { font-family: 'Micron Basis'; src: url('fonts/MicronBasis-Medium.otf') format('opentype'); font-weight: 500 600; font-display: swap; }
+  @font-face { font-family: 'Micron Basis'; src: url('fonts/MicronBasis-Bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
+  @font-face { font-family: 'Micron Basis'; src: url('fonts/MicronBasis-Black.otf') format('opentype'); font-weight: 800 900; font-display: swap; }
+  @property --ang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+
+  :root {
+    --fg1: #f2eef7; --muted: #b5abc7; --faint: #a198b4;
+    --surface: #151020; --border: rgba(255,255,255,.09);
+    --a400: #d23bf9; --a500: #bd03f7;
+    --body: 'Micron Basis', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: var(--body); color: var(--fg1);
+    background: linear-gradient(#0d0716 0%, #0f0819 50%, #0b0613 100%);
+    overflow: hidden; -webkit-font-smoothing: antialiased;
+  }
+  #fx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; }
+
+  .top {
+    position: fixed; top: 18px; left: 0; right: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between; padding: 0 28px;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 17px; letter-spacing: -.01em; }
+  .brand svg { display: block; }
+  .brand .dot { color: var(--a400); }
+  .navpill {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 4px; padding: 5px; border-radius: 999px;
+    background: rgba(21,16,32,.55); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,.1); box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  }
+  .navpill a { padding: 7px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: var(--muted); text-decoration: none; }
+  .navpill a.on { background: rgba(255,255,255,.1); color: var(--fg1); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 999px; display: grid; place-items: center;
+    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.12);
+    font-size: 12.5px; font-weight: 700; color: var(--fg1);
+  }
+
+  .hero {
+    position: relative; z-index: 1; min-height: 100dvh;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center; padding: 8px 24px 26px;
+  }
+  h1 { font-size: clamp(32px, 4.8vw, 50px); font-weight: 800; letter-spacing: -.02em; line-height: 1.04; margin: 14px 0 6px; }
+  .sub { margin: 0 0 28px; font-size: 15px; color: var(--muted); max-width: 44ch; }
+
+  .glow {
+    width: 100%; max-width: 640px; border-radius: 20px; padding: 2px;
+    background: conic-gradient(from var(--ang, 0deg), #bd03f7, #4b16e0, #22d3ee, #e173fa, #bd03f7);
+    animation: spin 6s linear infinite;
+    box-shadow: 0 0 40px -12px rgba(189,3,247,.5);
+  }
+  @keyframes spin { to { --ang: 360deg; } }
+  .card { background: var(--surface); border-radius: 18px; padding: 16px 16px 10px; text-align: left; }
+  .card textarea {
+    width: 100%; border: none; background: none; resize: none; outline: none;
+    padding: 6px; min-height: 104px; font-family: inherit; font-size: 16px; line-height: 1.55; color: var(--fg1);
+  }
+  .card textarea::placeholder { color: var(--faint); }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 8px; }
+  .add {
+    width: 34px; height: 34px; border-radius: 10px; border: none; background: none; color: var(--muted);
+    display: grid; place-items: center; cursor: pointer; font-size: 19px; line-height: 1;
+  }
+  .add:hover { background: rgba(255,255,255,.08); color: var(--fg1); }
+  .send {
+    width: 38px; height: 38px; border-radius: 12px; border: none; background: var(--a500); color: #fff;
+    display: grid; place-items: center; cursor: pointer;
+  }
+  .send:hover { background: var(--a400); }
+  .hint { margin-top: 24px; font-size: 12.5px; color: var(--faint); font-family: var(--mono); }
+  @media (max-width: 640px) { .navpill { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .glow { animation: none; } }
+</style>
+</head>
+<body>
+
+<canvas id="fx" aria-hidden="true"></canvas>
+
+<header class="top">
+  <div class="brand">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="6" y="3" width="15" height="5" rx="2.5"/>
+      <rect x="4.5" y="9.5" width="15" height="5" rx="2.5"/>
+      <rect x="3" y="16" width="15" height="5" rx="2.5"/>
+    </svg>
+    Stream<span class="dot">.</span>
+  </div>
+  <nav class="navpill">
+    <a class="on" href="#">New request</a>
+    <a href="#">My requests</a>
+  </nav>
+  <div class="avatar">JW</div>
+</header>
+
+<main class="hero">
+  <h1>What should we build?</h1>
+  <p class="sub">Put your idea into words. We’ll help turn it into a clear plan.</p>
+  <div class="glow">
+    <div class="card">
+      <textarea placeholder="Describe it in your own words…"></textarea>
+      <div class="row">
+        <button class="add" type="button" aria-label="Attach files">+</button>
+        <button class="send" type="button" aria-label="Continue">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  <span class="hint">Press ⌘↵ to continue</span>
+</main>
+
+<script>
+(function () {
+  var canvas = document.getElementById('fx');
+  var ctx = canvas.getContext('2d');
+  var CELL_W = 21, CELL_H = 17;
+  var GLOW_ALPHA = 0.45;
+  var TIERS = [
+    [0.78, ['S','S','S','F']],
+    [0.58, ['S','S','#','F']],
+    [0.40, ['#','8','0','S']],
+    [0.24, ['X','8','0','+']],
+    [0.10, ['+','=','·','x']]
+  ];
+
+  function hash(x, y) {
+    var h = (x * 374761393 + y * 668265263) | 0;
+    h = ((h ^ (h >>> 13)) * 1274126177) | 0;
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+
+  // A horizontal ribbon across the middle: hue shifts left → right
+  // (magenta → violet → cyan), intensity peaks along a gently tilted
+  // centerline and falls off above/below it. The composer sits inside the
+  // band, with a cleared pocket so the card reads.
+  function paintScene(o, w, h) {
+    // hue layer: full-width horizontal gradient
+    var hue = o.createLinearGradient(0, 0, w, 0);
+    hue.addColorStop(0.00, 'rgba(226,115,250,1)');
+    hue.addColorStop(0.35, 'rgba(189,3,247,1)');
+    hue.addColorStop(0.65, 'rgba(94,54,235,1)');
+    hue.addColorStop(1.00, 'rgba(34,211,238,1)');
+    o.fillStyle = hue;
+    o.fillRect(0, 0, w, h);
+    // band mask: keep a ribbon around the centerline, kill the rest.
+    // Built on its own canvas first — applying destination-in per column
+    // would erase every other column.
+    var mask = document.createElement('canvas');
+    mask.width = w; mask.height = h;
+    var mo = mask.getContext('2d');
+    for (var c = 0; c < w; c++) {
+      // centerline tilts down slightly across the width
+      var mid = h * (0.46 + 0.08 * (c / w));
+      var half = h * 0.17;
+      var band = mo.createLinearGradient(0, mid - half, 0, mid + half);
+      band.addColorStop(0, 'rgba(0,0,0,0)');
+      band.addColorStop(0.5, 'rgba(0,0,0,.96)');
+      band.addColorStop(1, 'rgba(0,0,0,0)');
+      mo.fillStyle = band;
+      mo.fillRect(c, 0, 1, h);
+    }
+    o.globalCompositeOperation = 'destination-in';
+    o.drawImage(mask, 0, 0);
+    o.globalCompositeOperation = 'destination-out';
+    // pocket behind the composer so the card floats in clear dark
+    o.save();
+    o.translate(w * 0.5, h * 0.55);
+    o.scale(1.9, 1);
+    var m = o.createRadialGradient(0, 0, 0, 0, 0, h * 0.24);
+    m.addColorStop(0, 'rgba(0,0,0,.94)');
+    m.addColorStop(0.7, 'rgba(0,0,0,.55)');
+    m.addColorStop(1, 'rgba(0,0,0,0)');
+    o.fillStyle = m;
+    o.fillRect(-w, -h, w * 2, h * 2);
+    o.restore();
+    o.globalCompositeOperation = 'source-over';
+  }
+
+  function render() {
+    var W = window.innerWidth, H = window.innerHeight;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    var cols = Math.ceil(W / CELL_W), rows = Math.ceil(H / CELL_H);
+    var off = document.createElement('canvas');
+    off.width = cols; off.height = rows;
+    var o = off.getContext('2d');
+    paintScene(o, cols, rows);
+    var px = o.getImageData(0, 0, cols, rows).data;
+
+    ctx.save();
+    ctx.filter = 'blur(48px)';
+    ctx.globalAlpha = GLOW_ALPHA;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(off, 0, 0, cols, rows, 0, 0, W, H);
+    ctx.restore();
+
+    ctx.font = '600 12px "JetBrains Mono", ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        var i = (r * cols + c) * 4;
+        var a = px[i + 3] / 255;
+        if (a < 0.10) continue;
+        var h1 = hash(c, r), h2 = hash(c * 7 + 13, r * 3 + 5);
+        if (h1 < 0.07) continue;
+        if (h2 < (0.8 - a) * 0.5) continue;
+        var chars = null;
+        for (var t = 0; t < TIERS.length; t++) {
+          if (a >= TIERS[t][0]) { chars = TIERS[t][1]; break; }
+        }
+        if (!chars) continue;
+        var ch = chars[Math.floor(hash(c * 31 + 7, r * 17 + 3) * chars.length)];
+        ctx.fillStyle = 'rgba(' + px[i] + ',' + px[i + 1] + ',' + px[i + 2] + ',' + (0.35 + 0.65 * a).toFixed(3) + ')';
+        ctx.fillText(ch, c * CELL_W + CELL_W / 2, r * CELL_H + CELL_H / 2);
+      }
+    }
+  }
+
+  var raf = null;
+  window.addEventListener('resize', function () {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(render);
+  });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+  render();
+})();
+</script>
+
+</body>
+</html>

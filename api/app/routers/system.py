@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import simulator
+from .. import heartbeat, settings, simulator
 from ..agent_exec import agent_cli, brain_mode, runner_mode
 from ..api_helpers import pipeline
 from ..db import get_db
@@ -32,10 +32,14 @@ def health(db: Session = Depends(get_db)):
         from fastapi import HTTPException
         raise HTTPException(503, "database unavailable")
     elector = get_elector()
+    tick_age = heartbeat.age_seconds()
     return {
         "status": "ok", "db": "ok", "brain": brain_mode(), "runner": runner_mode(),
         "cli": agent_cli(), "smtp": smtp_status(),
         "leader": elector.is_leader(), "epoch": elector.epoch,
+        # None until the first completed leader pass; runner=agent has no tick loop.
+        "tick_age_s": round(tick_age, 1) if tick_age is not None else None,
+        "deploy_enabled": settings.app_deploy_enabled(),
     }
 
 

@@ -81,6 +81,9 @@ class Operator(Base):
     initials: Mapped[str] = mapped_column(String(4))
     hue: Mapped[str] = mapped_column(String(12))
     email: Mapped[str] = mapped_column(human_string(200), unique=True)
+    # admin = may decide gates + rollbacks; viewer = read-only console access.
+    # Entra auth (when it lands) resolves onto this same row and role.
+    role: Mapped[str] = mapped_column(String(12), default="admin", server_default="admin")
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
 
@@ -153,6 +156,10 @@ class Request(Base):
     gate: Mapped[str | None] = mapped_column(String(20), nullable=True)  # approve_spec | approve_merge
     needs_human: Mapped[bool] = mapped_column(Boolean, default=False)
     needs_human_reason: Mapped[str | None] = mapped_column(human_string(300), nullable=True)
+    # a human's structured gate feedback (reject-gate reason) waiting to be
+    # injected into the NEXT agent attempt; the runner nulls it at spawn time,
+    # so it steers exactly one attempt — same scope as SF_GATE_FEEDBACK
+    pending_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     reporter: Mapped[str] = mapped_column(human_string(80), default="Jordan D.")
     reporter_initials: Mapped[str] = mapped_column(String(4), default="JD")
@@ -477,6 +484,12 @@ class StageJob(Base):
     # running | succeeded | failed | timed_out | infra | reaped | superseded
     envelope: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     logs_tail: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
+    # content digest of the harness (prompt pack + policy knobs, harness.py)
+    # this attempt ran under — the lineage that lets an outcome be attributed
+    # to a harness version. Stage rows are stamped at spawn; gate rows inherit
+    # the graded stage row's version (a verdict judges that stage's work);
+    # build/deploy rows stay unstamped (no prompt ran).
+    harness_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
     deadline_at: Mapped[datetime] = mapped_column(TZDateTime())
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(TZDateTime(), nullable=True)

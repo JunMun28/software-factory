@@ -9,6 +9,7 @@
 
 // ---- domain models (types only) ----
 export type {
+  AppDeploy,
   AppEntry,
   AppSubscription,
   Attachment,
@@ -23,6 +24,7 @@ export type {
   MissionOut,
   MissionRecent,
   MissionRun,
+  MissionStats,
   Operator,
   ProgressEvent,
   PrototypeAnnotation,

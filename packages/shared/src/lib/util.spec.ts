@@ -259,8 +259,8 @@ describe('evidenceBits', () => {
     reviewer_verdict: null,
     assumptions: [] as string[],
   };
-  it('null evidence → single "no evidence recorded" bit', () => {
-    expect(evidenceBits(null)).toEqual([{ text: 'no evidence recorded', tone: '' }]);
+  it('null evidence → a single LOUD "no evidence recorded" bit', () => {
+    expect(evidenceBits(null)).toEqual([{ text: 'no evidence recorded', tone: 'red' }]);
   });
   it('spec gate → grounded-lines + interview bits', () => {
     const bits = evidenceBits({
@@ -320,7 +320,7 @@ describe('evidenceBits', () => {
   });
   it('merge gate with no verification fields → no evidence recorded', () => {
     expect(evidenceBits({ ...base, kind: 'merge' } as Evidence)).toEqual([
-      { text: 'no evidence recorded', tone: '' },
+      { text: 'no evidence recorded', tone: 'red' },
     ]);
   });
 });
@@ -470,6 +470,12 @@ describe('missionSummary — the Mission control aria-live summary', () => {
     stalled: [],
     human_owned: [],
     recent: [],
+    stats: {
+      cycle_median_h: null,
+      gate_wait_median_h: null,
+      shipped_7d: 0,
+      oldest_gate_h: null,
+    },
     cursor: 0,
     ...over,
   });
@@ -513,6 +519,12 @@ describe('missionSubtitle — the Mission header counts', () => {
     stalled: [],
     human_owned: [],
     recent: [],
+    stats: {
+      cycle_median_h: null,
+      gate_wait_median_h: null,
+      shipped_7d: 0,
+      oldest_gate_h: null,
+    },
     cursor: 0,
     ...over,
   });

@@ -1,3 +1,12 @@
+/** One digest that was (or is) live for an app — read from the event log. */
+export interface AppDeploy {
+  digest: string;
+  url: string;
+  at: string;
+  ref: string | null;
+  rollback: boolean;
+}
+
 export interface AppEntry {
   id: number;
   key: string;
@@ -8,6 +17,8 @@ export interface AppEntry {
   muted: boolean;
   open_requests: number;
   unread: boolean;
+  /** what is live right now — null = never deployed (or sim mode) */
+  last_deploy: AppDeploy | null;
 }
 
 /** The signed-in person (mock until real Entra auth). Intake → submitter, console → admin. */
@@ -25,6 +36,8 @@ export interface Operator {
   initials: string;
   hue: string;
   email: string;
+  /** admin decides gates and rollbacks; viewer is read-only (server-enforced). */
+  role?: 'admin' | 'viewer';
   created_at: string;
 }
 
@@ -279,6 +292,14 @@ export interface MissionHumanOwned {
   taken_over_at: string;
 }
 
+/** Factory gauges — derived per poll from the audit/event log (null = not enough history). */
+export interface MissionStats {
+  cycle_median_h: number | null;
+  gate_wait_median_h: number | null;
+  shipped_7d: number;
+  oldest_gate_h: number | null;
+}
+
 /** One poll for the Mission control home (spec §6). */
 export interface MissionOut {
   gates: MissionGate[];
@@ -286,6 +307,7 @@ export interface MissionOut {
   stalled: FactoryRequest[];
   human_owned: MissionHumanOwned[];
   recent: MissionRecent[];
+  stats: MissionStats;
   cursor: number;
 }
 

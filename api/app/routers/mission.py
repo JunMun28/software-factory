@@ -17,12 +17,74 @@ from ..schemas import (
     MissionOut,
     MissionRecent,
     MissionRun,
+    MissionStats,
     RunStateOut,
     SteerStateOut,
 )
 from ..supervision import classify, evidence, run_state, steer_state
 
 router = APIRouter()
+
+
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
+
+
+def _stats(db: Session, live: list[Request]) -> MissionStats:
+    """The factory's gauges, computed from what the log already records.
+    Kept to bounded queries (recent slices) — this rides the home poll."""
+    now = utcnow()
+    week_ago = now - timedelta(days=7)
+
+    # Cycle time: request created → done, over the last 10 shipped.
+    done = db.scalars(
+        select(Request).where(Request.status == "done")
+        .order_by(Request.updated_at.desc()).limit(10)
+    ).all()
+    cycle = _median([
+        (r.updated_at - r.created_at).total_seconds() / 3600 for r in done
+    ])
+
+    # Gate wait: the latest gate_event before each recent human decision.
+    decisions = db.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.action.in_(("approved", "approved_merge", "approved_deploy", "sent_back")),
+               AuditEvent.created_at >= week_ago)
+        .order_by(AuditEvent.created_at.desc()).limit(20)
+    ).all()
+    waits: list[float] = []
+    for decision in decisions:
+        raised = db.scalar(
+            select(ProgressEvent)
+            .where(ProgressEvent.request_id == decision.request_id,
+                   ProgressEvent.kind == "gate_event",
+                   ProgressEvent.created_at <= decision.created_at)
+            .order_by(ProgressEvent.id.desc()).limit(1)
+        )
+        if raised:
+            waits.append((decision.created_at - raised.created_at).total_seconds() / 3600)
+
+    shipped_7d = db.scalar(
+        select(func.count(Request.id))
+        .where(Request.status == "done", Request.updated_at >= week_ago)
+    ) or 0
+
+    gate_ages = [
+        (now - r.stage_entered_at).total_seconds() / 3600
+        for r in live if r.gate and r.stage_entered_at
+    ]
+    return MissionStats(
+        cycle_median_h=round(cycle, 1) if cycle is not None else None,
+        gate_wait_median_h=round(_median(waits), 1) if waits else None,
+        shipped_7d=shipped_7d,
+        oldest_gate_h=round(max(gate_ages), 1) if gate_ages else None,
+    )
 
 @router.get("/api/mission", response_model=MissionOut)
 def mission(db: Session = Depends(get_db)):
@@ -86,5 +148,6 @@ def mission(db: Session = Depends(get_db)):
         stalled=stalled,
         human_owned=human_owned,
         recent=recent,
+        stats=_stats(db, live),
         cursor=cursor,
     )

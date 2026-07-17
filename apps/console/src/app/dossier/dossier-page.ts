@@ -279,7 +279,12 @@ import { DossierChapter, buildDossierChapters } from './dossier-view';
     </sf-console-shell>
 
     @if (confirming() && request(); as r) {
-      <sf-approve-modal [r]="r" (cancelled)="confirming.set(false)" (approved)="approve()" />
+      <sf-approve-modal
+        [r]="r"
+        [evidence]="r.evidence"
+        (cancelled)="confirming.set(false)"
+        (approved)="approve()"
+      />
     }
     @if (sendingBack() && request(); as r) {
       <sf-send-back-modal

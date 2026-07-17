@@ -98,14 +98,22 @@ export class IntakeDraft {
    *  requestId; only refills the fields when the draft is empty, so it never
    *  clobbers edits made in the current session. */
   hydrateFrom(d: RequestDetail): void {
+    // A live draft only speaks for ITS OWN request. Landing on a different one
+    // (deep link, My Requests, back/forward) must start from a clean slate —
+    // stamping d.id onto another request's leftovers used to leak its answers
+    // (reach/impact/app) into this request's next PATCH.
+    if (this.requestId !== d.id) this.reset();
     this.requestId = d.id;
-    if (this.type != null) return; // draft is live — keep the user's edits
+    if (this.type != null) return; // same-request live draft — keep the user's edits
     this.type = d.type;
     this.title = d.title;
     this.desc = d.description;
     this.urgency = (d.urgency as 'low' | 'normal' | 'high') || 'normal';
     this.appId = d.app_id;
-    this.appName = d.app_name || d.new_app_name || '';
+    // app_name is a DISPLAY field — the server falls back to "No app yet" when
+    // there's no app. Only a real pick (app_id) or a typed new-app name counts
+    // as an answer; copying the fallback made the app question look answered.
+    this.appName = (d.app_id != null ? d.app_name : d.new_app_name) || '';
     this.newName = d.type === 'new' ? (d.new_app_name ?? '') : '';
     const CHIPS = ['me', 'team', 'dept', 'wider', 'site', 'network'];
     if (d.reach && CHIPS.includes(d.reach)) {

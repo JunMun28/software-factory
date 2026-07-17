@@ -28,10 +28,14 @@ COPY api/app ./app
 COPY api/alembic.ini ./
 COPY api/alembic ./alembic
 COPY sample /srv/sample
+# the ONE prompt store (harness.py): without it HARNESS_VERSION would digest
+# "<missing>" files and the lineage stamp would never move with prompt edits
+COPY docker/sf-agent/prompts /srv/prompts
 
 # data lives outside the image; compose mounts a named volume here
 ENV FACTORY_DB_URL=sqlite:////data/factory.db \
     FACTORY_SAMPLE=/srv/sample \
+    FACTORY_PROMPTS=/srv/prompts \
     FACTORY_WORKSPACES=/data/workspaces
 VOLUME /data
 EXPOSE 8000

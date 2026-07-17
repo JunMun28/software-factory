@@ -29,6 +29,7 @@ import {
   floorActionOutcome,
 } from '../shared/action-outcome';
 import { FloorContent } from './floor-content';
+import { deriveQueue } from './floor-view';
 
 @Component({
   selector: 'sf-floor-page',
@@ -47,6 +48,10 @@ import { FloorContent } from './floor-content';
         <sf-floor-content
           [mission]="m"
           [requests]="store.requests()"
+          [queue]="visibleQueue()"
+          [appOptions]="appOptions()"
+          [activeFilter]="appFilter()"
+          (filterChanged)="appFilter.set($event)"
           [intakeUrl]="intakeUrl"
           [actionOutcomes]="actionOutcomes()"
           (approved)="confirming.set($event)"
@@ -63,6 +68,7 @@ import { FloorContent } from './floor-content';
     @if (confirming(); as gate) {
       <sf-approve-modal
         [r]="gate.request"
+        [evidence]="gate.evidence"
         (cancelled)="confirming.set(null)"
         (approved)="approve(gate.request)"
       />
@@ -135,17 +141,42 @@ export class FloorPage {
   intakeUrl = intakeNewRequestUrl(inject(INTAKE_URL));
   /** -1 = nothing focused yet, so the first J lands on the first row. */
   focusIndex = signal(-1);
-  /** Same order as the rendered queue: gates, stalled, human-owned. */
-  focusables = computed(() => {
+  appFilter = signal('all');
+  /** One derivation feeds both the rendered rows and the keyboard order. */
+  fullQueue = computed(() => {
     const m = this.mission();
-    return m
-      ? [
-          ...m.gates.map((g) => ({ kind: 'gate' as const, gate: g, request: g.request })),
-          ...m.stalled.map((request) => ({ kind: 'stalled' as const, request })),
-          ...m.human_owned.map((o) => ({ kind: 'owned' as const, request: o.request })),
-        ]
-      : [];
+    return m ? deriveQueue(m) : [];
   });
+  appOptions = computed(() => {
+    const queue = this.fullQueue();
+    if (queue.length <= 6) return [];
+    const counts = new Map<string, number>();
+    for (const item of queue) {
+      const app = item.request.app_name || 'No app yet';
+      counts.set(app, (counts.get(app) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, count]) => ({ key: label, label, count }));
+  });
+  visibleQueue = computed(() => {
+    const filter = this.appFilter();
+    const queue = this.fullQueue();
+    if (filter === 'all') return queue;
+    return queue.filter((item) => (item.request.app_name || 'No app yet') === filter);
+  });
+  /** Keyboard rows mirror the visible queue exactly (sorted + filtered). */
+  focusables = computed(() =>
+    this.visibleQueue().map((item) =>
+      item.kind === 'gate'
+        ? {
+            kind: 'gate' as const,
+            gate: { request: item.request, evidence: item.evidence },
+            request: item.request,
+          }
+        : { kind: item.kind, request: item.request },
+    ),
+  );
 
   constructor() {
     effect(() => {
