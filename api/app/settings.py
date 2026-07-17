@@ -135,6 +135,34 @@ def github_enabled() -> bool:
     return bool(GIT_REMOTE_BASE and GITHUB_TOKEN and GITHUB_OWNER)
 
 
+# ---------- Entra ID API auth (SEC-01; azure-entra-setup runbook) ----------
+# off (default) = today's open-caller behavior, byte-for-byte: dev/kind/CI need
+# no tenant. entra = every /api/* request (except /api/health + CORS preflight)
+# must carry a Bearer JWT from the tenant below; the token's identity OVERRIDES
+# any operator_id in the body (the body value becomes untrusted UI state).
+# Per-call read (FACTORY_BRAIN pattern) so tests flip it with monkeypatch.
+AZURE_TENANT_ID = os.environ.get("AZURE_TENANT_ID", "").strip()
+AZURE_API_AUDIENCE = os.environ.get("AZURE_API_AUDIENCE", "").strip()
+# SPA client ids, served to the browsers via GET /api/auth/config so no ID
+# ever lives in the repo or a bundle — the API env is the single source.
+AZURE_CONSOLE_CLIENT_ID = os.environ.get("AZURE_CONSOLE_CLIENT_ID", "").strip()
+AZURE_INTAKE_CLIENT_ID = os.environ.get("AZURE_INTAKE_CLIENT_ID", "").strip()
+# Issuer/JWKS derive from the tenant; overridable for tests and sovereign clouds.
+AUTH_ISSUER = os.environ.get(
+    "FACTORY_AUTH_ISSUER",
+    f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/v2.0" if AZURE_TENANT_ID else "",
+)
+AUTH_JWKS_URL = os.environ.get(
+    "FACTORY_AUTH_JWKS_URL",
+    f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys"
+    if AZURE_TENANT_ID else "",
+)
+
+
+def auth_mode() -> str:
+    return os.environ.get("FACTORY_AUTH", "off").strip().lower()
+
+
 # Forced non-root UID for agent/gate pods — restricted-SCC behavior is proven
 # locally, not discovered at the office (spec §2). Any high UID works; the
 # image is built to arbitrary-UID conventions (root group, g=u, HOME=/workspace).

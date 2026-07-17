@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest';
 import * as surface from '../public-api';
 
 /** The deliberate runtime surface of @sf/shared. Type exports are enforced by
- *  the compiler; this locks the 35 VALUE exports so a stray `export *` or leaked
+ *  the compiler; this locks the 38 VALUE exports so a stray `export *` or leaked
  *  helper can't silently widen the contract the shared-gate CI defends. */
 const VALUE_EXPORTS = [
   // services
   'Api',
+  'FactoryAuth',
+  'factoryAuthInterceptor',
+  'shouldAttachToken',
   'Poll',
   'Theme',
   // UI kit primitives

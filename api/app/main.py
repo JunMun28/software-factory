@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import api_helpers, heartbeat, settings, simulator, startup
 from .agent_exec import runner_mode
 from .agent_runner import AgentRunner
+from .auth import EntraAuthMiddleware
 from .db import SessionLocal, migrate
 from .leader import LeaderElector, get_elector
 from .routers import attachments as attachments_router
@@ -80,6 +81,9 @@ def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = N
             task.cancel()
 
     app = FastAPI(title="Software Factory API", lifespan=lifespan)
+    # Auth BEFORE CORS in code: the last middleware added is outermost, so CORS
+    # wraps the auth wall — preflight never hits token validation (auth.py).
+    app.add_middleware(EntraAuthMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",

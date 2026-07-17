@@ -1,26 +1,63 @@
 # Office hardening handoff (SEC-01 · DATA-01 prod cutover · PSA restricted)
 
-Everything here needs a **Micron-compliant device**. The automated browser hits
-Conditional Access ("your sign-in was successful but does not meet the
-criteria… a browser/app/location restricted by your admin") and cannot reach the
-Azure/Entra portals, so these steps are a **user handoff**, not automatable from
-this session. Do them from a managed laptop signed in to the Micron tenant.
+These steps are a **user handoff** — they need a payment method or a program
+enrollment that an agent cannot supply. Each step ends with the concrete
+**values to bring back** so the rest of the pipeline (already coded) can be
+pointed at them.
 
-Each step ends with the concrete **values to bring back** so the rest of the
-pipeline (already coded) can be pointed at them.
+**Which account.** Two tenants are in play:
+- **Personal (do this first):** the owner's personal Microsoft account. No
+  Conditional Access, so the portal is reachable from the browser — this is
+  where we stand the pipeline up first.
+- **Micron (office, later):** blocked from the automated browser by Conditional
+  Access ("your sign-in was successful but does not meet the criteria… a
+  browser/app/location restricted by your admin"). Do Micron steps from a
+  managed compliant laptop when the app graduates to the office tenant.
+
+**Findings from the 2026-07-17 live attempt (personal account).** The personal
+Microsoft account is a **consumer MSA with no Azure directory and no
+subscription**, and Entra app registration REQUIRES a directory. Every portal
+route to a directory was empirically blocked without an action an agent can't
+perform:
+
+| Route tried | Result |
+|-------------|--------|
+| Entra ID → App registrations → New registration | "Ability to create apps outside a directory is deprecated" — only a **Cancel** button |
+| Sign up for a free Azure account | Requires a **credit card** on file (identity check, even for free tier) |
+| M365 Developer Program | Enrollment, now typically needs a qualifying paid Visual Studio subscription |
+| Create an Entra tenant directly (`CreateDirectoryBlade`) | **HTTP 401 "You don't have access"** (needs an existing directory/subscription) |
+
+So **Step 0 below (get a directory) is a hard prerequisite** the user must
+complete once; everything after it is drivable in the browser.
 
 ---
 
 ## 1. SEC-01 — Entra ID (Azure AD) app registration for API auth
 
+> **Superseded by the fuller plan:** [azure-entra-setup.md](azure-entra-setup.md)
+> covers this API registration PLUS the intake and console SPA registrations,
+> the role mapping onto the existing `Operator` rows, and the code wiring.
+> Use that doc; the section below remains as the original API-only sketch.
+
 The API today trusts an unauthenticated caller in `[kind]`. Office profile puts
 Entra OIDC in front of it. Register the app and hand back the IDs; the API's
 auth guard reads them from env.
 
+**Step 0 (prerequisite — user only): get a directory.** Per the findings above,
+the personal MSA has none. Pick ONE, then re-run this section:
+- **Free Azure account** (`azure.microsoft.com/free`) — needs a credit card, not
+  charged for free services. Creates a "Default Directory" tenant AND an Azure
+  subscription (which §2's SQL database also needs). **Most complete path.**
+- **M365 Developer Program** (`developer.microsoft.com/microsoft-365/dev-program`)
+  — no card if you qualify; gives a free E5 tenant (directory only, no Azure
+  subscription, so §2 SQL still needs a paid account later).
+
+Once a directory exists, the agent can drive steps 1–5 in the browser.
+
 1. **portal.azure.com → Microsoft Entra ID → App registrations → New
    registration.**
    - Name: `software-factory-api`
-   - Supported account types: **Single tenant** (Micron only).
+   - Supported account types: **Single tenant** (this directory only).
    - Redirect URI: leave blank for now (API is a resource server, not a web
      client) — add the console SPA's URI later if you wire interactive login.
 2. On the new app's **Overview**, copy:
