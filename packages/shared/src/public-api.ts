@@ -70,6 +70,9 @@ export type { EvidenceBit, TraceGroup, TraceRow } from './lib/util';
 
 // ---- services ----
 export { Api } from './lib/api.service';
+export { FactoryAuth, shouldAttachToken } from './lib/auth.service';
+export type { AuthConfig, FactoryAppName } from './lib/auth.service';
+export { factoryAuthInterceptor } from './lib/auth.interceptor';
 export { Poll } from './lib/poll.service';
 export { Theme } from './lib/theme.service';
 export type { ThemeChoice } from './lib/theme.service';

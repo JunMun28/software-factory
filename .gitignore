@@ -8,6 +8,8 @@ __pycache__/
 *.db
 .pytest_cache/
 .env
+.env.*
+!.env.example
 workspaces/
 *.db-wal
 *.db-shm

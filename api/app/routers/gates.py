@@ -54,7 +54,10 @@ router = APIRouter()
 
 def _operator_actor(db: Session, operator_id: int) -> Actor:
     # Every caller of this helper mutates lifecycle state — viewer roles stop here.
-    return Actor(name=require_approver(db, operator_id).name, operator_id=operator_id)
+    operator = require_approver(db, operator_id)
+    # operator.id, not the raw param: with FACTORY_AUTH=entra the token identity
+    # overrides the body value, and the audit trail must record who really acted.
+    return Actor(name=operator.name, operator_id=operator.id)
 
 
 @router.get("/api/requests/{rid}/acceptance", response_model=AcceptanceOut)
