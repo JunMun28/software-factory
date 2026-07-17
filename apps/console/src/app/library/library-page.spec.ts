@@ -61,6 +61,13 @@ const apps: AppEntry[] = [
     muted: false,
     open_requests: 1,
     unread: false,
+    last_deploy: {
+      digest: 'sha256:' + 'a'.repeat(64),
+      url: 'http://payroll.localtest.me',
+      at: '2026-07-13T00:00:00Z',
+      ref: 'REQ-80',
+      rollback: false,
+    },
   },
   {
     id: 2,
@@ -72,6 +79,7 @@ const apps: AppEntry[] = [
     muted: false,
     open_requests: 0,
     unread: false,
+    last_deploy: null,
   },
 ];
 
@@ -103,7 +111,10 @@ describe('Library URL filters', () => {
     await TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
-        { provide: Store, useValue: { requests: allRequests, apps: signal(apps) } },
+        {
+          provide: Store,
+          useValue: { requests: allRequests, apps: signal(apps), refresh: vi.fn() },
+        },
         {
           provide: Api,
           useValue: {
@@ -116,6 +127,33 @@ describe('Library URL filters', () => {
                 smtp: 'log-only',
               }),
             tick: () => of({ moved: [] }),
+            appDeploys: vi.fn(() =>
+              of([
+                {
+                  digest: 'sha256:' + 'a'.repeat(64),
+                  url: 'http://payroll.localtest.me',
+                  at: '2026-07-13T00:00:00Z',
+                  ref: 'REQ-80',
+                  rollback: false,
+                },
+                {
+                  digest: 'sha256:' + 'b'.repeat(64),
+                  url: 'http://payroll.localtest.me',
+                  at: '2026-07-12T00:00:00Z',
+                  ref: 'REQ-79',
+                  rollback: false,
+                },
+              ]),
+            ),
+            rollbackApp: vi.fn(() =>
+              of({
+                digest: 'sha256:' + 'b'.repeat(64),
+                url: 'http://payroll.localtest.me',
+                at: '2026-07-13T01:00:00Z',
+                ref: null,
+                rollback: true,
+              }),
+            ),
           },
         },
         {
@@ -157,6 +195,45 @@ describe('Library URL filters', () => {
 
     expect(rows).toHaveLength(3);
     expect(rows[0].getAttribute('href')).toBe('/requests/87');
+  });
+
+  it('shows the fleet: live URL, digest, and a not-live app stays honest', async () => {
+    const harness = await RouterTestingHarness.create('/library');
+    harness.detectChanges();
+    const host = harness.routeNativeElement!;
+    const cards = host.querySelectorAll('.fleet-card');
+    expect(cards.length).toBe(2);
+    const live = cards[0];
+    expect(live.querySelector('.fleet-live')?.getAttribute('href')).toBe(
+      'http://payroll.localtest.me',
+    );
+    expect(live.textContent).toContain('aaaaaaaaaaaa');
+    expect(cards[1].textContent).toContain('Not live yet');
+  });
+
+  it('rolls back to a previous digest through the confirm modal', async () => {
+    const harness = await RouterTestingHarness.create('/library');
+    harness.detectChanges();
+    const host = harness.routeNativeElement!;
+
+    host.querySelector<HTMLButtonElement>('.fleet-toggle')!.click();
+    harness.detectChanges();
+    const rollbackBtn = host.querySelector<HTMLButtonElement>('.fleet-rollback')!;
+    expect(rollbackBtn).toBeTruthy();
+    rollbackBtn.click();
+    harness.detectChanges();
+
+    const modal = document.querySelector('sf-recovery-confirm')!;
+    expect(modal.textContent).toContain('Roll Payroll back?');
+    const confirm = [...modal.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Roll back'),
+    )!;
+    confirm.click();
+    harness.detectChanges();
+
+    const api = TestBed.inject(Api) as unknown as { rollbackApp: ReturnType<typeof vi.fn> };
+    expect(api.rollbackApp).toHaveBeenCalledWith(1, 'sha256:' + 'b'.repeat(64), 7);
+    expect(host.textContent).toContain('Rolled back to bbbbbbbbbbbb');
   });
 
   it('writes filter changes to query params while preserving the other filter', async () => {

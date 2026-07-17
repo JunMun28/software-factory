@@ -37,9 +37,13 @@ import { IntakeDraft } from './intake-draft.service';
         <!-- arrival beat: the brain is genuinely pre-generating its first question
              in the background — the submitter settles the basics meanwhile -->
         <div class="intro">
-          <span class="intro__badge blurin"
-            ><i class="intro__pulse"></i>Preparing your questions…</span
-          >
+          <!-- live agent status: pulses while the first question generates, then quietly
+               disappears (the span stays for its line height, so nothing jumps) -->
+          <span class="intro__badge blurin" role="status">
+            @if (!introReady()) {
+              <i class="intro__pulse"></i>Analyzing your request…
+            }
+          </span>
           <h1 class="intro__t blurin blurin--2">
             A few quick questions while the agent digs into your request.
           </h1>
@@ -50,19 +54,15 @@ import { IntakeDraft } from './intake-draft.service';
                 [rtype]="r.type"
                 (typeChanged)="onTypeChanged()"
                 (saved)="onBasicsSaved()"
+                (edited)="onBasicsEdited()"
               />
-              <div class="intro__foot">
-                <p class="intro__note">
-                  <b>That's the basics.</b> The interview covers everything else.
-                </p>
-                <button class="btn primary intro__go" (click)="startInterview()">
-                  Start the interview
-                </button>
-              </div>
-              @if (nudge()) {
-                <p class="intro__nudge" role="alert">
-                  Add the missing details before you continue.
-                </p>
+              <!-- the way forward appears only once every question is answered -->
+              @if (canStart()) {
+                <div class="intro__foot blurin">
+                  <button class="btn primary intro__go" (click)="startInterview()">
+                    Let's build the plan
+                  </button>
+                </div>
               }
             </div>
           }
@@ -316,6 +316,7 @@ import { IntakeDraft } from './intake-draft.service';
     .intro__badge {
       display: inline-flex;
       align-items: center;
+      min-height: 16px; /* holds the line when the status empties out */
       gap: 8px;
       font-family: var(--mono);
       font-size: 11px;
@@ -338,12 +339,15 @@ import { IntakeDraft } from './intake-draft.service';
         opacity: 0.25;
       }
     }
+    /* quiet lead-in — the CURRENT QUESTION (in the card) is the page's real
+       headline, so this line must not compete with it */
     .intro__t {
-      font-size: clamp(24px, 3.4vw, 34px);
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      line-height: 1.1;
-      margin: 18px 0 26px;
+      font-size: 14.5px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0;
+      line-height: 1.5;
+      margin: 12px 0 26px;
     }
     .intro__card {
       width: 100%;
@@ -353,35 +357,13 @@ import { IntakeDraft } from './intake-draft.service';
       margin-top: 30px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 18px;
-      flex-wrap: wrap;
-    }
-    .intro__note {
-      margin: 0;
-      font-size: 13px;
-      color: var(--muted);
-      text-align: left;
-      max-width: 300px;
-    }
-    .intro__note b {
-      color: var(--fg1);
-      font-weight: 600;
+      justify-content: center;
     }
     .intro__go {
       justify-content: center;
       padding: 12px 26px;
       border-radius: 999px;
       font-size: 15px;
-    }
-    .intro__nudge {
-      margin: 10px 0 0;
-      font-size: 12.5px;
-      color: var(--amber-tx);
-      background: var(--amber-bg);
-      border: 1px solid var(--amber-line);
-      border-radius: var(--r);
-      padding: 7px 12px;
     }
     /* blur-in: the analyzing line lands first, then the ask, then the card */
     .blurin {
@@ -892,15 +874,20 @@ export class Interview implements OnInit {
       if (basicsAnswered(this.draft, this.req()!.type)) this.phase.set('full');
     }
   }
-  nudge = signal(false);
+  /** the intro badge tracks the brain: analyzing until the pre-generated first
+   *  question lands (or the interview turns out to be already finished) */
+  introReady = computed(() => !!this.st()?.question || !!this.st()?.done);
+  /** all basics answered — gates the intro's continue button; tracks
+   *  basicsBump so keystrokes (edited) and PATCHes (saved) both re-evaluate */
+  canStart = computed(() => {
+    this.basicsBump();
+    return basicsAnswered(this.draft, this.req()?.type ?? this.draft.type);
+  });
   startInterview() {
-    // ngModel keeps the draft current on every keystroke, so this reads fresh
-    if (basicsAnswered(this.draft, this.req()?.type ?? this.draft.type)) {
-      this.basicsBump.update((n) => n + 1); // facts strip snapshots the answers
-      this.phase.set('full');
-    } else {
-      this.nudge.set(true);
-    }
+    // the button only renders when canStart(), so this is just a safety net
+    if (!this.canStart()) return;
+    this.basicsBump.update((n) => n + 1); // facts strip snapshots the answers
+    this.phase.set('full');
   }
   /** re-evaluate canStart()/facts() when the (non-signal) draft changes */
   private basicsBump = signal(0);
@@ -1130,6 +1117,10 @@ export class Interview implements OnInit {
   onBasicsSaved() {
     this.basicsBump.update((n) => n + 1);
     this.planPanel()?.refresh();
+  }
+  /** a keystroke changed an answer — re-check canStart() without a PATCH */
+  onBasicsEdited() {
+    this.basicsBump.update((n) => n + 1);
   }
   /** The step after the interview: Prototype for a new app, else Review. */
   nextStep(): 'prototype' | 'review' {

@@ -226,7 +226,7 @@ def test_mission_aggregate(client):
     client.post("/api/simulator/tick")
 
     m = client.get("/api/mission").json()
-    assert set(m) == {"gates", "runs", "stalled", "human_owned", "recent", "cursor"}
+    assert set(m) == {"gates", "runs", "stalled", "human_owned", "recent", "stats", "cursor"}
     assert m["cursor"] > 0
 
     gate = next(g for g in m["gates"] if g["request"]["id"] == gated["id"])

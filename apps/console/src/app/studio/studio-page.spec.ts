@@ -104,6 +104,7 @@ describe('Studio notification preferences', () => {
       muted: false,
       open_requests: 2,
       unread: false,
+      last_deploy: null,
     };
     const created = {
       ...existing,

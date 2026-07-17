@@ -311,3 +311,135 @@ already emits it via begin_deploy).
   confirmed at every call site). Deferred/acknowledged: post-done deploy-
   approve replay is a plain 409; the full retry→tick→re-approve mirror-stale
   recovery path is unit-proven only at the approve_merge level.
+
+## Console gap closure — all six (2026-07-16, after the gap analysis)
+
+Implemented every gap from docs/reviews/console-gap-analysis-2026-07-16.md:
+
+1. **Evidence hardening** — `evidenceBits(null)` is now a red bit; the Approve
+   modal takes the gate's evidence and, when a merge/deploy gate has none,
+   shows a role=alert warning and relabels the button "Approve without
+   evidence". Gate rows link to the repo.
+2. **Queue triage** — gates sort by intake priority then longest-waiting;
+   rows carry "waiting 5w" age chips (amber past 24h); app filter chips
+   appear when the queue exceeds 6; the repeated consequence line is gone
+   (the modal owns the irreversible steps). Queue derivation + filter hoisted
+   to FloorPage so keyboard j/k order always matches the rendered rows.
+3. **Factory gauges** — MissionOut gains `stats` (median cycle, median gate
+   wait from decision vs. last gate_event, shipped_7d, oldest gate age),
+   rendered in the Overview pulse. New `heartbeat` module: the tick loop
+   beats per completed leader pass; /api/health reports `tick_age_s` +
+   `deploy_enabled`; the shell badge goes red "Tick stalled Xm" past 120s
+   (never for runner=agent, which has no tick loop).
+4. **Fleet view** — AppOut gains `last_deploy` {digest,url,at,rollback} read
+   from the append-only log (deploy gate_events carry digest+url); Library
+   gets "The fleet": per-app live URL, deploy age, open counts, expandable
+   deploy history.
+5. **Rollback** — POST /api/apps/{id}/rollback re-applies digest-pinned
+   manifests via the KubeClient seam, only for digests found in that app's
+   own history; records a recovery_action event (which then reads back as
+   the live deploy). Library history rows offer "Roll back to this" behind
+   the RecoveryConfirm modal.
+6. **Roles** — Operator.role (admin|viewer, server_default admin; alembic
+   c9d1f3a5b7e2 for MSSQL, generic migrate() covers SQLite). All gate
+   decisions + rollback go through `require_approver` → 403 for viewers.
+   Studio picker shows a "viewer · read-only" chip. Entra auth itself
+   remains a user handoff (Azure tenant).
+
+Verified: task verify fully green (387 pytest + 231 vitest + builds +
+smoke); live browser check on :4203 (light + dark) — gauges, filters, age
+chips, red no-evidence, blind-approve modal, fleet strip all confirmed.
+
+### Deviations
+- "Preview before approve" (staging deploy at review time) NOT built: with
+  the B4 three-gate flow the deploy gate fires before any image exists, so
+  an honest preview needs a staging build pipeline — logged as follow-up,
+  not faked with a dead link.
+- Board cards don't carry live-app links (a card is already an <a>; nested
+  anchors are invalid HTML). The live link lives in the fleet card instead.
+
+## Self-harness adapted slice (2026-07-16, after the integration analysis)
+
+Built the four slices recommended by
+docs/reviews/self-harness-integration-analysis-2026-07-16.md §4 — the
+"record + human-approved improvement" adaptation; the paper's automated
+mine→propose→validate loop stays explicitly NOT built.
+
+1. **One prompt store** — `app/harness.py`: docker/sf-agent/prompts/*.md is
+   the single source; AgentRunner's four inline f-strings replaced with
+   `harness.stage_prompt(stage)` (the in-process review contract — REVIEW.md
+   artifact + diff summary — is appended, never baked into the shared base).
+   `test_prompt_parity.py` pins the contract.
+2. **Lineage** — `HARNESS_VERSION` = 12-hex digest of the prompt pack +
+   policy knobs, stamped on every role="stage" StageJob row and passed as
+   SF_HARNESS_VERSION to stage pods. Alembic e7a9c1d3b5f0.
+3. **Structured human reject** — reject_merge_gate / reject_deploy_gate
+   transitions + POST /api/requests/{rid}/reject-gate (typed reason_code +
+   reason): audit `rejected_merge|rejected_deploy` + gate_event evidence,
+   escalates for normal recovery, and stages Request.pending_feedback so the
+   human reason rides into the next attempt exactly like SF_GATE_FEEDBACK.
+   send_back_to_stage reasons now also reach the agent (they never did).
+   Approve notes are no longer discarded (merge/deploy audit rows keep them).
+4. **Pressure report** — GET /api/harness/pressure: read-time projection over
+   StageJob + audits (NO new table, per the skeptic adjudication), bucketed
+   by (stage, verifier cause) via `harness.classify_reason`, with the
+   governing prompt file and per-version counts named per bucket.
+
+### Deviations
+- **Deploy-reject shield (added, conservative):** a rejected deploy leaves
+  (stage=deploy, gate=None) — the exact state begin_deploy produces — so a
+  later Retry would have silently deployed, and the escalation branch would
+  have run the slug-scoped `_teardown_app` (OPERATE-02: could delete a
+  PREVIOUS request's live app). `_deploy_rejected` now short-circuits the
+  driver: never build, never tear down; after Retry the deploy gate is
+  re-raised so the human decision comes back.
+- harness_version lineage is kube-path only — the in-process runner creates
+  no StageJob rows, so there is nothing to stamp there.
+- pending_feedback is last-writer-wins: a send-back reason replaces an
+  earlier staged reject reason (the newest human instruction is the
+  actionable one; the older text stays in the audit/event log).
+- No console UI for reject-gate / the pressure report — API slices only, as
+  recommended; UI is follow-up work.
+
+### Review wave (2026-07-16, opus panel + independent gpt-5.5/codex pass)
+Fixed after review (all re-verified green):
+- pending_feedback was consumed-and-committed BEFORE the fallible
+  workspace-prep/Job-create steps — a prep or create failure silently lost the
+  human's reason. Now consumed only after the Job exists (uid recorded); a
+  regression test kills the create mid-spawn and proves delivery on re-spawn.
+- Gate rows carried no harness_version, so the pressure report could never
+  attribute typed gate causes to a version (the tests had masked it). Gate
+  rows now inherit the graded stage row's stamp.
+- Send-back notes with a "(word) " prefix minted spurious reason_code buckets
+  — prefix parsing is now reject-only.
+- The API Docker image never shipped the prompt store, so HARNESS_VERSION in
+  a container digested "<missing>" files (lineage would never move with prompt
+  edits). Dockerfile now bakes /srv/prompts + FACTORY_PROMPTS; harness.py logs
+  loudly when files are missing.
+- Deploy rejects no longer stage pending_feedback: the work is already merged,
+  so no agent attempt can consume it (send-back is pre-merge only) — the
+  reason lives in audit + gate_event evidence. Merge rejects still deliver.
+- Human note now rides FIRST in the merged SF_GATE_FEEDBACK (the 2000-char cap
+  truncates the tail); RejectGateIn.reason capped at 1800 so it survives whole.
+- Infra rows now keep a typed reason on the envelope (workspace prep, capture
+  miss) so the report's workspace_infra/capture_miss buckets actually fire;
+  invalid-stage-SHA maps to clone_infra; spawn step_summary payload records
+  the CLI + harness_version durably (Job env dies with the pod).
+
+Accepted (documented, not fixed here):
+- Cancel-at-deploy-gate can tear down a PREVIOUS request's live app —
+  PRE-EXISTING (OPERATE-02 family), confirmed trace, spun off as its own task
+  chip; the new reject path is shielded, cancel is not.
+- Retry after a merge reject re-raises the gate from the existing review
+  without re-running work (feedback undelivered until a send-back) — retry
+  means "bring the gate back"; use send-back-to-stage to redo work.
+- Consume-after-create is at-least-once: a crash between Job create and the
+  feedback-clear commit can re-deliver the same note on the next attempt —
+  chosen over at-most-zero.
+- In-process (dev) runner still consumes feedback at prompt-build time; an
+  executor failure before the agent runs loses it. Kube (production) path is
+  exact.
+- Reject replay shares the house ABA property of approve (a very stale replay
+  against a RE-RAISED gate acts on the new artifact) — inherent to ADR 0006.
+- Human pressure buckets carry no stage/version split (send-backs collapse
+  into one bucket) — v1 scope; machine buckets carry full attribution.

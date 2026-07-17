@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
+  AppDeploy,
   AppEntry,
   AppSubscription,
   Attachment,
@@ -30,13 +31,26 @@ export class Api {
     return this.http.get<{
       status: string;
       brain: string;
-      runner: 'agent' | 'sim';
+      runner: 'agent' | 'sim' | 'kube';
       cli: 'codex' | 'claude';
       smtp: 'configured' | 'log-only';
+      /** seconds since the last completed tick pass; null until the first (or runner=agent) */
+      tick_age_s: number | null;
+      deploy_enabled: boolean;
     }>(`${BASE}/health`);
   }
   apps(): Observable<AppEntry[]> {
     return this.http.get<AppEntry[]>(`${BASE}/apps`);
+  }
+  appDeploys(appId: number) {
+    return this.http.get<AppDeploy[]>(`${BASE}/apps/${appId}/deploys`);
+  }
+  /** Re-apply a previously-live digest (guarded server-side to the app's own history). */
+  rollbackApp(appId: number, digest: string, operatorId: number) {
+    return this.http.post<AppDeploy>(`${BASE}/apps/${appId}/rollback`, {
+      digest,
+      operator_id: operatorId,
+    });
   }
   createApp(body: Partial<AppEntry>) {
     return this.http.post<AppEntry>(`${BASE}/apps`, body);

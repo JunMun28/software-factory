@@ -1,4 +1,12 @@
-import { Component, DestroyRef, computed, inject, input, OnInit } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  computed,
+  inject,
+  input,
+  linkedSignal,
+  OnInit,
+} from '@angular/core';
 
 import { Api, ReviewSummary } from '@sf/shared';
 import { GenerationStream } from './generation-stream';
@@ -31,28 +39,32 @@ import { GenerationStream } from './generation-stream';
             }
           </div>
         }
-        @if (plan(); as p) {
-          @if (p.overview) {
-            <p class="plan__ov">{{ p.overview }}</p>
+        <!-- stale-while-revalidate: the previous plan stays readable (dimmed)
+             while the brain rewrites; skeletons only before the FIRST plan -->
+        <div class="plan__live" [class.plan__live--stale]="thinking() && hasPlan()">
+          @if (shown(); as p) {
+            @if (p.overview) {
+              <p class="plan__ov">{{ p.overview }}</p>
+            }
+            @for (sec of sections(); track sec.title) {
+              <div class="psec">
+                <div class="psec__t">{{ sec.title }}</div>
+                <ul>
+                  @for (it of sec.items; track it) {
+                    <li>{{ it }}</li>
+                  }
+                </ul>
+              </div>
+            }
           }
-          @for (sec of sections(); track sec.title) {
-            <div class="psec">
-              <div class="psec__t">{{ sec.title }}</div>
-              <ul>
-                @for (it of sec.items; track it) {
-                  <li>{{ it }}</li>
-                }
-              </ul>
-            </div>
-          }
-        }
-        @if (thinking()) {
+        </div>
+        @if (thinking() && !hasPlan()) {
           <div class="psec">
             <div class="plan__sh" style="width: 82%"></div>
             <div class="plan__sh" style="width: 64%"></div>
             <div class="plan__sh" style="width: 71%"></div>
           </div>
-        } @else if (!plan()?.overview) {
+        } @else if (!thinking() && !hasPlan()) {
           <p class="plan__empty">The plan takes shape here as you answer.</p>
         }
       </div>
@@ -207,6 +219,12 @@ import { GenerationStream } from './generation-stream';
         background-position: -200% 0;
       }
     }
+    .plan__live {
+      transition: opacity 0.3s var(--ease);
+    }
+    .plan__live--stale {
+      opacity: 0.55;
+    }
     .plan__empty {
       font-size: 13px;
       color: var(--faint);
@@ -244,11 +262,20 @@ export class PlanPanel implements OnInit {
   );
   plan = this.gen.state;
   thinking = this.gen.thinking;
+  /** stale-while-revalidate: while the brain rewrites, the poll returns an
+   *  empty thinking state — keep the last plan WITH content on screen instead
+   *  of blanking to skeletons on every refresh */
+  shown = linkedSignal<ReviewSummary | null, ReviewSummary | null>({
+    source: this.plan,
+    computation: (next, prev) =>
+      next?.overview || next?.sections?.length ? next : (prev?.value ?? next),
+  });
   /** the brain's open questions drive the interview itself — showing them in
    *  the plan reads as homework for the submitter, so they stay hidden */
   sections = computed(() =>
-    (this.plan()?.sections ?? []).filter((sec) => !/open question/i.test(sec.title)),
+    (this.shown()?.sections ?? []).filter((sec) => !/open question/i.test(sec.title)),
   );
+  hasPlan = computed(() => !!this.shown()?.overview || this.sections().length > 0);
 
   ngOnInit() {
     this.refresh();

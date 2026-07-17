@@ -1,4 +1,12 @@
-import { afterNextRender, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
+import {
+  afterNextRender,
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -6,6 +14,26 @@ import { firstValueFrom } from 'rxjs';
 import { Api, Icon } from '@sf/shared';
 import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';
+
+/** Glyph choices per intensity tier for the hero's ignition field — bright
+ *  cells get dense brand letters, dim cells crumble into punctuation. */
+const FX_TIERS: readonly [number, readonly string[]][] = [
+  [0.78, ['S', 'S', 'S', 'F']],
+  [0.58, ['S', 'S', '#', 'F']],
+  [0.4, ['#', '8', '0', 'S']],
+  [0.24, ['X', '8', '0', '+']],
+  [0.1, ['+', '=', '·', 'x']],
+];
+const FX_CELL_W = 21;
+const FX_CELL_H = 17;
+
+/** Deterministic per-cell randomness — the field must not reshuffle on
+ *  re-render (resize, theme flip), only recolor. */
+function fxHash(x: number, y: number): number {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = ((h ^ (h >>> 13)) * 1274126177) | 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
 
 /** S1 — New Request: a pure describe hero — an AI-chat-style composer as the
  *  vertically-centered focal point (animated conic-gradient border, attach
@@ -25,12 +53,13 @@ import { SubShell } from './sub-shell';
     '(document:dragleave)': 'onDragLeave($event)',
     '(document:drop)': 'onDrop($event)',
     '(document:paste)': 'onPaste($event)',
+    '(window:resize)': 'renderFx()',
   },
   template: `
     <sub-shell active="new">
+      <canvas #fx class="hero-fx" aria-hidden="true"></canvas>
       <div class="sub-col pop-in" style="max-width:820px">
         <section class="hero-screen">
-          <div class="hero-fx" aria-hidden="true"></div>
           <h1 class="hero__t">What should we build?</h1>
           <p class="hero__s">Put your idea into words. We’ll help turn it into a clear plan.</p>
           <div class="glow" [class.glow--over]="dragOver()">
@@ -140,7 +169,10 @@ import { SubShell } from './sub-shell';
     .hero-screen {
       position: relative;
       isolation: isolate;
-      min-height: calc(100dvh - 160px);
+      /* 188px = top bar (74) + .sub-col vertical padding (34 + 80): the
+         hero fits the scroll host exactly, so the page has no scrollbars
+         until the composer grows past one screen of text */
+      min-height: calc(100dvh - 188px);
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -148,32 +180,28 @@ import { SubShell } from './sub-shell';
       text-align: center;
       padding: 8px 0 26px;
     }
-    /* Ambient depth behind the composer: a faint dot-grid texture with a soft
-       accent glow pooled behind the chat card. Static, decorative, masked to
-       dissolve outward so it reads as texture, not a panel. */
+    /* Ambient depth: the "Ignition" glyph field (mockups/hero-ascii-bg v3) —
+       a canvas of monospace glyphs whose glow rises from the bottom edge and
+       dissolves before the composer, which sits in a cleared pocket.
+       Viewport-fixed and out of the scroll flow: it always reaches the
+       page's bottom edge and can never create scrollbars (the scene is
+       empty near the top, so nothing paints over the top bar). It sits
+       OUTSIDE .pop-in — that animation's transform would hijack a fixed
+       child's containing block. Explicit width/height because a canvas is
+       a replaced element — inset alone won't stretch it. Static,
+       decorative; redrawn on resize and theme change. */
     .hero-fx {
-      position: absolute;
-      inset: -40px -8px 0;
-      z-index: -1;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100dvh;
       pointer-events: none;
-      background:
-        radial-gradient(
-          ellipse 44% 40% at 50% 47%,
-          color-mix(in srgb, var(--accent) 20%, transparent),
-          transparent 70%
-        ),
-        radial-gradient(
-          circle at center,
-          color-mix(in srgb, var(--fg1) 8%, transparent) 1px,
-          transparent 1.6px
-        );
-      background-size:
-        auto,
-        22px 22px;
-      background-position: center, center;
-      background-repeat: no-repeat, repeat;
-      -webkit-mask-image: radial-gradient(72% 64% at 50% 47%, #000 18%, transparent 80%);
-      mask-image: radial-gradient(72% 64% at 50% 47%, #000 18%, transparent 80%);
+    }
+    /* lift the content above the viewport-fixed canvas layer */
+    .sub-col {
+      position: relative;
+      z-index: 1;
     }
     .hero__t {
       font-size: clamp(32px, 4.8vw, 50px);
@@ -330,10 +358,113 @@ export class NewRequest {
   dragOver = signal(false);
 
   private descTa = viewChild.required<ElementRef<HTMLTextAreaElement>>('descTa');
+  private fx = viewChild.required<ElementRef<HTMLCanvasElement>>('fx');
 
   constructor() {
     // a restored draft may already hold a long description — size the field to it
-    afterNextRender(() => this.growDesc());
+    afterNextRender(() => {
+      this.growDesc();
+      this.renderFx();
+    });
+    // the Theme service writes <html data-theme> on every change (including
+    // OS-level flips while on 'system') — repaint the field to match
+    const themeObserver = new MutationObserver(() => this.renderFx());
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+    inject(DestroyRef).onDestroy(() => themeObserver.disconnect());
+  }
+
+  /** Paint the ignition glyph field: a low-res gradient scene is sampled per
+   *  glyph cell — the pixel's alpha picks the character density, its color
+   *  paints the glyph — over a blurred copy of the scene for the soft glow. */
+  renderFx() {
+    const canvas = this.fx().nativeElement;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return; // test environments have no canvas backend
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (!w || !h) return;
+    const dark = document.documentElement.dataset['theme'] === 'dark';
+    const dpr = globalThis.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const cols = Math.ceil(w / FX_CELL_W);
+    const rows = Math.ceil(h / FX_CELL_H);
+    const off = document.createElement('canvas');
+    off.width = cols;
+    off.height = rows;
+    const o = off.getContext('2d');
+    if (!o) return;
+    this.paintFxScene(o, cols, rows, dark);
+    const px = o.getImageData(0, 0, cols, rows).data;
+
+    // soft luminous underlay: the same scene, blurred way up
+    ctx.save();
+    ctx.filter = 'blur(48px)';
+    ctx.globalAlpha = dark ? 0.5 : 0.16;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(off, 0, 0, cols, rows, 0, 0, w, h);
+    ctx.restore();
+
+    const aBase = dark ? 0.35 : 0.3;
+    const aSpan = dark ? 0.65 : 0.5;
+    ctx.font = `600 12px ${getComputedStyle(canvas).getPropertyValue('--mono') || 'monospace'}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const i = (r * cols + c) * 4;
+        const a = px[i + 3] / 255;
+        if (a < 0.1) continue;
+        if (fxHash(c, r) < 0.07) continue; // a few gaps, even when dense
+        if (fxHash(c * 7 + 13, r * 3 + 5) < (0.8 - a) * 0.5) continue; // crumble as intensity drops
+        const tier = FX_TIERS.find(([t]) => a >= t);
+        if (!tier) continue;
+        const chars = tier[1];
+        const ch = chars[Math.floor(fxHash(c * 31 + 7, r * 17 + 3) * chars.length)];
+        ctx.fillStyle = `rgba(${px[i]},${px[i + 1]},${px[i + 2]},${(aBase + aSpan * a).toFixed(3)})`;
+        ctx.fillText(ch, c * FX_CELL_W + FX_CELL_W / 2, r * FX_CELL_H + FX_CELL_H / 2);
+      }
+    }
+  }
+
+  /** The scene the glyphs sample: a glow rising from below the viewport —
+   *  dark: cream core → magenta → violet on graphite; light: a quiet orchid
+   *  tint so the field whispers on the pale canvas. A pocket is cleared
+   *  behind the composer + hint so the card reads cleanly. */
+  private paintFxScene(o: CanvasRenderingContext2D, w: number, h: number, dark: boolean) {
+    const g = o.createRadialGradient(w * 0.5, h * 1.52, 0, w * 0.5, h * 1.52, h * 1.5);
+    if (dark) {
+      g.addColorStop(0.36, 'rgba(255,233,214,.97)');
+      g.addColorStop(0.46, 'rgba(225,115,250,.92)');
+      g.addColorStop(0.58, 'rgba(189,3,247,.8)');
+      g.addColorStop(0.7, 'rgba(75,22,224,.5)');
+      g.addColorStop(0.86, 'rgba(40,14,96,0)');
+    } else {
+      g.addColorStop(0.36, 'rgba(210,59,249,.55)');
+      g.addColorStop(0.46, 'rgba(225,115,250,.46)');
+      g.addColorStop(0.58, 'rgba(238,166,252,.38)');
+      g.addColorStop(0.7, 'rgba(246,208,254,.28)');
+      g.addColorStop(0.86, 'rgba(246,208,254,0)');
+    }
+    o.fillStyle = g;
+    o.fillRect(0, 0, w, h);
+    o.save();
+    o.globalCompositeOperation = 'destination-out';
+    o.translate(w * 0.5, h * 0.56);
+    o.scale(1.7, 1);
+    const m = o.createRadialGradient(0, 0, 0, 0, 0, h * 0.38);
+    m.addColorStop(0, 'rgba(0,0,0,.92)');
+    m.addColorStop(0.7, 'rgba(0,0,0,.6)');
+    m.addColorStop(1, 'rgba(0,0,0,0)');
+    o.fillStyle = m;
+    o.fillRect(-w, -h, w * 2, h * 2);
+    o.restore();
   }
 
   /** keep the describe field sized to its content (it has no scrollbar);
@@ -383,26 +514,39 @@ export class NewRequest {
     }
     void this.continue_();
   }
+  /** Continue must feel instant: create the request with the New-app default
+   *  (ADR 0023) and navigate straight to the basics — classification and file
+   *  uploads catch up in the background. */
   private async continue_() {
     this.saving.set(true);
     try {
-      // classify once (ADR 0023): the guess seeds the Track chip; low confidence opens
-      // the type cards in Basics. Degrades to new/low-confidence if the call fails.
       if (!this.draft.type) {
-        try {
-          const c = await firstValueFrom(this.api.classify(this.draft.desc.trim()));
-          this.draft.type = c.type;
-          this.draft.typeConfidence = c.confidence;
-        } catch {
-          this.draft.type = 'new';
-          this.draft.typeConfidence = 0;
-        }
+        this.draft.type = 'new';
+        this.draft.typeConfidence = 0; // provisional — background classify may refine it
       }
       const id = await this.draft.save();
-      await this.draft.uploadPending(id);
-      this.router.navigateByUrl(`/submit/${id}/interview`);
+      void this.finishInBackground(id);
+      await this.router.navigateByUrl(`/submit/${id}/interview`);
     } finally {
       this.saving.set(false);
+    }
+  }
+
+  /** classify once (ADR 0023): the guess seeds the Track chip until the basics
+   *  wizard asks the type question. Runs after navigation; the user's own pick
+   *  (typeConfidence 1) always wins over a late guess, and a failed call just
+   *  leaves the provisional New app standing. */
+  private async finishInBackground(id: number) {
+    void this.draft.uploadPending(id);
+    if (this.draft.typeConfidence !== 0) return; // type came from a restored draft
+    try {
+      const c = await firstValueFrom(this.api.classify(this.draft.desc.trim()));
+      if (this.draft.requestId !== id || this.draft.typeConfidence !== 0) return;
+      this.draft.type = c.type;
+      this.draft.typeConfidence = c.confidence;
+      if (c.type !== 'new') await this.draft.save(); // PATCH the refined type
+    } catch {
+      /* provisional 'new' stands */
     }
   }
 }

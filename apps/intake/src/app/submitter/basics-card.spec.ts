@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,12 +7,14 @@ import { Session } from '../core/session.service';
 import { BasicsCard, basicsAnswered } from './basics-card';
 import { IntakeDraft } from './intake-draft.service';
 
-function section(root: HTMLElement, heading: string): HTMLElement {
-  const match = [...root.querySelectorAll<HTMLElement>('.sec')].find(
-    (candidate) => candidate.querySelector('h2')?.textContent?.trim() === heading,
-  );
-  if (!match) throw new Error(`Missing section: ${heading}`);
-  return match;
+/** jump the wizard to the named question and return its rendered step */
+function showStep(fixture: ComponentFixture<BasicsCard>, key: string): HTMLElement {
+  const card = fixture.componentInstance;
+  const i = card.steps().indexOf(key);
+  if (i === -1) throw new Error(`No such question for this type: ${key}`);
+  card.goStep(i);
+  fixture.detectChanges();
+  return (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.qstep')!;
 }
 
 describe('BasicsCard', () => {
@@ -52,6 +54,7 @@ describe('BasicsCard', () => {
     draft = TestBed.inject(IntakeDraft);
     draft.requestId = 71;
     draft.type = 'new';
+    draft.typeConfidence = 0.6; // inferred, not an explicit pick — the wizard starts on Type
   });
 
   function render(type: 'bug' | 'enh' | 'new' | 'other' = 'new') {
@@ -64,7 +67,6 @@ describe('BasicsCard', () => {
   }
 
   it('offers the four plain-language request types as cards', () => {
-    draft.typeConfidence = 0.3; // unsure → cards open so we can read them
     const root = render().nativeElement as HTMLElement;
     const choices = [...root.querySelectorAll('.typegrid .tcard .tl')].map((b) =>
       b.textContent?.trim(),
@@ -78,26 +80,51 @@ describe('BasicsCard', () => {
     ]);
   });
 
-  it('collapses the type cards behind the chip when confident', () => {
-    draft.typeConfidence = 0.9;
+  it('shows one question at a time, starting on the type question', () => {
+    const root = render().nativeElement as HTMLElement;
+
+    expect(root.querySelectorAll('.qstep')).toHaveLength(1);
+    expect(root.querySelector('.qstep h2')?.textContent?.trim()).toBe(
+      'What kind of request is this?',
+    );
+  });
+
+  it('never pre-selects a type card from the inferred type', () => {
+    draft.typeConfidence = 0.95; // even a confident guess is not a selection
     const root = render('bug').nativeElement as HTMLElement;
-    expect(root.querySelector('sf-track-chip')).not.toBeNull();
-    expect(root.querySelector('.typegrid')).toBeNull(); // cards collapsed
+
+    expect(root.querySelector('.qstep h2')?.textContent?.trim()).toBe(
+      'What kind of request is this?',
+    );
+    expect(root.querySelector('.tcard.sel')).toBeNull();
   });
 
-  it('opens the type cards when the guess is unsure', () => {
-    draft.typeConfidence = 0.3;
-    const root = render('other').nativeElement as HTMLElement;
-    expect(root.querySelector('.typegrid')).not.toBeNull(); // cards open
-  });
-
-  it('opens the cards when the chip is clicked', () => {
-    draft.typeConfidence = 0.9;
+  it('requires an explicit pick even on a hydrated reload', () => {
+    draft.typeConfidence = 1; // reload hydration — the stored type is still only inferred
     const fixture = render('bug');
+    const step = showStep(fixture, 'type');
+
+    expect(step.querySelector('.tcard.sel')).toBeNull();
+    // and the wizard starts here: forward dots stay locked until the pick
+    const dots = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.wiz__dots .dot',
+      ),
+    ];
+    expect(dots[1].disabled).toBe(true);
+  });
+
+  it('advances to the next question when a type card is clicked', () => {
+    const fixture = render();
     const root = fixture.nativeElement as HTMLElement;
-    root.querySelector<HTMLButtonElement>('sf-track-chip button')!.click();
+    const newApp = [...root.querySelectorAll<HTMLButtonElement>('.tcard')].find((c) =>
+      c.textContent?.includes('Build a new app'),
+    )!;
+
+    newApp.click();
     fixture.detectChanges();
-    expect(root.querySelector('.typegrid')).not.toBeNull();
+
+    expect(root.querySelector('.qstep h2')?.textContent?.trim()).toBe('Who is this for?');
   });
 
   it.each([
@@ -105,24 +132,44 @@ describe('BasicsCard', () => {
     ['enh', ['Which app is this about?', 'Who benefits?', 'What would winning look like?']],
     ['new', ['Who is this for?', 'What is the business value?']],
     ['other', ['Who is this for?', 'What would a good outcome be?']],
-  ] as const)('tailors the sections for %s requests', (type, headings) => {
-    const root = render(type).nativeElement as HTMLElement;
+  ] as const)('tailors the questions for %s requests', (type, headings) => {
+    const fixture = render(type);
+    const steps = fixture.componentInstance.steps();
 
-    expect(section(root, 'What kind of request is this?')).toBeTruthy();
-    for (const heading of headings) expect(section(root, heading)).toBeTruthy();
+    expect(steps[0]).toBe('type');
+    const seen = steps.slice(1).map((key) => showStep(fixture, key).querySelector('h2')!);
+    expect(seen.map((h) => h.textContent?.trim())).toEqual(headings);
   });
 
-  it('keeps later sections locked until the earlier ones are answered', () => {
+  it('keeps forward dots disabled until the earlier questions are answered', () => {
     const root = render().nativeElement as HTMLElement;
+    const dots = [...root.querySelectorAll<HTMLButtonElement>('.wiz__dots .dot')];
 
-    expect(section(root, 'Who is this for?').classList).not.toContain('locked');
-    expect(section(root, 'What is the business value?').classList).toContain('locked');
+    expect(dots).toHaveLength(3); // type · audience · impact
+    expect(dots[0].disabled).toBe(false);
+    expect(dots[1].disabled).toBe(true);
+    expect(dots[2].disabled).toBe(true);
+  });
+
+  it('auto-advances to the next question once a ring is picked (no Next button)', () => {
+    const fixture = render();
+    const step = showStep(fixture, 'aud');
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('.wiz__next')).toBeNull();
+
+    step.querySelectorAll<SVGCircleElement>('.ring-band')[2].dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+
+    expect(root.querySelector('.qstep h2')?.textContent?.trim()).toBe(
+      'What is the business value?',
+    );
   });
 
   it('places a free-text affected input after the blast-radius options', () => {
     draft.reach = 'team';
     const fixture = render();
-    const affected = section(fixture.nativeElement, 'Who is this for?');
+    const affected = showStep(fixture, 'aud');
     const options = affected.querySelector('.legend')!;
     const input = affected.querySelector<HTMLInputElement>('input.aud-free');
 
@@ -140,23 +187,25 @@ describe('BasicsCard', () => {
   it('maps the outer blast-radius ring onto the wider reach value', () => {
     draft.reach = 'me';
     const fixture = render();
-    const affected = section(fixture.nativeElement, 'Who is this for?');
+    const affected = showStep(fixture, 'aud');
     const legend = [...affected.querySelectorAll<HTMLButtonElement>('.legend button')];
 
     legend.at(-1)!.click();
     fixture.detectChanges();
 
     expect(draft.reach).toBe('wider');
-    // legacy site/network drafts still light the outer band
+    // legacy site/network drafts still light the outer band (the answer
+    // auto-advanced the wizard, so step back before re-reading the legend)
     draft.reach = 'network';
-    fixture.detectChanges();
-    expect(legend.at(-1)!.classList).toContain('on');
+    const reopened = showStep(fixture, 'aud');
+    const outer = [...reopened.querySelectorAll<HTMLButtonElement>('.legend button')].at(-1)!;
+    expect(outer.classList).toContain('on');
   });
 
   it('reveals the estimate input only after a payoff card is picked', () => {
     draft.reach = 'team';
     const fixture = render();
-    const impact = section(fixture.nativeElement, 'What is the business value?');
+    const impact = showStep(fixture, 'impact');
 
     expect(impact.querySelector('.imp-est')).toBeNull();
 
@@ -181,8 +230,8 @@ describe('BasicsCard', () => {
   });
 
   it('lets a bug reporter provide a page link or add a screenshot', () => {
-    const root = render('bug').nativeElement as HTMLElement;
-    const evidence = section(root, 'Show us where it happens');
+    const fixture = render('bug');
+    const evidence = showStep(fixture, 'evidence');
 
     expect(evidence.querySelector('input[inputmode="url"]')?.getAttribute('placeholder')).toBe(
       'Paste a page link',
@@ -214,7 +263,7 @@ describe('BasicsCard', () => {
     draft.appName = 'Atlas';
     draft.bugFreq = 'Every time';
     const fixture = render('bug');
-    const evidence = section(fixture.nativeElement, 'Show us where it happens');
+    const evidence = showStep(fixture, 'evidence');
     const pasted = new File(['pixels'], 'pasted-screenshot.png', { type: 'image/png' });
     const event = new Event('paste', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'clipboardData', { value: { files: [pasted] } });

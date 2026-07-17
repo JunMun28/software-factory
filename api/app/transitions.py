@@ -54,6 +54,18 @@ GATE_APPROVE_SPEC = "approve_spec"
 GATE_APPROVE_MERGE = "approve_merge"
 GATE_APPROVE_DEPLOY = "approve_deploy"  # B4: the second human gate (spec §4.10)
 
+# Typed categories for a human's gate reject (self-harness analysis 2026-07-16):
+# the small fixed vocabulary that makes rejects bucketable instead of free-text
+# noise. schemas.RejectGateIn mirrors this — test_reject_gate pins the parity.
+GATE_REJECT_CODES = (
+    "wrong_behavior",
+    "spec_mismatch",
+    "quality",
+    "tests_inadequate",
+    "security",
+    "other",
+)
+
 # The audit actions a Loss resolves against (ADR 0006): the newest of these rows
 # identifies the winner of a consumed precondition.
 DECISIVE_ACTIONS = (
@@ -64,6 +76,8 @@ DECISIVE_ACTIONS = (
     "deploy_claimed",
     "approved_deploy",
     "deploy_approval_failed",
+    "rejected_merge",
+    "rejected_deploy",
     "sent_back",
     "retried",
     "taken_over",
@@ -208,6 +222,35 @@ def _ev_send_back_to_stage(db: Session, req: Request, actor: Actor, params: dict
          payload={"Ref": req.ref, "target_stage": params["stage"], "reason": params.get("reason")})
 
 
+def _reject_gate_effects(p: dict) -> dict:
+    """A human's structured NO at a gate: consume the gate, escalate with the
+    typed reason, and — for the MERGE gate — stage the feedback for the next
+    agent attempt. A deploy reject stages nothing: the work is already merged,
+    so no agent attempt can ever consume it (send-back is pre-merge only);
+    the reason still lives in the audit + gate_event evidence."""
+    effects = {
+        "gate": None,
+        "needs_human": True,
+        "needs_human_reason":
+            f"{p['label'].capitalize()} gate rejected ({p['reason_code']}): {p['reason']}"[:300],
+    }
+    if p["label"] == "merge":
+        effects["pending_feedback"] = (
+            f"A human rejected the {p['label']} gate (category: {p['reason_code']}). "
+            f"Their feedback:\n{p['reason']}"
+        )
+    return effects
+
+
+def _ev_reject_gate(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    emit(db, req, "gate_event",
+         f"{params['label'].capitalize()} rejected by {actor.name} — needs rework ({params['reason_code']})",
+         body=params.get("reason"), actor=actor.name, bot=False, broadcast=True,
+         payload={"gate": params["gate"], "Ref": req.ref,
+                  "reason_code": params["reason_code"],
+                  "reason": (params.get("reason") or "")[:2000]})
+
+
 def _ev_escalate(db: Session, req: Request, actor: Actor, params: dict) -> None:
     reason = params["reason"]
     emit(db, req, "escalation", f"Escalated — needs a human ({reason[:140]})",
@@ -277,6 +320,32 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
         audit_action="merge_claimed",
         replay_actions=("merge_claimed", "approved_merge", "merge_approval_failed"),
         conflict_detail=lambda r: f"Cannot merge a {r.status} request",
+    ),
+    Transition(
+        # A human's structured "no" at the merge gate (self-harness analysis
+        # 2026-07-16): consumes the gate like claim_merge would, escalates with
+        # a typed reason_code, and stages pending_feedback so the reason
+        # reaches the next agent attempt like gate feedback does.
+        name="reject_merge_gate",
+        pre=Pre(status_in=(APPROVED,), gate=GATE_APPROVE_MERGE),
+        effects=_reject_gate_effects,
+        events=_ev_reject_gate,
+        audit_action="rejected_merge",
+        audit_note=lambda p: f"({p['reason_code']}) {p['reason']}",
+        replay_actions=("rejected_merge",),
+        conflict_detail=lambda r: f"Cannot reject the merge gate (status={r.status!r}, gate={r.gate!r})",
+    ),
+    Transition(
+        # The deploy-gate twin. kube_runner._deploy_rejected shields the deploy
+        # driver afterwards: a Retry re-raises this gate, never a silent deploy.
+        name="reject_deploy_gate",
+        pre=Pre(status_in=(APPROVED,), gate=GATE_APPROVE_DEPLOY),
+        effects=_reject_gate_effects,
+        events=_ev_reject_gate,
+        audit_action="rejected_deploy",
+        audit_note=lambda p: f"({p['reason_code']}) {p['reason']}",
+        replay_actions=("rejected_deploy",),
+        conflict_detail=lambda r: f"Cannot reject the deploy gate (status={r.status!r}, gate={r.gate!r})",
     ),
     Transition(
         # B4 (machine, epoch-fenced by the caller): after a real merge, the
@@ -395,9 +464,16 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
     Transition(
         name="send_back_to_stage",
         pre=Pre(needs_human=True),
+        # the operator's reason now reaches the re-run agent as pending_feedback
+        # (it was recorded but never injected before); a newer reason replaces
+        # an earlier staged one — the latest human instruction wins
         effects=lambda p: {"stage": p["stage"], "status": APPROVED, "gate": None,
                            "needs_human": False, "needs_human_reason": None,
-                           "sim_step": 0, "stage_entered_at": utcnow()},
+                           "sim_step": 0, "stage_entered_at": utcnow(),
+                           **({"pending_feedback":
+                               f"A human sent this work back to the {p['stage']} stage. "
+                               f"Their reason:\n{p['reason']}"}
+                              if p.get("reason") else {})},
         events=_ev_send_back_to_stage,
         audit_action="sent_back_to_stage",
         audit_note=lambda p: p.get("reason"),

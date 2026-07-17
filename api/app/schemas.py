@@ -5,6 +5,15 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class AppDeploy(BaseModel):
+    """One digest that was (or is) live for an app — read from the event log."""
+    digest: str
+    url: str
+    at: datetime
+    ref: str | None = None
+    rollback: bool = False
+
+
 class AppOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -16,6 +25,13 @@ class AppOut(BaseModel):
     muted: bool
     open_requests: int = 0
     unread: bool = False
+    # the fleet answer: what is live right now (None = never deployed / sim mode)
+    last_deploy: AppDeploy | None = None
+
+
+class RollbackIn(BaseModel):
+    digest: str = Field(min_length=8, max_length=200)
+    operator_id: int
 
 
 class AppIn(BaseModel):
@@ -33,6 +49,7 @@ class OperatorOut(BaseModel):
     initials: str
     hue: str
     email: str
+    role: str = "admin"
     created_at: datetime
 
 
@@ -41,6 +58,7 @@ class OperatorIn(BaseModel):
     initials: str = Field(min_length=1, max_length=4)
     hue: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     email: str = Field(min_length=3, max_length=200)
+    role: Literal["admin", "viewer"] = "admin"
 
 
 class AppSubscriptionOut(BaseModel):
@@ -220,6 +238,15 @@ class MissionRecent(BaseModel):
     decided_at: datetime
 
 
+class MissionStats(BaseModel):
+    """Factory gauges — derived from the audit trail and event log per poll,
+    never stored. None → not enough history to say anything honest."""
+    cycle_median_h: float | None
+    gate_wait_median_h: float | None
+    shipped_7d: int
+    oldest_gate_h: float | None
+
+
 class MissionOut(BaseModel):
     """One poll for the Mission control home (spec §6)."""
     gates: list[MissionGate]
@@ -227,6 +254,7 @@ class MissionOut(BaseModel):
     stalled: list[RequestOut]
     human_owned: list[MissionHumanOwned]
     recent: list[MissionRecent]
+    stats: MissionStats
     cursor: int
 
 
@@ -374,6 +402,19 @@ class SendBackToStageIn(BaseModel):
     operator_id: int
     stage: str = Field(min_length=1, max_length=16)
     reason: str = Field(min_length=1, max_length=4000)
+
+
+class RejectGateIn(BaseModel):
+    """A human's structured 'no' at the merge/deploy gate: typed category +
+    required free-text reason (mirrors transitions.GATE_REJECT_CODES).
+    Max 1800: the reason must survive the SF_GATE_FEEDBACK env cap (2000)
+    intact when it rides into the next agent attempt."""
+    operator_id: int
+    reason_code: Literal[
+        "wrong_behavior", "spec_mismatch", "quality",
+        "tests_inadequate", "security", "other",
+    ]
+    reason: str = Field(min_length=1, max_length=1800)
 
 
 class SteerIn(BaseModel):

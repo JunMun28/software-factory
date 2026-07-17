@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 
 from . import (
     deploy_manifests,
+    harness,
     intents,
     settings,
     simulator,
@@ -45,6 +46,7 @@ from . import (
     verification,
     workspace,
 )
+from .agent_exec import agent_cli
 from .events import emit
 from .kube_client import KubeClient
 from .kube_jobs import (
@@ -293,8 +295,11 @@ class KubeJobRunner:
         moved: list[str],
     ) -> bool:
         if phase == "succeeded" and envelope is None:
-            # log/envelope-capture failure is its own escalation reason (spec §5)
+            # log/envelope-capture failure is its own escalation reason (spec §5);
+            # typed on the row too so the pressure report buckets it (capture_miss)
             sj.status = "infra"
+            sj.envelope = {"outcome": "infra",
+                           "reason": f"Stage output could not be captured for {sj.job_name} — envelope missing"}
             db.commit()
             self._escalate(
                 db,
@@ -615,6 +620,27 @@ class KubeJobRunner:
         self, db: Session, req: Request, moved: list[str]
     ) -> None:
         slug = self._app_slug(req)
+        if self._deploy_rejected(db, req):
+            # a human said NO at this deploy gate: never drive a build, and
+            # never tear down — nothing from THIS request is live yet, and the
+            # slug-scoped teardown could delete a PREVIOUS request's live app
+            # (OPERATE-02). The rejected state (stage=deploy, gate=None) is
+            # otherwise indistinguishable from a released begin_deploy, so
+            # after a Retry clears the escalation the gate is re-raised: the
+            # human decision comes back, never a silent deploy.
+            if req.status == transitions.APPROVED and not req.needs_human:
+                res = transitions.apply_committed(
+                    db, req, "raise_deploy_gate", actor=FACTORY,
+                    params={}, epoch=get_elector().epoch,
+                )
+                if isinstance(res, transitions.Loss):
+                    log.info("%s: deploy-gate re-raise after reject lost (%s)",
+                             req.ref, res.detail)
+                else:
+                    moved.append(
+                        f"{req.ref}: deploy gate re-raised — last human decision was a reject"
+                    )
+            return
         if req.status != transitions.APPROVED or req.needs_human:
             self._teardown_app(db, req, slug)
             return
@@ -656,6 +682,23 @@ class KubeJobRunner:
             return
         if deploy is not None and deploy.status == "running":
             self._observe_deploy(db, req, deploy, slug, moved)
+
+    @staticmethod
+    def _deploy_rejected(db: Session, req: Request) -> bool:
+        """True when the LAST human decision at the deploy gate was a reject —
+        i.e. no deploy claim/approval has superseded a rejected_deploy audit."""
+        last = db.scalar(
+            select(AuditEvent)
+            .where(
+                AuditEvent.request_id == req.id,
+                AuditEvent.action.in_(
+                    ("deploy_claimed", "approved_deploy", "rejected_deploy")
+                ),
+            )
+            .order_by(AuditEvent.id.desc())
+            .limit(1)
+        )
+        return last is not None and last.action == "rejected_deploy"
 
     def _spawn_build(
         self, db: Session, req: Request, slug: str, moved: list[str]
@@ -1208,6 +1251,18 @@ class KubeJobRunner:
         moved: list[str],
     ) -> bool:
         name = job_name(req.ref, stage, attempt)
+        # a human gate-reject/send-back reason rides into this attempt exactly
+        # like gate feedback does — but it is consumed only AFTER the Job that
+        # carries it exists: a lost CAS, workspace-prep failure, or Job-create
+        # failure keeps it staged for the re-spawn (review finding 2026-07-16;
+        # gate feedback needs no such care — _feedback() re-derives it from
+        # durable envelopes on every spawn)
+        human = (req.pending_feedback or "").strip()
+        if human:
+            note = f"Operator feedback on the previous attempt — fix this:\n{human}"
+            # human note FIRST: the manifest env is capped at _FEEDBACK_CAP and
+            # truncates the tail — the human instruction must survive the cut
+            feedback = f"{note}\n\n{feedback}" if feedback else note
         # the fenced CAS + intent + StageJob row + heartbeat event land in ONE
         # transaction (spec §3.3); the external create happens after commit
         res = transitions.apply(
@@ -1233,6 +1288,7 @@ class KubeJobRunner:
             role="stage",
             job_name=name,
             epoch=get_elector().epoch,
+            harness_version=harness.HARNESS_VERSION,
             deadline_at=utcnow() + timedelta(seconds=settings.STAGE_WALL_CLOCK),
         )
         db.add(row)
@@ -1249,6 +1305,11 @@ class KubeJobRunner:
                 "job": name,
                 "attempt": attempt,
                 "with_feedback": bool(feedback),
+                # durable lineage: the Job env (SF_CLI) dies with the pod, and
+                # the CLI is deliberately outside HARNESS_VERSION — record it
+                # here so runs remain attributable after the Job is deleted
+                "cli": agent_cli(),
+                "harness_version": harness.HARNESS_VERSION,
             },
         )
         db.commit()
@@ -1258,6 +1319,10 @@ class KubeJobRunner:
             detail = workspace.sanitize_github_git_error(str(exc))[:300]
             row.status = "infra"
             row.completed_at = utcnow()
+            # keep the cause on the row itself so the pressure report can type
+            # it (workspace_infra), not just the escalation event
+            row.envelope = {"outcome": "infra",
+                            "reason": f"Workspace preparation failed before {name}: {detail}"}
             intents.fail(db, f"spawn:{name}", {"error": detail})
             self._escalate(
                 db,
@@ -1265,7 +1330,7 @@ class KubeJobRunner:
                 f"Workspace preparation failed before {name}: {detail}",
             )
             return False
-        return self._create(
+        created = self._create(
             db,
             req,
             row,
@@ -1278,6 +1343,13 @@ class KubeJobRunner:
             ),
             moved,
         )
+        if created and human and row.job_uid:
+            # consume only when a real Job object exists (uid recorded) — the
+            # 409-adopt path can return True with no live object after a race,
+            # and that attempt re-runs as infra with the feedback re-merged
+            req.pending_feedback = None  # delivered to exactly this attempt's pod
+            db.commit()
+        return created
 
     def _spawn_gate(
         self,
@@ -1315,6 +1387,7 @@ class KubeJobRunner:
                 role="gate",
                 job_name=name,
                 epoch=get_elector().epoch,
+                harness_version=stage_row.harness_version if stage_row else None,
                 deadline_at=utcnow() + timedelta(seconds=settings.GATE_WALL_CLOCK),
                 envelope={"outcome": "fail", "reason": reason},
             )
@@ -1359,6 +1432,10 @@ class KubeJobRunner:
             role="gate",
             job_name=name,
             epoch=get_elector().epoch,
+            # a gate verdict judges the STAGE attempt's work, so it inherits
+            # that row's harness lineage — this is what lets the pressure
+            # report attribute typed gate causes to a harness version
+            harness_version=stage_row.harness_version if stage_row else None,
             deadline_at=utcnow() + timedelta(seconds=settings.GATE_WALL_CLOCK),
         )
         db.add(row)

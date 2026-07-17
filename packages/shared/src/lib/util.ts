@@ -145,7 +145,8 @@ export interface EvidenceBit {
 /** The evidence strip's bits (spec §6): spec gates show grounding, merge gates show
  *  tests/diff/reviewer. null or a verification-less merge gate → "no evidence recorded". */
 export function evidenceBits(ev: Evidence | null): EvidenceBit[] {
-  const none: EvidenceBit[] = [{ text: 'no evidence recorded', tone: '' }];
+  // Absence of evidence at an irreversible gate is itself a loud fact.
+  const none: EvidenceBit[] = [{ text: 'no evidence recorded', tone: 'red' }];
   if (!ev) return none;
   if (ev.kind === 'spec') {
     const bits: EvidenceBit[] = [

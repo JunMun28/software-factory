@@ -1,4 +1,4 @@
-import { Component, HostListener, computed, inject, input, signal } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, input, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { Api, Autofocus, Poll, Theme } from '@sf/shared';
 
@@ -26,11 +26,15 @@ import { Session } from '../core/session.service';
           <span
             class="runner-badge"
             [class.agent]="mode.runner === 'agent'"
-            [attr.aria-label]="runnerLabel()"
-            [title]="runnerLabel()"
+            [class.stalled]="tickStalled()"
+            [attr.aria-label]="runnerLabel() + (tickStalled() ? ', tick stalled' : '')"
+            [title]="tickTitle()"
             aria-live="polite"
           >
-            <i aria-hidden="true"></i><span class="runner-label">{{ runnerLabel() }}</span>
+            <i aria-hidden="true"></i
+            ><span class="runner-label">{{
+              tickStalled() ? 'Tick stalled ' + tickAgeLabel() : runnerLabel()
+            }}</span>
           </span>
         }
         <button
@@ -180,6 +184,14 @@ import { Session } from '../core/session.service';
     .runner-badge.agent i {
       background: var(--accent);
     }
+    .runner-badge.stalled {
+      color: var(--red-tx);
+      background: var(--red-bg);
+      border-color: var(--red-line);
+    }
+    .runner-badge.stalled i {
+      background: var(--red);
+    }
     .cmd,
     .theme {
       color: var(--muted);
@@ -316,12 +328,39 @@ export class ConsoleShell {
   paletteOpen = signal(false);
   paletteIndex = signal(0);
   query = signal('');
-  runnerMode = signal<{ runner: 'agent' | 'sim'; cli: 'codex' | 'claude' } | null>(null);
+  runnerMode = signal<{
+    runner: 'agent' | 'sim' | 'kube';
+    cli: 'codex' | 'claude';
+    tick_age_s?: number | null;
+  } | null>(null);
   runnerLabel = computed(() => {
     const mode = this.runnerMode();
     if (!mode) return '';
     if (mode.runner === 'sim') return 'Simulated';
+    if (mode.runner === 'kube') return 'Agents: Kube jobs';
     return mode.cli === 'claude' ? 'Agents: Claude Code' : 'Agents: Codex';
+  });
+  /** The tick loop drives sim/kube; two minutes of silence means the line is frozen. */
+  tickStalled = computed(() => {
+    const mode = this.runnerMode();
+    return !!mode && mode.runner !== 'agent' && (mode.tick_age_s ?? 0) > 120;
+  });
+  tickAgeLabel = computed(() => {
+    const age = this.runnerMode()?.tick_age_s;
+    return age == null
+      ? ''
+      : age < 3600
+        ? `${Math.round(age / 60)}m`
+        : `${Math.round(age / 3600)}h`;
+  });
+  tickTitle = computed(() => {
+    const mode = this.runnerMode();
+    if (!mode) return '';
+    if (mode.runner === 'agent') return this.runnerLabel();
+    const age = mode.tick_age_s;
+    return age == null
+      ? this.runnerLabel() + ' · no tick yet'
+      : this.runnerLabel() + ` · last tick ${Math.round(age)}s ago`;
   });
   private gPending = false;
   private gTimer: ReturnType<typeof setTimeout> | null = null;
@@ -341,9 +380,16 @@ export class ConsoleShell {
 
   constructor() {
     this.poll.start();
-    this.api
-      .health()
-      .subscribe((health) => this.runnerMode.set({ runner: health.runner, cli: health.cli }));
+    effect(() => {
+      this.poll.version();
+      this.api.health().subscribe((health) =>
+        this.runnerMode.set({
+          runner: health.runner,
+          cli: health.cli,
+          tick_age_s: health.tick_age_s,
+        }),
+      );
+    });
   }
 
   toggleTheme() {

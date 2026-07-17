@@ -72,12 +72,21 @@ const gate = (over: Partial<FactoryRequest> = {}): MissionGate => ({
   },
 });
 
+const stats = (over: Partial<MissionOut['stats']> = {}): MissionOut['stats'] => ({
+  cycle_median_h: null,
+  gate_wait_median_h: null,
+  shipped_7d: 0,
+  oldest_gate_h: null,
+  ...over,
+});
+
 const mission = (over: Partial<MissionOut> = {}): MissionOut => ({
   gates: [],
   runs: [],
   stalled: [],
   human_owned: [],
   recent: [],
+  stats: stats(),
   cursor: 0,
   ...over,
 });
@@ -106,6 +115,7 @@ async function renderContent(m: MissionOut, requests: FactoryRequest[] = []) {
   const fixture: ComponentFixture<FloorContent> = TestBed.createComponent(FloorContent);
   fixture.componentRef.setInput('mission', m);
   fixture.componentRef.setInput('requests', requests);
+  fixture.componentRef.setInput('queue', deriveQueue(m));
   fixture.detectChanges();
   return fixture;
 }
@@ -243,14 +253,32 @@ describe('Decision queue derivation', () => {
       }),
     );
     expect(queue.map((item) => item.headline)).toEqual(['Approve to build', 'Approve to deploy']);
-    expect(queue[1].consequence).toContain('deploys Payroll');
     expect(queue[1].facts.map((fact) => fact.text)).toContain('42/42 tests pass');
   });
 
   it('surfaces the deploy gate (Plan B4) with go-live wording', () => {
     const queue = deriveQueue(mission({ gates: [gate({ id: 3, gate: 'approve_deploy' })] }));
     expect(queue[0].headline).toBe('Approve to go live');
-    expect(queue[0].consequence).toContain('builds and deploys');
+  });
+
+  it('orders gates by priority, then longest-waiting first (gap #3)', () => {
+    const queue = deriveQueue(
+      mission({
+        gates: [
+          gate({ id: 1, priority: 'Normal', stage_entered_at: '2026-07-11T01:00:00Z' }),
+          gate({ id: 2, priority: 'Critical', stage_entered_at: '2026-07-11T03:00:00Z' }),
+          gate({ id: 3, priority: 'Normal', stage_entered_at: '2026-07-10T01:00:00Z' }),
+        ],
+      }),
+    );
+    expect(queue.map((item) => item.request.id)).toEqual([2, 3, 1]);
+  });
+
+  it('carries an aging signal so old gates read loud', () => {
+    const old = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+    const queue = deriveQueue(mission({ gates: [gate({ stage_entered_at: old })] }));
+    expect(queue[0].aged).toBe(true);
+    expect(queue[0].age).toBeTruthy();
   });
 
   it('orders gates before stalled before human-owned', () => {
@@ -287,7 +315,7 @@ describe('Overview rendering', () => {
     expect(row.textContent).toContain('Approve to deploy');
     expect(row.textContent).toContain('42/42 tests pass');
     expect(row.textContent).toContain('diff +214 −38 · 6 files');
-    expect(row.textContent).toContain('Approving merges to main and deploys Payroll.');
+    expect(row.textContent).toContain('waiting');
     expect(row.textContent).toContain('Approve');
     expect(row.textContent).toContain('Send back');
   });
@@ -338,21 +366,15 @@ describe('Overview rendering', () => {
     expect(caps[1]).toContain('opens by merge approval');
   });
 
-  it('counts shipped merges in the header pulse', async () => {
+  it('renders the server-computed gauges in the header pulse', async () => {
     const fixture = await renderContent(
-      mission({
-        recent: [
-          {
-            request: request({ status: 'done' }),
-            outcome: 'approved_merge',
-            decided_by: 'Avery Stone',
-            decided_at: '2026-07-11T02:00:00Z',
-          },
-        ],
-      }),
+      mission({ stats: stats({ shipped_7d: 1, cycle_median_h: 52, gate_wait_median_h: 4.2 }) }),
       [],
     );
-    expect(fixture.nativeElement.textContent).toContain('1 shipped this week');
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('1 shipped this week');
+    expect(text).toContain('median cycle 2d');
+    expect(text).toContain('gates answered in ~4h');
   });
 });
 

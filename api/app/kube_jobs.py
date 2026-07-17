@@ -21,7 +21,7 @@ log transfer failures remain best-effort.
 import json
 import re
 
-from . import settings, workspace
+from . import harness, settings, workspace
 from .agent_exec import agent_cli
 
 
@@ -199,6 +199,9 @@ def stage_job_manifest(
         "SF_ROLE": "stage",
         "SF_CLI": agent_cli(),
         "SF_MODEL": _agent_model(),
+        # lineage stamp (forensics from inside the pod); the durable record
+        # is the StageJob.harness_version column set at spawn
+        "SF_HARNESS_VERSION": harness.HARNESS_VERSION,
     }
     if feedback:
         env["SF_GATE_FEEDBACK"] = feedback[:_FEEDBACK_CAP]

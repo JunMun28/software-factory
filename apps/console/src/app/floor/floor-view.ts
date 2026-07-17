@@ -178,15 +178,44 @@ export interface QueueItem {
   evidence: Evidence | null;
   /** gate rows only: what an approval unlocks, in the admin's words */
   headline: string | null;
-  consequence: string | null;
   facts: EvidenceBit[];
   /** owned rows only */
   owner: string | null;
+  /** time waiting at this gate/stage — the queue's aging signal */
+  age: string | null;
+  /** waited past a day: escalate the row visually */
+  aged: boolean;
 }
 
+/** Urgency captured at intake finally orders the queue (gap #3). */
+const PRIORITY_RANK: Record<string, number> = {
+  critical: 0,
+  urgent: 0,
+  high: 1,
+  normal: 2,
+  low: 3,
+};
+
+const AGED_AFTER_MS = 24 * 60 * 60 * 1000;
+
+function queueMeta(r: FactoryRequest): { age: string | null; aged: boolean; entered: number } {
+  const entered = r.stage_entered_at ? Date.parse(r.stage_entered_at) : 0;
+  return {
+    age: r.stage_entered_at ? timeAgo(r.stage_entered_at) : null,
+    aged: entered > 0 && Date.now() - entered > AGED_AFTER_MS,
+    entered,
+  };
+}
+
+function priorityRank(r: FactoryRequest): number {
+  return PRIORITY_RANK[(r.priority || 'normal').toLowerCase()] ?? 2;
+}
+
+type Aging = QueueItem & { entered: number };
+
 export function deriveQueue(m: MissionOut): QueueItem[] {
-  const gates: QueueItem[] = m.gates.map((g) => ({
-    kind: 'gate',
+  const gates: Aging[] = m.gates.map((g) => ({
+    kind: 'gate' as const,
     request: g.request,
     evidence: g.evidence,
     headline:
@@ -195,43 +224,50 @@ export function deriveQueue(m: MissionOut): QueueItem[] {
         : g.request.gate === 'approve_merge'
           ? 'Approve to deploy'
           : 'Approve to build',
-    consequence:
-      g.request.gate === 'approve_deploy'
-        ? `builds and deploys ${g.request.app_name || 'the app'}`
-        : g.request.gate === 'approve_merge'
-          ? `merges to main and deploys ${g.request.app_name || 'the app'}`
-          : 'accepts the spec and starts architecture + build',
     facts: evidenceBits(g.evidence),
     owner: null,
+    ...queueMeta(g.request),
   }));
-  const stalled: QueueItem[] = m.stalled.map((request) => ({
-    kind: 'stalled',
+  // Highest priority first; ties go to whoever has waited longest.
+  gates.sort((a, b) => priorityRank(a.request) - priorityRank(b.request) || a.entered - b.entered);
+  const stalled: Aging[] = m.stalled.map((request) => ({
+    kind: 'stalled' as const,
     request,
     evidence: null,
     headline: null,
-    consequence: null,
     facts: [],
     owner: null,
+    ...queueMeta(request),
   }));
-  const owned: QueueItem[] = m.human_owned.map((o) => ({
-    kind: 'owned',
+  const owned: Aging[] = m.human_owned.map((o) => ({
+    kind: 'owned' as const,
     request: o.request,
     evidence: null,
     headline: null,
-    consequence: null,
     facts: [],
     owner: o.taken_over_by,
+    ...queueMeta(o.request),
   }));
-  return [...gates, ...stalled, ...owned];
+  return [...gates, ...stalled, ...owned].map(({ entered: _entered, ...item }) => item);
+}
+
+/** Compact hours for the pulse line: <1h · 7h · 3d. */
+export function fmtHours(h: number): string {
+  if (h < 1) return '<1h';
+  if (h < 48) return `${Math.round(h)}h`;
+  return `${Math.round(h / 24)}d`;
 }
 
 /** Header math: the one-line pulse of the factory. */
 export function deriveTallies(m: MissionOut, requests: FactoryRequest[]) {
   const open = requests.filter((r) => r.status !== 'cancelled' && r.status !== 'done');
+  const stats = m.stats ?? null;
   return {
     open: open.length,
     deciding: m.gates.length,
     attention: m.stalled.length + m.human_owned.length,
-    shipped: m.recent.filter((r) => r.outcome === 'approved_merge').length,
+    shipped: stats?.shipped_7d ?? m.recent.filter((r) => r.outcome === 'approved_merge').length,
+    cycle: stats?.cycle_median_h != null ? fmtHours(stats.cycle_median_h) : null,
+    gateWait: stats?.gate_wait_median_h != null ? fmtHours(stats.gate_wait_median_h) : null,
   };
 }

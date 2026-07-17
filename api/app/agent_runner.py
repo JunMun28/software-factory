@@ -29,7 +29,7 @@ from typing import Callable
 
 from sqlalchemy.orm import Session
 
-from . import settings, transitions
+from . import harness, settings, transitions
 from .agent_exec import AgentResult, run_agent
 from .db import SessionLocal
 from .events import emit
@@ -194,7 +194,14 @@ class AgentRunner:
         _git(ws, "commit", "-q", "-m", message)
 
     def _stage_prompt(self, db: Session, req: Request, prompt: str) -> tuple[str, list[int]]:
-        """Carry pending operator notes into the next agent invocation."""
+        """Carry pending operator notes and gate-reject feedback into the next
+        agent invocation. pending_feedback is consumed by exactly one stage run
+        (mirroring SF_GATE_FEEDBACK's one-attempt scope on the kube path); the
+        null lands with the stage's next commit."""
+        feedback = (req.pending_feedback or "").strip()
+        if feedback:
+            prompt = f"{prompt}\n\nOperator feedback on the previous attempt — fix this:\n{feedback}"
+            req.pending_feedback = None
         notes = pending_steer_notes(db, req)
         if not notes:
             return prompt, []
@@ -233,13 +240,7 @@ class AgentRunner:
     def _architecture(self, db: Session, req: Request, ws: Path) -> bool:
         if not self._advance(db, req, "architecture"):
             return False
-        prompt, steer_ids = self._stage_prompt(
-            db, req,
-            "You are the architect stage of a software factory. Read SPEC.md and the code under src/. "
-            "Write PLAN.md: a short implementation plan — which functions in src/ change or get added, "
-            "what the public behavior must be, and which tests will prove it. Do NOT change any code. "
-            "Keep it under 40 lines. End by confirming PLAN.md is written.",
-        )
+        prompt, steer_ids = self._stage_prompt(db, req, harness.stage_prompt("architecture"))
         self._emit_step_boundary(db, req, step=1, of=1, label="Architecture agent started",
                                  acked_steer_ids=steer_ids)
         res = self.exec(
@@ -260,13 +261,7 @@ class AgentRunner:
     def _red(self, db: Session, req: Request, ws: Path) -> bool:
         if not self._advance(db, req, "build"):
             return False
-        prompt, steer_ids = self._stage_prompt(
-            db, req,
-            "You are the test-author stage. Read SPEC.md and PLAN.md. Write failing pytest tests under "
-            "tests/ ONLY (never touch src/) that pin the NEW behavior the spec demands. The existing "
-            "tests must stay green. Run pytest to confirm your new tests fail because the feature is "
-            "missing — assertion failures, not import errors.",
-        )
+        prompt, steer_ids = self._stage_prompt(db, req, harness.stage_prompt("red"))
         self._emit_step_boundary(db, req, step=1, of=2, label="RED test author started",
                                  acked_steer_ids=steer_ids)
         res = self.exec(
@@ -297,12 +292,7 @@ class AgentRunner:
 
     def _green(self, db: Session, req: Request, ws: Path) -> bool:
         frozen = _tests_hash(ws)
-        prompt, steer_ids = self._stage_prompt(
-            db, req,
-            "You are the implementer stage. Make the failing tests pass by editing src/ ONLY. You are "
-            "FORBIDDEN from editing anything under tests/ or any pytest configuration — a CI gate rejects "
-            "any change there. Read PLAN.md, implement, run pytest until the whole suite is green.",
-        )
+        prompt, steer_ids = self._stage_prompt(db, req, harness.stage_prompt("green"))
         self._emit_step_boundary(db, req, step=2, of=2, label="GREEN implementer started",
                                  acked_steer_ids=steer_ids)
         res = self.exec(
@@ -337,12 +327,15 @@ class AgentRunner:
         if not self._advance(db, req, "review"):
             return False
         diff = _git(ws, "diff", "main...HEAD", "--stat").stdout[-1500:]
+        # shared base + this runner's artifact contract: the pod path greps the
+        # verdict from stdout, the in-process gate checks REVIEW.md — so the
+        # exception to the base's no-modify rule is appended, never baked in.
         prompt, steer_ids = self._stage_prompt(
             db, req,
-            "You are the read-only reviewer stage. Review the work branch against SPEC.md and PLAN.md. "
-            f"The diff summary:\n{diff}\n"
-            "Write REVIEW.md: does the implementation honor the spec, are the tests meaningful, any risks. "
-            "Verdict line at the top: APPROVE or REQUEST-CHANGES. Do not modify src/ or tests/.",
+            f"{harness.stage_prompt('review')}\n\nThe diff summary:\n{diff}\n"
+            "In this runner, deliver the review by WRITING it to REVIEW.md "
+            "(verdict line first) — creating REVIEW.md is the one file change "
+            "allowed and required here; modify nothing else.",
         )
         self._emit_step_boundary(db, req, step=1, of=1, label="Review agent started",
                                  acked_steer_ids=steer_ids)

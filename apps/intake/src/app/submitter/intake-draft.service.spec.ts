@@ -213,6 +213,83 @@ describe('IntakeDraft', () => {
     expect(draft.attachments()).toEqual([]);
   });
 
+  it('hydrateFrom() drops a previous request’s live answers when landing on a different request', async () => {
+    // request 92's flow left a live draft behind (deep link / list navigation
+    // into request 98 must NOT inherit it — this leaked reach onto new requests)
+    draft.requestId = 92;
+    draft.type = 'new';
+    draft.reach = 'team';
+    draft.impactMetric = 'hours';
+    draft.impactValue = '300';
+    draft.appName = 'Atlas';
+
+    draft.hydrateFrom({
+      id: 98,
+      type: 'new',
+      title: 'B',
+      description: 'b',
+      urgency: 'normal',
+      app_id: null,
+      app_name: null,
+      new_app_name: null,
+      reach: null,
+      impact_metric: null,
+      impact_value: null,
+      bug_where: null,
+    } as any);
+
+    expect(draft.requestId).toBe(98);
+    expect(draft.reach).toBeNull();
+    expect(draft.impactMetric).toBeNull();
+    expect(draft.impactValue).toBe('');
+    expect(draft.appName).toBe('');
+    // and the next save() PATCHes 98 without the stale answers
+    await draft.save();
+    expect(api.updateRequest).toHaveBeenCalledOnce();
+    const [rid, body] = (api.updateRequest.mock.calls as any[][])[0];
+    expect(rid).toBe(98);
+    expect(body.reach).toBeNull();
+    expect(body.impact_metric).toBeNull();
+  });
+
+  it('hydrateFrom() ignores the server’s "No app yet" display fallback', () => {
+    draft.hydrateFrom({
+      id: 100,
+      type: 'bug',
+      title: 'B',
+      description: 'b',
+      urgency: 'normal',
+      app_id: null,
+      app_name: 'No app yet', // derived display field, not an answer
+      new_app_name: null,
+      reach: null,
+      impact_metric: null,
+      impact_value: null,
+      bug_where: null,
+    } as any);
+
+    expect(draft.appName).toBe(''); // the app question stays unanswered
+    // a real pick and a typed new-app name still hydrate
+    draft.reset();
+    draft.hydrateFrom({ id: 101, type: 'bug', app_id: 3, app_name: 'Atlas' } as any);
+    expect(draft.appName).toBe('Atlas');
+    draft.reset();
+    draft.hydrateFrom({ id: 102, type: 'enh', app_id: null, new_app_name: 'Nimbus' } as any);
+    expect(draft.appName).toBe('Nimbus');
+  });
+
+  it('hydrateFrom() keeps in-session edits when re-hydrating the same request', () => {
+    draft.requestId = 98;
+    draft.type = 'new';
+    draft.typeConfidence = 0.6;
+    draft.reach = 'team'; // answered in the wizard, PATCH may still be in flight
+
+    draft.hydrateFrom({ id: 98, type: 'new', reach: null } as any);
+
+    expect(draft.reach).toBe('team'); // the user's answer survives
+    expect(draft.typeConfidence).toBe(0.6); // inference stays "not an explicit pick"
+  });
+
   it('preserves cross-type answers across a bug→enh→bug correction (in session)', () => {
     const d = TestBed.inject(IntakeDraft);
     d.requestId = 71;

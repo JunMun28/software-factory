@@ -27,6 +27,9 @@ OPENCODE_RO_CONFIG = OPENCODE_CONFIG_DIR / "factory-readonly.json"
 OPENCODE_RW_CONFIG = OPENCODE_CONFIG_DIR / "factory-write.json"
 WORKSPACES = Path(os.environ.get("FACTORY_WORKSPACES", str(API_DIR / "workspaces")))
 SAMPLE = Path(os.environ.get("FACTORY_SAMPLE", str(REPO_DIR / "sample")))
+# The ONE stage-prompt store (harness.py): the sf-agent image bakes these files
+# for pod runs; the in-process AgentRunner reads them at call time.
+PROMPTS = Path(os.environ.get("FACTORY_PROMPTS", str(REPO_DIR / "docker" / "sf-agent" / "prompts")))
 STAGE_TIMEOUT = int(os.environ.get("FACTORY_STAGE_TIMEOUT", "300"))
 # Per intake-interview model call. A cold `claude` CLI on a larger model routinely
 # runs 60-90s; too tight a bound makes questions time out and fall back to the
