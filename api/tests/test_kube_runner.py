@@ -1824,6 +1824,16 @@ def test_github_workspace_prep_creates_and_pushes_repo_once(
     assert effects[-1] == ("work", "northwind", request["ref"], False)
     assert effects.count(("repo", "northwind")) == 1
     assert effects.count(("work", "northwind", request["ref"], False)) == 1
+    # MERGE-05: protection is set once, AFTER the main:main baseline push created
+    # the branch (a ruleset can't reference a ref that doesn't exist yet).
+    protect_calls = [call for call in github.calls if call[0] == "protect_main"]
+    assert protect_calls == [("protect_main", "northwind")]
+    baseline_idx = next(
+        i for i, call in enumerate(github.calls)
+        if call[0] == "ensure_repo"
+    )
+    protect_idx = github.calls.index(("protect_main", "northwind"))
+    assert protect_idx > baseline_idx
     assert row.kind == "create_repo" and row.status == "done"
     assert json.loads(row.payload_json) == {"slug": "northwind"}
     assert json.loads(row.outcome_json)["clone_url"].endswith("/sf-app-northwind.git")

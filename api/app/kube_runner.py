@@ -2535,6 +2535,10 @@ class KubeJobRunner:
                 try:
                     clone_url = self.github.ensure_repo(slug)
                     self._push_github_baseline(ws, slug, req.ref)
+                    # MERGE-05: protect main once the baseline created it (block
+                    # force-push/deletion + require PRs). Best-effort by design —
+                    # never strands repo prep.
+                    self.github.protect_main(slug)
                     pushed_baseline = True
                 except Exception as exc:
                     detail = workspace.sanitize_github_git_error(str(exc))[:300]

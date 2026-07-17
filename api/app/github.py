@@ -14,9 +14,13 @@ grade (the `sha` param is GitHub's server-side head==sha precondition — a move
 branch 409s, exactly the local merge_graded rule).
 """
 
+import logging
+
 import httpx
 
 from . import settings
+
+log = logging.getLogger("factory")
 
 API = "https://api.github.com"
 _HEADERS = {
@@ -66,6 +70,59 @@ class GitHub:
             if made.status_code != 201:
                 raise GitHubError(f"repo create failed: {made.status_code} {made.text[:200]}")
             return made.json()["clone_url"]
+
+    def protect_main(self, slug: str) -> bool:
+        """Best-effort branch protection for `main` via the Rulesets API (MERGE-05).
+        Rulesets are free on PRIVATE personal repos (classic branch protection is
+        not), so this is the durable [kind] control. Block deletion + force-push,
+        and require a PR (0 approvals — the factory's own SHA-precondition API
+        merge still lands, and the merge checks the grade, not a human). Genuine
+        independent review ("cannot approve your own work") needs the office
+        GitHub App issuing a per-request identity — Phase-2, same seam. NEVER
+        fatal: protection is defense-in-depth, not on the request's happy path,
+        so any failure logs and returns False rather than stranding repo prep.
+        Idempotent: skips if the sf-protect-main ruleset already exists."""
+        name = repo_name(slug)
+        ruleset = {
+            "name": "sf-protect-main",
+            "target": "branch",
+            "enforcement": "active",
+            "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+            "rules": [
+                {"type": "deletion"},
+                {"type": "non_fast_forward"},
+                {
+                    "type": "pull_request",
+                    "parameters": {
+                        "required_approving_review_count": 0,
+                        "dismiss_stale_reviews_on_push": False,
+                        "require_code_owner_review": False,
+                        "require_last_push_approval": False,
+                        "required_review_thread_resolution": False,
+                    },
+                },
+            ],
+        }
+        try:
+            with self._client() as client:
+                existing = client.get(f"/repos/{self._owner}/{name}/rulesets")
+                if existing.status_code == 200 and any(
+                    r.get("name") == "sf-protect-main" for r in existing.json()
+                ):
+                    return True
+                made = client.post(
+                    f"/repos/{self._owner}/{name}/rulesets", json=ruleset
+                )
+                if made.status_code not in (200, 201):
+                    log.warning(
+                        "branch protection not set on %s: %s %s",
+                        name, made.status_code, made.text[:160],
+                    )
+                    return False
+                return True
+        except Exception as exc:  # protection must never break repo prep
+            log.warning("branch protection call failed for %s (non-fatal): %s", name, exc)
+            return False
 
     def find_open_pr(self, slug: str, branch: str) -> int | None:
         with self._client() as client:
