@@ -196,8 +196,12 @@ if [ "$SF_STAGE" = "review" ]; then
   [ -n "$REVIEW_TEXT" ] || REVIEW_TEXT="$(tail -c 6000 "$OUT")"
   jq -cn --arg t "$(printf '%s' "$REVIEW_TEXT" | tail -c 6000)" '{type:"review",text:$t}'
   # anchored: the prompt demands the verdict START a line — prose mentions
-  # ("I would not APPROVE") must not count as a verdict
-  VERDICT="$(grep -m1 -oE '^(APPROVE|REQUEST-CHANGES)\b' "$OUT" || echo 'no explicit verdict')"
+  # ("I would not APPROVE") must not count as a verdict. Grep the EXTRACTED
+  # final message, never the whole transcript: the echoed rework feedback
+  # contains the PRIOR round's line-start "REQUEST-CHANGES", which turned a
+  # round-3 APPROVE into a rejection (live E2E-4 finding — the loop had
+  # converged and the verdict extraction threw it away).
+  VERDICT="$(printf '%s\n' "$REVIEW_TEXT" | grep -m1 -oE '^(APPROVE|REQUEST-CHANGES)\b' || echo 'no explicit verdict')"
   SHA="$(git rev-parse HEAD)"
   write_envelope "$(stage_envelope "ok" "$VERDICT" "$SHA")"
   exit 0
