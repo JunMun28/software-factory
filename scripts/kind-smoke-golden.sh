@@ -168,7 +168,7 @@ for i in $(seq 1 "$PROD_TRIES"); do
   # pin to a stale HAProxy worker from before the route existed (caught live
   # on CRC: this script's probes 404'd for 15 min while every fresh process
   # got 200 the same second). The in-cluster path has no such plumbing.
-  CBODY="$(cluster_get /health)"
+  CBODY="$(cluster_get /health 2>/dev/null || true)"   # DNS needs a beat right after service creation
   if echo "$CBODY" | grep -q '"status":"ok"'; then APP_OK=cluster; break; fi
   BODY="$(curl -s -m 5 -H "Connection: close" $APP_RESOLVE "$APP_URL/health" 2>"$PROBE_DBG")" && rc=0 || rc=$?
   if [ "$rc" = "0" ] && echo "$BODY" | grep -q '"status":"ok"'; then APP_OK=host; break; fi
