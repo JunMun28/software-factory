@@ -173,10 +173,28 @@ note "agent finished; output $(wc -c < "$OUT" | tr -d ' ') bytes"
 if [ "$SF_STAGE" = "review" ]; then
   # read-only stage: NOTHING is pushed (spec §5) — the review reaches the
   # event log via captured NDJSON, its verdict via the envelope detail.
-  # 6000 chars: the persisted logs tail caps at 20000, and JSON escaping can
-  # more than double raw transcript bytes — a bigger event risks decapitation
-  # and the rework loop then runs blind (live E2E-4 finding)
-  jq -cn --arg t "$(tail -c 6000 "$OUT")" '{type:"review",text:$t}'
+  # The event must carry the reviewer's FINAL MESSAGE, not the transcript
+  # middle: codex transcripts mark it with a bare "codex" line and close with
+  # "tokens used" (live E2E-4 finding: a raw tail shipped file dumps and exec
+  # noise as "reasoning"). 6000-char bound: the persisted logs tail caps at
+  # 20000 and JSON escaping can more than double raw bytes — a bigger event
+  # risks decapitation and the rework loop then runs blind.
+  REVIEW_TEXT=""
+  if [ "$CLI" = "codex" ]; then
+    REVIEW_TEXT="$(awk '
+      /^codex$/ { start = NR; next }
+      { lines[NR] = $0 }
+      END {
+        if (!start) exit 0
+        for (i = start + 1; i <= NR; i++) {
+          if (lines[i] == "tokens used") break
+          print lines[i]
+        }
+      }
+    ' "$OUT")"
+  fi
+  [ -n "$REVIEW_TEXT" ] || REVIEW_TEXT="$(tail -c 6000 "$OUT")"
+  jq -cn --arg t "$(printf '%s' "$REVIEW_TEXT" | tail -c 6000)" '{type:"review",text:$t}'
   # anchored: the prompt demands the verdict START a line — prose mentions
   # ("I would not APPROVE") must not count as a verdict
   VERDICT="$(grep -m1 -oE '^(APPROVE|REQUEST-CHANGES)\b' "$OUT" || echo 'no explicit verdict')"
