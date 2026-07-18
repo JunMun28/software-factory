@@ -109,6 +109,18 @@
         "cd .claude/worktrees/console-redesign && npx ng serve console --port 4202"
       ],
       "port": 4202
+    },
+    {
+      "name": "console-4204",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "ng",
+        "serve",
+        "console",
+        "--port",
+        "4204"
+      ],
+      "port": 4204
     }
   ]
 }

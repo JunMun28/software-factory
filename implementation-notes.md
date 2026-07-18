@@ -151,6 +151,35 @@ smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
 
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
+
 ## Deviations
 
 - **Review retries re-run the read-only reviewer, not the implementer.** The retry
@@ -291,6 +320,35 @@ smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
 
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
+
 ## Deviations
 
 - **Simulator merge-gate email is post-commit.** The simulator now carries the
@@ -422,6 +480,35 @@ smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
 
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
+
 ## Deviations
 
 - `apply()` guards parameter-dependent effect construction so a consumed precondition
@@ -522,6 +609,35 @@ accept → merge → prod image build → deploy → DONE. The only failure was 
 smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
 
 ## Deviations — generation-stream branch (2026-07-15)
 
@@ -630,6 +746,35 @@ accept → merge → prod image build → deploy → DONE. The only failure was 
 smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
 
 ## Deviations
 
@@ -769,6 +914,35 @@ accept → merge → prod image build → deploy → DONE. The only failure was 
 smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
 
 ## Deviations (B2 cluster half)
 
@@ -947,6 +1121,35 @@ smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
 
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
+
 ## Deviations
 
 - The task suggested also resetting the draft in `new-request.ts` on mount.
@@ -1077,6 +1280,35 @@ accept → merge → prod image build → deploy → DONE. The only failure was 
 smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
 
 ## Deviations
 - "Steer next step" dropped from the home page (was on every lane card);
@@ -1213,6 +1445,35 @@ smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
 
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
+
 ## Deviations — C2 (correctness & failure-recovery hotfixes)
 
 - **C2 split into C2a + C2b.** The design→adversarial-verify workflow returned
@@ -1343,6 +1604,35 @@ accept → merge → prod image build → deploy → DONE. The only failure was 
 smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
 
 ## Deviations — C2b (runner reliability: FAIL-01/02/04)
 
@@ -1481,6 +1771,35 @@ smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
 
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
+
 ## Deviations / decisions — C1
 
 - **Backend + kind-smoke ONLY; rich Stream/console requester UI deferred to a P4
@@ -1610,6 +1929,35 @@ accept → merge → prod image build → deploy → DONE. The only failure was 
 smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
 
 ## Deviations / decisions — C4
 - **v1 is ADDITIVE-NON-BLOCKING**: coverage is EVIDENCE, never a gate pass/fail
@@ -1880,6 +2228,35 @@ smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
 
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
+
 ## Deviations
 - "Preview before approve" (staging deploy at review time) NOT built: with
   the B4 three-gate flow the deploy gate fires before any image exists, so
@@ -2005,6 +2382,35 @@ accept → merge → prod image build → deploy → DONE. The only failure was 
 smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
 
 ## Deviations
 - **Deploy-reject shield (added, conservative):** a rejected deploy leaves
@@ -2264,6 +2670,35 @@ accept → merge → prod image build → deploy → DONE. The only failure was 
 smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
 
 ## Deviations
 - Scope kept to the Overview page (both user requirements live there);
@@ -2555,6 +2990,35 @@ accept → merge → prod image build → deploy → DONE. The only failure was 
 smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
 "done" means the deploy is applied, not that the pod is up); the app answered
 {"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+Finding #17 (runs 18-20, one cause misdiagnosed twice): the prod /health
+probe kept failing while the app was demonstrably live (run 20: pod ready in
+6s, nginx reloaded before the window, 90 probes missed, the identical curl
+succeeded minutes later). Not a slow rollout — each run mints a brand-new
+*.localtest.me subdomain, and one transient upstream DNS failure gets
+NEGATIVELY CACHED by macOS for minutes. The smoke now pins every per-run
+subdomain with curl --resolve; the earlier 60s→180s window widenings were
+treating the wrong cause.
+
+Finding #18 (run 21): the newly gated frontend tests correctly failed a
+broken spec, but the gate feedback was the ANSI-colored summary footer
+("2 failed | 3 passed") — no test names, no assertions; green fixed blind
+and escalated. The gate now strips ANSI and excerpts the failing-test
+blocks (FAIL + file:line + expected/received diff); rehearsed in-image.
+
+Campaign close (2026-07-18 evening): runs 22-25 outcomes — 22 cleared the
+full pipeline again (review approved, preview, merge, deploy, done; app
+hand-verified live; only the host probe missed). 23 and 24 escalated
+honestly (reviewer held a real date-lifecycle defect twice; green exhausted
+its cap on a red identity test) — agent nondeterminism, walls working. 25
+died on codex's WEEKLY USAGE CAP (resets Jul 25 11:24); the factory
+classified it as quota infra and escalated cleanly. #17b: the prod check now
+passes via host ingress OR an in-cluster service probe (pass records which);
+the host-side anomaly never reproduced outside a live run (clean isolation:
+fresh subdomain + background context + immediate probe = instant success)
+and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
+hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
+Hat pull secret + agent quota.
 
 ## Deviations
 
