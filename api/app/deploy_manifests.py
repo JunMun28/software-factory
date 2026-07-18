@@ -94,24 +94,24 @@ def build_job_manifest(ref: str, slug: str, sha: str) -> dict:
                     "restartPolicy": "Never",
                     "automountServiceAccountToken": False,
                     "serviceAccountName": settings.KUBE_BUILD_SA,
-                    "securityContext": {
-                        # kaniko's init needs root: on SCC clusters the build
-                        # SA rides the anyuid SCC, which is LEGACY — it rejects
-                        # the seccompProfile field (admission maps it to
-                        # forbidden annotations) and any uid pinning is
-                        # pointless under RunAsAny (E2E-7 live finding)
-                        "runAsNonRoot": True,
-                        **(
-                            {}
-                            if settings.KUBE_SCC_MANAGED
-                            else {
-                                "runAsUser": settings.KUBE_RUN_AS_UID,
-                                "runAsGroup": 0,
-                                "fsGroup": 0,
-                                "seccompProfile": {"type": "RuntimeDefault"},
-                            }
-                        ),
-                    },
+                    # kaniko needs root: on SCC clusters the build SA rides
+                    # the LEGACY anyuid SCC — it rejects the seccompProfile
+                    # field (admission maps it to forbidden annotations), uid
+                    # pinning is pointless under RunAsAny, and with no
+                    # injected uid a root-defaulting image violates
+                    # runAsNonRoot at kubelet time (all E2E-7 live findings).
+                    # This build pod is the factory's one root seam by design.
+                    "securityContext": (
+                        {}
+                        if settings.KUBE_SCC_MANAGED
+                        else {
+                            "runAsNonRoot": True,
+                            "runAsUser": settings.KUBE_RUN_AS_UID,
+                            "runAsGroup": 0,
+                            "fsGroup": 0,
+                            "seccompProfile": {"type": "RuntimeDefault"},
+                        }
+                    ),
                     "volumes": [{"name": "workspace", "emptyDir": {}}],
                     "initContainers": [{
                         "name": "clone",
