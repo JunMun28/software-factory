@@ -134,7 +134,14 @@ while :; do
   sleep 5
 done
 APP_URL="http://$SLUG.localtest.me:8081"
-curl -sf "$APP_URL/health" | grep -q '"status":"ok"' || fail "PROD app /health did not answer"
+# `done` lands when the deploy is APPLIED; the prod pod may still be starting
+# (probed at 27s old and lost the race in run 18) — give the rollout a minute
+APP_OK=""
+for _ in $(seq 1 30); do
+  if curl -sf "$APP_URL/health" | grep -q '"status":"ok"'; then APP_OK=1; break; fi
+  sleep 2
+done
+[ -n "$APP_OK" ] || fail "PROD app /health did not answer within 60s"
 curl -sf "$APP_URL/" | grep -qi "<!doctype html\|<html" || fail "PROD app did not serve the frontend"
 ok "request done — the golden app is LIVE at $APP_URL"
 
