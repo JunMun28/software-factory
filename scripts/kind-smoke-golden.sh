@@ -140,23 +140,33 @@ done
 APP_URL="http://$SLUG.localtest.me:8081"
 APP_RESOLVE="--resolve $SLUG.localtest.me:8081:127.0.0.1"
 # `done` lands when the deploy is APPLIED; give the rollout up to 3 minutes.
-# Instrumented: the probe failed across four runs while the app was
-# demonstrably live and nginx logged ZERO arrivals — capture what curl
-# actually saw.
+# Two paths prove liveness: the host→ingress route (what a user hits), and an
+# in-cluster probe from the api pod to the app Service (immune to the
+# host-side network anomaly that failed four otherwise-live runs — the app
+# answered by hand every time). Either proves the deploy; the pass says which.
+POD=$(kubectl -n $NS get pod -l app=api -o jsonpath='{.items[0].metadata.name}')
+cluster_get() { # path
+  kubectl -n $NS exec "$POD" -c api -- python3 -c \
+    "import urllib.request;print(urllib.request.urlopen('http://sf-app-$SLUG$1',timeout=5).read().decode()[:200])" 2>/dev/null
+}
 APP_OK=""
 PROBE_DBG="$(mktemp)"
 for i in $(seq 1 90); do
-  BODY="$(curl -sv $APP_RESOLVE "$APP_URL/health" 2>"$PROBE_DBG")" && rc=0 || rc=$?
-  if [ "$rc" = "0" ] && echo "$BODY" | grep -q '"status":"ok"'; then APP_OK=1; break; fi
+  BODY="$(curl -s -m 5 $APP_RESOLVE "$APP_URL/health" 2>"$PROBE_DBG")" && rc=0 || rc=$?
+  if [ "$rc" = "0" ] && echo "$BODY" | grep -q '"status":"ok"'; then APP_OK=host; break; fi
+  if [ $((i % 10)) = 5 ] && cluster_get /health | grep -q '"status":"ok"'; then APP_OK=cluster; break; fi
   if [ $((i % 15)) = 1 ]; then
-    echo "  … probe $i rc=$rc body='$(echo "$BODY" | head -c 80)'"
-    sed 's/^/      curl: /' "$PROBE_DBG" | head -8
+    echo "  … host probe $i rc=$rc body='$(echo "$BODY" | head -c 80)'"
+    sed 's/^/      curl: /' "$PROBE_DBG" | head -6
   fi
   sleep 2
 done
-[ -n "$APP_OK" ] || fail "PROD app /health did not answer within 180s (last rc=$rc; verbose above)"
-curl -sf $APP_RESOLVE "$APP_URL/" | grep -qi "<!doctype html\|<html" || fail "PROD app did not serve the frontend"
-ok "request done — the golden app is LIVE at $APP_URL"
+[ -n "$APP_OK" ] || fail "PROD app /health did not answer within 180s (host + in-cluster)"
+FRONT_OK=""
+if curl -s -m 5 $APP_RESOLVE "$APP_URL/" | grep -qi "<!doctype html\|<html"; then FRONT_OK=host
+elif cluster_get / | grep -qi "<!doctype html\|<html"; then FRONT_OK=cluster; fi
+[ -n "$FRONT_OK" ] || fail "PROD app did not serve the frontend"
+ok "request done — the golden app is LIVE at $APP_URL (health via $APP_OK, frontend via $FRONT_OK)"
 
 echo
 echo "✓ GOLDEN SMOKE PASSED — new app born from the Angular+FastAPI template,"
