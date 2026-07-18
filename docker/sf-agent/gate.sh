@@ -53,7 +53,10 @@ frontend_build_gate() { # [metrics_json]
   # NOT fail fast — it retried for 15+ minutes until the pod deadline killed
   # the gate before any verdict was written (live E2E-4 infra loop). rc=124
   # (timeout) is the wall, not a build problem — take the documented skip.
-  (cd frontend && timeout 120 npm ci --no-audit --no-fund \
+  # -k 15: node ignores SIGTERM in some network states; without a follow-up
+  # KILL, `timeout` waits forever and the pod deadline reaps the gate with no
+  # verdict (the second shape of the same live infra loop).
+  (cd frontend && timeout -k 15 120 npm ci --no-audit --no-fund \
       --fetch-retries=1 --fetch-timeout=30000 --fetch-retry-maxtimeout=15000) \
       > "$NPM_CI_OUT" 2>&1
   npm_ci_rc=$?
@@ -65,7 +68,7 @@ frontend_build_gate() { # [metrics_json]
     verdict fail "frontend dependency install failed (npm ci rc=$npm_ci_rc): $(tail -c 300 "$NPM_CI_OUT")" "${1:-null}"
   fi
   NPM_BUILD_OUT="$GATE_WORK/npm-build.txt"
-  (cd frontend && npm run build) > "$NPM_BUILD_OUT" 2>&1
+  (cd frontend && timeout -k 15 600 npm run build) > "$NPM_BUILD_OUT" 2>&1
   npm_build_rc=$?
   [ "$npm_build_rc" = "0" ] || \
     verdict fail "frontend build failed (rc=$npm_build_rc): $(tail -c 300 "$NPM_BUILD_OUT")" "${1:-null}"
