@@ -60,7 +60,98 @@ Task: add **opencode** as a third `FACTORY_CLI` (alongside codex/claude), make i
 
 # Implementation notes — C3 gate evidence and feedback fidelity (2026-07-16)
 
-### Deviations
+#Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations
 
 - **Review retries re-run the read-only reviewer, not the implementer.** The retry
   grades the same SHA again and explicitly tells the reviewer to assess the unchanged
@@ -109,6 +200,97 @@ feature `top_category`): architecture → RED (2 fail / 2 pass) → GREEN + test
 → review → human merge → `main` updated, status `done`, `pytest` on merged main = 4 passed.
 Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs, as designed).
 
+Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
 ## Deviations
 
 - **Simulator merge-gate email is post-commit.** The simulator now carries the
@@ -149,7 +331,98 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   production builds, but this managed sandbox forbids the smoke server from binding
   `127.0.0.1:8911` (`Errno 1`), so it could not reach `✓ VERIFY PASSED` here.
 
-### Deviations
+#Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations
 
 - `apply()` guards parameter-dependent effect construction so a consumed precondition
   resolves as `Loss`, while an eligible call with missing parameters still raises.
@@ -158,6 +431,97 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
 - Simulator merge-gate notification now fires through `Win.notify()` after commit;
   recipients and exactly-once behavior are unchanged, and rolled-back gates are not announced.
 - Task 7 was subsequently committed by the coordinator as `9eeb068`.
+
+Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
 
 ## Deviations — generation-stream branch (2026-07-15)
 
@@ -175,6 +539,97 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   through the current four components; hardened because the class is a public
   surface). Garbled-SSE-payload fallback test ported from the deleted streamState
   spec.
+
+Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
 
 ## Deviations
 
@@ -224,7 +679,98 @@ Reviewer verdict was REQUEST-CHANGES (advisory — the human merge gate governs,
   SQLite-on-PVC by default (Azure SQL is a one-env swap, see plan
   decision 10).
 
-### Deviations (B2 cluster half)
+#Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations (B2 cluster half)
 
 - **codex sandbox inside pods:** the plan's `codex exec -s workspace-write`
   (and `-s read-only` for review) fails inside unprivileged containers —
@@ -310,6 +856,97 @@ type). Reset-then-hydrate also covers "server value is null" — fields return t
 defaults instead of retaining stale values. Two new specs in
 `intake-draft.service.spec.ts` (72 intake tests green).
 
+Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
 ## Deviations
 
 - The task suggested also resetting the draft in `new-request.ts` on mount.
@@ -350,7 +987,98 @@ so the board gets 1400px while other pages keep 1060px.
 `stage: 'deploy'` added to the shared FactoryRequest type (backend B3
 already emits it via begin_deploy).
 
-### Deviations
+#Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations
 - "Steer next step" dropped from the home page (was on every lane card);
   still available per-request in the dossier, which is the scoped place
   for it. Conservative: no backend change, no feature loss.
@@ -394,7 +1122,98 @@ register + roadmap in `docs/reviews/factory-e2e-gap-analysis-2026-07-16.md`
 approved build order C2 → C1 → C4 → C3 → C5 → C7 → C6 → C8/C9. C1 = the
 mandated preview & feedback loop (pre-merge placement).
 
-### Deviations — C2 (correctness & failure-recovery hotfixes)
+#Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations — C2 (correctness & failure-recovery hotfixes)
 
 - **C2 split into C2a + C2b.** The design→adversarial-verify workflow returned
   NEEDS_WORK on all 8 gaps with genuine (not nitpick) findings. OPERATE-02 +
@@ -434,7 +1253,98 @@ mandated preview & feedback loop (pre-merge placement).
   Foreground/ttl fix) cleaned out-of-band via kubectl; the code fix prevents
   future orphans. teardown "once" is once-per-episode (idempotent under crash).
 
-### Deviations — C2b (runner reliability: FAIL-01/02/04)
+#Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations — C2b (runner reliability: FAIL-01/02/04)
 
 - **Implemented by codex gpt-5.5** from the v2 specs (all 3 came back READY from
   the design→verify workflow); coordinator reviewed + verified.
@@ -480,7 +1390,98 @@ SF_PREVIEW_FEEDBACK → full red→green→review re-grade → new preview (same
 rolls, stable URL). All-in-gates.py endpoints (requester respond-actor pattern);
 ZERO frontend/shared/main.py edits (parallel session owns those).
 
-### Deviations / decisions — C1
+#Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations / decisions — C1
 
 - **Backend + kind-smoke ONLY; rich Stream/console requester UI deferred to a P4
   phase** — the parallel session is actively rebuilding console+intake; the loop
@@ -519,7 +1520,98 @@ append-only acceptance_coverage event folded into the merge-gate evidence.
 Backend + tests only; codex-built from the vetted design + corrections;
 reviewed SOUND. 497 pytest + full verify green.
 
-### Deviations / decisions — C4
+#Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations / decisions — C4
 - **v1 is ADDITIVE-NON-BLOCKING**: coverage is EVIDENCE, never a gate pass/fail
   predicate (tested: a 0%-coverage request still passes RED/review/merge).
   FACTORY_ACCEPTANCE is a default-ON kill-switch (OFF = byte-for-byte pre-C4).
@@ -697,7 +1789,98 @@ Verified: task verify fully green (387 pytest + 231 vitest + builds +
 smoke); live browser check on :4203 (light + dark) — gauges, filters, age
 chips, red no-evidence, blind-approve modal, fleet strip all confirmed.
 
-### Deviations
+#Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations
 - "Preview before approve" (staging deploy at review time) NOT built: with
   the B4 three-gate flow the deploy gate fires before any image exists, so
   an honest preview needs a staging build pipeline — logged as follow-up,
@@ -732,7 +1915,98 @@ mine→propose→validate loop stays explicitly NOT built.
    by (stage, verifier cause) via `harness.classify_reason`, with the
    governing prompt file and per-version counts named per bucket.
 
-### Deviations
+#Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations
 - **Deploy-reject shield (added, conservative):** a rejected deploy leaves
   (stage=deploy, gate=None) — the exact state begin_deploy produces — so a
   later Retry would have silently deployed, and the escalation branch would
@@ -900,7 +2174,98 @@ New home (worktree admin-console-redesign, floor/* only):
 - floor-view: deriveBoard/deriveCard/BOARD_COLUMNS replaced by
   deriveLine/deriveTrack/STAGES; deriveQueue/deriveTallies kept; queueChip added.
 
-### Deviations
+#Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations
 - Scope kept to the Overview page (both user requirements live there);
   Library/Studio/Dossier untouched. Shell/nav unchanged.
 - The first gate is labelled "Build approval" (user's mental model: approval
@@ -1073,3 +2438,128 @@ what the live proof is for. All fixed in docker/sf-agent/Dockerfile:
    still fails the gate loudly — by design; office answer = internal mirror.
 Also: architecture agent on the golden workspace produced a real
 "Tea Roster implementation plan" and the gate held with the excerpt — twice.
+
+Findings #4–#7 (same live loop, runs 4–8): green agent deleted [build-system]
+from the golden pyproject → lock desync → PyPI dial. Fix: `uv run --locked`
+in gate.sh + a DEPENDENCY FREEZE rule in all four stage prompts. Then
+hatchling itself (build-system.requires) forced a re-resolve → template
+de-packaged ([tool.uv] package=false + pytest pythonpath=["."]) so the gate
+is 100% lock-driven. Then npm ci hung 15+ min against the egress wall and
+the pod deadline reaped the gate verdict-less → `timeout -k 15 120 npm ci`
+with tight fetch flags; rc 124/137 or a network-error regex = "frontend
+build skipped" note, not a failure (node ignores SIGTERM — the -k matters).
+
+Finding #8 (runs 9–10): reviewer REQUEST-CHANGES used to re-review the
+UNCHANGED SHA, so an honest reviewer repeats the verdict and the request
+escalates without the implementer ever seeing the concerns. New
+`review_rework` machine transition: rejection sends the request back to the
+build stage with the review reasoning as pending_feedback (delivered as
+SF_GATE_FEEDBACK to the first rework pod, red-N+1); bounded at 2 reworks,
+then escalate. Rejected-round review rows are superseded.
+
+Finding #9 (run 10): rework rounds ran with EMPTY review reasoning — the
+reviewer wrote a detailed report but the 20000-char logs-tail cap
+decapitated the ndjson review event, so parse_review_report saw nothing.
+_bounded_logs_tail now re-appends a bounded (6000-char) copy of the last
+review event when the cap cut it off. The four pre-existing tests that
+pinned the old "retry review with feedback" contract were moved to the
+rework contract.
+
+Finding #10 (run 11 — the TRUE root cause behind #9's symptom): reasoning
+was still empty even with the tail-cap fix deployed. Byte-exact analysis of
+the persisted tail showed `\xNN` and `\'` sequences, literal `\n`s, zero
+real newlines, and a trailing `'` — the persisted log was a Python REPR OF A
+BYTES OBJECT. read_namespaced_pod_log returns BYTES when a codex transcript
+contains invalid UTF-8, and scrub_secrets' str() repr'd the whole log into
+one giant b'...' line — every ndjson event (review reasoning, pytest blocks)
+silently vanished, for every stage pod with a non-UTF-8 transcript. Fixed:
+decode(errors="replace") at the kube client, a second defense in
+_bounded_logs_tail, and the entrypoint's review event bounded to 6000 chars
+so it survives the 20000-char persisted cap after JSON escaping. A control
+experiment (30k-char single-line JSON through kind's CRI) proved the log
+pipeline itself is NOT the mangler — kubectl logs returns it intact.
+
+Finding #10b (run 12): the decode fix never fired — the kubernetes client's
+OWN deserializer does the str(bytes) repr before returning. Fixed for real
+with _preload_content=False + manual decode; _bounded_logs_tail additionally
+un-reprs any persisted "b'...'" string via ast.literal_eval.
+
+Finding #11 (run 13): reasoning finally survived (4000 chars vs 0 in twelve
+runs) but carried the WRONG 6000 chars — a raw tail of the codex transcript
+ships file dumps and exec noise, not the reviewer's final message. The
+entrypoint now extracts the final agent message (after the last bare "codex"
+marker, up to "tokens used"), bounded tail as fallback for other CLIs.
+Verified against a real transcript. Review-3 of run 13 produced clean
+functional bullets.
+
+Finding #12 (run 13): parse_review_report baked "the code SHA is unchanged,
+so repeat REQUEST-CHANGES" into every rejection's feedback — true under the
+old retry contract, FALSE after a rework (the implementer pushed a new SHA),
+and it biased reviewers + misled escalation readers. Reworded to a neutral
+"the independent review requested changes" preamble.
+
+Parallel console lanes (codex gpt-5.5, worktrees, while the smokes ran):
+- console-rollback-async (5063a14): honest 202 typing + poll
+  GET /api/apps/{id}/rollbacks (endpoint added on main, 376ebfb — the async
+  contract had NO read half; found by the codex lane) until the row settles.
+- console-heartbeat-ui (ad81bc6): C1-UI — Health model + 10s poller, one
+  shell indicator (live/buffered/unknown/stalled/fetch-fail + tooltip),
+  Overview stale banner. Both branches lint+vitest+build green; merge to
+  main pending full verify + visual check after E2E-4 settles.
+
+Finding #13 (run 14, two coupled cap bugs): (a) rework rounds consume
+attempt numbers even for stages that PASSED an earlier round — green-1
+succeeded, the review sent the work back, and green-2's FIRST failure
+escalated with zero retries; the cap now grants each rework its extra
+attempt for red/green/review, and a review that still rejects after the
+rework budget escalates directly (never re-reviews the same SHA). (b) every
+spawn fired advance_stage, whose unconditional stage_entered_at bump made
+_supersede_rewound_rows read a same-stage retry as a stage REWIND and
+supersede the sibling stages' graded rows — a green retry erased red's
+succeeded gate and the frozen-surface check failed closed (latent bug,
+exposed by the new regression test before it could bite live). Same-stage
+spawns now use the new respawn_stage transition.
+
+Finding #14 (run 15 — the machinery itself finally ran clean): reasoning
+survived every round, three full rework rounds executed, crisp escalation —
+but the reviewer rejected all three rounds for a test that loads axe-core
+from a CDN, impossible inside the egress wall; the implementer could never
+satisfy the review. All four stage prompts now carry an OFFLINE ENVIRONMENT
+rule (no CDN/remote fetches at build/test time), and the reviewer is told to
+note network-only failures without REQUEST-CHANGES.
+
+Finding #15 (run 16): the loop converged on substance each round (round-1
+and round-2 concerns were fixed) but the reviewer rejected all three rounds
+on freshly discovered issues — including a non-compiling frontend spec
+(toHaveSize) that the implementer's own gate called GREEN, because frontend
+TESTS were never gated (the walled pod cannot npm ci). Two fixes: (a) the
+agent image bakes the golden template's node_modules (lock is frozen);
+lock-match → the gate copies the tree in and runs npm test + build offline —
+rehearsed green as uid 10101 with --network none; (b) the review prompt got
+an explicit shippable-v1 verdict bar (REQUEST-CHANGES only for AC
+violations, broken/dishonest tests, correctness/security; polish in notes;
+rework rounds verify prior concerns first).
+
+Finding #16 (run 17 — the loop CONVERGED): the round-3 reviewer wrote
+APPROVE ("Implementation satisfies the Tea Roster specification and plan")
+but the verdict grep scanned the WHOLE transcript and matched the prior
+round's line-start REQUEST-CHANGES inside the echoed rework feedback —
+recording the approval as a rejection and escalating a finished request.
+The verdict now comes from the same extracted final message as the
+reasoning.
+
+Run 18 — FULL PIPELINE CLEARED: architecture gate (real plan) → red/green →
+review APPROVE after ONE rework round (clean reasoning both rounds) → kaniko
+multi-stage golden preview build → preview served Angular + FastAPI /health →
+accept → merge → prod image build → deploy → DONE. The only failure was the
+smoke probing prod /health at pod age 27s (finding #17, smoke-script race —
+"done" means the deploy is applied, not that the pod is up); the app answered
+{"status":"ok"} + the Angular index 30s later. 60s retry window added.
+
+## Deviations
+
+- test_second_request_changes_escalates_without_merge_gate now asserts
+  "review failed" (generic) instead of the exact attempt count in the
+  escalation message: with reworks the terminal message is "after 3
+  attempts" and the precise count is asserted via the two review_rework
+  audit rows instead — more honest, less brittle.

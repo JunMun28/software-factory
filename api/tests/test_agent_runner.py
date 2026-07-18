@@ -38,15 +38,18 @@ GOOD_IMPL = "\n\ndef monthly_export() -> str:\n    return 'csv'\n"
 
 def honest_executor(prompt: str, *, cwd: str | None = None, **kw) -> AgentResult:
     ws = Path(cwd)
-    if "architect" in prompt:
+    # reviewer FIRST on its distinctive marker: the review prompt legitimately
+    # mentions "the implementer" (offline-environment rule), so keyword order
+    # matters
+    if "read-only reviewer" in prompt:
+        (ws / "REVIEW.md").write_text("APPROVE\nImplements the spec; tests are meaningful.\n")
+    elif "architect" in prompt:
         (ws / "PLAN.md").write_text("# PLAN\nAdd monthly_export() to src/expenses.py returning 'csv'.\n")
     elif "test-author" in prompt:
         (ws / "tests" / "test_feature.py").write_text(GOOD_TEST)
     elif "implementer" in prompt:
         with (ws / "src" / "expenses.py").open("a") as f:
             f.write(GOOD_IMPL)
-    elif "reviewer" in prompt:
-        (ws / "REVIEW.md").write_text("APPROVE\nImplements the spec; tests are meaningful.\n")
     return AgentResult(ok=True, text="done")
 
 
@@ -64,7 +67,7 @@ def cheating_executor(prompt: str, *, cwd: str | None = None, **kw) -> AgentResu
 
 def requesting_changes_executor(prompt: str, *, cwd: str | None = None, **kw) -> AgentResult:
     result = honest_executor(prompt, cwd=cwd, **kw)
-    if "reviewer" in prompt:
+    if "read-only reviewer" in prompt:
         Path(cwd, "REVIEW.md").write_text(
             "REQUEST-CHANGES\nThe implementation misses the error path.\n"
         )
