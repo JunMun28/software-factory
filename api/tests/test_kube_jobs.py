@@ -163,8 +163,7 @@ def test_parse_review_report_scrubs_reasoning_and_feedback_at_source():
     assert report["verdict"] == "REQUEST-CHANGES"
     assert report["approved"] is False
     assert "Fix the race" in report["reasoning"]
-    assert "unchanged code honestly" in report["feedback"]
-    assert "repeat REQUEST-CHANGES" in report["feedback"]
+    assert "The independent review requested changes." in report["feedback"]
     assert token not in str(report)
 
 

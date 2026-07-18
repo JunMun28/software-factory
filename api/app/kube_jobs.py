@@ -299,10 +299,12 @@ def parse_review_report(stage_row) -> dict:
     approved = verdict == "APPROVE"
     feedback = ""
     if not approved:
+        # rework contract: a rejection sends the WORK back to the implementer,
+        # so any later review sees revised code — never claim the SHA is
+        # unchanged (the old retry-review wording biased reviewers to repeat
+        # their verdict and misled escalation readers)
         feedback = scrub_secrets(
-            "Your prior review requested changes for these reasons; re-review "
-            "the unchanged code honestly. The code SHA is unchanged, so repeat "
-            "REQUEST-CHANGES if the concerns still apply.\n"
+            "The independent review requested changes.\n"
             f"Verdict: {verdict}\n{reasoning}"
         ).strip()[:_FEEDBACK_CAP]
     return {
