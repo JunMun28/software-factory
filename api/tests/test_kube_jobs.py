@@ -789,8 +789,8 @@ def _run_golden_gate(
     (fake_uv := fake_bin / "uv").write_text(
         "#!/usr/bin/env bash\n"
         "set -e\n"
-        "[[ \"$1\" = run && \"$2\" = --directory && \"$3\" = backend && \"$4\" = pytest ]]\n"
-        "shift 4\n"
+        "[[ \"$1\" = run && \"$2\" = --locked && \"$3\" = --directory && \"$4\" = backend && \"$5\" = pytest ]]\n"
+        "shift 5\n"
         "cd backend\n"
         "exec python3 -m pytest \"$@\"\n"
     )
