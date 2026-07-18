@@ -954,3 +954,74 @@ Gaps logged for later slices:
   heading + review chip. Candidate: derive from title or add to Edit details.
 - Scripted-brain prototype edits ack ("Applied: ...") without visual change —
   honest scripted behavior; real edits need FACTORY_BRAIN=agent (E2E-2+).
+
+## E2E-2 golden template
+
+The produced-app template is now the vendored `templates/golden/` profile:
+Angular 22 (standalone, zoneless), spartan/ui + Tailwind, and a FastAPI +
+SQLModel backend managed by uv. Selection remains factory-wide and env-level:
+`FACTORY_SAMPLE=<repo>/templates/golden`. The default remains `./sample`; its
+files and behavior were not changed.
+
+Factory integration changes:
+
+- Stage prompts now detect either `src/` + `tests/` or the full-stack
+  `frontend/` + `backend/` layout, retain the injection-resistant preamble,
+  and name the correct plans, test locations, implementation paths, and review
+  evidence for both layers.
+- The factory-owned gate runs backend pytest with
+  `uv run --directory backend pytest` when `backend/pyproject.toml` exists.
+  GREEN and REVIEW also restore frontend dependencies and require an Angular
+  production build. Only a recognized npm registry/network outage skips that
+  build, with an explicit note; other install failures and build failures block.
+- Request workspace creation defensively excludes `node_modules`, `.venv`, and
+  `__pycache__` before the baseline commit. Existing ignored artifacts cannot
+  leak into the physical workspace or its git tree.
+- Added coverage for golden workspace birth, the standalone backend suite,
+  Docker/runtime structure, layout-aware prompt parity, genuine RED failures,
+  GREEN backend + frontend success, frontend build failure, and the temporary
+  npm-registry-unreachable exception.
+
+Verification: golden `gate.sh` reached `GATE GREEN`; backend pytest reported
+`2 passed`, startcheck passed, backend Ruff passed, and the Angular production
+build emitted `dist/frontend/browser`. The full factory API suite reported
+`705 passed, 3 skipped`; API Ruff and `bash -n docker/sf-agent/gate.sh` passed.
+Docker was inspected but not built, as required for this environment.
+This sandbox did not expose outbound package fetches to uv: a default local
+Python 3.12 `uv sync` stopped only because the locked SQLAlchemy 2.0.51
+`py3-none-any` wheel was not already cached. `uv lock --check` passed for the
+3.12 metadata, and the complete standalone gate was exercised with the same
+lock on the cached Python 3.13 interpreter. A normal networked build remains
+the outstanding proof of the Python 3.12 image layer.
+
+## E2E-2 template deltas
+
+Every intentional delta from the vendored ng-v0 golden template is listed
+here; all other template source and lock content is preserved:
+
+- `backend/app/main.py`: added the factory-compatible bare `GET /health` alias
+  while retaining `GET /api/health`; added the final `StaticFiles` mount at
+  `/` with `html=True`, after all API and health routes, when built assets exist.
+- `Dockerfile`: added a plain multi-stage build. Node 24 runs `npm ci` and the
+  Angular production build; Python 3.12 + pinned uv installs the frozen
+  production backend, receives `dist/frontend/browser`, exposes port 8000,
+  and runs uvicorn as arbitrary-UID-compatible user 10101.
+- `backend/.python-version`, `backend/pyproject.toml`, and `backend/uv.lock`:
+  aligned the backend floor and Ruff target from Python 3.13 to Python 3.12 so
+  the approved runtime image can satisfy the frozen project metadata.
+- `backend/tests/test_items.py`: added the regression test for bare `/health`.
+- Removed `.impeccable/hook.cache.json`, an ignored local tool cache that could
+  not be committed as template source. Added `.pytest_cache/` to the root
+  `.gitignore`; it already covered `node_modules`, `.angular`, `dist`, `.venv`,
+  `__pycache__`, `app.db`, and the other required generated artifacts.
+
+Deferred by E2E-2:
+
+- Per-request-type template selection; the profile remains the single
+  `FACTORY_SAMPLE` env choice for now.
+- Enforcing npm registry access in gate pods via NetworkPolicy; E2E-4 owns the
+  live network path. Until then, only confirmed registry-unreachable failures
+  are skipped and logged.
+- No frontend-runner work is needed for this template because `npm test` is
+  already Vitest-backed. The prompts explicitly fall back to backend-only RED
+  tests and disclose the limitation for any future template without a runner.

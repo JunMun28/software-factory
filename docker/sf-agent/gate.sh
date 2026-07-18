@@ -22,12 +22,39 @@ fi
 
 GATE_WORK="${SF_GATE_WORK_DIR:-$(dirname "$PWD")}" # /workspace in the gate pod
 PYTEST_OUT="$GATE_WORK/pytest.txt"
+BACKEND_DIR="."
+if [ -f backend/pyproject.toml ]; then
+  BACKEND_DIR="backend"
+fi
 run_pytest() {
-  python3 -m pytest -q --no-header > "$PYTEST_OUT" 2>&1
+  if [ "$BACKEND_DIR" = "backend" ]; then
+    uv run --directory backend pytest -q --no-header > "$PYTEST_OUT" 2>&1
+  else
+    python3 -m pytest -q --no-header > "$PYTEST_OUT" 2>&1
+  fi
   echo $?
 }
 emit_pytest_log() {
   jq -cn --arg t "$(tail -c 8000 "$PYTEST_OUT")" '{type:"pytest",text:$t}'
+}
+frontend_build_gate() { # [metrics_json]
+  [ -f frontend/package.json ] || return 0
+  NPM_CI_OUT="$GATE_WORK/npm-ci.txt"
+  (cd frontend && npm ci) > "$NPM_CI_OUT" 2>&1
+  npm_ci_rc=$?
+  if [ "$npm_ci_rc" != "0" ]; then
+    if grep -Eqi 'EAI_AGAIN|ENETUNREACH|ECONNREFUSED|ECONNRESET|ETIMEDOUT|getaddrinfo|network.*(unreachable|timeout)|registry.*unreachable' "$NPM_CI_OUT"; then
+      note "frontend build skipped: npm registry unreachable in gate pod"
+      return 0
+    fi
+    verdict fail "frontend dependency install failed (npm ci rc=$npm_ci_rc): $(tail -c 300 "$NPM_CI_OUT")" "${1:-null}"
+  fi
+  NPM_BUILD_OUT="$GATE_WORK/npm-build.txt"
+  (cd frontend && npm run build) > "$NPM_BUILD_OUT" 2>&1
+  npm_build_rc=$?
+  [ "$npm_build_rc" = "0" ] || \
+    verdict fail "frontend build failed (rc=$npm_build_rc): $(tail -c 300 "$NPM_BUILD_OUT")" "${1:-null}"
+  note "frontend build passed"
 }
 pytest_problem() {
   rc="$1"
@@ -81,7 +108,10 @@ case "${SF_STAGE:?}" in
     ;;
   green)
     rc="$(run_pytest)"; emit_pytest_log
-    [ "$rc" = "0" ] && verdict pass "suite green at the pinned SHA"
+    if [ "$rc" = "0" ]; then
+      frontend_build_gate
+      verdict pass "suite green at the pinned SHA"
+    fi
     [ "$rc" = "1" ] && verdict fail "GREEN gate: suite still failing (rc=$rc): $(tail -c 300 "$PYTEST_OUT")"
     verdict fail "GREEN gate: $(pytest_problem "$rc") (pytest rc=$rc): $(tail -c 300 "$PYTEST_OUT")"
     ;;
@@ -101,7 +131,10 @@ EOF2
       '{tests_passed:$tp,tests_total:$tt,diff_added:$da,diff_removed:$dr,files_changed:$fc,reviewer_verdict:$rv}')"
     [ "${SF_REVIEW_VERDICT:-}" = "APPROVE" ] || \
       verdict fail "review gate: reviewer did not APPROVE (${SF_REVIEW_VERDICT:-no review})" "$METRICS"
-    [ "$rc" = "0" ] && verdict pass "review gate metrics computed" "$METRICS"
+    if [ "$rc" = "0" ]; then
+      frontend_build_gate "$METRICS"
+      verdict pass "review gate metrics computed" "$METRICS"
+    fi
     [ "$rc" = "1" ] && verdict fail "review gate: suite not green at the pinned SHA (rc=$rc)" "$METRICS"
     verdict fail "review gate: $(pytest_problem "$rc") (pytest rc=$rc)" "$METRICS"
     ;;
