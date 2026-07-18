@@ -1,3 +1,18 @@
+/** Operational health reported by the factory API. */
+export interface Health {
+  status: 'ok';
+  db: 'ok';
+  brain: 'scripted' | 'agent';
+  runner: 'agent' | 'sim' | 'kube';
+  cli: 'opencode' | 'codex' | 'claude';
+  smtp: 'configured' | 'log-only';
+  leader: boolean;
+  epoch: number;
+  /** Seconds since the last completed leader pass; null until the first beat. */
+  tick_age_s: number | null;
+  deploy_enabled: boolean;
+}
+
 /** One digest that was (or is) live for an app — read from the event log. */
 export interface AppDeploy {
   digest: string;

@@ -1,21 +1,30 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { Api, Poll, Theme } from '@sf/shared';
-import { of } from 'rxjs';
+import { Api, Poll, Theme, type Health } from '@sf/shared';
+import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { Session } from '../core/session.service';
 import { ConsoleShell } from './console-shell';
 
-describe('ConsoleShell runner mode badge', () => {
+describe('ConsoleShell factory heartbeat', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
-  async function renderHealth(health: {
-    runner: 'agent' | 'sim';
-    cli: 'claude' | 'codex';
-    tick_age_s?: number | null;
-  }) {
+  async function renderHealth(overrides: Partial<Health> = {}, fetchFails = false) {
+    const health: Health = {
+      status: 'ok',
+      db: 'ok',
+      brain: 'scripted',
+      runner: 'sim',
+      cli: 'opencode',
+      smtp: 'log-only',
+      leader: true,
+      epoch: 7,
+      tick_age_s: 4,
+      deploy_enabled: false,
+      ...overrides,
+    };
     await TestBed.configureTestingModule({
       imports: [ConsoleShell],
       providers: [
@@ -24,13 +33,7 @@ describe('ConsoleShell runner mode badge', () => {
           provide: Api,
           useValue: {
             health: () =>
-              of({
-                status: 'ok',
-                brain: 'scripted',
-                tick_age_s: null,
-                deploy_enabled: false,
-                ...health,
-              }),
+              fetchFails ? throwError(() => new Error('health unavailable')) : of(health),
             tick: () => of({ moved: [] }),
           },
         },
@@ -48,35 +51,72 @@ describe('ConsoleShell runner mode badge', () => {
 
     const fixture = TestBed.createComponent(ConsoleShell);
     fixture.detectChanges();
-    return fixture.nativeElement.querySelector('.runner-badge') as HTMLElement | null;
+    return fixture;
   }
 
-  it('labels a Claude-backed real runner', async () => {
-    expect((await renderHealth({ runner: 'agent', cli: 'claude' }))?.textContent).toContain(
-      'Agents: Claude Code',
-    );
+  it('shows a subtle live dot with no visible text for a healthy tick', async () => {
+    const fixture = await renderHealth({ tick_age_s: 8 });
+    const indicator = fixture.nativeElement.querySelector(
+      '.heartbeat-status',
+    ) as HTMLElement | null;
+
+    expect(indicator).not.toBeNull();
+    expect(indicator!.classList.contains('healthy')).toBe(true);
+    expect(indicator!.textContent?.trim()).toBe('');
+    expect(indicator!.getAttribute('aria-label')).toBe('Factory line live');
+    expect(indicator!.title).toContain('runner sim · cli opencode · epoch 7');
   });
 
-  it('labels a Codex-backed real runner', async () => {
-    expect((await renderHealth({ runner: 'agent', cli: 'codex' }))?.textContent).toContain(
-      'Agents: Codex',
-    );
+  it('keeps the 15–30 second buffer neutral and quiet', async () => {
+    const fixture = await renderHealth({ tick_age_s: 22 });
+    const indicator = fixture.nativeElement.querySelector(
+      '.heartbeat-status',
+    ) as HTMLElement | null;
+
+    expect(indicator).not.toBeNull();
+    expect(indicator!.classList.contains('buffering')).toBe(true);
+    expect(indicator!.classList.contains('stalled')).toBe(false);
+    expect(indicator!.textContent?.trim()).toBe('');
   });
 
-  it('turns the badge red when the tick loop has stalled', async () => {
-    const badge = await renderHealth({ runner: 'sim', cli: 'codex', tick_age_s: 300 });
-    expect(badge?.classList.contains('stalled')).toBe(true);
-    expect(badge?.textContent).toContain('Tick stalled 5m');
+  it('warns plainly once the line has stalled', async () => {
+    const fixture = await renderHealth({ runner: 'agent', tick_age_s: 42 });
+    const indicator = fixture.nativeElement.querySelector(
+      '.heartbeat-status',
+    ) as HTMLElement | null;
+
+    expect(indicator).not.toBeNull();
+    expect(indicator!.classList.contains('stalled')).toBe(true);
+    expect(indicator!.textContent).toContain('Line stalled 42s ago');
+    expect(indicator!.getAttribute('aria-label')).toBe('Factory line stalled 42 seconds ago');
   });
 
-  it('never calls a runner=agent line stalled (it has no tick loop)', async () => {
-    const badge = await renderHealth({ runner: 'agent', cli: 'claude', tick_age_s: 9999 });
-    expect(badge?.classList.contains('stalled')).toBe(false);
+  it('uses the same visible stalled warning when the health check fails', async () => {
+    const fixture = await renderHealth({}, true);
+    const indicator = fixture.nativeElement.querySelector('.heartbeat-status') as HTMLElement;
+
+    expect(indicator.classList.contains('stalled')).toBe(true);
+    expect(indicator.textContent).toContain('Line stalled — status unavailable');
+    expect(indicator.getAttribute('aria-label')).toBe('Factory line stalled; status unavailable');
   });
 
-  it('labels the simulator from the runner field', async () => {
-    expect((await renderHealth({ runner: 'sim', cli: 'codex' }))?.textContent).toContain(
-      'Simulated',
-    );
+  it('treats a null tick age as a neutral starting state', async () => {
+    const fixture = await renderHealth({ tick_age_s: null });
+    const indicator = fixture.nativeElement.querySelector(
+      '.heartbeat-status',
+    ) as HTMLElement | null;
+
+    expect(indicator).not.toBeNull();
+    expect(indicator!.classList.contains('unknown')).toBe(true);
+    expect(indicator!.classList.contains('stalled')).toBe(false);
+    expect(indicator!.textContent?.trim()).toBe('');
+    expect(indicator!.getAttribute('aria-label')).toBe('Factory line starting');
+  });
+
+  it('replaces the old runner badge instead of rendering a second indicator', async () => {
+    const fixture = await renderHealth();
+
+    expect(fixture.nativeElement.querySelectorAll('.heartbeat-status')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('.runner-badge')).toBeNull();
   });
 });

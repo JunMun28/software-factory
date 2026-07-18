@@ -10,6 +10,7 @@ import {
   ClassifyResult,
   CommentItem,
   FactoryRequest,
+  Health,
   InterviewState,
   MissionOut,
   Operator,
@@ -28,17 +29,8 @@ const BASE = '/api';
 export class Api {
   private http = inject(HttpClient);
 
-  health() {
-    return this.http.get<{
-      status: string;
-      brain: string;
-      runner: 'agent' | 'sim' | 'kube';
-      cli: 'codex' | 'claude';
-      smtp: 'configured' | 'log-only';
-      /** seconds since the last completed tick pass; null until the first (or runner=agent) */
-      tick_age_s: number | null;
-      deploy_enabled: boolean;
-    }>(`${BASE}/health`);
+  health(): Observable<Health> {
+    return this.http.get<Health>(`${BASE}/health`);
   }
   apps(): Observable<AppEntry[]> {
     return this.http.get<AppEntry[]>(`${BASE}/apps`);
