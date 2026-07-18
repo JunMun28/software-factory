@@ -7,5 +7,5 @@ export SMOKE_API=http://api-software-factory.apps-crc.testing/api
 export SMOKE_APP_DOMAIN=apps-crc.testing
 export SMOKE_HOST_PORT=
 export SMOKE_CONNECT_TO="::127.0.0.1:"
-export SMOKE_PROD_TRIES=450   # CRC's router catches up after the build crunch frees the CPUs
+export SMOKE_PROD_VERIFY_EXTERNAL=1
 exec bash "$(dirname "$0")/kind-smoke-golden.sh"

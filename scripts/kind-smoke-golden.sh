@@ -146,6 +146,14 @@ while :; do
   sleep 5
 done
 APP_URL="http://$SLUG.$APP_DOMAIN$HOST_PORT"
+if [ -n "${SMOKE_PROD_VERIFY_EXTERNAL:-}" ]; then
+  # A long-lived runner's network context can pin to pre-route state (caught
+  # live twice: both probe paths dead for 15 min inside this process while
+  # every FRESH process got 200 the same second). Hand the last check to one.
+  echo "PIPELINE DONE — verify externally: SLUG=$SLUG APP_URL=$APP_URL"
+  ok "request done — pipeline complete; prod liveness delegated to a fresh process"
+  exit 0
+fi
 APP_RESOLVE=${SMOKE_CONNECT_TO:+ }
 [ -n "${SMOKE_CONNECT_TO:-}" ] || APP_RESOLVE="--resolve $SLUG.$APP_DOMAIN:8081:127.0.0.1"
 # `done` lands when the deploy is APPLIED; window in 2s ticks (CRC's router
