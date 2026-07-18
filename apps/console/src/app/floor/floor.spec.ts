@@ -412,6 +412,48 @@ describe('Overview rendering', () => {
     expect(text).toContain('median cycle 2d');
     expect(text).toContain('gates answered in ~4h');
   });
+
+  it('warns that track timings and stages may be stale when the factory heartbeat stalls', async () => {
+    const api = {
+      health: () =>
+        of({
+          status: 'ok',
+          db: 'ok',
+          brain: 'scripted',
+          runner: 'sim' as const,
+          cli: 'opencode' as const,
+          smtp: 'log-only',
+          leader: true,
+          epoch: 7,
+          tick_age_s: 42,
+          deploy_enabled: false,
+        }),
+      mission: vi.fn(() => of(mission())),
+    };
+    await TestBed.configureTestingModule({
+      imports: [FloorPage],
+      providers: [
+        provideRouter([]),
+        { provide: Api, useValue: api },
+        {
+          provide: Poll,
+          useValue: { version: signal(0), nudge: vi.fn(), start: vi.fn() },
+        },
+        { provide: Store, useValue: storeStub() },
+        { provide: Session, useValue: { operatorId: () => 7, operator: signal(null) } },
+        { provide: Theme, useValue: { resolved: signal('light'), set: vi.fn() } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FloorPage);
+
+    fixture.detectChanges();
+    fixture.detectChanges();
+
+    const warning = fixture.nativeElement.querySelector('.line-stale-warning');
+    expect(warning).not.toBeNull();
+    expect(warning!.textContent).toContain('The factory line is stalled.');
+    expect(warning!.textContent).toContain('Timings and stages may be stale.');
+  });
 });
 
 describe('Overview conflict outcomes', () => {

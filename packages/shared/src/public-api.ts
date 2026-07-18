@@ -19,6 +19,7 @@ export type {
   CommentItem,
   Evidence,
   FactoryRequest,
+  Health,
   InterviewState,
   MissionGate,
   MissionHumanOwned,

@@ -1,8 +1,9 @@
-import { Component, HostListener, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, HostListener, computed, inject, input, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { Api, Autofocus, Poll, Theme } from '@sf/shared';
 
 import { INTAKE_URL, intakeNewRequestUrl } from '../core/intake-url';
+import { Heartbeat } from '../core/heartbeat.service';
 import { Session } from '../core/session.service';
 
 @Component({
@@ -22,21 +23,21 @@ import { Session } from '../core/session.service';
           <a routerLink="/studio" routerLinkActive="active">Studio</a>
         </nav>
         <span class="spacer"></span>
-        @if (runnerMode(); as mode) {
-          <span
-            class="runner-badge"
-            [class.agent]="mode.runner === 'agent'"
-            [class.stalled]="tickStalled()"
-            [attr.aria-label]="runnerLabel() + (tickStalled() ? ', tick stalled' : '')"
-            [title]="tickTitle()"
-            aria-live="polite"
-          >
-            <i aria-hidden="true"></i
-            ><span class="runner-label">{{
-              tickStalled() ? 'Tick stalled ' + tickAgeLabel() : runnerLabel()
-            }}</span>
-          </span>
-        }
+        <span
+          class="heartbeat-status"
+          [class.healthy]="heartbeat.state() === 'healthy'"
+          [class.buffering]="heartbeat.state() === 'buffering'"
+          [class.stalled]="heartbeat.state() === 'stalled'"
+          [class.unknown]="heartbeat.state() === 'unknown'"
+          [attr.aria-label]="heartbeatAriaLabel()"
+          [title]="heartbeatTitle()"
+          aria-live="polite"
+        >
+          <i aria-hidden="true"></i>
+          @if (heartbeat.state() === 'stalled') {
+            <span class="heartbeat-label">{{ heartbeatWarning() }}</span>
+          }
+        </span>
         <button
           class="theme"
           type="button"
@@ -65,7 +66,14 @@ import { Session } from '../core/session.service';
           >
         }
       </header>
-      <main><ng-content /></main>
+      <main>
+        @if (active() === 'floor' && heartbeat.state() === 'stalled') {
+          <p class="line-stale-warning">
+            <b>The factory line is stalled.</b> Timings and stages may be stale.
+          </p>
+        }
+        <ng-content />
+      </main>
     </div>
     @if (paletteOpen()) {
       <div class="backdrop" role="presentation" (click)="paletteOpen.set(false)">
@@ -157,40 +165,59 @@ import { Session } from '../core/session.service';
     .spacer {
       flex: 1;
     }
-    .runner-badge {
+    .heartbeat-status {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      justify-content: center;
+      gap: 0;
+      min-width: 24px;
       min-height: 24px;
-      padding: 3px 8px;
+      padding: 0 6px;
       color: var(--muted);
-      background: var(--surface-2);
-      border: 1px solid var(--border);
+      background: transparent;
+      border: 1px solid transparent;
       border-radius: var(--r-pill);
       font: 600 10.5px var(--mono);
       white-space: nowrap;
     }
-    .runner-badge i {
-      width: 6px;
-      height: 6px;
-      background: var(--faint);
+    .heartbeat-status i {
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
     }
-    .runner-badge.agent {
-      color: var(--accent-tx);
-      background: var(--accent-tint);
-      border-color: var(--accent-tint-bd);
+    .heartbeat-status.healthy i {
+      background: var(--green);
+      box-shadow: 0 0 0 2px var(--green-bg);
     }
-    .runner-badge.agent i {
-      background: var(--accent);
+    .heartbeat-status.buffering i {
+      background: var(--faint);
     }
-    .runner-badge.stalled {
+    .heartbeat-status.unknown i {
+      background: transparent;
+      border: 1px solid var(--faint);
+    }
+    .heartbeat-status.stalled {
+      gap: 6px;
+      padding: 3px 8px;
       color: var(--red-tx);
       background: var(--red-bg);
       border-color: var(--red-line);
     }
-    .runner-badge.stalled i {
+    .heartbeat-status.stalled i {
       background: var(--red);
+    }
+    .line-stale-warning {
+      margin: 16px 0 0;
+      padding: 7px 10px;
+      color: var(--red-tx);
+      background: var(--surface-2);
+      border: 1px solid var(--red-line);
+      border-radius: var(--r);
+      font-size: 12.5px;
+      line-height: 1.4;
+    }
+    .line-stale-warning b {
+      font-weight: 700;
     }
     .cmd,
     .theme {
@@ -299,13 +326,9 @@ import { Session } from '../core/session.service';
       }
     }
     @media (max-width: 480px) {
-      .runner-badge {
+      .heartbeat-status:not(.stalled) {
         width: 24px;
         padding: 0;
-        justify-content: center;
-      }
-      .runner-label {
-        display: none;
       }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -325,42 +348,36 @@ export class ConsoleShell {
   private intakeUrl = inject(INTAKE_URL);
   session = inject(Session);
   theme = inject(Theme);
+  heartbeat = inject(Heartbeat);
   paletteOpen = signal(false);
   paletteIndex = signal(0);
   query = signal('');
-  runnerMode = signal<{
-    runner: 'agent' | 'sim' | 'kube';
-    cli: 'codex' | 'claude';
-    tick_age_s?: number | null;
-  } | null>(null);
-  runnerLabel = computed(() => {
-    const mode = this.runnerMode();
-    if (!mode) return '';
-    if (mode.runner === 'sim') return 'Simulated';
-    if (mode.runner === 'kube') return 'Agents: Kube jobs';
-    return mode.cli === 'claude' ? 'Agents: Claude Code' : 'Agents: Codex';
+  heartbeatWarning = computed(() => {
+    if (this.heartbeat.fetchFailed()) return 'Line stalled — status unavailable';
+    const age = this.heartbeat.health()?.tick_age_s;
+    return age == null ? '' : `Line stalled ${this.ageLabel(age)} ago`;
   });
-  /** The tick loop drives sim/kube; two minutes of silence means the line is frozen. */
-  tickStalled = computed(() => {
-    const mode = this.runnerMode();
-    return !!mode && mode.runner !== 'agent' && (mode.tick_age_s ?? 0) > 120;
+  heartbeatAriaLabel = computed(() => {
+    if (this.heartbeat.fetchFailed()) return 'Factory line stalled; status unavailable';
+    const state = this.heartbeat.state();
+    if (state === 'healthy') return 'Factory line live';
+    if (state === 'buffering') return 'Factory heartbeat awaiting the next beat';
+    if (state === 'unknown') return 'Factory line starting';
+    const age = Math.round(this.heartbeat.health()?.tick_age_s ?? 0);
+    return `Factory line stalled ${age} seconds ago`;
   });
-  tickAgeLabel = computed(() => {
-    const age = this.runnerMode()?.tick_age_s;
-    return age == null
-      ? ''
-      : age < 3600
-        ? `${Math.round(age / 60)}m`
-        : `${Math.round(age / 3600)}h`;
-  });
-  tickTitle = computed(() => {
-    const mode = this.runnerMode();
-    if (!mode) return '';
-    if (mode.runner === 'agent') return this.runnerLabel();
-    const age = mode.tick_age_s;
-    return age == null
-      ? this.runnerLabel() + ' · no tick yet'
-      : this.runnerLabel() + ` · last tick ${Math.round(age)}s ago`;
+  heartbeatTitle = computed(() => {
+    const health = this.heartbeat.health();
+    if (!health) {
+      return this.heartbeat.fetchFailed()
+        ? 'Health check failed · runner, cli, and epoch unavailable'
+        : 'Checking factory heartbeat';
+    }
+    const details = `runner ${health.runner} · cli ${health.cli} · epoch ${health.epoch}`;
+    if (this.heartbeat.fetchFailed()) return `${details} · health check failed`;
+    return health.tick_age_s == null
+      ? `${details} · no completed tick yet`
+      : `${details} · last completed tick ${Math.round(health.tick_age_s)}s ago`;
   });
   private gPending = false;
   private gTimer: ReturnType<typeof setTimeout> | null = null;
@@ -380,16 +397,13 @@ export class ConsoleShell {
 
   constructor() {
     this.poll.start();
-    effect(() => {
-      this.poll.version();
-      this.api.health().subscribe((health) =>
-        this.runnerMode.set({
-          runner: health.runner,
-          cli: health.cli,
-          tick_age_s: health.tick_age_s,
-        }),
-      );
-    });
+    this.heartbeat.start();
+  }
+
+  private ageLabel(age: number) {
+    if (age < 60) return `${Math.round(age)}s`;
+    if (age < 3600) return `${Math.round(age / 60)}m`;
+    return `${Math.round(age / 3600)}h`;
   }
 
   toggleTheme() {
