@@ -169,7 +169,7 @@ def _base_job(
                         {
                             "name": "main",
                             "image": settings.AGENT_IMAGE,
-                            "imagePullPolicy": "IfNotPresent",
+                            "imagePullPolicy": settings.AGENT_PULL_POLICY,
                             "securityContext": {
                                 "allowPrivilegeEscalation": False,
                                 "capabilities": {"drop": ["ALL"]},

@@ -199,6 +199,9 @@ KUBE_RUN_AS_UID = int(os.environ.get("FACTORY_KUBE_RUN_AS_UID", "10101"))
 # OpenShift assigns per-namespace UID ranges via SCC — hardcoded uids/fsGroup
 # are rejected there; this flag omits them and lets the SCC inject (E2E-7)
 KUBE_SCC_MANAGED = os.environ.get("FACTORY_KUBE_SCC_MANAGED", "").lower() in ("1", "true", "yes", "on")
+# kind side-loads images (IfNotPresent is right); a shared registry that
+# reuses tags needs Always or nodes serve stale agents
+AGENT_PULL_POLICY = os.environ.get("FACTORY_AGENT_PULL_POLICY", "IfNotPresent")
 KUBE_AGENT_SA = os.environ.get("FACTORY_KUBE_AGENT_SA", "sf-agent")
 KUBE_GATE_SA = os.environ.get("FACTORY_KUBE_GATE_SA", "sf-gate")
 # Secret carrying the operator's ~/.codex/auth.json (task sync-codex-auth);

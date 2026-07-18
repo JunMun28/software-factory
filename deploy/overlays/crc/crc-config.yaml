@@ -10,3 +10,5 @@ data:
   FACTORY_AGENT_IMAGE: "image-registry.openshift-image-registry.svc:5000/software-factory/sf-agent:dev"
   # SCC assigns the UID range; hardcoded uids/fsGroup are rejected
   FACTORY_KUBE_SCC_MANAGED: "1"
+  # the internal registry reuses the :dev tag
+  FACTORY_AGENT_PULL_POLICY: "Always"
