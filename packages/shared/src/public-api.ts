@@ -11,6 +11,7 @@
 export type {
   AppDeploy,
   AppEntry,
+  AppRollback,
   AppSubscription,
   Attachment,
   AuditItem,
@@ -34,6 +35,7 @@ export type {
   PrototypeTurn,
   RequestDetail,
   ReviewSummary,
+  RollbackEnqueue,
   RunState,
   SpecLine,
   SpecSection,
