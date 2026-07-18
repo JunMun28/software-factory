@@ -9,7 +9,14 @@
 # kind-smoke.sh); this proves the E2E-2/E2E-3/E2E-4 deltas on real infra.
 set -euo pipefail
 NS=software-factory
-API=http://api.localtest.me:8081/api
+# CRC profile (scripts/crc-smoke-golden.sh): every knob overridable by env.
+API=${SMOKE_API:-http://api.localtest.me:8081/api}
+APP_DOMAIN=${SMOKE_APP_DOMAIN:-localtest.me}
+HOST_PORT=${SMOKE_HOST_PORT-:8081}   # ":8081" on kind; "" behind the OpenShift router
+if [ -n "${SMOKE_CONNECT_TO:-}" ]; then
+  # pin every connection to the local router — per-run subdomains have no DNS
+  curl() { command curl --connect-to "$SMOKE_CONNECT_TO" "$@"; }
+fi
 jqpy() { python3 -c "import json,sys; d=json.load(sys.stdin); $1"; }
 fail() { echo "✗ FAIL: $1" >&2; exit 1; }
 ok() { echo "  ✓ $1"; }
@@ -102,8 +109,9 @@ SLUG=$(curl -s "$API/requests/$RID" | jqpy "print(d['app_key'] or '$LREF')")
 # --resolve everywhere a per-run subdomain appears: each run mints a brand-new
 # *.localtest.me name, and one transient upstream DNS failure gets negatively
 # cached by macOS for minutes — 90 straight probe misses on a live app (run 20)
-PREVIEW_URL="http://$SLUG-preview.localtest.me:8081"
-PREVIEW_RESOLVE="--resolve $SLUG-preview.localtest.me:8081:127.0.0.1"
+PREVIEW_URL="http://$SLUG-preview.$APP_DOMAIN$HOST_PORT"
+PREVIEW_RESOLVE=${SMOKE_CONNECT_TO:+ }
+[ -n "${SMOKE_CONNECT_TO:-}" ] || PREVIEW_RESOLVE="--resolve $SLUG-preview.$APP_DOMAIN:8081:127.0.0.1"
 curl -sf $PREVIEW_RESOLVE "$PREVIEW_URL/health" | grep -q '"status":"ok"' \
   || fail "preview /health did not answer"
 curl -sf $PREVIEW_RESOLVE "$PREVIEW_URL/" | grep -qi "<!doctype html\|<html" \
@@ -137,8 +145,9 @@ while :; do
   [ "$(date +%s)" -gt "$DEPLOY_DEADLINE" ] && fail "build+deploy did not finish in 15 min"
   sleep 5
 done
-APP_URL="http://$SLUG.localtest.me:8081"
-APP_RESOLVE="--resolve $SLUG.localtest.me:8081:127.0.0.1"
+APP_URL="http://$SLUG.$APP_DOMAIN$HOST_PORT"
+APP_RESOLVE=${SMOKE_CONNECT_TO:+ }
+[ -n "${SMOKE_CONNECT_TO:-}" ] || APP_RESOLVE="--resolve $SLUG.$APP_DOMAIN:8081:127.0.0.1"
 # `done` lands when the deploy is APPLIED; give the rollout up to 3 minutes.
 # Two paths prove liveness: the host→ingress route (what a user hits), and an
 # in-cluster probe from the api pod to the app Service (immune to the
