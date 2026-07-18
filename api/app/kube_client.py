@@ -169,27 +169,7 @@ class RealKubeClient:
                             reason = cond.reason
                             break
                 if read_logs:
-                    try:
-                        with self._bounded("read_pod_log"):
-                            # _preload_content=False: the client's own
-                            # deserializer str()-reprs a non-UTF-8 body into
-                            # one giant b'...' line (found live in E2E-4:
-                            # every ndjson event — review reasoning, pytest
-                            # blocks — silently vanished). Take the raw body
-                            # and decode it ourselves.
-                            raw = self._core.read_namespaced_pod_log(
-                                pod.metadata.name,
-                                self.ns,
-                                _request_timeout=self._request_timeout,
-                                _preload_content=False,
-                            )
-                        data = getattr(raw, "data", raw)
-                        if isinstance(data, (bytes, bytearray)):
-                            logs = data.decode("utf-8", errors="replace")
-                        else:
-                            logs = str(data or "")
-                    except (self._ApiException, KubeTimeout):
-                        logs = ""
+                    logs = self._pod_logs(pod)
         return JobView(
             name=name,
             phase=phase,
@@ -199,6 +179,80 @@ class RealKubeClient:
             reason=reason,
             exit_code=exit_code,
         )
+
+    def _read_container_log(self, pod_name: str, container: str | None) -> str:
+        # _preload_content=False: the client's own deserializer str()-reprs a
+        # non-UTF-8 body into one giant b'...' line (found live in E2E-4:
+        # every ndjson event — review reasoning, pytest blocks — silently
+        # vanished). Take the raw body and decode it ourselves.
+        kwargs = {"_request_timeout": self._request_timeout, "_preload_content": False}
+        if container:
+            kwargs["container"] = container
+        with self._bounded("read_pod_log"):
+            raw = self._core.read_namespaced_pod_log(pod_name, self.ns, **kwargs)
+        data = getattr(raw, "data", raw)
+        if isinstance(data, (bytes, bytearray)):
+            return data.decode("utf-8", errors="replace")
+        return str(data or "")
+
+    def _pod_logs(self, pod) -> str:
+        """All containers' logs — a multi-container pod (kaniko build: clone
+        init + build) 400s the container-less read, which silently erased
+        every build failure's evidence (E2E-7 live finding)."""
+        containers = [c.name for c in (pod.spec.init_containers or [])] + [
+            c.name for c in (pod.spec.containers or [])
+        ]
+        try:
+            if len(containers) <= 1:
+                return self._read_container_log(pod.metadata.name, None)
+            parts = []
+            for cname in containers:
+                try:
+                    text = self._read_container_log(pod.metadata.name, cname)
+                except (self._ApiException, KubeTimeout):
+                    text = ""
+                if text:
+                    parts.append(f"=== container {cname} ===\n{text}")
+            return "\n".join(parts)
+        except (self._ApiException, KubeTimeout):
+            return ""
+
+    def _read_container_log(self, pod_name: str, container: str | None) -> str:
+        # _preload_content=False: the client's own deserializer str()-reprs a
+        # non-UTF-8 body into one giant b'...' line (found live in E2E-4:
+        # every ndjson event — review reasoning, pytest blocks — silently
+        # vanished). Take the raw body and decode it ourselves.
+        kwargs = {"_request_timeout": self._request_timeout, "_preload_content": False}
+        if container:
+            kwargs["container"] = container
+        with self._bounded("read_pod_log"):
+            raw = self._core.read_namespaced_pod_log(pod_name, self.ns, **kwargs)
+        data = getattr(raw, "data", raw)
+        if isinstance(data, (bytes, bytearray)):
+            return data.decode("utf-8", errors="replace")
+        return str(data or "")
+
+    def _pod_logs(self, pod) -> str:
+        """All containers' logs — a multi-container pod (kaniko build: clone
+        init + build) 400s the container-less read, which silently erased
+        every build failure's evidence (E2E-7 live finding)."""
+        containers = [c.name for c in (pod.spec.init_containers or [])] + [
+            c.name for c in (pod.spec.containers or [])
+        ]
+        try:
+            if len(containers) <= 1:
+                return self._read_container_log(pod.metadata.name, None)
+            parts = []
+            for cname in containers:
+                try:
+                    text = self._read_container_log(pod.metadata.name, cname)
+                except (self._ApiException, KubeTimeout):
+                    text = ""
+                if text:
+                    parts.append(f"=== container {cname} ===\n{text}")
+            return "\n".join(parts)
+        except (self._ApiException, KubeTimeout):
+            return ""
 
     def delete_job(self, name: str, *, uid: str | None = None) -> None:
         # Foreground GC must live INSIDE V1DeleteOptions: when a body is present
