@@ -49,10 +49,16 @@ emit_pytest_log() {
 frontend_build_gate() { # [metrics_json]
   [ -f frontend/package.json ] || return 0
   NPM_CI_OUT="$GATE_WORK/npm-ci.txt"
-  (cd frontend && npm ci) > "$NPM_CI_OUT" 2>&1
+  # Hard timeout + minimal retries: against the gate's egress wall, npm does
+  # NOT fail fast — it retried for 15+ minutes until the pod deadline killed
+  # the gate before any verdict was written (live E2E-4 infra loop). rc=124
+  # (timeout) is the wall, not a build problem — take the documented skip.
+  (cd frontend && timeout 120 npm ci --no-audit --no-fund \
+      --fetch-retries=1 --fetch-timeout=30000 --fetch-retry-maxtimeout=15000) \
+      > "$NPM_CI_OUT" 2>&1
   npm_ci_rc=$?
   if [ "$npm_ci_rc" != "0" ]; then
-    if grep -Eqi 'EAI_AGAIN|ENETUNREACH|ECONNREFUSED|ECONNRESET|ETIMEDOUT|getaddrinfo|network.*(unreachable|timeout)|registry.*unreachable' "$NPM_CI_OUT"; then
+    if [ "$npm_ci_rc" = "124" ] || grep -Eqi 'EAI_AGAIN|ENETUNREACH|ECONNREFUSED|ECONNRESET|ETIMEDOUT|getaddrinfo|network.*(unreachable|timeout)|registry.*unreachable' "$NPM_CI_OUT"; then
       note "frontend build skipped: npm registry unreachable in gate pod"
       return 0
     fi
