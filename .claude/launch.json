@@ -31,7 +31,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "set -a; . api/.env.azure; set +a; SIM_INTERVAL=8 uv run --directory api uvicorn app.main:app --port 8000 --reload"
+        "set -a; . api/.env.azure; set +a; SIM_INTERVAL=8 FACTORY_ARCH_GATE=on FACTORY_SPEC_GATE=auto uv run --directory api uvicorn app.main:app --port 8000 --reload"
       ],
       "port": 8000,
       "autoPort": false

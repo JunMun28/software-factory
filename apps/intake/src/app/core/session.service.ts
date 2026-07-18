@@ -45,7 +45,9 @@ export class Session {
   private stored = signal<User>(loadStoredUser('sf-user', SUBMITTER));
 
   // Constructor default keeps `new Session()` working in specs (a bare
-  // FactoryAuth is mode 'unknown' -> the stored/demo path).
+  // FactoryAuth is mode 'unknown' -> the stored/demo path); inject() would
+  // require an injection context the specs don't have.
+  // eslint-disable-next-line @angular-eslint/prefer-inject
   constructor(private auth: FactoryAuth = new FactoryAuth()) {}
 
   /** The acting user: the Entra account when the auth wall is on (server
