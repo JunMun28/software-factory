@@ -7,4 +7,5 @@ export SMOKE_API=http://api-software-factory.apps-crc.testing/api
 export SMOKE_APP_DOMAIN=apps-crc.testing
 export SMOKE_HOST_PORT=
 export SMOKE_CONNECT_TO="::127.0.0.1:"
+export SMOKE_PROD_TRIES=240   # CRC's router can take minutes to serve a new host
 exec bash "$(dirname "$0")/kind-smoke-golden.sh"

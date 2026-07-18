@@ -148,7 +148,9 @@ done
 APP_URL="http://$SLUG.$APP_DOMAIN$HOST_PORT"
 APP_RESOLVE=${SMOKE_CONNECT_TO:+ }
 [ -n "${SMOKE_CONNECT_TO:-}" ] || APP_RESOLVE="--resolve $SLUG.$APP_DOMAIN:8081:127.0.0.1"
-# `done` lands when the deploy is APPLIED; give the rollout up to 3 minutes.
+# `done` lands when the deploy is APPLIED; window in 2s ticks (CRC's router
+# can take minutes to serve a new host — proven live: the app answered fine
+# after the router finally reloaded).
 # Two paths prove liveness: the host→ingress route (what a user hits), and an
 # in-cluster probe from the api pod to the app Service (immune to the
 # host-side network anomaly that failed four otherwise-live runs — the app
@@ -160,7 +162,8 @@ cluster_get() { # path
 }
 APP_OK=""
 PROBE_DBG="$(mktemp)"
-for i in $(seq 1 90); do
+PROD_TRIES=${SMOKE_PROD_TRIES:-90}
+for i in $(seq 1 "$PROD_TRIES"); do
   BODY="$(curl -s -m 5 $APP_RESOLVE "$APP_URL/health" 2>"$PROBE_DBG")" && rc=0 || rc=$?
   if [ "$rc" = "0" ] && echo "$BODY" | grep -q '"status":"ok"'; then APP_OK=host; break; fi
   if [ $((i % 10)) = 5 ] && cluster_get /health | grep -q '"status":"ok"'; then APP_OK=cluster; break; fi
@@ -170,7 +173,7 @@ for i in $(seq 1 90); do
   fi
   sleep 2
 done
-[ -n "$APP_OK" ] || fail "PROD app /health did not answer within 180s (host + in-cluster)"
+[ -n "$APP_OK" ] || fail "PROD app /health did not answer within $((PROD_TRIES * 2))s (host + in-cluster)"
 FRONT_OK=""
 if curl -s -m 5 $APP_RESOLVE "$APP_URL/" | grep -qi "<!doctype html\|<html"; then FRONT_OK=host
 elif cluster_get / | grep -qi "<!doctype html\|<html"; then FRONT_OK=cluster; fi
