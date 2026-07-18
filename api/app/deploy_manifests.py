@@ -95,11 +95,22 @@ def build_job_manifest(ref: str, slug: str, sha: str) -> dict:
                     "automountServiceAccountToken": False,
                     "serviceAccountName": settings.KUBE_BUILD_SA,
                     "securityContext": {
+                        # kaniko's init needs root: on SCC clusters the build
+                        # SA rides the anyuid SCC, which is LEGACY — it rejects
+                        # the seccompProfile field (admission maps it to
+                        # forbidden annotations) and any uid pinning is
+                        # pointless under RunAsAny (E2E-7 live finding)
                         "runAsNonRoot": True,
-                        "runAsUser": settings.KUBE_RUN_AS_UID,
-                        "runAsGroup": 0,
-                        "fsGroup": 0,
-                        "seccompProfile": {"type": "RuntimeDefault"},
+                        **(
+                            {}
+                            if settings.KUBE_SCC_MANAGED
+                            else {
+                                "runAsUser": settings.KUBE_RUN_AS_UID,
+                                "runAsGroup": 0,
+                                "fsGroup": 0,
+                                "seccompProfile": {"type": "RuntimeDefault"},
+                            }
+                        ),
                     },
                     "volumes": [{"name": "workspace", "emptyDir": {}}],
                     "initContainers": [{
