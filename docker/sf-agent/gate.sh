@@ -58,8 +58,16 @@ frontend_build_gate() { # [metrics_json]
     NPM_TEST_OUT="$GATE_WORK/npm-test.txt"
     (cd frontend && timeout -k 15 300 npm test -- --watch=false) > "$NPM_TEST_OUT" 2>&1
     npm_test_rc=$?
-    [ "$npm_test_rc" = "0" ] || \
-      verdict fail "frontend tests failed (rc=$npm_test_rc): $(tail -c 300 "$NPM_TEST_OUT")" "${1:-null}"
+    if [ "$npm_test_rc" != "0" ]; then
+      # feedback must name the FAILING TESTS, not the summary footer — a bare
+      # "2 failed | 3 passed" tail left the implementer fixing blind (E2E-4).
+      # Strip ANSI first; vitest colors everything.
+      ESC="$(printf '\033')"
+      FAILS="$(sed "s/${ESC}\[[0-9;]*m//g" "$NPM_TEST_OUT" \
+        | grep -A 10 -E 'FAIL|✗|×|❯.*>|AssertionError|expected' | tail -c 1500)"
+      [ -n "$FAILS" ] || FAILS="$(sed "s/${ESC}\[[0-9;]*m//g" "$NPM_TEST_OUT" | tail -c 800)"
+      verdict fail "frontend tests failed (rc=$npm_test_rc): $FAILS" "${1:-null}"
+    fi
     note "frontend tests passed"
     NPM_BUILD_OUT="$GATE_WORK/npm-build.txt"
     (cd frontend && timeout -k 15 600 npm run build) > "$NPM_BUILD_OUT" 2>&1
