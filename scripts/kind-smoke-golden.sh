@@ -9,7 +9,7 @@
 # kind-smoke.sh); this proves the E2E-2/E2E-3/E2E-4 deltas on real infra.
 set -euo pipefail
 NS=software-factory
-API=http://localhost:8081/api
+API=http://api.localtest.me:8081/api
 jqpy() { python3 -c "import json,sys; d=json.load(sys.stdin); $1"; }
 fail() { echo "✗ FAIL: $1" >&2; exit 1; }
 ok() { echo "  ✓ $1"; }

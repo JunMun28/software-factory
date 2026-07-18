@@ -26,6 +26,8 @@ export type {
   MissionRun,
   MissionStats,
   Operator,
+  PreviewFeedbackItem,
+  PreviewStatus,
   ProgressEvent,
   PrototypeAnnotation,
   PrototypeState,

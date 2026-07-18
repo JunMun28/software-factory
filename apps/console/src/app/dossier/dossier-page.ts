@@ -64,7 +64,22 @@ import { DossierChapter, buildDossierChapters } from './dossier-view';
             }
 
             <div class="header-actions" aria-label="Request actions">
-              @if (r.gate) {
+              @if (r.gate === 'accept_preview') {
+                @if (previewUrl(); as u) {
+                  <a class="btn primary" [href]="u" target="_blank" rel="noopener">Open preview</a>
+                }
+                <button
+                  class="btn"
+                  type="button"
+                  [disabled]="previewBusy()"
+                  (click)="acceptPreview()"
+                >
+                  Accept preview
+                </button>
+                <button class="btn" type="button" (click)="previewChanging.set(true)">
+                  Request changes
+                </button>
+              } @else if (r.gate) {
                 <button class="btn primary" type="button" (click)="confirming.set(true)">
                   Approve
                 </button>
@@ -301,6 +316,15 @@ import { DossierChapter, buildDossierChapters } from './dossier-view';
         placeholder="Add a clear note…"
         (cancelled)="sendingBack.set(false)"
         (sent)="sendBack($event)"
+      />
+    }
+    @if (previewChanging() && request(); as r) {
+      <sf-send-back-modal
+        [reporter]="r.reporter"
+        hint="What should the agent change? The pipeline reworks the app and brings a new preview round."
+        placeholder="Describe the change…"
+        (cancelled)="previewChanging.set(false)"
+        (sent)="requestPreviewChanges($event)"
       />
     }
     @if (refining() && request(); as r) {
@@ -865,6 +889,9 @@ export class DossierPage {
   confirming = signal(false);
   sendingBack = signal(false);
   refining = signal(false);
+  previewChanging = signal(false);
+  previewBusy = signal(false);
+  previewUrl = signal<string | null>(null);
   retrying = signal(false);
   takingOver = signal(false);
   sendingStageBack = signal(false);
@@ -890,6 +917,15 @@ export class DossierPage {
     effect(() => {
       const fragment = this.fragment();
       this.openChapter.set(fragment?.startsWith('chapter-') ? fragment : null);
+    });
+    // Preview link for the accept gate (C1/E2E-5): cheap read, poll-refreshed.
+    effect(() => {
+      this.poll.version();
+      if (this.request()?.gate === 'accept_preview') {
+        this.api.previewStatus(this.id()).subscribe((p) => this.previewUrl.set(p.url));
+      } else {
+        this.previewUrl.set(null);
+      }
     });
   }
 
@@ -990,6 +1026,25 @@ export class DossierPage {
   sendBack(note: string) {
     this.sendingBack.set(false);
     this.runAction('send back', this.api.sendBack(this.id(), note, this.session.operatorId()!));
+  }
+
+  acceptPreview() {
+    this.previewBusy.set(true);
+    this.api.previewAccept(this.id(), this.session.user().name).subscribe({
+      next: () => {
+        this.previewBusy.set(false);
+        this.poll.nudge();
+      },
+      error: () => this.previewBusy.set(false),
+    });
+  }
+
+  requestPreviewChanges(feedback: string) {
+    this.previewChanging.set(false);
+    this.runAction(
+      'send to agent',
+      this.api.previewRequestChanges(this.id(), feedback, this.session.user().name),
+    );
   }
 
   refine(choice: { code: string; reason: string }) {

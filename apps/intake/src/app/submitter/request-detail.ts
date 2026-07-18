@@ -8,6 +8,7 @@ import {
   Icon,
   Pill,
   Poll,
+  PreviewStatus,
   RequestDetail,
   Sig,
   TypeChip,
@@ -89,6 +90,52 @@ interface TlRow {
               >
             </div>
           }
+          @if (r.gate === 'accept_preview' && preview(); as p) {
+            <div class="attn lift fade-in" style="margin-top:20px">
+              <sf-sig tone="green" glyph="check">Your preview is ready</sf-sig>
+              <p style="font-size:14px;color:var(--muted);margin:8px 0 12px">
+                Round {{ p.round }} of your app is live. Click around it, then either approve it for
+                release or tell the agent what to change.
+              </p>
+              @if (p.url) {
+                <a
+                  class="btn"
+                  [href]="p.url"
+                  target="_blank"
+                  rel="noopener"
+                  style="margin-bottom:12px"
+                >
+                  Open the preview <sf-icon name="arrowRight" [size]="15" />
+                </a>
+              }
+              <textarea
+                class="input area"
+                placeholder="What should change? The agent reworks the app and brings a new preview…"
+                style="background:var(--surface)"
+                [(ngModel)]="previewNote"
+              ></textarea>
+              <div class="row" style="gap:9px;margin-top:11px;flex-wrap:wrap">
+                <button class="btn primary" [disabled]="previewBusy()" (click)="acceptPreview(r)">
+                  Looks good — approve it <sf-icon name="arrowRight" [size]="16" />
+                </button>
+                <button
+                  class="btn"
+                  [disabled]="!previewNote.trim() || previewBusy()"
+                  (click)="requestPreviewChanges(r)"
+                >
+                  Request changes
+                </button>
+                <button
+                  class="btn"
+                  disabled
+                  aria-label="Edit in ng-v0 — coming soon"
+                  title="Editing the app conversationally in ng-v0 is coming; for now, describe the change and the agent will make it."
+                >
+                  Edit in ng-v0
+                </button>
+              </div>
+            </div>
+          }
           @if (r.status === 'cancelled') {
             <div
               class="card fade-in"
@@ -127,7 +174,11 @@ interface TlRow {
             }
           </div>
           @if (
-            r.status !== 'sent_back' && !sent() && r.status !== 'cancelled' && r.status !== 'done'
+            r.status !== 'sent_back' &&
+            !sent() &&
+            r.status !== 'cancelled' &&
+            r.status !== 'done' &&
+            r.gate !== 'accept_preview'
           ) {
             <div style="font-size:13px;color:var(--faint);text-align:center;margin-top:4px">
               Nothing needed from you right now.
@@ -146,6 +197,9 @@ export class SubRequestDetail {
   id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
 
   req = signal<RequestDetail | null>(null);
+  preview = signal<PreviewStatus | null>(null);
+  previewBusy = signal(false);
+  previewNote = '';
   sent = signal(false);
   reply = '';
 
@@ -154,6 +208,14 @@ export class SubRequestDetail {
     effect(() => {
       this.poll.version();
       this.api.request(this.id).subscribe((r) => this.req.set(r));
+    });
+    // The preview card needs the live URL + round; refresh it alongside the
+    // request whenever the accept gate is up (cheap read, C1 endpoint).
+    effect(() => {
+      this.poll.version();
+      if (this.req()?.gate === 'accept_preview') {
+        this.api.previewStatus(this.id).subscribe((p) => this.preview.set(p));
+      }
     });
   }
 
@@ -165,6 +227,33 @@ export class SubRequestDetail {
   }
   go(url: string) {
     this.router.navigateByUrl(url);
+  }
+
+  acceptPreview(r: RequestDetail) {
+    this.previewBusy.set(true);
+    this.api.previewAccept(r.id, this.session.user().name).subscribe({
+      next: (d) => {
+        this.req.set(d as RequestDetail);
+        this.previewBusy.set(false);
+        this.poll.nudge();
+      },
+      error: () => this.previewBusy.set(false),
+    });
+  }
+
+  requestPreviewChanges(r: RequestDetail) {
+    this.previewBusy.set(true);
+    this.api
+      .previewRequestChanges(r.id, this.previewNote.trim(), this.session.user().name)
+      .subscribe({
+        next: (d) => {
+          this.req.set(d as RequestDetail);
+          this.previewNote = '';
+          this.previewBusy.set(false);
+          this.poll.nudge();
+        },
+        error: () => this.previewBusy.set(false),
+      });
   }
 
   respond(r: RequestDetail) {

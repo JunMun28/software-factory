@@ -13,6 +13,7 @@ import {
   InterviewState,
   MissionOut,
   Operator,
+  PreviewStatus,
   ProgressEvent,
   PrototypeAnnotation,
   PrototypeState,
@@ -74,6 +75,26 @@ export class Api {
       operator_id: operatorId,
       reason_code: reasonCode,
       reason,
+    });
+  }
+  /** C1 preview loop (E2E-5 surfaces): live URL, round, feedback history. */
+  previewStatus(id: number): Observable<PreviewStatus> {
+    return this.http.get<PreviewStatus>(`${BASE}/requests/${id}/preview`);
+  }
+  /** Requester accepts the preview → merge gate. actor = display name when
+   *  called from the intake app (no operator identity needed). */
+  previewAccept(id: number, actor?: string) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/preview/accept`, {
+      actor: actor ?? null,
+    });
+  }
+  /** Requester asks for changes → the pipeline rewinds to architecture with
+   *  the feedback riding into the next round. */
+  previewRequestChanges(id: number, feedback: string, actor?: string, pagePath?: string) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/preview/request-changes`, {
+      feedback,
+      actor: actor ?? null,
+      page_path: pagePath ?? null,
     });
   }
   createOperator(body: Pick<Operator, 'name' | 'initials' | 'hue' | 'email'>) {

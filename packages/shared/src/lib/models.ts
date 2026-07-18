@@ -249,6 +249,28 @@ export interface ProgressEvent {
   request_title: string | null;
 }
 
+/** One requester note from a preview round (C1). */
+export interface PreviewFeedbackItem {
+  round: number;
+  order: number;
+  body: string;
+  page_path: string | null;
+  author: string;
+  disposition: string;
+  created_at: string;
+}
+
+/** The C1 preview loop's live state (E2E-5 surfaces). */
+export interface PreviewStatus {
+  round: number;
+  url: string | null;
+  gate: string | null;
+  sha: string | null;
+  digest: string | null;
+  state: 'none' | 'building' | 'deploying' | 'ready' | 'accepted';
+  feedback: PreviewFeedbackItem[];
+}
+
 /** Derived run-state for an in-flight build (ADR 0014 — computed server-side, never stored). */
 export interface RunState {
   step: number;
