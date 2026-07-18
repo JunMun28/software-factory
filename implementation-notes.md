@@ -1025,3 +1025,33 @@ Deferred by E2E-2:
 - No frontend-runner work is needed for this template because `npm test` is
   already Vitest-backed. The prompts explicitly fall back to backend-only RED
   tests and disclose the limitation for any future template without a runner.
+
+## E2E-3 complete — architecture gate + refine loop LIVE-PROVEN (2026-07-18)
+
+Backend (codex build + my review fixes from the independent codex review):
+raise/approve/reject transitions (decisive, replay-safe), drive-loop gate with
+durable supersede of rejected rounds (scheduler classifies refinement as
+architecture work), reason_code preserved, notifications labeled, evidence
+kind="architecture" (plan_excerpt/plan_digest/refine_rounds) + EvidenceOut
+extended, simulator parity (approve is the only way past; reject resets
+sim_step via the transition), newest_decisive promoted to transitions.
+FACTORY_ARCH_GATE accepts on/true/yes/1. FACTORY_SPEC_GATE=auto self-approves
+the spec gate at submit with an honest raise+approve audit pair.
+
+Console: gateLabel/confirmSteps/track rows/Needs-you rail know
+approve_architecture + accept_preview; ApproveModal renders the PLAN excerpt
++ refine rounds; RefineModal ("Ask the agent for changes") posts the
+structured reject through Api.rejectGate. Gate/Evidence unions extended;
+'send to agent' action verb.
+
+LIVE WALK (dev stack, sim, signed in as the Entra admin): approve spec →
+architecture walked → GATE RAISED (t+24s) → "Ask the agent for changes" with
+a real note → rejected_architecture audit + pending_feedback staged → stage
+re-walked → GATE RE-RAISED (t+16s) → "Approve & continue build" →
+approved_architecture by Jun Mun Wong → stage=build. The full refine
+conversation is in the timeline.
+
+Found live, filed to E2E-6: the dossier request detail does not re-query on
+poll version bumps (timeline live, header/buttons stale until reload). Also:
+a long-lived ng serve from BEFORE a merge serves stale bundles — restart dev
+servers after merging (operational note, not a bug).
