@@ -180,6 +180,44 @@ and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
 
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
+
 ## Deviations
 
 - **Review retries re-run the read-only reviewer, not the implementer.** The retry
@@ -349,6 +387,44 @@ and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
 
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
+
 ## Deviations
 
 - **Simulator merge-gate email is post-commit.** The simulator now carries the
@@ -509,6 +585,44 @@ and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
 
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
+
 ## Deviations
 
 - `apply()` guards parameter-dependent effect construction so a consumed precondition
@@ -638,6 +752,44 @@ fresh subdomain + background context + immediate probe = instant success)
 and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
+
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
 
 ## Deviations — generation-stream branch (2026-07-15)
 
@@ -775,6 +927,44 @@ fresh subdomain + background context + immediate probe = instant success)
 and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
+
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
 
 ## Deviations
 
@@ -943,6 +1133,44 @@ fresh subdomain + background context + immediate probe = instant success)
 and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
+
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
 
 ## Deviations (B2 cluster half)
 
@@ -1150,6 +1378,44 @@ and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
 
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
+
 ## Deviations
 
 - The task suggested also resetting the draft in `new-request.ts` on mount.
@@ -1309,6 +1575,44 @@ fresh subdomain + background context + immediate probe = instant success)
 and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
+
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
 
 ## Deviations
 - "Steer next step" dropped from the home page (was on every lane card);
@@ -1474,6 +1778,44 @@ and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
 
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
+
 ## Deviations — C2 (correctness & failure-recovery hotfixes)
 
 - **C2 split into C2a + C2b.** The design→adversarial-verify workflow returned
@@ -1633,6 +1975,44 @@ fresh subdomain + background context + immediate probe = instant success)
 and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
+
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
 
 ## Deviations — C2b (runner reliability: FAIL-01/02/04)
 
@@ -1800,6 +2180,44 @@ and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
 
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
+
 ## Deviations / decisions — C1
 
 - **Backend + kind-smoke ONLY; rich Stream/console requester UI deferred to a P4
@@ -1958,6 +2376,44 @@ fresh subdomain + background context + immediate probe = instant success)
 and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
+
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
 
 ## Deviations / decisions — C4
 - **v1 is ADDITIVE-NON-BLOCKING**: coverage is EVIDENCE, never a gate pass/fail
@@ -2257,6 +2713,44 @@ and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
 
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
+
 ## Deviations
 - "Preview before approve" (staging deploy at review time) NOT built: with
   the B4 three-gate flow the deploy gate fires before any image exists, so
@@ -2411,6 +2905,44 @@ fresh subdomain + background context + immediate probe = instant success)
 and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
+
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
 
 ## Deviations
 - **Deploy-reject shield (added, conservative):** a rejected deploy leaves
@@ -2699,6 +3231,44 @@ fresh subdomain + background context + immediate probe = instant success)
 and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
+
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
 
 ## Deviations
 - Scope kept to the Overview page (both user requirements live there);
@@ -3019,6 +3589,44 @@ fresh subdomain + background context + immediate probe = instant success)
 and stays instrumented. Full-pipeline proof stands on runs 18/20/22 + four
 hand-verified live prod apps. E2E-4/5/6 closed; E2E-7 blocked on the Red
 Hat pull secret + agent quota.
+
+## E2E-7: OpenShift Local (CRC) — 2026-07-19
+
+Cluster: CRC 2.62.0 / OpenShift 4.22.1 on vfkit. Port shipped as
+deploy/overlays/crc + code knobs; findings, in order found:
+1. greenlet + cryptography PyPI aarch64 wheels SIGILL under the RHEL kernel
+   (fine on Docker Desktop's kernel). Bisected live via faulthandler probe
+   pods (bare python OK → import app.main SIGILL → greenlet direct SIGILL;
+   a source-built greenlet imported clean; cryptography wheels faulted at
+   every version). The api image now source-builds both, then strips the
+   rust/build toolchain.
+2. OVN enforces the NetworkPolicies for real; OpenShift DNS = openshift-dns
+   pod port 5353 — allow-dns patched in the overlay.
+3. Arbitrary-UID: uv needs HOME/UV_CACHE_DIR env; stock nginx needs emptyDir
+   cache/run + an 8080 listen (overlay configmap + svc targetPort).
+4. Internal registry reuses :dev tags → imagePullPolicy Always (deployments
+   via overlay; agent Jobs via new FACTORY_AGENT_PULL_POLICY).
+5. SCC uid ranges: FACTORY_KUBE_SCC_MANAGED=1 omits runAsUser/runAsGroup/
+   fsGroup from agent/gate/app manifests (SCC injects); kaniko keeps root via
+   anyuid granted to sf-build on Local (office answer = BuildConfig,
+   pre-recorded deviation). The legacy anyuid SCC also rejects the
+   seccompProfile FIELD (admission maps it to forbidden annotations) — the
+   kaniko job omits it under SCC-managed mode.
+6. Produced-app Ingress: FACTORY_APP_INGRESS_CLASS=openshift-default +
+   domain apps-crc.testing (ingress-to-route conversion).
+7. CRC run 1: THE FULL AGENT LOOP PASSED ON OPENSHIFT (architecture gate
+   with real plan → red/green → review approved after 2 reworks) — only the
+   kaniko job died on SCC admission (finding 5's second half).
+8. CRC run 2: red-1 DELETED frontend/package-lock.json (20,279 lines);
+   its gate passed; the failure surfaced two stages later as an npm usage
+   dump. The DEPENDENCY FREEZE is now enforced server-side: any commit
+   touching frozen build metadata fails its OWN stage's gate with
+   restore-these-files feedback.
+Smoke: scripts/crc-smoke-golden.sh wraps the kind script (SMOKE_* env knobs;
+curl --connect-to pins every per-run subdomain to the local router).
+CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
+helper needs setuid root (user ran the one sudo line); an interrupted first
+start leaves kubelet inactive — force stop + start reruns post-start.
 
 ## Deviations
 
