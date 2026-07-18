@@ -99,10 +99,14 @@ ok "red/green/review passed on the golden layout; preview built and deployed"
 
 echo "▸ the preview is the REAL golden app (Angular static + FastAPI + /health)"
 SLUG=$(curl -s "$API/requests/$RID" | jqpy "print(d['app_key'] or '$LREF')")
+# --resolve everywhere a per-run subdomain appears: each run mints a brand-new
+# *.localtest.me name, and one transient upstream DNS failure gets negatively
+# cached by macOS for minutes — 90 straight probe misses on a live app (run 20)
 PREVIEW_URL="http://$SLUG-preview.localtest.me:8081"
-curl -sf "$PREVIEW_URL/health" | grep -q '"status":"ok"' \
+PREVIEW_RESOLVE="--resolve $SLUG-preview.localtest.me:8081:127.0.0.1"
+curl -sf $PREVIEW_RESOLVE "$PREVIEW_URL/health" | grep -q '"status":"ok"' \
   || fail "preview /health did not answer"
-curl -sf "$PREVIEW_URL/" | grep -qi "<!doctype html\|<html" \
+curl -sf $PREVIEW_RESOLVE "$PREVIEW_URL/" | grep -qi "<!doctype html\|<html" \
   || fail "preview / did not serve the built Angular frontend"
 ok "preview serves the Angular frontend AND the FastAPI health endpoint"
 
@@ -134,16 +138,15 @@ while :; do
   sleep 5
 done
 APP_URL="http://$SLUG.localtest.me:8081"
-# `done` lands when the deploy is APPLIED; the prod pod may still be pulling
-# the freshly built image and starting (60s lost the race in run 19; the app
-# answered fine ~90s in) — give the rollout three minutes
+APP_RESOLVE="--resolve $SLUG.localtest.me:8081:127.0.0.1"
+# `done` lands when the deploy is APPLIED; give the rollout up to 3 minutes
 APP_OK=""
 for _ in $(seq 1 90); do
-  if curl -sf "$APP_URL/health" | grep -q '"status":"ok"'; then APP_OK=1; break; fi
+  if curl -sf $APP_RESOLVE "$APP_URL/health" | grep -q '"status":"ok"'; then APP_OK=1; break; fi
   sleep 2
 done
 [ -n "$APP_OK" ] || fail "PROD app /health did not answer within 180s"
-curl -sf "$APP_URL/" | grep -qi "<!doctype html\|<html" || fail "PROD app did not serve the frontend"
+curl -sf $APP_RESOLVE "$APP_URL/" | grep -qi "<!doctype html\|<html" || fail "PROD app did not serve the frontend"
 ok "request done — the golden app is LIVE at $APP_URL"
 
 echo
