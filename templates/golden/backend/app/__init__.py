@@ -1,0 +1,1 @@
+"""Golden Template FastAPI application."""

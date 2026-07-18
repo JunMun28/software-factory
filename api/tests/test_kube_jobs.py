@@ -771,6 +771,62 @@ def _run_gate(tmp_path, *, test_source: str, gitleaks_rc: int = 0):
     return result, json.loads(termlog.read_text())
 
 
+def _run_golden_gate(
+    tmp_path, *, stage: str, test_source: str, npm_ci_rc: int = 0, npm_build_rc: int = 0
+):
+    repo = tmp_path / "repo"
+    tests = repo / "backend" / "tests"
+    tests.mkdir(parents=True)
+    (repo / "backend" / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.1.0'\n")
+    (tests / "test_golden_gate.py").write_text(test_source)
+    frontend = repo / "frontend"
+    frontend.mkdir()
+    (frontend / "package.json").write_text('{"scripts":{"build":"fixture"}}\n')
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_gitleaks := fake_bin / "gitleaks").write_text("#!/usr/bin/env bash\nexit 0\n")
+    fake_gitleaks.chmod(0o755)
+    (fake_uv := fake_bin / "uv").write_text(
+        "#!/usr/bin/env bash\n"
+        "set -e\n"
+        "[[ \"$1\" = run && \"$2\" = --directory && \"$3\" = backend && \"$4\" = pytest ]]\n"
+        "shift 4\n"
+        "cd backend\n"
+        "exec python3 -m pytest \"$@\"\n"
+    )
+    fake_uv.chmod(0o755)
+    (fake_npm := fake_bin / "npm").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" = ci ]]; then\n"
+        f"  if [[ {npm_ci_rc} -ne 0 ]]; then echo 'npm ERR! code EAI_AGAIN' >&2; exit {npm_ci_rc}; fi\n"
+        "  mkdir -p node_modules\n"
+        "  exit 0\n"
+        "fi\n"
+        "[[ \"$1\" = run && \"$2\" = build ]]\n"
+        f"exit {npm_build_rc}\n"
+    )
+    fake_npm.chmod(0o755)
+    termlog = tmp_path / "termination-log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "SF_REPO_DIR": str(repo),
+        "SF_STAGE": stage,
+        "SF_TERMLOG": str(termlog),
+        "SF_GATE_WORK_DIR": str(tmp_path / "gate-work"),
+    }
+    (tmp_path / "gate-work").mkdir()
+    gate = Path(__file__).resolve().parents[2] / "docker/sf-agent/gate.sh"
+    result = subprocess.run(
+        ["bash", str(gate)],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result, json.loads(termlog.read_text())
+
+
 def test_gate_image_prebakes_runtime_deps_and_importing_them_grades_normally(tmp_path):
     dockerfile = (
         Path(__file__).resolve().parents[2] / "docker/sf-agent/Dockerfile"
@@ -813,3 +869,53 @@ def test_gate_fails_when_gitleaks_finds_a_committed_secret(tmp_path):
 
     assert envelope["outcome"] == "fail"
     assert "committed secret" in envelope["reason"]
+
+
+def test_golden_layout_red_gate_accepts_genuine_backend_failure(tmp_path):
+    result, envelope = _run_golden_gate(
+        tmp_path,
+        stage="red",
+        test_source="def test_missing_feature():\n    assert False\n",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert envelope["outcome"] == "pass"
+    assert "1 failed" in envelope["reason"]
+
+
+def test_golden_layout_green_gate_runs_backend_and_frontend_build(tmp_path):
+    result, envelope = _run_golden_gate(
+        tmp_path,
+        stage="green",
+        test_source="def test_feature():\n    assert True\n",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert envelope["outcome"] == "pass"
+    assert envelope["reason"] == "suite green at the pinned SHA"
+
+
+def test_golden_layout_green_gate_fails_when_frontend_build_fails(tmp_path):
+    result, envelope = _run_golden_gate(
+        tmp_path,
+        stage="green",
+        test_source="def test_feature():\n    assert True\n",
+        npm_build_rc=1,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert envelope["outcome"] == "fail"
+    assert "frontend build failed" in envelope["reason"]
+
+
+def test_golden_layout_green_gate_skips_frontend_only_when_registry_is_unreachable(tmp_path):
+    result, envelope = _run_golden_gate(
+        tmp_path,
+        stage="green",
+        test_source="def test_feature():\n    assert True\n",
+        npm_ci_rc=1,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert envelope["outcome"] == "pass"
+    assert "frontend build skipped: npm registry unreachable in gate pod" in result.stdout

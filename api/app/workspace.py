@@ -224,7 +224,11 @@ def ensure_repo(req, spec: str) -> Path:
     ws.parent.mkdir(parents=True, exist_ok=True)
     if ws.exists():
         shutil.rmtree(ws)
-    shutil.copytree(Path(settings.SAMPLE), ws)
+    shutil.copytree(
+        Path(settings.SAMPLE),
+        ws,
+        ignore=shutil.ignore_patterns("node_modules", ".venv", "__pycache__"),
+    )
     _git(ws, "init", "-b", "main")
     (ws / ".git" / "info" / "exclude").write_text(".factory/\n")
     _git(ws, "config", "user.email", "factory@local")

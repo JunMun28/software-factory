@@ -35,6 +35,24 @@ def test_prompt_files_exist_and_feed_the_loader():
         assert harness.stage_prompt(stage) == text
 
 
+def test_prompt_pack_is_layout_aware_and_compact():
+    prompts = {stage: harness.stage_prompt(stage) for stage in harness.STAGES}
+    layout = (
+        "either a single Python app (code in src/, tests in tests/) or a full-stack app "
+        "(Angular in frontend/, FastAPI in backend/)"
+    )
+
+    assert all(layout in prompt for prompt in prompts.values())
+    assert all("read AGENTS.md" in prompt for prompt in prompts.values())
+    assert "backend routes and models" in prompts["architecture"]
+    assert "frontend components and routes" in prompts["architecture"]
+    assert "backend/tests/" in prompts["red"]
+    assert "npm test" in prompts["red"]
+    assert "npm run build" in prompts["green"]
+    assert "backend and frontend" in prompts["review"]
+    assert all(len(prompt.splitlines()) < 60 for prompt in prompts.values())
+
+
 def test_unknown_stage_is_a_hard_error():
     with pytest.raises(KeyError):
         harness.stage_prompt("deploy")

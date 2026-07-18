@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.angular/
+__pycache__/
+*.py[cod]
+.venv/
+app.db
+.ruff_cache/
+.pytest_cache/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
