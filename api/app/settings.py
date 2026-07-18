@@ -182,6 +182,7 @@ def arch_gate_enabled() -> bool:
         "1",
         "true",
         "yes",
+        "on",
     )
 
 

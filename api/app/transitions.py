@@ -184,6 +184,19 @@ def _ev_approve_spec(db: Session, req: Request, actor: Actor, params: dict) -> N
          payload={"gate": GATE_APPROVE_SPEC, "repo": params["repo"], "Ref": req.ref})
 
 
+def newest_decisive(db: Session, req: Request) -> AuditEvent | None:
+    """The most recent gate-family decision for this request (DECISIVE_ACTIONS,
+    ADR 0006) — how both runners read back which way a consumed gate went."""
+    return db.scalar(
+        select(AuditEvent)
+        .where(
+            AuditEvent.request_id == req.id,
+            AuditEvent.action.in_(DECISIVE_ACTIONS),
+        )
+        .order_by(AuditEvent.id.desc())
+    )
+
+
 def _ev_raise_architecture_gate(
     db: Session, req: Request, actor: Actor, params: dict
 ) -> None:
@@ -543,6 +556,7 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
             "gate": None,
             "status": APPROVED,
             "stage": "architecture",
+            "sim_step": 0,  # simulator refine round walks the stage again
             "pending_feedback": (
                 "An admin reviewed the architecture and asked for changes:\n"
                 f"{p['reason']}"

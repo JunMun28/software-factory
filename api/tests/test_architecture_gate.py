@@ -322,3 +322,49 @@ def test_architecture_decisions_are_decisive_and_replay_safe():
     assert transitions.TABLE["reject_architecture_gate"].replay_actions == (
         "rejected_architecture",
     )
+
+
+# ---------- simulator parity (the dev stack must show the same gate) ----------
+
+def _sim_until(client, rid, predicate, *, limit=30):
+    for _ in range(limit):
+        client.post("/api/simulator/tick")
+        d = client.get(f"/api/requests/{rid}").json()
+        if predicate(d):
+            return d
+    return client.get(f"/api/requests/{rid}").json()
+
+
+def test_simulator_raises_the_architecture_gate(client, monkeypatch):
+    monkeypatch.setenv("FACTORY_ARCH_GATE", "on")
+    r = approved_request(client, title="Sim arch gate")
+    d = _sim_until(client, r["id"], lambda d: d.get("gate") == "approve_architecture")
+    assert d["gate"] == "approve_architecture"
+    assert d["stage"] == "architecture"
+    # parked: further ticks must not advance past the gate
+    d = _sim_until(client, r["id"], lambda d: d["stage"] != "architecture", limit=3)
+    assert d["stage"] == "architecture"
+
+
+def test_simulator_approve_continues_and_reject_refines(client, monkeypatch):
+    monkeypatch.setenv("FACTORY_ARCH_GATE", "on")
+    r = approved_request(client, title="Sim arch refine")
+    _sim_until(client, r["id"], lambda d: d.get("gate") == "approve_architecture")
+    # reject with a reason -> the stage re-runs and the gate comes BACK
+    rej = client.post(f"/api/requests/{r['id']}/reject-gate", json={
+        "operator_id": 1, "reason_code": "other",
+        "reason": "Split the roster API from the schedule API.",
+    })
+    assert rej.status_code == 200, rej.text
+    d = _sim_until(client, r["id"], lambda d: d.get("gate") == "approve_architecture")
+    assert d["gate"] == "approve_architecture", "gate must re-raise after the refine round"
+    with SessionLocal() as db:
+        rounds = db.scalars(select(AuditEvent).where(
+            AuditEvent.request_id == r["id"],
+            AuditEvent.action == "rejected_architecture")).all()
+        assert len(rounds) == 1
+    # approve -> the simulator rolls on to build
+    ok = client.post(f"/api/requests/{r['id']}/approve", json={"operator_id": 1})
+    assert ok.status_code == 200, ok.text
+    d = _sim_until(client, r["id"], lambda d: d["stage"] != "architecture")
+    assert d["stage"] in ("build", "review")

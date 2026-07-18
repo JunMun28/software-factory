@@ -1036,14 +1036,7 @@ class KubeJobRunner:
 
     @staticmethod
     def _newest_decisive(db: Session, req: Request) -> AuditEvent | None:
-        return db.scalar(
-            select(AuditEvent)
-            .where(
-                AuditEvent.request_id == req.id,
-                AuditEvent.action.in_(transitions.DECISIVE_ACTIONS),
-            )
-            .order_by(AuditEvent.id.desc())
-        )
+        return transitions.newest_decisive(db, req)
 
     def _accepted_preview_params(self, db: Session, req: Request) -> dict:
         """Preview evidence (url/round/acceptor) for the deploy gate, from the

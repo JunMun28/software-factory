@@ -16,7 +16,7 @@ from typing import Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import transitions, verification
+from . import settings, transitions, verification
 from .events import emit
 from .leader import get_elector
 from .models import PIPELINE_STAGES, STEP_PLANS, Request
@@ -89,6 +89,22 @@ def _tick_request(db: Session, req: Request, moved: list[str],
             emit(db, req, "milestone_summary", title,
                  payload={"fields": fields, "Ref": req.ref})
     if req.sim_step >= len(plan) and req.stage != "review":
+        # E2E-3 parity with the kube runner: with FACTORY_ARCH_GATE on, a
+        # finished architecture pass raises the human gate instead of rolling
+        # into build. Approve is the ONLY way past (then this branch advances);
+        # reject resets sim_step via the transition, so the stage re-walks and
+        # this raise fires again — the refine loop.
+        if req.stage == "architecture" and settings.arch_gate_enabled():
+            if req.gate is not None:
+                return  # waiting at the gate
+            newest = transitions.newest_decisive(db, req)
+            if newest is None or newest.action != "approved_architecture":
+                res = transitions.apply(db, req, "raise_architecture_gate",
+                                        actor=FACTORY, epoch=get_elector().epoch)
+                if isinstance(res, transitions.Win):
+                    moved.append(f"{req.ref}: architecture gate raised")
+                    after_commit.append(res.notify)
+                return
         nxt = {"architecture": "build", "build": "review"}[req.stage]
         res = transitions.apply(db, req, "advance_stage", actor=FACTORY,
                                 params={"stage": nxt, "announce": True},
