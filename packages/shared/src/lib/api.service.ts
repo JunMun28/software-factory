@@ -66,6 +66,16 @@ export class Api {
   authMe(): Observable<{ mode: string; operator: Operator | null }> {
     return this.http.get<{ mode: string; operator: Operator | null }>(`${BASE}/auth/me`);
   }
+  /** Structured human NO at the architecture/merge/deploy gate. For the
+   *  architecture gate this IS the refine loop: the reason reaches the agent
+   *  as feedback and a revised plan comes back to the gate (E2E-3). */
+  rejectGate(id: number, operatorId: number, reasonCode: string, reason: string) {
+    return this.http.post<RequestDetail>(`${BASE}/requests/${id}/reject-gate`, {
+      operator_id: operatorId,
+      reason_code: reasonCode,
+      reason,
+    });
+  }
   createOperator(body: Pick<Operator, 'name' | 'initials' | 'hue' | 'email'>) {
     return this.http.post<Operator>(`${BASE}/operators`, body);
   }

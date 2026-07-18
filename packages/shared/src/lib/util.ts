@@ -86,8 +86,10 @@ export function boardGlyph(r: FactoryRequest): { glyph: string; color: string; f
 
 export function gateLabel(r: FactoryRequest): string | null {
   if (r.gate === 'approve_spec') return 'Approve spec';
+  if (r.gate === 'approve_architecture') return 'Review architecture';
   if (r.gate === 'approve_merge') return 'Approve merge';
   if (r.gate === 'approve_deploy') return 'Approve deploy';
+  if (r.gate === 'accept_preview') return 'Review preview';
   return null;
 }
 
@@ -102,6 +104,13 @@ export function inFlight(r: FactoryRequest): boolean {
 /** The irreversible steps an Approve fires — [label, detail] pairs for the confirm modal.
  *  The repo name is server-owned: `prospective_repo` carries the to-be-created repo. */
 export function confirmSteps(r: FactoryRequest): [string, string][] {
+  if (r.gate === 'approve_architecture') {
+    return [
+      ['Accept the architecture plan', 'PLAN.md as reviewed'],
+      ['Start the Red stage', 'failing tests define done'],
+      ['Continue the build pipeline', 'red → green → review'],
+    ];
+  }
   if (r.gate === 'approve_merge') {
     return [
       ['Merge the PR to main', r.repo ?? ''],

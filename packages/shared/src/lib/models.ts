@@ -108,7 +108,13 @@ export interface FactoryRequest {
     | 'sent_back'
     | 'cancelled'
     | 'done';
-  gate: 'approve_spec' | 'approve_merge' | 'approve_deploy' | null;
+  gate:
+    | 'approve_spec'
+    | 'approve_architecture'
+    | 'approve_merge'
+    | 'approve_deploy'
+    | 'accept_preview'
+    | null;
   needs_human: boolean;
   needs_human_reason: string | null;
   reporter: string;
@@ -254,10 +260,15 @@ export interface RunState {
 
 /** What the admin sees before approving (spec §6 evidence strip). */
 export interface Evidence {
-  kind: 'spec' | 'merge';
+  kind: 'spec' | 'architecture' | 'merge' | 'deploy';
   grounded_lines: number | null;
   total_lines: number | null;
   interview_count: number | null;
+  /** architecture gate (E2E-3): the PLAN.md excerpt + how many refine rounds ran. */
+  plan_excerpt?: string | null;
+  plan_digest?: string | null;
+  refine_rounds?: number | null;
+  pr_url?: string | null;
   tests_passed: number | null;
   tests_total: number | null;
   diff_added: number | null;

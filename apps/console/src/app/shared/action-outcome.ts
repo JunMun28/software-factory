@@ -9,6 +9,7 @@ export type FloorActionVerb =
   | 'retry'
   | 'take over'
   | 'send back to stage'
+  | 'send to agent'
   | 'cancel'
   | 'steer';
 
@@ -44,6 +45,7 @@ const PAST_TENSE: Record<FloorActionVerb, string> = {
   retry: 'retried',
   'take over': 'taken over',
   'send back to stage': 'sent back to stage',
+  'send to agent': 'sent to the agent',
   cancel: 'cancelled',
   steer: 'steered',
 };

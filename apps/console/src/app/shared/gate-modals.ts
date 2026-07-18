@@ -29,12 +29,28 @@ import { Autofocus, Evidence, FactoryRequest, Icon, confirmSteps } from '@sf/sha
               ? 'Approve this merge?'
               : r().gate === 'approve_deploy'
                 ? 'Approve this deploy?'
-                : 'Approve this spec?'
+                : r().gate === 'approve_architecture'
+                  ? 'Approve this architecture?'
+                  : 'Approve this spec?'
           }}
         </h3>
         <p style="font-size:14px;color:var(--muted);margin:0 0 4px">
           Approving <b style="color:var(--fg1)">{{ r().title }}</b> is irreversible. It will:
         </p>
+        @if (r().gate === 'approve_architecture' && evidence()?.plan_excerpt) {
+          <div
+            class="mono"
+            style="max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.5;white-space:pre-wrap;margin:10px 0 2px"
+            aria-label="Architecture plan excerpt"
+          >
+            {{ evidence()?.plan_excerpt }}
+          </div>
+          @if (evidence()?.refine_rounds) {
+            <p style="font-size:12px;color:var(--muted);margin:6px 0 0">
+              Revised {{ evidence()?.refine_rounds }}× after admin feedback.
+            </p>
+          }
+        }
         <ul
           style="margin:12px 0 16px;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px"
         >
@@ -71,7 +87,9 @@ import { Autofocus, Evidence, FactoryRequest, Icon, confirmSteps } from '@sf/sha
                 ? 'Approve without evidence'
                 : r().gate === 'approve_merge' || r().gate === 'approve_deploy'
                   ? 'Approve & deploy'
-                  : 'Approve & start build'
+                  : r().gate === 'approve_architecture'
+                    ? 'Approve & continue build'
+                    : 'Approve & start build'
             }}
           </button>
         </div>
@@ -284,4 +302,71 @@ export class CancelConfirm {
   r = input.required<FactoryRequest>();
   kept = output<void>();
   confirmed = output<void>();
+}
+
+/** The architecture refine loop (E2E-3): a structured "not yet" that goes to
+ *  the AGENT, not the submitter — the reason becomes feedback for the next
+ *  architecture attempt and a revised plan returns to this gate. */
+@Component({
+  selector: 'sf-refine-modal',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [FormsModule, Autofocus],
+  template: `
+    <div
+      class="palette-scrim"
+      style="align-items:center;padding-top:0;z-index:50"
+      (click)="cancelled.emit()"
+    >
+      <div
+        class="palette"
+        style="width:480px;padding:22px 24px;align-self:center"
+        (click)="$event.stopPropagation()"
+      >
+        <h3 style="font-size:19px;margin-bottom:8px">Ask the agent to revise</h3>
+        <p style="font-size:14px;color:var(--muted);margin:0 0 14px">
+          Your note goes straight to the architecture agent. It reworks the plan for
+          <b style="color:var(--fg1)">{{ r().title }}</b> and brings a revised version back to this
+          gate.
+        </p>
+        <label style="display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px"
+          >What kind of problem?</label
+        >
+        <select
+          [(ngModel)]="code"
+          style="width:100%;margin-bottom:10px"
+          aria-label="Rejection category"
+        >
+          <option value="wrong_behavior">Wrong approach / behavior</option>
+          <option value="spec_mismatch">Doesn't match the spec</option>
+          <option value="quality">Quality concern</option>
+          <option value="security">Security concern</option>
+          <option value="other">Something else</option>
+        </select>
+        <textarea
+          sfAutofocus
+          [(ngModel)]="reason"
+          rows="4"
+          placeholder="Tell the agent what to change…"
+          style="width:100%;resize:vertical"
+          aria-label="Refinement instructions for the agent"
+        ></textarea>
+        <div class="row" style="gap:9px;justify-content:flex-end;margin-top:14px">
+          <button class="btn" (click)="cancelled.emit()">Cancel</button>
+          <button class="btn primary" [disabled]="!reason.trim()" (click)="send()">
+            Send to agent
+          </button>
+        </div>
+      </div>
+    </div>
+  `,
+})
+export class RefineModal {
+  r = input.required<FactoryRequest>();
+  cancelled = output<void>();
+  sent = output<{ code: string; reason: string }>();
+  code = 'wrong_behavior';
+  reason = '';
+  send() {
+    if (this.reason.trim()) this.sent.emit({ code: this.code, reason: this.reason.trim() });
+  }
 }

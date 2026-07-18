@@ -146,6 +146,10 @@ export function deriveTrack(r: FactoryRequest, run: RunState | null): TrackRow {
     return { ...base, tone: 'owned', glyph: 'flag', state: 'Human-owned · automation off' };
   if (r.gate === 'approve_spec')
     return { ...base, tone: 'gate', glyph: null, state: 'Holding for build approval' };
+  if (r.gate === 'approve_architecture')
+    return { ...base, tone: 'gate', glyph: null, state: 'Holding for architecture review' };
+  if (r.gate === 'accept_preview')
+    return { ...base, tone: 'gate', glyph: null, state: 'Preview live · awaiting review' };
   if (r.gate === 'approve_merge' || r.gate === 'approve_deploy')
     return { ...base, tone: 'gate', glyph: null, state: 'Holding for deploy approval' };
   if (r.status === 'sent_back')
@@ -265,7 +269,9 @@ export function deriveQueue(m: MissionOut): QueueItem[] {
         ? 'Approve to go live'
         : g.request.gate === 'approve_merge'
           ? 'Approve to deploy'
-          : 'Approve to build',
+          : g.request.gate === 'approve_architecture'
+            ? 'Review the architecture plan'
+            : 'Approve to build',
     facts: evidenceBits(g.evidence),
     owner: null,
     ...queueMeta(g.request),
@@ -297,6 +303,8 @@ export function deriveQueue(m: MissionOut): QueueItem[] {
 export function queueChip(item: QueueItem): string {
   if (item.kind === 'stalled') return 'Needs human';
   if (item.kind === 'owned') return 'Human-owned';
+  if (item.request.gate === 'approve_architecture') return 'Architecture review';
+  if (item.request.gate === 'accept_preview') return 'Preview review';
   return item.request.gate === 'approve_spec' ? 'Build approval' : 'Deploy approval';
 }
 

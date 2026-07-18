@@ -18,6 +18,7 @@ import {
   ApproveModal,
   CancelConfirm,
   RecoveryConfirm,
+  RefineModal,
   SendBackModal,
   SendBackStageModal,
 } from '../shared/gate-modals';
@@ -33,6 +34,7 @@ import { DossierChapter, buildDossierChapters } from './dossier-view';
     SendBackModal,
     SendBackStageModal,
     RecoveryConfirm,
+    RefineModal,
     CancelConfirm,
   ],
   template: `
@@ -66,9 +68,15 @@ import { DossierChapter, buildDossierChapters } from './dossier-view';
                 <button class="btn primary" type="button" (click)="confirming.set(true)">
                   Approve
                 </button>
-                <button class="btn" type="button" (click)="sendingBack.set(true)">
-                  Send back with a note
-                </button>
+                @if (r.gate === 'approve_architecture') {
+                  <button class="btn" type="button" (click)="refining.set(true)">
+                    Ask the agent for changes
+                  </button>
+                } @else {
+                  <button class="btn" type="button" (click)="sendingBack.set(true)">
+                    Send back with a note
+                  </button>
+                }
               } @else if (r.needs_human) {
                 <button class="btn primary" type="button" (click)="retrying.set(true)">
                   Retry this stage
@@ -294,6 +302,9 @@ import { DossierChapter, buildDossierChapters } from './dossier-view';
         (cancelled)="sendingBack.set(false)"
         (sent)="sendBack($event)"
       />
+    }
+    @if (refining() && request(); as r) {
+      <sf-refine-modal [r]="r" (cancelled)="refining.set(false)" (sent)="refine($event)" />
     }
     @if (retrying()) {
       <sf-recovery-confirm
@@ -853,6 +864,7 @@ export class DossierPage {
 
   confirming = signal(false);
   sendingBack = signal(false);
+  refining = signal(false);
   retrying = signal(false);
   takingOver = signal(false);
   sendingStageBack = signal(false);
@@ -898,6 +910,9 @@ export class DossierPage {
   stateSentence(request: RequestDetail): string {
     if (request.needs_human) return 'Needs human — automation stopped';
     if (request.gate === 'approve_spec') return 'Waiting at the spec gate';
+    if (request.gate === 'approve_architecture')
+      return 'Architecture ready — waiting for your review';
+    if (request.gate === 'accept_preview') return 'Preview live — waiting for review';
     if (request.gate === 'approve_merge') return 'Waiting at the merge gate';
     if (request.status === 'human_owned') {
       const owner = [...this.events()]
@@ -975,6 +990,14 @@ export class DossierPage {
   sendBack(note: string) {
     this.sendingBack.set(false);
     this.runAction('send back', this.api.sendBack(this.id(), note, this.session.operatorId()!));
+  }
+
+  refine(choice: { code: string; reason: string }) {
+    this.refining.set(false);
+    this.runAction(
+      'send to agent',
+      this.api.rejectGate(this.id(), this.session.operatorId()!, choice.code, choice.reason),
+    );
   }
 
   retry() {
