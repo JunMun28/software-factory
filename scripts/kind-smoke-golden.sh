@@ -158,18 +158,23 @@ APP_RESOLVE=${SMOKE_CONNECT_TO:+ }
 POD=$(kubectl -n $NS get pod -l app=api -o jsonpath='{.items[0].metadata.name}')
 cluster_get() { # path
   kubectl -n $NS exec "$POD" -c api -- python3 -c \
-    "import urllib.request;print(urllib.request.urlopen('http://sf-app-$SLUG$1',timeout=5).read().decode()[:200])" 2>/dev/null
+    "import urllib.request;print(urllib.request.urlopen('http://sf-app-$SLUG$1',timeout=5).read().decode()[:200])"
 }
 APP_OK=""
 PROBE_DBG="$(mktemp)"
 PROD_TRIES=${SMOKE_PROD_TRIES:-90}
 for i in $(seq 1 "$PROD_TRIES"); do
-  BODY="$(curl -s -m 5 $APP_RESOLVE "$APP_URL/health" 2>"$PROBE_DBG")" && rc=0 || rc=$?
+  # In-cluster probe FIRST: a long-lived runner's host->router connection can
+  # pin to a stale HAProxy worker from before the route existed (caught live
+  # on CRC: this script's probes 404'd for 15 min while every fresh process
+  # got 200 the same second). The in-cluster path has no such plumbing.
+  CBODY="$(cluster_get /health)"
+  if echo "$CBODY" | grep -q '"status":"ok"'; then APP_OK=cluster; break; fi
+  BODY="$(curl -s -m 5 -H "Connection: close" $APP_RESOLVE "$APP_URL/health" 2>"$PROBE_DBG")" && rc=0 || rc=$?
   if [ "$rc" = "0" ] && echo "$BODY" | grep -q '"status":"ok"'; then APP_OK=host; break; fi
-  if [ $((i % 10)) = 5 ] && cluster_get /health | grep -q '"status":"ok"'; then APP_OK=cluster; break; fi
   if [ $((i % 15)) = 1 ]; then
-    echo "  … host probe $i rc=$rc body='$(echo "$BODY" | head -c 80)'"
-    sed 's/^/      curl: /' "$PROBE_DBG" | head -6
+    echo "  … probe $i host rc=$rc body='$(echo "$BODY" | head -c 60)' cluster='$(echo "$CBODY" | head -c 60)'"
+    [ "$i" = "1" ] && cluster_get /health 2>&1 | head -3 | sed 's/^/      exec: /'
   fi
   sleep 2
 done
