@@ -1056,3 +1056,20 @@ was WRONG — the dossier effect already re-queries on Poll version bumps; the
 stale header was the long-lived ng serve serving a PRE-MERGE bundle (old code
 had no architecture branch in stateSentence). One real lesson stands: restart
 dev servers after merging.
+
+## E2E-4 live findings (kind, real agents on the golden template)
+
+The walled gate pod found three REAL infra gaps in one afternoon — exactly
+what the live proof is for. All fixed in docker/sf-agent/Dockerfile:
+1. uv dialed GitHub for a cpython 3.12 download (template .python-version)
+   inside the no-egress gate → bake 3.12; UV_PYTHON_DOWNLOADS=never.
+2. The baked interpreter was invisible to arbitrary-UID pods (root-homed
+   managed dir) → shared UV_PYTHON_INSTALL_DIR=/opt/uv/python.
+3. Gate-time `uv sync` dialed PyPI for wheels (and httptools needs a source
+   build on cp312/aarch64) → image-time `uv sync --frozen` of the template
+   lock into shared UV_CACHE_DIR (+build-essential; cache world-writable —
+   pods are single-use, poisoning is pod-local). Proven: uid 10101 +
+   --network none passes the golden backend suite. A silently added dep
+   still fails the gate loudly — by design; office answer = internal mirror.
+Also: architecture agent on the golden workspace produced a real
+"Tea Roster implementation plan" and the gate held with the excerpt — twice.

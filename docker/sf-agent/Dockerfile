@@ -9,8 +9,11 @@ FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 ARG TARGETARCH
 ARG GITLEAKS_VERSION=8.24.2
 
+# build-essential: some golden-template deps (httptools cp312/aarch64) ship no
+# prebuilt wheel; the IMAGE build compiles them once into the shared uv cache,
+# so walled gate pods never need a compiler or the network.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git curl ca-certificates jq \
+      git curl ca-certificates jq build-essential \
   && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
   && apt-get install -y --no-install-recommends nodejs \
   && rm -rf /var/lib/apt/lists/*
@@ -52,6 +55,19 @@ RUN uv pip install --system \
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python
 RUN uv python install 3.12 && chmod -R a+rX /opt/uv
 ENV UV_PYTHON_DOWNLOADS=never
+
+# Warm the shared uv cache with the golden template's LOCKED dependency set
+# (third live E2E-4 finding: gate-time `uv sync` dialed PyPI for wheels).
+# A complete cache makes the walled gate fully offline for the pinned lock;
+# an agent silently ADDING a dep will fail the gate loudly — by design (the
+# office answer for legit new deps is an internal mirror, not gate egress).
+ENV UV_CACHE_DIR=/opt/uv/cache
+COPY templates/golden/backend/pyproject.toml templates/golden/backend/uv.lock /tmp/golden-lock/
+RUN cd /tmp/golden-lock \
+  && uv venv --python 3.12 /tmp/golden-venv \
+  && VIRTUAL_ENV=/tmp/golden-venv uv sync --frozen --active \
+  && rm -rf /tmp/golden-venv /tmp/golden-lock \
+  && chmod -R a+rwX /opt/uv/cache && chmod -R a+rX /opt/uv/python
 
 # arbitrary-UID pods and local fixture tests clone repos owned by OTHER uids;
 # git's dubious-ownership check would refuse them (the pod uid never matches)
