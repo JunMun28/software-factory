@@ -7,6 +7,23 @@ export interface AppDeploy {
   rollback: boolean;
 }
 
+/** Receipt for an accepted rollback command; completion is observed separately. */
+export interface RollbackEnqueue {
+  id: number;
+  status: string;
+  digest: string | null;
+}
+
+/** One async rollback command, polled by id until it reaches a terminal status. */
+export interface AppRollback {
+  id: number;
+  status: 'running' | 'succeeded' | 'failed' | 'timed_out';
+  digest: string | null;
+  error: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
 export interface AppEntry {
   id: number;
   key: string;

@@ -1,10 +1,11 @@
 import { signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { Api, AppEntry, FactoryRequest, Poll, Theme } from '@sf/shared';
-import { of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Api, AppEntry, AppRollback, FactoryRequest, Poll, Theme } from '@sf/shared';
+import { of, throwError } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { routes } from '../app.routes';
 import { Session } from '../core/session.service';
@@ -83,6 +84,33 @@ const apps: AppEntry[] = [
   },
 ];
 
+const rollbackDigest = 'sha256:' + 'b'.repeat(64);
+const rollbackJob = (over: Partial<AppRollback> = {}): AppRollback => ({
+  id: 42,
+  status: 'running',
+  digest: rollbackDigest,
+  error: null,
+  created_at: '2026-07-13T01:00:00Z',
+  completed_at: null,
+  ...over,
+});
+
+function confirmPreviousDeploy(harness: RouterTestingHarness) {
+  const host = harness.routeNativeElement!;
+  host.querySelector<HTMLButtonElement>('.fleet-toggle')!.click();
+  harness.detectChanges();
+  host.querySelector<HTMLButtonElement>('.fleet-rollback')!.click();
+  harness.detectChanges();
+
+  const modal = document.querySelector('sf-recovery-confirm')!;
+  const confirm = [...modal.querySelectorAll('button')].find((button) =>
+    button.textContent?.includes('Roll back'),
+  )!;
+  confirm.click();
+  harness.detectChanges();
+  return host;
+}
+
 describe('Library URL filters', () => {
   const allRequests = signal<FactoryRequest[]>([
     request(),
@@ -147,13 +175,12 @@ describe('Library URL filters', () => {
             ),
             rollbackApp: vi.fn(() =>
               of({
-                digest: 'sha256:' + 'b'.repeat(64),
-                url: 'http://payroll.localtest.me',
-                at: '2026-07-13T01:00:00Z',
-                ref: null,
-                rollback: true,
+                id: 42,
+                status: 'running',
+                digest: rollbackDigest,
               }),
             ),
+            appRollbacks: vi.fn(() => of([])),
           },
         },
         {
@@ -176,6 +203,8 @@ describe('Library URL filters', () => {
       ],
     }).compileComponents();
   });
+
+  afterEach(() => vi.useRealTimers());
 
   it('mounts a shared link with app and state filters on first load', async () => {
     const harness = await RouterTestingHarness.create('/library?app=payroll&state=in-flight');
@@ -211,29 +240,199 @@ describe('Library URL filters', () => {
     expect(cards[1].textContent).toContain('Not live yet');
   });
 
-  it('rolls back to a previous digest through the confirm modal', async () => {
+  it('queues a rollback, polls its job id, and reports the settled digest', async () => {
+    vi.useFakeTimers();
     const harness = await RouterTestingHarness.create('/library');
     harness.detectChanges();
-    const host = harness.routeNativeElement!;
+    const api = TestBed.inject(Api) as unknown as {
+      rollbackApp: ReturnType<typeof vi.fn>;
+      appRollbacks: ReturnType<typeof vi.fn>;
+    };
+    api.appRollbacks.mockReturnValueOnce(of([rollbackJob()])).mockReturnValueOnce(
+      of([
+        rollbackJob({
+          id: 99,
+          status: 'failed',
+          digest: 'sha256:' + 'c'.repeat(64),
+          error: 'Unrelated newer rollback failed',
+          created_at: '2026-07-13T02:00:00Z',
+          completed_at: '2026-07-13T02:01:00Z',
+        }),
+        rollbackJob({
+          status: 'succeeded',
+          completed_at: '2026-07-13T01:01:00Z',
+        }),
+      ]),
+    );
 
-    host.querySelector<HTMLButtonElement>('.fleet-toggle')!.click();
-    harness.detectChanges();
-    const rollbackBtn = host.querySelector<HTMLButtonElement>('.fleet-rollback')!;
-    expect(rollbackBtn).toBeTruthy();
-    rollbackBtn.click();
-    harness.detectChanges();
+    const host = confirmPreviousDeploy(harness);
 
-    const modal = document.querySelector('sf-recovery-confirm')!;
-    expect(modal.textContent).toContain('Roll Payroll back?');
-    const confirm = [...modal.querySelectorAll('button')].find((b) =>
-      b.textContent?.includes('Roll back'),
-    )!;
-    confirm.click();
-    harness.detectChanges();
+    expect(api.rollbackApp).toHaveBeenCalledWith(1, rollbackDigest, 7);
+    expect(host.textContent).toContain('Rollback queued…');
 
-    const api = TestBed.inject(Api) as unknown as { rollbackApp: ReturnType<typeof vi.fn> };
-    expect(api.rollbackApp).toHaveBeenCalledWith(1, 'sha256:' + 'b'.repeat(64), 7);
+    await vi.advanceTimersByTimeAsync(4_000);
+    harness.detectChanges();
+    expect(host.textContent).toContain('Rollback queued…');
+
+    await vi.advanceTimersByTimeAsync(4_000);
+    harness.detectChanges();
+    expect(api.appRollbacks).toHaveBeenCalledTimes(2);
     expect(host.textContent).toContain('Rolled back to bbbbbbbbbbbb');
+  });
+
+  it('shows the server detail when a busy rollback is rejected', async () => {
+    const harness = await RouterTestingHarness.create('/library');
+    harness.detectChanges();
+    const api = TestBed.inject(Api) as unknown as {
+      rollbackApp: ReturnType<typeof vi.fn>;
+    };
+    api.rollbackApp.mockReturnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 409,
+            error: { detail: 'Another rollback is already running for Payroll' },
+          }),
+      ),
+    );
+
+    const host = confirmPreviousDeploy(harness);
+
+    expect(host.textContent).toContain('Another rollback is already running for Payroll');
+  });
+
+  it('handles an already-succeeded 202 receipt without polling for a rollback row', async () => {
+    vi.useFakeTimers();
+    const harness = await RouterTestingHarness.create('/library');
+    harness.detectChanges();
+    const api = TestBed.inject(Api) as unknown as {
+      rollbackApp: ReturnType<typeof vi.fn>;
+      appRollbacks: ReturnType<typeof vi.fn>;
+    };
+    api.rollbackApp.mockReturnValue(of({ id: 42, status: 'succeeded', digest: rollbackDigest }));
+
+    const host = confirmPreviousDeploy(harness);
+    await vi.advanceTimersByTimeAsync(4_000);
+    harness.detectChanges();
+
+    expect(host.textContent).toContain('Rolled back to bbbbbbbbbbbb');
+    expect(api.appRollbacks).not.toHaveBeenCalled();
+  });
+
+  it('shows the rollback job failure reason', async () => {
+    vi.useFakeTimers();
+    const harness = await RouterTestingHarness.create('/library');
+    harness.detectChanges();
+    const api = TestBed.inject(Api) as unknown as {
+      appRollbacks: ReturnType<typeof vi.fn>;
+    };
+    api.appRollbacks.mockReturnValue(
+      of([
+        rollbackJob({
+          status: 'failed',
+          error: 'Deployment health check failed',
+          completed_at: '2026-07-13T01:01:00Z',
+        }),
+      ]),
+    );
+
+    const host = confirmPreviousDeploy(harness);
+    await vi.advanceTimersByTimeAsync(4_000);
+    harness.detectChanges();
+
+    expect(host.textContent).toContain('Deployment health check failed');
+  });
+
+  it('keeps a settled rollback scoped to its app when another fleet card opens', async () => {
+    vi.useFakeTimers();
+    const harness = await RouterTestingHarness.create('/library');
+    harness.detectChanges();
+    const api = TestBed.inject(Api) as unknown as {
+      appDeploys: ReturnType<typeof vi.fn>;
+      appRollbacks: ReturnType<typeof vi.fn>;
+    };
+    api.appRollbacks.mockReturnValue(
+      of([rollbackJob({ status: 'succeeded', completed_at: '2026-07-13T01:01:00Z' })]),
+    );
+
+    const host = confirmPreviousDeploy(harness);
+    host.querySelectorAll<HTMLButtonElement>('.fleet-toggle')[1].click();
+    harness.detectChanges();
+    await vi.advanceTimersByTimeAsync(4_000);
+    harness.detectChanges();
+
+    expect(host.textContent).not.toContain('Rolled back to bbbbbbbbbbbb');
+    expect(api.appDeploys).toHaveBeenCalledTimes(2);
+
+    host.querySelectorAll<HTMLButtonElement>('.fleet-toggle')[0].click();
+    harness.detectChanges();
+    expect(host.textContent).toContain('Rolled back to bbbbbbbbbbbb');
+  });
+
+  it('prevents another fleet rollback while one job is being monitored', async () => {
+    vi.useFakeTimers();
+    const harness = await RouterTestingHarness.create('/library');
+    harness.detectChanges();
+    const api = TestBed.inject(Api) as unknown as {
+      rollbackApp: ReturnType<typeof vi.fn>;
+    };
+
+    const host = confirmPreviousDeploy(harness);
+    host.querySelectorAll<HTMLButtonElement>('.fleet-toggle')[1].click();
+    harness.detectChanges();
+    const nextRollback = host.querySelector<HTMLButtonElement>('.fleet-rollback')!;
+
+    expect(nextRollback.disabled).toBe(true);
+    nextRollback.click();
+    harness.detectChanges();
+    expect(api.rollbackApp).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a transient error while the rollback is still running', async () => {
+    vi.useFakeTimers();
+    const harness = await RouterTestingHarness.create('/library');
+    harness.detectChanges();
+    const api = TestBed.inject(Api) as unknown as {
+      appRollbacks: ReturnType<typeof vi.fn>;
+    };
+    api.appRollbacks
+      .mockReturnValueOnce(
+        throwError(() => new HttpErrorResponse({ status: 503, statusText: 'Unavailable' })),
+      )
+      .mockReturnValueOnce(
+        of([rollbackJob({ status: 'succeeded', completed_at: '2026-07-13T01:01:00Z' })]),
+      );
+
+    const host = confirmPreviousDeploy(harness);
+    await vi.advanceTimersByTimeAsync(4_000);
+    harness.detectChanges();
+    expect(host.textContent).toContain('Rollback queued…');
+
+    await vi.advanceTimersByTimeAsync(4_000);
+    harness.detectChanges();
+    expect(api.appRollbacks).toHaveBeenCalledTimes(2);
+    expect(host.textContent).toContain('Rolled back to bbbbbbbbbbbb');
+  });
+
+  it('stops polling after two minutes and leaves a catch-up note', async () => {
+    vi.useFakeTimers();
+    const harness = await RouterTestingHarness.create('/library');
+    harness.detectChanges();
+    const api = TestBed.inject(Api) as unknown as {
+      appRollbacks: ReturnType<typeof vi.fn>;
+    };
+    api.appRollbacks.mockReturnValue(of([rollbackJob()]));
+
+    const host = confirmPreviousDeploy(harness);
+    await vi.advanceTimersByTimeAsync(120_000);
+    harness.detectChanges();
+
+    expect(host.textContent).toContain('Rollback is still running');
+    expect(host.textContent).toContain('fleet view will catch up');
+    const callsAtTimeout = api.appRollbacks.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(api.appRollbacks).toHaveBeenCalledTimes(callsAtTimeout);
   });
 
   it('writes filter changes to query params while preserving the other filter', async () => {

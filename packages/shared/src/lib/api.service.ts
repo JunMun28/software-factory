@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import {
   AppDeploy,
   AppEntry,
+  AppRollback,
   AppSubscription,
   Attachment,
   ClassifyResult,
@@ -19,6 +20,7 @@ import {
   PrototypeState,
   RequestDetail,
   ReviewSummary,
+  RollbackEnqueue,
 } from './models';
 
 // same-origin in production (nginx proxies /api); the dev server proxies via proxy.conf.json
@@ -46,9 +48,12 @@ export class Api {
   appDeploys(appId: number) {
     return this.http.get<AppDeploy[]>(`${BASE}/apps/${appId}/deploys`);
   }
-  /** Re-apply a previously-live digest (guarded server-side to the app's own history). */
+  appRollbacks(appId: number) {
+    return this.http.get<AppRollback[]>(`${BASE}/apps/${appId}/rollbacks`);
+  }
+  /** Queue a previously-live digest for re-apply; poll appRollbacks for completion. */
   rollbackApp(appId: number, digest: string, operatorId: number) {
-    return this.http.post<AppDeploy>(`${BASE}/apps/${appId}/rollback`, {
+    return this.http.post<RollbackEnqueue>(`${BASE}/apps/${appId}/rollback`, {
       digest,
       operator_id: operatorId,
     });
