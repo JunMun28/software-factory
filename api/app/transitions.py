@@ -34,7 +34,15 @@ from sqlalchemy.orm import Session
 
 from . import intents, notifications
 from .events import emit
-from .models import AuditEvent, Intent, LeaderEpoch, PreviewFeedback, Request, utcnow
+from .models import (
+    AuditEvent,
+    Intent,
+    LeaderEpoch,
+    PreviewFeedback,
+    ProgressEvent,
+    Request,
+    utcnow,
+)
 
 # ---------- lifecycle vocabulary (D5: the constants that kill the magic strings) ----------
 
@@ -51,6 +59,7 @@ CLOSED = (DONE, CANCELLED)
 PRE_APPROVAL = (DRAFT, SUBMITTED, PENDING_APPROVAL, SENT_BACK)
 
 GATE_APPROVE_SPEC = "approve_spec"
+GATE_APPROVE_ARCHITECTURE = "approve_architecture"
 GATE_APPROVE_MERGE = "approve_merge"
 GATE_APPROVE_DEPLOY = "approve_deploy"  # B4: the second human gate (spec §4.10)
 GATE_ACCEPT_PREVIEW = "accept_preview"
@@ -71,6 +80,8 @@ GATE_REJECT_CODES = (
 # identifies the winner of a consumed precondition.
 DECISIVE_ACTIONS = (
     "approved",
+    "approved_architecture",
+    "rejected_architecture",
     "merge_claimed",
     "approved_merge",
     "merge_approval_failed",
@@ -171,6 +182,54 @@ def _ev_approve_spec(db: Session, req: Request, actor: Actor, params: dict) -> N
          f"Spec approved by {actor.name} — repo ready, SPEC.md PR open, Stage 2 started",
          actor=actor.name, bot=False, broadcast=True,
          payload={"gate": GATE_APPROVE_SPEC, "repo": params["repo"], "Ref": req.ref})
+
+
+def _ev_raise_architecture_gate(
+    db: Session, req: Request, actor: Actor, params: dict
+) -> None:
+    plan = db.scalar(
+        select(ProgressEvent)
+        .where(
+            ProgressEvent.request_id == req.id,
+            ProgressEvent.kind == "architecture_plan",
+        )
+        .order_by(ProgressEvent.id.desc())
+    )
+    evidence = dict(plan.payload or {}) if plan is not None else {}
+    emit(
+        db,
+        req,
+        "gate_event",
+        "Waiting at the architecture gate — spec and architecture plan need approval",
+        broadcast=True,
+        payload={
+            **evidence,
+            "gate": GATE_APPROVE_ARCHITECTURE,
+            "Ref": req.ref,
+            "plan_event_id": plan.id if plan is not None else None,
+        },
+    )
+
+
+def _ev_reject_architecture_gate(
+    db: Session, req: Request, actor: Actor, params: dict
+) -> None:
+    emit(
+        db,
+        req,
+        "gate_event",
+        f"Architecture rejected by {actor.name} — refining the plan",
+        body=params["reason"],
+        actor=actor.name,
+        bot=False,
+        broadcast=True,
+        payload={
+            "gate": GATE_APPROVE_ARCHITECTURE,
+            "Ref": req.ref,
+            "reason": params["reason"][:2000],
+            "reason_code": params.get("reason_code"),
+        },
+    )
 
 
 def _ev_raise_deploy_gate(db: Session, req: Request, actor: Actor, params: dict) -> None:
@@ -460,9 +519,43 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
                            "sim_step": 0, "stage2_fired": True, "stage_entered_at": utcnow()},
         events=_ev_approve_spec,
         audit_action="approved",
-        audit_note=lambda p: "approved the spec — repo created, SPEC.md PR opened, Stage 2 fired",
+        audit_note=lambda p: p.get("audit_note")
+        or "approved the spec — repo created, SPEC.md PR opened, Stage 2 fired",
         replay_actions=("approved",),
         conflict_detail=lambda r: f"Cannot approve from status '{r.status}'",
+    ),
+    Transition(
+        name="approve_architecture",
+        pre=Pre(status_in=(APPROVED,), gate=GATE_APPROVE_ARCHITECTURE),
+        effects=lambda p: {"gate": None},
+        audit_action="approved_architecture",
+        audit_note=lambda p: p.get("note"),
+        replay_actions=("approved_architecture",),
+        conflict_detail=lambda r: (
+            "Cannot approve the architecture gate "
+            f"(status={r.status!r}, gate={r.gate!r})"
+        ),
+    ),
+    Transition(
+        name="reject_architecture_gate",
+        pre=Pre(status_in=(APPROVED,), gate=GATE_APPROVE_ARCHITECTURE),
+        effects=lambda p: {
+            "gate": None,
+            "status": APPROVED,
+            "stage": "architecture",
+            "pending_feedback": (
+                "An admin reviewed the architecture and asked for changes:\n"
+                f"{p['reason']}"
+            ),
+        },
+        events=_ev_reject_architecture_gate,
+        audit_action="rejected_architecture",
+        audit_note=lambda p: p["reason"],
+        replay_actions=("rejected_architecture",),
+        conflict_detail=lambda r: (
+            "Cannot reject the architecture gate "
+            f"(status={r.status!r}, gate={r.gate!r})"
+        ),
     ),
     Transition(
         name="claim_merge",
@@ -680,6 +773,20 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
         events=_ev_raise_accept_gate,
         notify=_notify_gate_raised,
         conflict_detail=lambda r: f"Cannot raise preview acceptance gate on a {r.status} request",
+    ),
+    Transition(
+        name="raise_architecture_gate",
+        pre=Pre(status_in=(APPROVED,), gate=None),
+        effects=lambda p: {
+            "gate": GATE_APPROVE_ARCHITECTURE,
+            "stage_entered_at": utcnow(),
+        },
+        events=_ev_raise_architecture_gate,
+        notify=_notify_gate_raised,
+        conflict_detail=lambda r: (
+            "Cannot raise the architecture gate "
+            f"(status={r.status!r}, gate={r.gate!r})"
+        ),
     ),
     Transition(
         name="raise_merge_gate",

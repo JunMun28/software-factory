@@ -22,8 +22,9 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import interview_gen, prototype_gen, settings, summary_gen, transitions
-from ..api_helpers import get_request, next_ref, to_out
+from .. import acceptance, interview_gen, prototype_gen, settings, summary_gen, transitions
+from ..agent_exec import runner_mode
+from ..api_helpers import get_request, next_ref, pipeline, prospective_repo, to_out
 from ..auth import current_identity
 from ..db import SessionLocal, get_db
 from ..events import emit
@@ -605,8 +606,30 @@ def submit(rid: int, extra: Note | None = None, db: Session = Depends(get_db)):
         gate = transitions.apply(db, r, "raise_spec_gate", actor=reporter)
         if isinstance(gate, transitions.Loss):
             return to_out(r, RequestDetail)  # a Cancel raced the brain — it wins, spec discarded
+        auto_approved = settings.spec_gate_mode() == "auto"
+        if auto_approved:
+            repo = r.app.repo if r.app else prospective_repo(r)
+            approval = transitions.apply(
+                db,
+                r,
+                "approve_spec",
+                actor=transitions.FACTORY,
+                params={
+                    "repo": repo,
+                    "audit_note": "auto-approved (FACTORY_SPEC_GATE=auto)",
+                },
+            )
+            if isinstance(approval, transitions.Loss):
+                return to_out(r, RequestDetail)
+            r.repo_ready = True
+            r.spec_pr_open = True
+            acceptance.derive_and_snapshot(db, r)
         db.commit()
-        gate.notify()
+        if auto_approved:
+            if runner_mode() == "agent":
+                pipeline().start(r.id)
+        else:
+            gate.notify()
     except Exception:
         db.rollback()
         release = transitions.apply(db, r, "release_submit_claim", actor=reporter)

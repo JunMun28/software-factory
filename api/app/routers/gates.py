@@ -1,8 +1,8 @@
 """Gate and recovery-action endpoints (ADR 0007, ADR 0006, ADR 0013).
 
 Routes:
-  POST /api/requests/{rid}/approve     — approve spec, merge, or deploy gate
-  POST /api/requests/{rid}/reject-gate — structured human NO at merge/deploy
+  POST /api/requests/{rid}/approve     — approve spec, architecture, merge, or deploy gate
+  POST /api/requests/{rid}/reject-gate — structured human NO at architecture/merge/deploy
   POST /api/requests/{rid}/send-back  — send spec back to submitter
   POST /api/requests/{rid}/respond    — submitter reply after send-back
   POST /api/requests/{rid}/cancel     — cancel a request
@@ -59,6 +59,19 @@ def _operator_actor(db: Session, operator_id: int) -> Actor:
     # operator.id, not the raw param: with FACTORY_AUTH=entra the token identity
     # overrides the body value, and the audit trail must record who really acted.
     return Actor(name=operator.name, operator_id=operator.id)
+
+
+def _has_architecture_decision(db: Session, request_id: int) -> bool:
+    return db.scalar(
+        select(AuditEvent.id)
+        .where(
+            AuditEvent.request_id == request_id,
+            AuditEvent.action.in_(
+                ("approved_architecture", "rejected_architecture")
+            ),
+        )
+        .limit(1)
+    ) is not None
 
 
 @router.get("/api/requests/{rid}/acceptance", response_model=AcceptanceOut)
@@ -242,6 +255,22 @@ def request_preview_changes(
 def approve(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
     r = get_request(db, rid)
     actor = _operator_actor(db, body.operator_id)
+    if r.gate == transitions.GATE_APPROVE_ARCHITECTURE or (
+        r.gate is None
+        and r.stage == "architecture"
+        and _has_architecture_decision(db, r.id)
+    ):
+        res = transitions.apply(
+            db,
+            r,
+            "approve_architecture",
+            actor=actor,
+            params={"note": body.note},
+        )
+        if isinstance(res, transitions.Loss):
+            return conflict_response(r, res)
+        db.commit()
+        return to_out(r, RequestDetail)
     # B4: the deploy gate (spec §4.10). A live gate, OR a consumed gate whose
     # request still sits at stage=deploy (a replay while the build runs), is
     # the deploy family. stage=="deploy" only arises post-merge, so it never
@@ -301,25 +330,41 @@ def approve(rid: int, body: OperatorNote, db: Session = Depends(get_db)):
 
 @router.post("/api/requests/{rid}/reject-gate", response_model=RequestDetail)
 def reject_gate(rid: int, body: RejectGateIn, db: Session = Depends(get_db)):
-    """A human's structured 'no' at the merge/deploy gate: a typed reason_code
-    plus free text, recorded as audit + gate_event evidence and staged as
-    pending_feedback so the reason reaches the next agent attempt. The request
-    escalates (needs_human) for the normal recovery actions."""
+    """A human's structured gate rejection with required free-text evidence.
+
+    Architecture rejection immediately queues an agent refinement. Merge and
+    deploy rejection retain their existing needs-human recovery behavior.
+    """
     r = get_request(db, rid)
     actor = _operator_actor(db, body.operator_id)
-    if r.gate == transitions.GATE_APPROVE_DEPLOY:
+    if r.gate == transitions.GATE_APPROVE_ARCHITECTURE:
+        name = "reject_architecture_gate"
+        params = {"reason": body.reason, "reason_code": body.reason_code}
+    elif r.gate == transitions.GATE_APPROVE_DEPLOY:
         name, label, gate = "reject_deploy_gate", "deploy", transitions.GATE_APPROVE_DEPLOY
+        params = {
+            "reason_code": body.reason_code,
+            "reason": body.reason,
+            "label": label,
+            "gate": gate,
+        }
     elif r.gate == transitions.GATE_APPROVE_MERGE:
         name, label, gate = "reject_merge_gate", "merge", transitions.GATE_APPROVE_MERGE
+        params = {
+            "reason_code": body.reason_code,
+            "reason": body.reason,
+            "label": label,
+            "gate": gate,
+        }
     else:
         # no live gate: resolve the consumed precondition against the decisive
         # winner (same family routing as approve — deploy context first)
-        name = "reject_deploy_gate" if r.stage == "deploy" else "reject_merge_gate"
+        if r.stage == "architecture" and _has_architecture_decision(db, r.id):
+            name = "reject_architecture_gate"
+        else:
+            name = "reject_deploy_gate" if r.stage == "deploy" else "reject_merge_gate"
         return conflict_response(r, transitions.resolve_loss(db, r, name, actor))
-    res = transitions.apply(db, r, name, actor=actor,
-                            params={"reason_code": body.reason_code,
-                                    "reason": body.reason,
-                                    "label": label, "gate": gate})
+    res = transitions.apply(db, r, name, actor=actor, params=params)
     if isinstance(res, transitions.Loss):
         return conflict_response(r, res)
     db.commit()

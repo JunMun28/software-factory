@@ -112,6 +112,7 @@ def notify_gate_raised(db: Session, req: Request) -> None:
         )
         return
     gate_name = {
+        "approve_architecture": "architecture gate",
         "approve_merge": "merge gate",
         "approve_deploy": "deploy gate",
         "accept_preview": "preview",

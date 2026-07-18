@@ -172,6 +172,25 @@ def auth_mode() -> str:
     return os.environ.get("FACTORY_AUTH", "off").strip().lower()
 
 
+def arch_gate_enabled() -> bool:
+    """Whether validated architecture plans wait for a human decision.
+
+    Read per call so tests and operators can switch the optional gate without
+    importing settings again. Off preserves the pre-E2E-3 runner flow.
+    """
+    return os.environ.get("FACTORY_ARCH_GATE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def spec_gate_mode() -> str:
+    """The intake spec decision mode: manual by default, or explicit auto."""
+    mode = os.environ.get("FACTORY_SPEC_GATE", "manual").strip().lower()
+    return "auto" if mode == "auto" else "manual"
+
+
 # Forced non-root UID for agent/gate pods — restricted-SCC behavior is proven
 # locally, not discovered at the office (spec §2). Any high UID works; the
 # image is built to arbitrary-UID conventions (root group, g=u, HOME=/workspace).

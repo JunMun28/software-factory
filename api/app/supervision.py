@@ -17,6 +17,7 @@ from .kube_jobs import REQUEST_STAGE
 from .models import (
     PIPELINE_STAGES,
     STEP_PLANS,
+    AuditEvent,
     ProgressEvent,
     Request,
     StageJob,
@@ -175,6 +176,25 @@ def evidence(db: Session, r: Request) -> dict | None:
                 "total_lines": len(lines),
                 "interview_count": sum(1 for t in r.turns if t.answer),
                 "assumptions": [ln.text for ln in lines if ln.assume]}
+    if r.gate == "approve_architecture":
+        plan = (db.query(ProgressEvent)
+                .filter(ProgressEvent.request_id == r.id,
+                        ProgressEvent.kind == "architecture_plan")
+                .order_by(ProgressEvent.id.desc())
+                .first())
+        payload = (plan.payload or {}) if plan else {}
+        lines = r.spec_lines
+        return {"kind": "architecture",
+                "plan_excerpt": payload.get("plan_excerpt"),
+                "plan_digest": payload.get("plan_digest"),
+                "pr_url": payload.get("pr_url"),
+                "grounded_lines": sum(1 for ln in lines if ln.prov and not ln.assume),
+                "total_lines": len(lines),
+                "assumptions": [ln.text for ln in lines if ln.assume],
+                "refine_rounds": db.query(AuditEvent).filter(
+                    AuditEvent.request_id == r.id,
+                    AuditEvent.action == "rejected_architecture",
+                ).count()}
     if r.gate == "approve_merge":
         ev = (db.query(ProgressEvent)
               .filter(ProgressEvent.request_id == r.id,
