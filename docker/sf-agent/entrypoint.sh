@@ -172,8 +172,11 @@ note "agent finished; output $(wc -c < "$OUT" | tr -d ' ') bytes"
 
 if [ "$SF_STAGE" = "review" ]; then
   # read-only stage: NOTHING is pushed (spec §5) — the review reaches the
-  # event log via captured NDJSON, its verdict via the envelope detail
-  jq -cn --arg t "$(tail -c 20000 "$OUT")" '{type:"review",text:$t}'
+  # event log via captured NDJSON, its verdict via the envelope detail.
+  # 6000 chars: the persisted logs tail caps at 20000, and JSON escaping can
+  # more than double raw transcript bytes — a bigger event risks decapitation
+  # and the rework loop then runs blind (live E2E-4 finding)
+  jq -cn --arg t "$(tail -c 6000 "$OUT")" '{type:"review",text:$t}'
   # anchored: the prompt demands the verdict START a line — prose mentions
   # ("I would not APPROVE") must not count as a verdict
   VERDICT="$(grep -m1 -oE '^(APPROVE|REQUEST-CHANGES)\b' "$OUT" || echo 'no explicit verdict')"

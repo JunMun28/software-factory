@@ -176,6 +176,14 @@ class RealKubeClient:
                                 self.ns,
                                 _request_timeout=self._request_timeout,
                             )
+                        # the client hands back BYTES when the log body is not
+                        # valid UTF-8 (agent transcripts can contain arbitrary
+                        # bytes); a later str() would repr the whole log into
+                        # one unparseable b'...' line — found live in E2E-4:
+                        # every ndjson event (review reasoning, pytest blocks)
+                        # silently vanished
+                        if isinstance(logs, (bytes, bytearray)):
+                            logs = logs.decode("utf-8", errors="replace")
                     except (self._ApiException, KubeTimeout):
                         logs = ""
         return JobView(

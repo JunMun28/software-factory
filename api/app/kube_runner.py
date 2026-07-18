@@ -139,6 +139,9 @@ def _bounded_logs_tail(logs: str | None) -> str | None:
     """
     if not logs or settings.LOGS_TAIL_MAX <= 0:
         return None
+    if isinstance(logs, (bytes, bytearray)):
+        # never let str() repr a bytes log into one unparseable line
+        logs = logs.decode("utf-8", errors="replace")
     scrubbed = scrub_secrets(logs)
     raw = scrubbed.encode("utf-8")
     tail = raw[-settings.LOGS_TAIL_MAX :].decode("utf-8", errors="ignore") or ""

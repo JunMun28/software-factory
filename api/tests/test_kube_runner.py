@@ -2785,3 +2785,23 @@ def test_bounded_logs_tail_preserves_a_decapitated_review_event(monkeypatch):
     events = [e for e in ndjson_events(tail) if e.get("type") == "review"]
     assert events, "review event must be re-appended after truncation"
     assert "Ownership unenforced" in events[0]["text"]
+
+
+def test_bounded_logs_tail_decodes_bytes_logs(monkeypatch):
+    """E2E-4 #10: the kube client hands back BYTES when a transcript is not
+    valid UTF-8; str() would repr the whole log into one b'...' line and every
+    ndjson event (review reasoning, pytest blocks) silently vanishes."""
+    import json as _json
+
+    from app.kube_jobs import ndjson_events
+    from app.kube_runner import _bounded_logs_tail
+
+    monkeypatch.setattr(settings, "LOGS_TAIL_MAX", 4000)
+    review = _json.dumps({"type": "review", "text": "Fix the swap endpoint."})
+    logs = ('{"type":"note","text":"reading files"}\n' + review + "\n").encode(
+        "utf-8"
+    ) + b"\xff\xfe trailing garbage\n"
+    tail = _bounded_logs_tail(logs)
+    assert not tail.startswith("b'")
+    events = [e for e in ndjson_events(tail) if e.get("type") == "review"]
+    assert events and events[0]["text"] == "Fix the swap endpoint."
