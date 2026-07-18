@@ -174,7 +174,6 @@ for i in $(seq 1 "$PROD_TRIES"); do
   if [ "$rc" = "0" ] && echo "$BODY" | grep -q '"status":"ok"'; then APP_OK=host; break; fi
   if [ $((i % 15)) = 1 ]; then
     echo "  … probe $i host rc=$rc body='$(echo "$BODY" | head -c 60)' cluster='$(echo "$CBODY" | head -c 60)'"
-    [ "$i" = "1" ] && cluster_get /health 2>&1 | head -3 | sed 's/^/      exec: /'
   fi
   sleep 2
 done
