@@ -20,6 +20,9 @@ import { Store } from '../core/store.service';
 import { RecoveryConfirm } from '../shared/gate-modals';
 import { ConsoleShell } from '../shell/console-shell';
 
+const ROLLBACK_POLL_MS = 4_000;
+const ROLLBACK_POLL_TIMEOUT_MS = 120_000;
+
 const STATES = [
   { value: 'all', label: 'All' },
   { value: 'needs-you', label: 'Needs you' },
@@ -113,6 +116,7 @@ function matchesState(request: FactoryRequest, state: LibraryState): boolean {
                           <button
                             type="button"
                             class="fleet-rollback"
+                            [disabled]="rollbackPending()"
                             (click)="askRollback(app, deploy)"
                           >
                             Roll back to this
@@ -123,8 +127,8 @@ function matchesState(request: FactoryRequest, state: LibraryState): boolean {
                       <li class="fleet-none">No deploys recorded for this app.</li>
                     }
                   </ul>
-                  @if (rollbackNote()) {
-                    <p class="fleet-note" role="status">{{ rollbackNote() }}</p>
+                  @if (rollbackNoteFor(app.id); as note) {
+                    <p class="fleet-note" role="status">{{ note }}</p>
                   }
                 }
               </article>
@@ -381,6 +385,11 @@ function matchesState(request: FactoryRequest, state: LibraryState): boolean {
     .fleet-rollback:hover {
       background: var(--surface-2);
     }
+    .fleet-rollback:disabled {
+      color: var(--faint);
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
     .fleet-none {
       color: var(--faint);
     }
@@ -573,12 +582,15 @@ export class LibraryPage implements OnDestroy {
   private api = inject(Api);
   private session = inject(Session);
   private querySubscription: Subscription;
+  private rollbackPolling: Subscription | null = null;
+  private rollbackPollInFlight = false;
 
   /** Fleet: which app's deploy history is open, and its rows. */
   historyFor = signal<number | null>(null);
   history = signal<AppDeploy[]>([]);
   confirmingRollback = signal<{ app: AppEntry; deploy: AppDeploy } | null>(null);
-  rollbackNote = signal<string | null>(null);
+  rollbackNote = signal<{ appId: number; message: string } | null>(null);
+  rollbackPending = signal(false);
 
   toggleHistory(app: AppEntry) {
     if (this.historyFor() === app.id) {
@@ -587,28 +599,127 @@ export class LibraryPage implements OnDestroy {
     }
     this.historyFor.set(app.id);
     this.history.set([]);
-    this.rollbackNote.set(null);
     this.api.appDeploys(app.id).subscribe((rows) => this.history.set(rows));
   }
 
   askRollback(app: AppEntry, deploy: AppDeploy) {
+    if (this.rollbackPending()) return;
     this.confirmingRollback.set({ app, deploy });
   }
 
   rollback(rb: { app: AppEntry; deploy: AppDeploy }) {
+    if (this.rollbackPending()) return;
     this.confirmingRollback.set(null);
+    this.rollbackPending.set(true);
     this.api.rollbackApp(rb.app.id, rb.deploy.digest, this.session.operatorId()!).subscribe({
-      next: (deploy) => {
-        this.rollbackNote.set(`Rolled back to ${this.shortDigest(deploy.digest)} — live again.`);
-        this.store.refresh();
-        this.api.appDeploys(rb.app.id).subscribe((rows) => this.history.set(rows));
+      next: (queued) => {
+        this.stopRollbackPolling();
+        if (queued.status === 'succeeded') {
+          this.showRollbackSuccess(rb.app, queued.digest ?? rb.deploy.digest);
+          return;
+        }
+        this.rollbackPending.set(true);
+        this.setRollbackNote(rb.app.id, 'Rollback queued…');
+        this.pollRollback(rb.app, rb.deploy.digest, queued.id, queued.digest);
       },
       error: (error) => {
-        this.rollbackNote.set(
+        this.rollbackPending.set(false);
+        this.setRollbackNote(
+          rb.app.id,
           error?.error?.detail || 'Rollback failed — the cluster did not accept it.',
         );
       },
     });
+  }
+
+  private pollRollback(
+    app: AppEntry,
+    requestedDigest: string,
+    jobId: number,
+    queuedDigest: string | null,
+  ) {
+    const polling = new Subscription();
+    this.rollbackPolling = polling;
+    this.rollbackPollInFlight = false;
+
+    const finish = () => {
+      if (this.rollbackPolling !== polling) return false;
+      polling.unsubscribe();
+      this.rollbackPolling = null;
+      this.rollbackPollInFlight = false;
+      this.rollbackPending.set(false);
+      return true;
+    };
+    const poll = () => {
+      if (this.rollbackPolling !== polling || this.rollbackPollInFlight) return;
+      this.rollbackPollInFlight = true;
+      const pollSubscription = this.api.appRollbacks(app.id).subscribe({
+        next: (jobs) => {
+          if (this.rollbackPolling !== polling) return;
+          this.rollbackPollInFlight = false;
+          const job = jobs.find((candidate) => candidate.id === jobId);
+          if (!job || job.status === 'running') return;
+          if (!finish()) return;
+
+          if (job.status === 'succeeded') {
+            const digest = job.digest ?? queuedDigest ?? requestedDigest;
+            this.showRollbackSuccess(app, digest);
+            return;
+          }
+          this.setRollbackNote(
+            app.id,
+            job.error ||
+              (job.status === 'timed_out'
+                ? 'Rollback timed out before it completed.'
+                : 'Rollback failed without a reason.'),
+          );
+        },
+        error: (error) => {
+          if (this.rollbackPolling !== polling) return;
+          this.rollbackPollInFlight = false;
+          if (error?.status >= 400 && error.status < 500 && finish()) {
+            this.setRollbackNote(
+              app.id,
+              error?.error?.detail ||
+                'Could not check rollback progress — the fleet view will catch up.',
+            );
+          }
+        },
+      });
+      polling.add(pollSubscription);
+    };
+
+    const pollTimer = setInterval(poll, ROLLBACK_POLL_MS);
+    const timeoutTimer = setTimeout(() => {
+      if (!finish()) return;
+      this.setRollbackNote(app.id, 'Rollback is still running — the fleet view will catch up.');
+    }, ROLLBACK_POLL_TIMEOUT_MS);
+    polling.add(() => clearInterval(pollTimer));
+    polling.add(() => clearTimeout(timeoutTimer));
+  }
+
+  private stopRollbackPolling() {
+    this.rollbackPolling?.unsubscribe();
+    this.rollbackPolling = null;
+    this.rollbackPollInFlight = false;
+    this.rollbackPending.set(false);
+  }
+
+  rollbackNoteFor(appId: number) {
+    const note = this.rollbackNote();
+    return note?.appId === appId ? note.message : null;
+  }
+
+  private setRollbackNote(appId: number, message: string) {
+    this.rollbackNote.set({ appId, message });
+  }
+
+  private showRollbackSuccess(app: AppEntry, digest: string) {
+    this.setRollbackNote(app.id, `Rolled back to ${this.shortDigest(digest)} — live again.`);
+    this.store.refresh();
+    if (this.historyFor() === app.id) {
+      this.api.appDeploys(app.id).subscribe((rows) => this.history.set(rows));
+    }
   }
 
   liveHost(url: string) {
@@ -687,6 +798,7 @@ export class LibraryPage implements OnDestroy {
   timeAgo = timeAgo;
 
   ngOnDestroy() {
+    this.stopRollbackPolling();
     this.querySubscription.unsubscribe();
   }
 }
