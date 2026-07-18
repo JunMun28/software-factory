@@ -133,11 +133,15 @@ class SteerStateOut(BaseModel):
 
 class EvidenceOut(BaseModel):
     """What the admin sees before approving (spec §6). kind='spec' uses the
-    grounded-lines fields; merge/deploy use verification and release fields."""
-    kind: Literal["spec", "merge", "deploy"]
+    grounded-lines fields; 'architecture' adds the PLAN.md excerpt + refine
+    rounds; merge/deploy use verification and release fields."""
+    kind: Literal["spec", "architecture", "merge", "deploy"]
     grounded_lines: int | None = None
     total_lines: int | None = None
     interview_count: int | None = None
+    plan_excerpt: str | None = None
+    plan_digest: str | None = None
+    refine_rounds: int | None = None
     tests_passed: int | None = None
     tests_total: int | None = None
     diff_added: int | None = None

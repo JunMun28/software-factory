@@ -2803,9 +2803,74 @@ class KubeJobRunner:
             .order_by(StageJob.attempt, StageJob.id)
         ).all()
         self._supersede_rewound_rows(db, req, all_rows)
+        architecture_rejected_at = None
+        if settings.arch_gate_enabled() and req.stage == "architecture":
+            architecture_job = next(
+                (
+                    row
+                    for row in reversed(all_rows)
+                    if row.stage == "architecture"
+                    and row.role == "gate"
+                    and row.status == "succeeded"
+                ),
+                None,
+            )
+            if architecture_job is not None:
+                newest = self._newest_decisive(db, req)
+                decision_is_newer = bool(
+                    newest is not None
+                    and newest.created_at is not None
+                    and architecture_job.completed_at is not None
+                    and newest.created_at > architecture_job.completed_at
+                )
+                if not decision_is_newer:
+                    if req.gate is None:
+                        raised = transitions.apply_committed(
+                            db,
+                            req,
+                            "raise_architecture_gate",
+                            actor=FACTORY,
+                            epoch=get_elector().epoch,
+                            expected_stage="architecture",
+                        )
+                        if isinstance(raised, transitions.Win):
+                            moved.append(f"{req.ref}: architecture gate raised")
+                        else:
+                            log.info(
+                                "%s: architecture gate raise lost (%s)",
+                                req.ref,
+                                raised.detail,
+                            )
+                    return None
+                if newest.action == "rejected_architecture":
+                    architecture_rejected_at = newest.created_at
+                    # Durably supersede the rejected round: the scheduler's
+                    # candidate derivation (cost._pipeline_candidates) filters
+                    # superseded rows, so the refine re-run classifies as
+                    # ARCHITECTURE work — not RED — and never waits on a build
+                    # slot (review finding P2, 2026-07-18).
+                    stale = [
+                        row
+                        for row in all_rows
+                        if row.stage == "architecture"
+                        and row.status != "superseded"
+                        and row.created_at < architecture_rejected_at
+                    ]
+                    if stale:
+                        for row in stale:
+                            row.status = "superseded"
+                        db.commit()
+                elif newest.action != "approved_architecture":
+                    return None
         for stage in KUBE_STAGES:
             history = [row for row in all_rows if row.stage == stage]
             rows = [row for row in history if row.status != "superseded"]
+            if stage == "architecture" and architecture_rejected_at is not None:
+                rows = [
+                    row
+                    for row in rows
+                    if row.created_at > architecture_rejected_at
+                ]
             if any(r.role == "gate" and r.status == "succeeded" for r in rows):
                 continue  # stage fully graded — look at the next one
             if not rows:
