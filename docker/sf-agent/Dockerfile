@@ -46,8 +46,11 @@ RUN uv pip install --system \
 # The golden template pins Python 3.12 (.python-version); gate pods have NO
 # egress by design, so the interpreter must be baked in — uv dialing out for
 # a cpython download inside the gate is exactly what failed live (E2E-4).
+# A SHARED install dir, because pods run as arbitrary UIDs (10101): a
+# root-homed managed install is invisible to them (second live finding).
 # UV_PYTHON_DOWNLOADS=never makes any future gap fail loudly, not dial out.
-RUN uv python install 3.12
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python
+RUN uv python install 3.12 && chmod -R a+rX /opt/uv
 ENV UV_PYTHON_DOWNLOADS=never
 
 # arbitrary-UID pods and local fixture tests clone repos owned by OTHER uids;
