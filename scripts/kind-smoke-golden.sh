@@ -139,13 +139,22 @@ while :; do
 done
 APP_URL="http://$SLUG.localtest.me:8081"
 APP_RESOLVE="--resolve $SLUG.localtest.me:8081:127.0.0.1"
-# `done` lands when the deploy is APPLIED; give the rollout up to 3 minutes
+# `done` lands when the deploy is APPLIED; give the rollout up to 3 minutes.
+# Instrumented: the probe failed across four runs while the app was
+# demonstrably live and nginx logged ZERO arrivals — capture what curl
+# actually saw.
 APP_OK=""
-for _ in $(seq 1 90); do
-  if curl -sf $APP_RESOLVE "$APP_URL/health" | grep -q '"status":"ok"'; then APP_OK=1; break; fi
+PROBE_DBG="$(mktemp)"
+for i in $(seq 1 90); do
+  BODY="$(curl -sv $APP_RESOLVE "$APP_URL/health" 2>"$PROBE_DBG")" && rc=0 || rc=$?
+  if [ "$rc" = "0" ] && echo "$BODY" | grep -q '"status":"ok"'; then APP_OK=1; break; fi
+  if [ $((i % 15)) = 1 ]; then
+    echo "  … probe $i rc=$rc body='$(echo "$BODY" | head -c 80)'"
+    sed 's/^/      curl: /' "$PROBE_DBG" | head -8
+  fi
   sleep 2
 done
-[ -n "$APP_OK" ] || fail "PROD app /health did not answer within 180s"
+[ -n "$APP_OK" ] || fail "PROD app /health did not answer within 180s (last rc=$rc; verbose above)"
 curl -sf $APP_RESOLVE "$APP_URL/" | grep -qi "<!doctype html\|<html" || fail "PROD app did not serve the frontend"
 ok "request done — the golden app is LIVE at $APP_URL"
 
