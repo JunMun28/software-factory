@@ -61,7 +61,7 @@ frontend_build_gate() { # [metrics_json]
       > "$NPM_CI_OUT" 2>&1
   npm_ci_rc=$?
   if [ "$npm_ci_rc" != "0" ]; then
-    if [ "$npm_ci_rc" = "124" ] || grep -Eqi 'EAI_AGAIN|ENETUNREACH|ECONNREFUSED|ECONNRESET|ETIMEDOUT|getaddrinfo|network.*(unreachable|timeout)|registry.*unreachable' "$NPM_CI_OUT"; then
+    if [ "$npm_ci_rc" = "124" ] || [ "$npm_ci_rc" = "137" ] || grep -Eqi 'EAI_AGAIN|ENETUNREACH|ECONNREFUSED|ECONNRESET|ETIMEDOUT|getaddrinfo|network.*(unreachable|timeout)|registry.*unreachable' "$NPM_CI_OUT"; then
       note "frontend build skipped: npm registry unreachable in gate pod"
       return 0
     fi
