@@ -2766,3 +2766,22 @@ def test_review_rejections_escalate_after_two_reworks(client):
             )
         ).all()
         assert len(reworks) == 2
+
+
+def test_bounded_logs_tail_preserves_a_decapitated_review_event(monkeypatch):
+    """E2E-4: a review event whose line HEAD falls outside the tail window must
+    be re-appended (bounded) — otherwise the rework loop runs on empty
+    feedback (proven live: three rounds with no reasoning)."""
+    import json as _json
+
+    from app.kube_jobs import ndjson_events
+    from app.kube_runner import _bounded_logs_tail
+
+    monkeypatch.setattr(settings, "LOGS_TAIL_MAX", 4000)
+    review = _json.dumps({"type": "review", "text": "Ownership unenforced. " * 300})
+    logs = review + "\n" + ('{"type":"note","text":"' + "x" * 100 + '"}\n') * 60
+    tail = _bounded_logs_tail(logs)
+    assert '"type":"review"' not in tail.split("\n")[0]  # head was truncated away
+    events = [e for e in ndjson_events(tail) if e.get("type") == "review"]
+    assert events, "review event must be re-appended after truncation"
+    assert "Ownership unenforced" in events[0]["text"]

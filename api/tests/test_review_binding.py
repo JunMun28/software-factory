@@ -78,15 +78,16 @@ def test_request_changes_retries_review_with_scrubbed_reasoning_then_approves(cl
     merge_response = client.get(f"/api/requests/{request['id']}")
     assert token not in merge_response.text
     assert "Fix the race" in merge_response.json()["evidence"]["reviewer_reasoning"]
-    review_two = next(
+    # E2E-4 rework: the rejection sends the WORK back to the build stage with
+    # the review as feedback (delivered to the first rework pod); the second
+    # review round then judges the fixed code.
+    red_two = next(
         manifest
         for manifest in fake.creations
-        if manifest["metadata"]["name"] == f"sf-{out['ref'].lower()}-review-2"
+        if manifest["metadata"]["name"] == f"sf-{out['ref'].lower()}-red-2"
     )
-    feedback = _manifest_env(review_two)["SF_GATE_FEEDBACK"]
-    assert "REQUEST-CHANGES" in feedback and "Fix the race" in feedback
-    assert "unchanged code honestly" in feedback
-    assert "repeat REQUEST-CHANGES" in feedback
+    feedback = _manifest_env(red_two)["SF_GATE_FEEDBACK"]
+    assert "REQUESTED CHANGES" in feedback and "Fix the race" in feedback
     assert token not in feedback
     with SessionLocal() as db:
         rows = db.scalars(
@@ -95,8 +96,8 @@ def test_request_changes_retries_review_with_scrubbed_reasoning_then_approves(cl
             .order_by(StageJob.id)
         ).all()
         assert [(row.role, row.attempt, row.status) for row in rows] == [
-            ("stage", 1, "succeeded"),
-            ("gate", 1, "failed"),
+            ("stage", 1, "superseded"),
+            ("gate", 1, "superseded"),
             ("stage", 2, "succeeded"),
             ("gate", 2, "succeeded"),
         ]
@@ -117,13 +118,26 @@ def test_request_changes_retries_review_with_scrubbed_reasoning_then_approves(cl
 
 def test_second_request_changes_escalates_without_merge_gate(client):
     runner, fake = _runner()
-    _script_reviews(fake, {1: "REQUEST-CHANGES", 2: "REQUEST-CHANGES"}, "Still broken")
+    # every round rejects: two rework rounds run, then a human decides
+    _script_reviews(fake, {1: "REQUEST-CHANGES"}, "Still broken")
     request = approved_request(client, title="Binding review escalation")
 
-    out = _tick_until(client, runner, request["id"], lambda value: value["needs_human"])
+    out = _tick_until(
+        client, runner, request["id"], lambda value: value["needs_human"], limit=120
+    )
 
     assert out["gate"] != "approve_merge"
-    assert "after 2 attempts" in out["needs_human_reason"]
+    with SessionLocal() as db:
+        from app.models import AuditEvent
+
+        reworks = db.scalars(
+            select(AuditEvent).where(
+                AuditEvent.request_id == request["id"],
+                AuditEvent.action == "review_rework",
+            )
+        ).all()
+        assert len(reworks) == 2
+    assert "review failed" in out["needs_human_reason"]
     client.post(
         f"/api/requests/{request['id']}/cancel",
         json={"operator_id": 1, "note": "test cleanup"},

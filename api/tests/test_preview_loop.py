@@ -364,7 +364,7 @@ def test_operator_request_changes_clears_escalation_records_round_and_reruns_arc
 def test_round_two_review_request_changes_escalates_at_shared_attempt_cap(
     client, monkeypatch, tmp_path
 ):
-    """The review retry budget is request-wide, including superseded preview rounds."""
+    """A round-two REQUEST-CHANGES sends the work back to build (rework), not to a human."""
     _enable_preview(monkeypatch, tmp_path)
     request = _put_at_preview_gate(client, "Round two shared review budget")
     now = utcnow() - timedelta(minutes=5)
@@ -423,9 +423,19 @@ def test_round_two_review_request_changes_escalates_at_shared_attempt_cap(
         runner._grade(db, req, gate, "succeeded", pass_verdict(), [])
         db.refresh(req)
 
-        assert req.needs_human is True
+        assert req.needs_human is False
         assert req.gate is None
-        assert "after 2 attempts" in req.needs_human_reason
+        assert req.stage == "build"
+        assert "The filter state is still lost" in (req.pending_feedback or "")
+        from app.models import AuditEvent
+
+        reworks = db.scalars(
+            select(AuditEvent).where(
+                AuditEvent.request_id == req.id,
+                AuditEvent.action == "review_rework",
+            )
+        ).all()
+        assert len(reworks) == 1
         assert not db.scalars(
             select(StageJob).where(
                 StageJob.request_id == req.id,
@@ -774,7 +784,7 @@ def test_ai_review_retry_and_requester_preview_rewind_use_distinct_feedback(
         assert runner._spawn_next(db, ai, [])
         assert runner._spawn_next(db, preview, [])
 
-    ai_manifest = runner.client.jobs[f"sf-{ai_request['ref'].lower()}-review-2"].manifest
+    ai_manifest = runner.client.jobs[f"sf-{ai_request['ref'].lower()}-red-2"].manifest
     preview_manifest = runner.client.jobs[
         f"sf-{preview_request['ref'].lower()}-architecture-2"
     ].manifest

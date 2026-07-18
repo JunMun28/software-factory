@@ -128,11 +128,31 @@ _QUOTA_SIGNATURES = (
 
 
 def _bounded_logs_tail(logs: str | None) -> str | None:
-    """Scrub secrets, then return a bounded UTF-8 tail safe to persist."""
+    """Scrub secrets, then return a bounded UTF-8 tail safe to persist.
+
+    The structured ndjson events the orchestrator parses later (review verdict
+    reasoning, pytest blocks) must SURVIVE the cap: a long review event whose
+    line HEAD falls outside the tail window becomes invalid JSON and silently
+    vanishes — live E2E-4 finding: three rework rounds ran with empty review
+    feedback because the reasoning was decapitated. Re-append a bounded copy
+    of the last review event after truncation so it always parses.
+    """
     if not logs or settings.LOGS_TAIL_MAX <= 0:
         return None
-    raw = scrub_secrets(logs).encode("utf-8")
-    return raw[-settings.LOGS_TAIL_MAX :].decode("utf-8", errors="ignore") or None
+    scrubbed = scrub_secrets(logs)
+    raw = scrubbed.encode("utf-8")
+    tail = raw[-settings.LOGS_TAIL_MAX :].decode("utf-8", errors="ignore") or ""
+    if '"type":"review"' not in tail and '"type": "review"' not in tail:
+        review = None
+        for event in ndjson_events(scrubbed):
+            if event.get("type") == "review":
+                review = event
+        if review is not None:
+            preserved = json.dumps(
+                {"type": "review", "text": str(review.get("text") or "")[:6000]}
+            )
+            tail = f"{tail}\n{preserved}\n"
+    return tail or None
 
 
 def _looks_like_quota(envelope: dict | None) -> bool:
