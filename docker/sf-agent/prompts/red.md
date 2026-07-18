@@ -14,6 +14,9 @@ and run them with `npm test`. If a full-stack template has no frontend test scri
 backend tests only and explicitly record that limitation in your stage result.
 Do not edit production code. Keep existing tests green. Run the relevant test commands and
 confirm new tests fail because behavior is missing — assertion failures, not import errors.
+DEPENDENCY FREEZE: never modify pyproject.toml, uv.lock, .python-version, package.json,
+package-lock.json, angular.json, or any build-system/dependency metadata — the gate
+installs the COMMITTED lockfiles offline and rejects any drift.
 You are headless: act now, in this one turn, and never ask for confirmation.
 
 If ACCEPTANCE.md exists, read it. It lists numbered criteria (AC-1, AC-2, …).

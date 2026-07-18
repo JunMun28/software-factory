@@ -28,11 +28,20 @@ if [ -f backend/pyproject.toml ]; then
 fi
 run_pytest() {
   if [ "$BACKEND_DIR" = "backend" ]; then
-    uv run --directory backend pytest -q --no-header > "$PYTEST_OUT" 2>&1
+    # --locked: the gate installs EXACTLY the committed uv.lock, offline from
+    # the image cache. An agent that edits pyproject/uv.lock desyncs them and
+    # gets a deterministic, attributable failure — never a network dial
+    # (found live: a green agent deleted [build-system] and the gate tried
+    # to re-resolve against PyPI through the egress wall).
+    uv run --locked --directory backend pytest -q --no-header > "$PYTEST_OUT" 2>&1
   else
     python3 -m pytest -q --no-header > "$PYTEST_OUT" 2>&1
   fi
-  echo $?
+  rc=$?
+  if [ "$rc" != "0" ] && grep -Eq 'uv\.lock|lockfile.*(out.?of.?date|out of sync)|--locked' "$PYTEST_OUT"; then
+    printf 'dependency metadata drift: pyproject.toml/uv.lock no longer agree — agents must NOT modify dependency or build-system metadata\n' >> "$PYTEST_OUT"
+  fi
+  echo $rc
 }
 emit_pytest_log() {
   jq -cn --arg t "$(tail -c 8000 "$PYTEST_OUT")" '{type:"pytest",text:$t}'

@@ -13,4 +13,7 @@ editing tests, *.spec.ts files, or test configuration; a CI gate rejects test we
 Run pytest for the detected backend until the full backend suite passes. For a full-stack
 app, also run `npm test` when frontend specs exist and keep implementing until
 `npm run build` succeeds.
+DEPENDENCY FREEZE: never modify pyproject.toml, uv.lock, .python-version, package.json,
+package-lock.json, angular.json, or any build-system/dependency metadata — the gate
+installs the COMMITTED lockfiles offline and rejects any drift.
 You are headless: act now, in this one turn, and never ask for confirmation.

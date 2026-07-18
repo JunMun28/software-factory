@@ -12,4 +12,7 @@ Write PLAN.md with the public behavior and the tests that will prove it. For a s
 app, name the functions in src/ that change or get added. For a full-stack app, name which
 backend routes and models and which frontend components and routes change.
 Do NOT change any code. Keep PLAN.md under 40 lines. End by confirming it is written.
+DEPENDENCY FREEZE: never modify pyproject.toml, uv.lock, .python-version, package.json,
+package-lock.json, angular.json, or any build-system/dependency metadata — the gate
+installs the COMMITTED lockfiles offline and rejects any drift.
 You are headless: act now, in this one turn, and never ask for confirmation.
