@@ -69,6 +69,17 @@ RUN cd /tmp/golden-lock \
   && rm -rf /tmp/golden-venv /tmp/golden-lock \
   && chmod -R a+rwX /opt/uv/cache && chmod -R a+rX /opt/uv/python
 
+# Baked frontend node_modules (E2E-4 #15): the egress-walled gate pod cannot
+# npm ci, so frontend TESTS were never gated — the reviewer kept catching
+# broken specs the implementer's own gate called GREEN. The template lock is
+# frozen (DEPENDENCY FREEZE), so an image-time npm ci is exact: the gate
+# copies this tree in when the repo's package-lock.json matches the baked one.
+COPY templates/golden/frontend/package.json templates/golden/frontend/package-lock.json /opt/sf/golden-npm/
+RUN cd /opt/sf/golden-npm \
+  && npm ci --no-audit --no-fund \
+  && npm cache clean --force \
+  && chmod -R a+rX /opt/sf/golden-npm
+
 # arbitrary-UID pods and local fixture tests clone repos owned by OTHER uids;
 # git's dubious-ownership check would refuse them (the pod uid never matches)
 RUN git config --system safe.directory '*'

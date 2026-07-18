@@ -12,6 +12,15 @@ the spec, whether tests are meaningful, and what risks remain. For a full-stack 
 both backend and frontend behavior, their API integration, backend pytest results, frontend
 component tests when present, and the production build result. Do not modify any file.
 Start with a verdict line: APPROVE or REQUEST-CHANGES, then at most 20 lines of reasoning.
+VERDICT BAR — the rework budget is small, so hold a shippable-v1 bar, not a perfect one:
+REQUEST-CHANGES only for (a) behavior that violates SPEC.md/PLAN.md acceptance criteria,
+(b) broken or dishonest tests (failing, not compiling, or asserting nothing), or
+(c) correctness/security defects. Everything else — accessibility hardening beyond the
+plan, styling/structure preferences, extra test depth, refactors — goes in your notes
+WITHOUT blocking. If feedback says this is a rework round, first verify the previously
+raised concerns were addressed; do not block on NEW nice-to-haves you could have raised
+earlier unless they fall under (a)-(c). When the acceptance criteria are met and tests
+honestly pass, APPROVE with notes.
 DEPENDENCY FREEZE: never modify pyproject.toml, uv.lock, .python-version, package.json,
 package-lock.json, angular.json, or any build-system/dependency metadata — the gate
 installs the COMMITTED lockfiles offline and rejects any drift.

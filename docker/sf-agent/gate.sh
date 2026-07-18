@@ -48,6 +48,27 @@ emit_pytest_log() {
 }
 frontend_build_gate() { # [metrics_json]
   [ -f frontend/package.json ] || return 0
+  # Baked-modules fast path (E2E-4 #15): when the repo's lock matches the
+  # image-baked golden lock, install is a local copy and the gate can run the
+  # frontend TESTS offline — broken specs must fail HERE, not first at review.
+  GOLDEN_NPM=/opt/sf/golden-npm
+  if [ -d "$GOLDEN_NPM/node_modules" ] && [ -f frontend/package-lock.json ] \
+     && cmp -s frontend/package-lock.json "$GOLDEN_NPM/package-lock.json"; then
+    cp -R "$GOLDEN_NPM/node_modules" frontend/node_modules
+    NPM_TEST_OUT="$GATE_WORK/npm-test.txt"
+    (cd frontend && timeout -k 15 300 npm test -- --watch=false) > "$NPM_TEST_OUT" 2>&1
+    npm_test_rc=$?
+    [ "$npm_test_rc" = "0" ] || \
+      verdict fail "frontend tests failed (rc=$npm_test_rc): $(tail -c 300 "$NPM_TEST_OUT")" "${1:-null}"
+    note "frontend tests passed"
+    NPM_BUILD_OUT="$GATE_WORK/npm-build.txt"
+    (cd frontend && timeout -k 15 600 npm run build) > "$NPM_BUILD_OUT" 2>&1
+    npm_build_rc=$?
+    [ "$npm_build_rc" = "0" ] || \
+      verdict fail "frontend build failed (rc=$npm_build_rc): $(tail -c 300 "$NPM_BUILD_OUT")" "${1:-null}"
+    note "frontend build passed"
+    return 0
+  fi
   NPM_CI_OUT="$GATE_WORK/npm-ci.txt"
   # Hard timeout + minimal retries: against the gate's egress wall, npm does
   # NOT fail fast — it retried for 15+ minutes until the pod deadline killed
