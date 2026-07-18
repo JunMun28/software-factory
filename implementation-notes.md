@@ -1051,7 +1051,8 @@ re-walked → GATE RE-RAISED (t+16s) → "Approve & continue build" →
 approved_architecture by Jun Mun Wong → stage=build. The full refine
 conversation is in the timeline.
 
-Found live, filed to E2E-6: the dossier request detail does not re-query on
-poll version bumps (timeline live, header/buttons stale until reload). Also:
-a long-lived ng serve from BEFORE a merge serves stale bundles — restart dev
-servers after merging (operational note, not a bug).
+CORRECTION (same day): the suspected "dossier doesn't live-refresh" finding
+was WRONG — the dossier effect already re-queries on Poll version bumps; the
+stale header was the long-lived ng serve serving a PRE-MERGE bundle (old code
+had no architecture branch in stateSentence). One real lesson stands: restart
+dev servers after merging.

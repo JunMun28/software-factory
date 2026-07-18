@@ -28,6 +28,9 @@ COPY api/app ./app
 COPY api/alembic.ini ./
 COPY api/alembic ./alembic
 COPY sample /srv/sample
+# E2E-2: the golden Angular+FastAPI produced-app template. Selected via
+# FACTORY_SAMPLE=/srv/templates/golden (kind-smoke does; default stays sample).
+COPY templates/golden /srv/templates/golden
 # the ONE prompt store (harness.py): without it HARNESS_VERSION would digest
 # "<missing>" files and the lineage stamp would never move with prompt edits
 COPY docker/sf-agent/prompts /srv/prompts
