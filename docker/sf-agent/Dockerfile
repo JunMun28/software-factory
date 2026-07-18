@@ -43,6 +43,13 @@ RUN uv pip install --system \
       "httpx>=0.27,<1" \
       "pydantic>=2.9,<3"
 
+# The golden template pins Python 3.12 (.python-version); gate pods have NO
+# egress by design, so the interpreter must be baked in — uv dialing out for
+# a cpython download inside the gate is exactly what failed live (E2E-4).
+# UV_PYTHON_DOWNLOADS=never makes any future gap fail loudly, not dial out.
+RUN uv python install 3.12
+ENV UV_PYTHON_DOWNLOADS=never
+
 # arbitrary-UID pods and local fixture tests clone repos owned by OTHER uids;
 # git's dubious-ownership check would refuse them (the pod uid never matches)
 RUN git config --system safe.directory '*'
