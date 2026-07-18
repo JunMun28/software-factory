@@ -840,6 +840,19 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
         conflict_detail=lambda r: f"Cannot advance (status={r.status!r}, needs_human={r.needs_human})",
     ),
     Transition(
+        # same-stage retry spawn: the fenced CAS + intent must still land in
+        # one transaction, but stage_entered_at MUST NOT move — bumping it on
+        # a retry makes _supersede_rewound_rows read the retry as a stage
+        # rewind and supersede the sibling stages' graded rows (live E2E-4
+        # finding: a green retry erased red's succeeded gate and the frozen
+        # test surface could no longer be verified).
+        name="respawn_stage",
+        pre=Pre(status_in=(APPROVED,), needs_human=False),
+        effects=lambda p: {"updated_at": utcnow()},
+        events=_ev_advance_stage,
+        conflict_detail=lambda r: f"Cannot respawn (status={r.status!r}, needs_human={r.needs_human})",
+    ),
+    Transition(
         name="register_produced_app",
         pre=Pre(status_in=(APPROVED,), gate=None, needs_human=False, app_id=None),
         effects=lambda p: {"app_id": p["app_id"], "updated_at": utcnow()},

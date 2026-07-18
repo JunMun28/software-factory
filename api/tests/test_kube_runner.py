@@ -2730,6 +2730,65 @@ def test_review_request_changes_reworks_green_then_converges(client):
     assert review_rounds["n"] == 2
 
 
+def test_rework_round_keeps_the_stage_retry_budget(client):
+    """E2E-4 #13: green SUCCEEDED in round 1; after a review rework, green-2's
+    first gate failure must retry with feedback (green-3), not escalate — the
+    raw attempt number is inflated by rounds the stage already passed."""
+    runner, fake = make_runner()
+    counters = {"review": 0, "green_gate": 0}
+    d = _approved(client, "Kube rework retry budget")
+    mine = d["ref"].lower()
+
+    def run(name, job):
+        if job.phase != "running":
+            return
+        import json as _json
+
+        if mine in name and "-review-" in name and not name.endswith("-gate"):
+            counters["review"] += 1
+            verdict = "REQUEST-CHANGES" if counters["review"] == 1 else "APPROVE"
+            v = stage_ok(verdict)
+            job.logs = '{"type":"review","text":"Persist the swaps."}\n'
+        elif mine in name and name.endswith("-gate") and "-review-" in name:
+            v = (
+                fail_verdict("review gate: reviewer did not APPROVE")
+                if counters["review"] == 1
+                else pass_verdict()
+            )
+        elif mine in name and "-green-" in name and name.endswith("-gate"):
+            counters["green_gate"] += 1
+            # round 1 passes; the rework round fails ONCE then passes
+            v = (
+                fail_verdict("GREEN gate: suite still failing (rc=1)")
+                if counters["green_gate"] == 2
+                else pass_verdict()
+            )
+        elif "-review-" in name and not name.endswith("-gate"):
+            v = stage_ok("APPROVE")
+        elif name.endswith("-gate"):
+            v = pass_verdict()
+        else:
+            v = stage_ok()
+        job.phase = "succeeded"
+        job.termination_message = _json.dumps(v)
+
+    fake.on_observe = run
+    out = tick_until(client, runner, d["id"], lambda o: o.get("gate") == "approve_merge")
+    assert out["gate"] == "approve_merge", out
+    assert not out["needs_human"]
+    with SessionLocal() as db:
+        greens = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == d["id"],
+                StageJob.stage == "green",
+                StageJob.role == "stage",
+            ).order_by(StageJob.id)
+        ).all()
+        # round 1 (passed) + rework round: failed once, then the retry
+        assert [g.attempt for g in greens] == [1, 2, 3]
+    assert counters["review"] == 2
+
+
 def test_review_rejections_escalate_after_two_reworks(client):
     """The rework loop is bounded: a reviewer that keeps rejecting hands the
     request to a human after two fix rounds."""

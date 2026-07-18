@@ -137,7 +137,7 @@ def test_second_request_changes_escalates_without_merge_gate(client):
             )
         ).all()
         assert len(reworks) == 2
-    assert "review failed" in out["needs_human_reason"]
+    assert "review still requests changes after 2 rework rounds" in out["needs_human_reason"]
     client.post(
         f"/api/requests/{request['id']}/cancel",
         json={"operator_id": 1, "note": "test cleanup"},

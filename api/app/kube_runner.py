@@ -2465,13 +2465,13 @@ class KubeJobRunner:
         # the request escalates; proven live). Send the work back to green
         # with the review as feedback instead. Two rework rounds, then a
         # human decides; REQUEST_ATTEMPT_BUDGET still caps everything.
+        reworks = db.scalar(
+            select(func.count(AuditEvent.id)).where(
+                AuditEvent.request_id == req.id,
+                AuditEvent.action == "review_rework",
+            )
+        ) or 0
         if sj.stage == "review" and "REQUEST-CHANGES" in reason:
-            reworks = db.scalar(
-                select(func.count(AuditEvent.id)).where(
-                    AuditEvent.request_id == req.id,
-                    AuditEvent.action == "review_rework",
-                )
-            ) or 0
             if reworks < 2:
                 report = self._review_report_for(db, req)
                 reasoning = (report or {}).get("reasoning") or reason
@@ -2494,7 +2494,26 @@ class KubeJobRunner:
                     )
                     return
                 log.info("%s: review_rework lost (%s)", req.ref, res.detail)
-        if sj.attempt >= settings.KUBE_MAX_ATTEMPTS:
+            else:
+                # never re-review the same SHA after the rework budget is
+                # spent — an honest reviewer just repeats the verdict
+                self._escalate(
+                    db,
+                    req,
+                    f"review still requests changes after {reworks} rework "
+                    f"rounds: {reason}",
+                )
+                moved.append(f"{req.ref}: escalated at review")
+                return
+        # rework rounds consume attempt numbers even for stages that
+        # SUCCEEDED in an earlier round (live E2E-4 finding: green-1 passed,
+        # review sent the work back, green-2's FIRST failure escalated with
+        # zero retries) — grant each rework its extra attempt so every round
+        # keeps the one retry-with-feedback budget
+        allowed = settings.KUBE_MAX_ATTEMPTS
+        if sj.stage in ("red", "green", "review"):
+            allowed += reworks
+        if sj.attempt >= allowed:
             self._escalate(db, req, f"{sj.stage} failed after {sj.attempt} attempts: {reason}")
             moved.append(f"{req.ref}: escalated at {sj.stage}")
             return
@@ -3161,11 +3180,14 @@ class KubeJobRunner:
             # truncates the tail — the human instruction must survive the cut
             feedback = f"{note}\n\n{feedback}" if feedback else note
         # the fenced CAS + intent + StageJob row + heartbeat event land in ONE
-        # transaction (spec §3.3); the external create happens after commit
+        # transaction (spec §3.3); the external create happens after commit.
+        # A same-stage retry uses respawn_stage: advance_stage's
+        # stage_entered_at bump would read as a rewind and supersede sibling
+        # stages' graded rows (E2E-4 #13)
         res = transitions.apply(
             db,
             req,
-            "advance_stage",
+            "advance_stage" if REQUEST_STAGE[stage] != req.stage else "respawn_stage",
             actor=FACTORY,
             params={"stage": REQUEST_STAGE[stage]},
             epoch=get_elector().epoch,
