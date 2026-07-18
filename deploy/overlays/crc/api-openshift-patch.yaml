@@ -1,0 +1,19 @@
+# OpenShift runs containers as an arbitrary UID with no writable HOME —
+# uv's cache init crashes the api on boot (E2E-7 live finding).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: factory-api
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          # the internal registry reuses the :dev tag — a cached old image
+          # must never win
+          imagePullPolicy: Always
+          env:
+            - name: HOME
+              value: /tmp
+            - name: UV_CACHE_DIR
+              value: /tmp/uv-cache

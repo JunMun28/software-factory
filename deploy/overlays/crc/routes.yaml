@@ -1,0 +1,27 @@
+# OpenShift Routes for the factory's three fronts (E2E-7). The router serves
+# *.apps-crc.testing; hostnames follow the default <route>-<ns> convention so
+# no extra DNS wiring is needed beyond CRC's own /etc/hosts entries (probes
+# pin with --resolve; browsers need the hosts lines).
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: intake
+spec:
+  to: {kind: Service, name: intake}
+  port: {targetPort: http}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: console
+spec:
+  to: {kind: Service, name: console}
+  port: {targetPort: http}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: api
+spec:
+  to: {kind: Service, name: api}
+  port: {targetPort: http}

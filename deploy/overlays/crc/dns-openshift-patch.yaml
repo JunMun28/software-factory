@@ -1,0 +1,29 @@
+# OpenShift's resolver is CoreDNS in the openshift-dns namespace on port 5353
+# (the dns-default Service maps 53 -> 5353; netpols match the POD port).
+# kind's rule (kube-system:53) stays for parity; OVN enforces these walls for
+# real — the first cluster where they are not decorative (E2E-7 live finding).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-dns
+      ports:
+        - {protocol: UDP, port: 5353}
+        - {protocol: TCP, port: 5353}

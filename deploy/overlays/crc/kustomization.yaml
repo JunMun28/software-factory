@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: software-factory
+resources:
+  - ../../base
+  - routes.yaml
+patches:
+  - path: crc-config.yaml
+  - path: api-openshift-patch.yaml
+  - path: dns-openshift-patch.yaml
+  - path: intake-openshift-patch.yaml
+  - path: console-openshift-patch.yaml
+  - path: spa-nginx-patch-intake.yaml
+  - path: spa-nginx-patch-console.yaml
+  - path: svc-port-patch.yaml
+images:
+  - name: sf-api:dev
+    newName: image-registry.openshift-image-registry.svc:5000/software-factory/sf-api
+    newTag: dev
+  - name: sf-console:dev
+    newName: image-registry.openshift-image-registry.svc:5000/software-factory/sf-console
+    newTag: dev
+  - name: sf-intake:dev
+    newName: image-registry.openshift-image-registry.svc:5000/software-factory/sf-intake
+    newTag: dev
+configMapGenerator:
+  - name: spa-nginx-8080
+    files:
+      - nginx-8080.conf
+generatorOptions:
+  disableNameSuffixHash: true

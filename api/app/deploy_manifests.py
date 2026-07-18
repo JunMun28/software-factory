@@ -208,9 +208,15 @@ def app_deploy_manifests(slug: str, digest: str, replicas: int = 1) -> list[dict
                     "automountServiceAccountToken": False,
                     "securityContext": {
                         "runAsNonRoot": True,
-                        "runAsUser": settings.KUBE_RUN_AS_UID,
-                        "runAsGroup": 0, "fsGroup": 0,
                         "seccompProfile": {"type": "RuntimeDefault"},
+                        **(
+                            {}
+                            if settings.KUBE_SCC_MANAGED
+                            else {
+                                "runAsUser": settings.KUBE_RUN_AS_UID,
+                                "runAsGroup": 0, "fsGroup": 0,
+                            }
+                        ),
                     },
                     "containers": [{
                         "name": "app",
@@ -239,7 +245,7 @@ def app_deploy_manifests(slug: str, digest: str, replicas: int = 1) -> list[dict
     ingress = {
         "apiVersion": "networking.k8s.io/v1", "kind": "Ingress",
         "metadata": {"name": name, "labels": labels},
-        "spec": {"ingressClassName": "nginx", "rules": [{
+        "spec": {"ingressClassName": settings.APP_INGRESS_CLASS, "rules": [{
             "host": f"{slug}.{settings.APP_INGRESS_DOMAIN}",
             "http": {"paths": [{"path": "/", "pathType": "Prefix",
                                 "backend": {"service": {"name": name,

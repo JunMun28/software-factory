@@ -22,7 +22,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl gnupg2 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY api/pyproject.toml api/uv.lock ./
-RUN uv sync --frozen --no-install-project --no-dev
+# greenlet + cryptography PyPI wheels hit SIGILL under OpenShift Local's RHEL
+# kernel (control-flow enforcement the Docker Desktop kernel never applied) —
+# E2E-7 live finding. Source builds with baseline flags run everywhere; rust
+# and the OpenSSL headers exist only in this layer's cache, and the toolchain
+# is removed after the sync so the runtime image stays lean.
+RUN apt-get update && apt-get install -y --no-install-recommends       build-essential libssl-dev pkg-config curl   && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable   && . "$HOME/.cargo/env"   && uv sync --frozen --no-install-project --no-dev        --no-binary-package greenlet --no-binary-package cryptography   && rustup self uninstall -y   && apt-get purge -y build-essential curl && apt-get autoremove -y   && rm -rf /var/lib/apt/lists/* /root/.cargo /root/.rustup
 
 COPY api/app ./app
 COPY api/alembic.ini ./

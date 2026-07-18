@@ -149,12 +149,20 @@ def _base_job(
                     ),
                     "securityContext": {
                         # restricted-SCC emulation (spec §2): forced non-root
-                        # UID + root group (the image is chmod g=u)
+                        # UID + root group (the image is chmod g=u). On a real
+                        # SCC cluster the controller assigns the UID range —
+                        # hardcoding ours would be rejected (E2E-7).
                         "runAsNonRoot": True,
-                        "runAsUser": settings.KUBE_RUN_AS_UID,
-                        "runAsGroup": 0,
-                        "fsGroup": 0,
                         "seccompProfile": {"type": "RuntimeDefault"},
+                        **(
+                            {}
+                            if settings.KUBE_SCC_MANAGED
+                            else {
+                                "runAsUser": settings.KUBE_RUN_AS_UID,
+                                "runAsGroup": 0,
+                                "fsGroup": 0,
+                            }
+                        ),
                     },
                     "volumes": volumes,
                     "containers": [

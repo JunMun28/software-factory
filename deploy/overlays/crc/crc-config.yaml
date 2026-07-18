@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: factory-config
+data:
+  # produced apps ride the OpenShift router, not ingress-nginx
+  FACTORY_APP_INGRESS_DOMAIN: "apps-crc.testing"
+  FACTORY_APP_INGRESS_CLASS: "openshift-default"
+  # images live in the cluster's internal registry
+  FACTORY_AGENT_IMAGE: "image-registry.openshift-image-registry.svc:5000/software-factory/sf-agent:dev"
+  # SCC assigns the UID range; hardcoded uids/fsGroup are rejected
+  FACTORY_KUBE_SCC_MANAGED: "1"

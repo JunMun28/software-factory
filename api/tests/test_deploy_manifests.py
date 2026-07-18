@@ -70,6 +70,13 @@ def test_ingress_host_is_the_slug():
     assert ing["spec"]["rules"][0]["host"] == f"northwind.{dm.settings.APP_INGRESS_DOMAIN}"
 
 
+def test_ingress_class_is_configurable(monkeypatch):
+    """E2E-7: OpenShift's router only serves class openshift-default."""
+    monkeypatch.setattr(dm.settings, "APP_INGRESS_CLASS", "openshift-default")
+    ing = next(o for o in dm.app_deploy_manifests("northwind", DIGEST) if o["kind"] == "Ingress")
+    assert ing["spec"]["ingressClassName"] == "openshift-default"
+
+
 @pytest.mark.parametrize("bad", ["Northwind", "north_wind", "a/b", "", "x" * 64])
 def test_slug_allowlist_rejects_non_dns_labels(bad):
     with pytest.raises(ValueError):

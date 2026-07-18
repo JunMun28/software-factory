@@ -196,6 +196,9 @@ def spec_gate_mode() -> str:
 # locally, not discovered at the office (spec §2). Any high UID works; the
 # image is built to arbitrary-UID conventions (root group, g=u, HOME=/workspace).
 KUBE_RUN_AS_UID = int(os.environ.get("FACTORY_KUBE_RUN_AS_UID", "10101"))
+# OpenShift assigns per-namespace UID ranges via SCC — hardcoded uids/fsGroup
+# are rejected there; this flag omits them and lets the SCC inject (E2E-7)
+KUBE_SCC_MANAGED = os.environ.get("FACTORY_KUBE_SCC_MANAGED", "").lower() in ("1", "true", "yes", "on")
 KUBE_AGENT_SA = os.environ.get("FACTORY_KUBE_AGENT_SA", "sf-agent")
 KUBE_GATE_SA = os.environ.get("FACTORY_KUBE_GATE_SA", "sf-gate")
 # Secret carrying the operator's ~/.codex/auth.json (task sync-codex-auth);
@@ -221,6 +224,8 @@ KANIKO_IMAGE = os.environ.get(
 # profiles with open registry egress).
 REGISTRY_PROXY = os.environ.get("FACTORY_REGISTRY_PROXY", "sf-registry-proxy:5000").rstrip("/")
 APP_INGRESS_DOMAIN = os.environ.get("FACTORY_APP_INGRESS_DOMAIN", "localtest.me")
+# kind ships ingress-nginx; OpenShift's router serves class "openshift-default"
+APP_INGRESS_CLASS = os.environ.get("FACTORY_APP_INGRESS_CLASS", "nginx")
 KUBE_BUILD_SA = os.environ.get("FACTORY_KUBE_BUILD_SA", "sf-build")
 KUBE_APP_SA = os.environ.get("FACTORY_KUBE_APP_SA", "sf-app")
 BUILD_ACTIVE_DEADLINE = int(os.environ.get("FACTORY_BUILD_ACTIVE_DEADLINE", "900"))
