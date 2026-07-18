@@ -2427,6 +2427,40 @@ class KubeJobRunner:
         reason: str,
         moved: list[str],
     ) -> None:
+        # E2E-4: REQUEST-CHANGES means the CODE needs work — re-reviewing the
+        # unchanged SHA is honest but useless (the reviewer repeats itself and
+        # the request escalates; proven live). Send the work back to green
+        # with the review as feedback instead. Two rework rounds, then a
+        # human decides; REQUEST_ATTEMPT_BUDGET still caps everything.
+        if sj.stage == "review" and "REQUEST-CHANGES" in reason:
+            reworks = db.scalar(
+                select(func.count(AuditEvent.id)).where(
+                    AuditEvent.request_id == req.id,
+                    AuditEvent.action == "review_rework",
+                )
+            ) or 0
+            if reworks < 2:
+                report = self._review_report_for(db, req)
+                reasoning = (report or {}).get("reasoning") or reason
+                feedback = (
+                    "The independent reviewer REQUESTED CHANGES. Address these "
+                    f"concerns; the review will run again:\n{reasoning}"
+                )
+                res = transitions.apply_committed(
+                    db,
+                    req,
+                    "review_rework",
+                    actor=FACTORY,
+                    params={"feedback": feedback[:4000]},
+                    epoch=get_elector().epoch,
+                    expected_stage="review",
+                )
+                if isinstance(res, transitions.Win):
+                    moved.append(
+                        f"{req.ref}: reviewer requested changes — reworking (round {reworks + 1})"
+                    )
+                    return
+                log.info("%s: review_rework lost (%s)", req.ref, res.detail)
         if sj.attempt >= settings.KUBE_MAX_ATTEMPTS:
             self._escalate(db, req, f"{sj.stage} failed after {sj.attempt} attempts: {reason}")
             moved.append(f"{req.ref}: escalated at {sj.stage}")

@@ -33,7 +33,7 @@ from app.db import SessionLocal
 from app.kube_jobs import job_name
 from app.kube_runner import GATE_INFRA_LIMIT, KubeJobRunner
 from app.leader import get_elector
-from app.models import Intent, Request, StageJob, utcnow
+from app.models import AuditEvent, Intent, Request, StageJob, utcnow
 from app.ws_exec import _git
 
 
@@ -2668,3 +2668,101 @@ def test_terminal_delete_is_uid_preconditioned(client):
         runner.tick(db)
 
     assert (name, recorded_uid) in fake.deletion_uids
+
+
+def test_review_request_changes_reworks_green_then_converges(client):
+    """E2E-4: a REQUEST-CHANGES verdict sends the work back to the IMPLEMENTER
+    with the review as feedback (re-reviewing unchanged code proved useless
+    live); the fixed round re-reviews and the pipeline proceeds."""
+    runner, fake = make_runner()
+    review_rounds = {"n": 0}
+    d = _approved(client, "Kube review rework")
+    mine = d["ref"].lower()
+
+    def run(name, job):
+        if job.phase != "running":
+            return
+        import json as _json
+
+        if mine in name and "-review-" in name and not name.endswith("-gate"):
+            review_rounds["n"] += 1
+            verdict = "REQUEST-CHANGES" if review_rounds["n"] == 1 else "APPROVE"
+            v = stage_ok(verdict)
+            job.logs = (
+                '{"type":"review","text":"Split the roster endpoint from the schedule endpoint."}\n'
+            )
+        elif mine in name and name.endswith("-gate") and "-review-" in name:
+            if review_rounds["n"] == 1:
+                v = fail_verdict(
+                    "review gate: reviewer did not APPROVE (REQUEST-CHANGES)"
+                )
+            else:
+                v = pass_verdict()
+        elif "-review-" in name and not name.endswith("-gate"):
+            v = stage_ok("APPROVE")
+        elif name.endswith("-gate"):
+            v = pass_verdict()
+        else:
+            v = stage_ok()
+        job.phase = "succeeded"
+        job.termination_message = _json.dumps(v)
+
+    fake.on_observe = run
+    out = tick_until(client, runner, d["id"], lambda o: o.get("gate") == "approve_merge")
+    assert out["gate"] == "approve_merge", out
+    assert not out["needs_human"]
+    with SessionLocal() as db:
+        reworks = db.scalars(
+            select(AuditEvent).where(
+                AuditEvent.request_id == d["id"],
+                AuditEvent.action == "review_rework",
+            )
+        ).all()
+        assert len(reworks) == 1
+        superseded = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == d["id"],
+                StageJob.status == "superseded",
+                StageJob.stage.in_(("green", "review")),
+            )
+        ).all()
+        assert superseded, "round-1 green/review rows must be superseded"
+    assert review_rounds["n"] == 2
+
+
+def test_review_rejections_escalate_after_two_reworks(client):
+    """The rework loop is bounded: a reviewer that keeps rejecting hands the
+    request to a human after two fix rounds."""
+    runner, fake = make_runner()
+    d = _approved(client, "Kube review rework bound")
+    mine = d["ref"].lower()
+
+    def run(name, job):
+        if job.phase != "running":
+            return
+        import json as _json
+
+        if mine in name and "-review-" in name and not name.endswith("-gate"):
+            v = stage_ok("REQUEST-CHANGES")
+        elif mine in name and name.endswith("-gate") and "-review-" in name:
+            v = fail_verdict("review gate: reviewer did not APPROVE (REQUEST-CHANGES)")
+        elif "-review-" in name and not name.endswith("-gate"):
+            v = stage_ok("APPROVE")
+        elif name.endswith("-gate"):
+            v = pass_verdict()
+        else:
+            v = stage_ok()
+        job.phase = "succeeded"
+        job.termination_message = _json.dumps(v)
+
+    fake.on_observe = run
+    out = tick_until(client, runner, d["id"], lambda o: o["needs_human"])
+    assert "REQUEST-CHANGES" in out["needs_human_reason"]
+    with SessionLocal() as db:
+        reworks = db.scalars(
+            select(AuditEvent).where(
+                AuditEvent.request_id == d["id"],
+                AuditEvent.action == "review_rework",
+            )
+        ).all()
+        assert len(reworks) == 2

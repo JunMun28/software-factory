@@ -766,6 +766,28 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
     ),
     # -------- machine transitions (tick loop / pipeline threads: pass epoch=) --------
     Transition(
+        # E2E-4: the reviewer's REQUEST-CHANGES sends the work BACK TO THE
+        # IMPLEMENTER with the review as feedback (re-reviewing unchanged code
+        # is honest but useless — proven live). Bounded in the runner; the
+        # global REQUEST_ATTEMPT_BUDGET still caps everything.
+        name="review_rework",
+        pre=Pre(status_in=(APPROVED,), gate=None),
+        effects=lambda p: {
+            "stage": "build",
+            "sim_step": 0,
+            "stage_entered_at": utcnow(),
+            "pending_feedback": p["feedback"],
+        },
+        events=lambda db, req, actor, params: emit(
+            db, req, "milestone_summary",
+            "Reviewer requested changes — sending the work back to the implementer",
+            payload={"Ref": req.ref, "stage": "review",
+                     "reason": params["feedback"][:300]},
+        ),
+        audit_action="review_rework",
+        conflict_detail=lambda r: f"Cannot rework review on a {r.status} request",
+    ),
+    Transition(
         name="escalate",
         pre=Pre(status_not_in=CLOSED),
         effects=lambda p: {"needs_human": True, "needs_human_reason": p["reason"][:300]},
