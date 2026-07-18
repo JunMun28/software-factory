@@ -189,6 +189,32 @@ def rollback_history(db: Session, app_id: int, *, limit: int | None = None) -> l
     return history
 
 
+def rollback_jobs(db: Session, app_id: int, *, limit: int = 20) -> list[dict]:
+    """Newest-first rollback command rows — the console's poll target after a
+    202 from POST /rollback (the enqueue is async; the leader tick drives it
+    to succeeded / failed / timed_out)."""
+    rows = db.scalars(
+        select(StageJob)
+        .join(Request, Request.id == StageJob.request_id)
+        .where(Request.app_id == app_id, StageJob.role == "rollback")
+        .order_by(StageJob.id.desc())
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "id": row.id,
+            "status": row.status,
+            "digest": (row.envelope or {}).get("digest"),
+            "error": (row.envelope or {}).get("error"),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "completed_at": (
+                row.completed_at.isoformat() if row.completed_at else None
+            ),
+        }
+        for row in rows
+    ]
+
+
 def fleet_health(db: Session) -> list[dict]:
     """Additive registry view of produced-app liveness from durable evidence."""
     latest_deploy_ids = (

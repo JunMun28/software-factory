@@ -5,6 +5,7 @@ Routes:
   POST  /api/apps                    — register a new app
   PATCH /api/apps/{app_id}           — update app metadata
   GET   /api/apps/{app_id}/deploys   — append-only deploy history
+  GET   /api/apps/{app_id}/rollbacks — async rollback rows (poll after the 202)
   POST  /api/apps/{app_id}/rollback  — enqueue C8's fenced rollback
 """
 
@@ -152,6 +153,15 @@ def app_deploys(app_id: int, db: Session = Depends(get_db)):
     if db.get(App, app_id) is None:
         raise HTTPException(404, "App not found")
     return _app_deploys(db, app_id)
+
+
+@router.get("/api/apps/{app_id}/rollbacks")
+def app_rollbacks(app_id: int, db: Session = Depends(get_db)):
+    """Observability half of the async rollback contract: the 202 from POST
+    /rollback is an enqueue; this is where its row's fate becomes visible."""
+    if db.get(App, app_id) is None:
+        raise HTTPException(404, "App not found")
+    return registry_service.rollback_jobs(db, app_id)
 
 
 @router.post("/api/apps/{app_id}/rollback", status_code=202)

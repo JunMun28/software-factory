@@ -141,3 +141,56 @@ def test_rollback_reapplies_the_previous_digest(client, monkeypatch):
         assert app["last_deploy"]["rollback"] is True
     finally:
         api_helpers.set_pipeline(old_pipeline)
+
+
+def test_rollbacks_read_endpoint_exposes_the_async_row_lifecycle(
+    client, monkeypatch
+):
+    """The 202 enqueue is observable: GET /rollbacks shows the row running,
+    then settled — the console's poll target for the async contract."""
+    monkeypatch.setattr(settings, "GIT_REMOTE_BASE", "git://api:9418")
+    monkeypatch.setattr(settings, "REGISTRY", "sf-registry:5000")
+    monkeypatch.setattr(settings, "APP_DEPLOY", True)
+    app_id = _first_app_id(client)
+    with SessionLocal() as db:
+        slug = db.get(App, app_id).key
+    url = f"http://{slug}.localtest.me"
+    _record_deploy(app_id, OLD_DIGEST, url)
+    _record_deploy(app_id, NEW_DIGEST, url)
+    _record_deploy_witness(app_id, OLD_DIGEST)
+    _record_deploy_witness(app_id, NEW_DIGEST)
+
+    baseline = {r["id"] for r in client.get(f"/api/apps/{app_id}/rollbacks").json()}
+    assert client.get("/api/apps/999999/rollbacks").status_code == 404
+
+    fake = FakeKubeClient()
+    fake.mark_ready(deploy_manifests.app_name(slug))
+    monkeypatch.setattr(kube_runner, "_http_ok", lambda _url: True)
+    old_pipeline = api_helpers.pipeline()
+    runner = KubeJobRunner(client=fake)
+    api_helpers.set_pipeline(runner)
+    try:
+        enq = client.post(
+            f"/api/apps/{app_id}/rollback",
+            json={"digest": OLD_DIGEST, "operator_id": 1},
+        )
+        assert enq.status_code == 202, enq.text
+        rows = [
+            r
+            for r in client.get(f"/api/apps/{app_id}/rollbacks").json()
+            if r["id"] not in baseline
+        ]
+        assert [r["status"] for r in rows] == ["running"]
+        assert rows[0]["id"] == enq.json()["id"]
+        assert rows[0]["digest"] == OLD_DIGEST
+        assert rows[0]["error"] is None
+
+        with SessionLocal() as db:
+            runner.tick(db)
+            runner.tick(db)
+
+        rows = client.get(f"/api/apps/{app_id}/rollbacks").json()
+        assert rows[0]["status"] == "succeeded"
+        assert rows[0]["completed_at"] is not None
+    finally:
+        api_helpers.set_pipeline(old_pipeline)
