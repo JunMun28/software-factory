@@ -115,6 +115,21 @@ pytest_problem() {
     printf 'test assertions failed'
   fi
 }
+enforce_dependency_freeze() {
+  # The DEPENDENCY FREEZE is a prompt rule the agents sometimes break anyway —
+  # proven live on OpenShift: red-1 deleted the entire frontend
+  # package-lock.json, its gate PASSED, and the failure surfaced two stages
+  # later as an unactionable npm usage dump. Enforce it here: any commit that
+  # touches frozen build/dependency metadata fails ITS OWN gate with feedback
+  # the implementer can act on.
+  FROZEN='(^|/)(package\.json|package-lock\.json|pyproject\.toml|uv\.lock|\.python-version|angular\.json)$'
+  TOUCHED="$(git diff --name-only origin/main...HEAD 2>/dev/null | grep -E "$FROZEN" || true)"
+  if [ -n "$TOUCHED" ]; then
+    verdict fail "dependency freeze violated: this branch modifies or deletes frozen build metadata ($(printf '%s' "$TOUCHED" | tr '\n' ' ')). Restore these files exactly as they were — the environment installs the COMMITTED lockfiles offline and any drift can never build."
+  fi
+  note "dependency freeze intact"
+}
+
 scan_committed_diff() {
   if ! command -v gitleaks >/dev/null 2>&1; then
     note "WARNING: gitleaks unavailable — committed-diff secret scan skipped"
@@ -136,6 +151,7 @@ scan_committed_diff() {
 }
 
 scan_committed_diff
+enforce_dependency_freeze
 
 case "${SF_STAGE:?}" in
   architecture)
