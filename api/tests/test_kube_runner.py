@@ -2805,3 +2805,26 @@ def test_bounded_logs_tail_decodes_bytes_logs(monkeypatch):
     assert not tail.startswith("b'")
     events = [e for e in ndjson_events(tail) if e.get("type") == "review"]
     assert events and events[0]["text"] == "Fix the swap endpoint."
+
+
+def test_bounded_logs_tail_unreprs_a_client_reprd_bytes_log(monkeypatch):
+    """E2E-4 #10b: the kubernetes client's own deserializer str()-reprs a
+    non-UTF-8 log body into one giant "b'...'" STRING before we ever see
+    bytes — undo the repr or every ndjson event inside is unparseable
+    (proven live twice: reviews with detailed reasoning persisted as 0)."""
+    import json as _json
+
+    from app.kube_jobs import ndjson_events
+    from app.kube_runner import _bounded_logs_tail
+
+    monkeypatch.setattr(settings, "LOGS_TAIL_MAX", 8000)
+    review = _json.dumps({"type": "review", "text": "Persist swaps to the API."})
+    raw = (
+        '{"type":"note","text":"agent finished"}\n' + review + "\n"
+    ).encode("utf-8") + b"\xff\xfe"
+    logs = str(raw)  # what the client actually hands back for a bytes body
+    assert logs.startswith("b'")
+    tail = _bounded_logs_tail(logs)
+    assert not tail.startswith("b'")
+    events = [e for e in ndjson_events(tail) if e.get("type") == "review"]
+    assert events and events[0]["text"] == "Persist swaps to the API."

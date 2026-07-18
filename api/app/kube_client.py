@@ -171,19 +171,23 @@ class RealKubeClient:
                 if read_logs:
                     try:
                         with self._bounded("read_pod_log"):
-                            logs = self._core.read_namespaced_pod_log(
+                            # _preload_content=False: the client's own
+                            # deserializer str()-reprs a non-UTF-8 body into
+                            # one giant b'...' line (found live in E2E-4:
+                            # every ndjson event — review reasoning, pytest
+                            # blocks — silently vanished). Take the raw body
+                            # and decode it ourselves.
+                            raw = self._core.read_namespaced_pod_log(
                                 pod.metadata.name,
                                 self.ns,
                                 _request_timeout=self._request_timeout,
+                                _preload_content=False,
                             )
-                        # the client hands back BYTES when the log body is not
-                        # valid UTF-8 (agent transcripts can contain arbitrary
-                        # bytes); a later str() would repr the whole log into
-                        # one unparseable b'...' line — found live in E2E-4:
-                        # every ndjson event (review reasoning, pytest blocks)
-                        # silently vanished
-                        if isinstance(logs, (bytes, bytearray)):
-                            logs = logs.decode("utf-8", errors="replace")
+                        data = getattr(raw, "data", raw)
+                        if isinstance(data, (bytes, bytearray)):
+                            logs = data.decode("utf-8", errors="replace")
+                        else:
+                            logs = str(data or "")
                     except (self._ApiException, KubeTimeout):
                         logs = ""
         return JobView(

@@ -29,6 +29,7 @@ Orchestrator-owned hard lines (spec §5/§6):
 Tick order matters: reap (cancel wins) → observe running Jobs → spawn next
 work oldest-first under the Job cap.
 """
+import ast
 import hashlib
 import json
 import logging
@@ -142,6 +143,15 @@ def _bounded_logs_tail(logs: str | None) -> str | None:
     if isinstance(logs, (bytes, bytearray)):
         # never let str() repr a bytes log into one unparseable line
         logs = logs.decode("utf-8", errors="replace")
+    elif logs.startswith(("b'", 'b"')) and logs.endswith(("'", '"')):
+        # a kube-client deserializer that already repr'd a bytes body —
+        # undo it or every ndjson event inside is unparseable
+        try:
+            value = ast.literal_eval(logs)
+            if isinstance(value, (bytes, bytearray)):
+                logs = value.decode("utf-8", errors="replace")
+        except (ValueError, SyntaxError):
+            pass
     scrubbed = scrub_secrets(logs)
     raw = scrubbed.encode("utf-8")
     tail = raw[-settings.LOGS_TAIL_MAX :].decode("utf-8", errors="ignore") or ""
