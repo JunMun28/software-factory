@@ -218,6 +218,23 @@ CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
 
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
+
 ## Deviations
 
 - **Review retries re-run the read-only reviewer, not the implementer.** The retry
@@ -425,6 +442,23 @@ CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
 
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
+
 ## Deviations
 
 - **Simulator merge-gate email is post-commit.** The simulator now carries the
@@ -623,6 +657,23 @@ CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
 
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
+
 ## Deviations
 
 - `apply()` guards parameter-dependent effect construction so a consumed precondition
@@ -790,6 +841,23 @@ curl --connect-to pins every per-run subdomain to the local router).
 CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
+
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
 
 ## Deviations — generation-stream branch (2026-07-15)
 
@@ -965,6 +1033,23 @@ curl --connect-to pins every per-run subdomain to the local router).
 CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
+
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
 
 ## Deviations
 
@@ -1171,6 +1256,23 @@ curl --connect-to pins every per-run subdomain to the local router).
 CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
+
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
 
 ## Deviations (B2 cluster half)
 
@@ -1416,6 +1518,23 @@ CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
 
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
+
 ## Deviations
 
 - The task suggested also resetting the draft in `new-request.ts` on mount.
@@ -1613,6 +1732,23 @@ curl --connect-to pins every per-run subdomain to the local router).
 CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
+
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
 
 ## Deviations
 - "Steer next step" dropped from the home page (was on every lane card);
@@ -1816,6 +1952,23 @@ CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
 
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
+
 ## Deviations — C2 (correctness & failure-recovery hotfixes)
 
 - **C2 split into C2a + C2b.** The design→adversarial-verify workflow returned
@@ -2013,6 +2166,23 @@ curl --connect-to pins every per-run subdomain to the local router).
 CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
+
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
 
 ## Deviations — C2b (runner reliability: FAIL-01/02/04)
 
@@ -2218,6 +2388,23 @@ CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
 
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
+
 ## Deviations / decisions — C1
 
 - **Backend + kind-smoke ONLY; rich Stream/console requester UI deferred to a P4
@@ -2414,6 +2601,23 @@ curl --connect-to pins every per-run subdomain to the local router).
 CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
+
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
 
 ## Deviations / decisions — C4
 - **v1 is ADDITIVE-NON-BLOCKING**: coverage is EVIDENCE, never a gate pass/fail
@@ -2751,6 +2955,23 @@ CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
 
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
+
 ## Deviations
 - "Preview before approve" (staging deploy at review time) NOT built: with
   the B4 three-gate flow the deploy gate fires before any image exists, so
@@ -2943,6 +3164,23 @@ curl --connect-to pins every per-run subdomain to the local router).
 CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
+
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
 
 ## Deviations
 - **Deploy-reject shield (added, conservative):** a rejected deploy leaves
@@ -3269,6 +3507,23 @@ curl --connect-to pins every per-run subdomain to the local router).
 CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
+
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
 
 ## Deviations
 - Scope kept to the Overview page (both user requirements live there);
@@ -3627,6 +3882,23 @@ curl --connect-to pins every per-run subdomain to the local router).
 CRC quirks: vfkit + crc-admin-helper-darwin must sit next to ~/bin/crc; the
 helper needs setuid root (user ran the one sudo line); an interrupted first
 start leaves kubelet inactive — force stop + start reruns post-start.
+
+E2E-7 runs 4-16 (2026-07-19): the pipeline itself completed end-to-end NINE
+consecutive times (REQ-2051..2057, 2060; two reviewer-dice escalations on
+14/15 — both legitimate holds). Late findings: 9. kaniko pushed fine
+in-cluster but the NODE pulls via the VM resolver — hosts entry for
+sf-registry (ClusterIP) inside the VM + insecureRegistries patch; 10. the
+runner could never capture kaniko logs (multi-container pod 400s the
+container-less read) — the client now concatenates every container's logs;
+11. THE PROBE SAGA ENDED: both the host→router path AND kubectl exec are
+dead from inside the long-lived smoke process while every fresh process
+gets 200 the same second (caught in the act with simultaneous
+counter-probes; the task's network layer pins to pre-route state). The CRC
+smoke now proves the pipeline to `done` and delegates the final liveness
+check to a fresh process — which is also what closed E2E-4's kind probe
+mystery in hindsight. CRC resized to 12cpu/24GB along the way. PASS: run
+16, REQ-2060, fresh-process verification 200 {"status":"ok"} + Angular
+index at tea-roster-8d5849a6.apps-crc.testing.
 
 ## Deviations
 
