@@ -99,17 +99,51 @@ _COLUMNS = {
 }
 
 
+# SQL Server will not alter a column an index depends on, so operators.email
+# has to give up its UNIQUE for the duration of the retype and get it back
+# under the same name. Finding it needs a dialect-specific path: SQLAlchemy's
+# MSSQL dialect does not implement get_unique_constraints at all (the base
+# class raises NotImplementedError), and get_indexes does return a
+# constraint-backed index but without saying it is constraint-backed. That
+# distinction decides how it is dropped -- a UNIQUE constraint needs ALTER
+# TABLE DROP CONSTRAINT and refuses DROP INDEX. sys.indexes carries both the
+# name and is_unique_constraint, so ask it directly.
+_MSSQL_EMAIL_UNIQUE = sa.text("""
+    SELECT i.name, i.is_unique_constraint
+    FROM sys.indexes AS i
+    WHERE i.object_id = OBJECT_ID('operators')
+      AND i.is_unique = 1
+      AND i.is_primary_key = 0
+      AND (
+        SELECT COUNT(*) FROM sys.index_columns AS ic
+        WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id
+      ) = 1
+      AND EXISTS (
+        SELECT 1 FROM sys.index_columns AS ic
+        JOIN sys.columns AS c
+          ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+        WHERE ic.object_id = i.object_id
+          AND ic.index_id = i.index_id
+          AND c.name = 'email'
+      )
+""")
+
+
 def _operator_email_unique() -> tuple[str, str]:
-    inspector = sa.inspect(op.get_bind())
+    bind = op.get_bind()
+
+    if bind.dialect.name == "mssql":
+        row = bind.execute(_MSSQL_EMAIL_UNIQUE).first()
+        if row is None:
+            raise RuntimeError("operators.email UNIQUE index/constraint was not found")
+        return ("constraint" if row[1] else "index"), row[0]
+
+    inspector = sa.inspect(bind)
     for constraint in inspector.get_unique_constraints("operators"):
         if constraint.get("column_names") == ["email"] and constraint.get("name"):
             return "constraint", constraint["name"]
     for index in getattr(inspector, "get_indexes", lambda _table: [])("operators"):
-        if (
-            index.get("unique")
-            and index.get("column_names") == ["email"]
-            and index.get("name")
-        ):
+        if index.get("unique") and index.get("column_names") == ["email"] and index.get("name"):
             return "index", index["name"]
     raise RuntimeError("operators.email UNIQUE index/constraint was not found")
 
@@ -157,6 +191,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError(
-        "one-way migration: downgrading NVARCHAR human text would be lossy"
-    )
+    raise RuntimeError("one-way migration: downgrading NVARCHAR human text would be lossy")
