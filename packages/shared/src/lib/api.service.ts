@@ -119,8 +119,14 @@ export class Api {
   createRequest(body: object) {
     return this.http.post<RequestDetail>(`${BASE}/requests`, body);
   }
-  classify(description: string): Observable<ClassifyResult> {
-    return this.http.post<ClassifyResult>(`${BASE}/requests/classify`, { description });
+  classify(description: string, requestId?: number): Observable<ClassifyResult> {
+    return this.http.post<ClassifyResult>(`${BASE}/requests/classify`, {
+      description,
+      ...(requestId == null ? {} : { request_id: requestId }),
+    });
+  }
+  classification(id: number): Observable<ClassifyResult> {
+    return this.http.get<ClassifyResult>(`${BASE}/requests/${id}/classify`);
   }
   updateRequest(id: number, body: object) {
     return this.http.patch<RequestDetail>(`${BASE}/requests/${id}`, body);

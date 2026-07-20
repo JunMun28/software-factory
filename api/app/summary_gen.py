@@ -31,21 +31,34 @@ def cached(r: Request) -> dict | None:
     return r.summary if _fresh(r) else None
 
 
-def _write(db, r: Request, expected_turns: int) -> None:
+def _write(db, r: Request, expected_turns: int) -> dict:
     """Run the (slow) brain call and persist the summary — unless the interview moved
-    under us, in which case the next read regenerates against the newer answer count."""
+    under us, in which case the next read regenerates against the newer answer count.
+    The caller's request session is closed before the model call."""
+    rid = r.id
+    _ = r.app, r.turns, r.attachments
+    db.close()
     data = get_brain().summarize(r)
-    db.refresh(r)
-    if answered_count(r) != expected_turns:
-        return
-    r.summary = {**data, "at_turns": expected_turns}  # reassign (not mutate) so JSON persists
-    db.commit()
+    summary = {**data, "at_turns": expected_turns}
+    with SessionLocal() as write_db:
+        current = write_db.get(Request, rid)
+        if current is None:
+            return data
+        if answered_count(current) != expected_turns:
+            _ = current.app, current.turns, current.attachments
+        else:
+            # reassign (not mutate) so JSON persists
+            current.summary = summary
+            write_db.commit()
+            return summary
+    # Match the old sync behavior: return a fresh response for the newer interview,
+    # but leave it uncached so the normal next read can generate and persist it.
+    return get_brain().summarize(current)
 
 
 def generate_sync(r: Request, db) -> dict:
     """Inline generation (SYNC / deterministic path): write and return the summary."""
-    _write(db, r, answered_count(r))
-    return r.summary or get_brain().summarize(r)
+    return _write(db, r, answered_count(r))
 
 
 def ensure_summary(rid: int) -> bool:
@@ -75,8 +88,18 @@ def _generate(rid: int, expected_turns: int) -> None:
     try:
         with SessionLocal() as db:
             r = db.get(Request, rid)
-            if r is not None:
-                _write(db, r, expected_turns)
+            if r is None:
+                return
+            # The detached brain input must carry every relationship used to build
+            # prompts or attachment workdirs after this short snapshot session closes.
+            _ = r.app, r.turns, r.attachments
+        data = get_brain().summarize(r)
+        with SessionLocal() as db:
+            r = db.get(Request, rid)
+            if r is None or answered_count(r) != expected_turns:
+                return
+            r.summary = {**data, "at_turns": expected_turns}
+            db.commit()
     except Exception:
         log.exception("summary generation failed for request %s", rid)
     finally:

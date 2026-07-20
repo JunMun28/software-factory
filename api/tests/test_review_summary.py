@@ -4,8 +4,12 @@ The interview finishes and the submitter lands on Review, which shows an AI summ
 (cached, refreshed when the interview grows) with two actions: add more detail
 (reopen) or submit. Brain calls run through the deterministic ScriptedBrain here.
 """
+from sqlalchemy.orm import object_session
+
+from app import summary_gen
+from app.db import SessionLocal
 from app.interview import ScriptedBrain, question_ceiling
-from app.models import InterviewTurn, Request
+from app.models import App, Attachment, InterviewTurn, Request
 
 
 def _req(req_type: str, answered: int = 0) -> Request:
@@ -38,6 +42,141 @@ def test_scripted_summary_from_answers():
     assert s["overview"]  # never empty — falls back to description/title
     assert s["sections"] and all("title" in sec and "items" in sec for sec in s["sections"])
     assert "A few hundred rows" in _all_items(s)  # the answer lands in a structured section
+
+
+def test_background_summary_calls_brain_with_detached_loaded_request(client, monkeypatch):
+    class SessionProbeBrain:
+        def summarize(self, r):
+            assert object_session(r) is None
+            assert r.app.name == "Summary probe"
+            assert [turn.answer for turn in r.turns] == ["A1"]
+            assert [attachment.filename for attachment in r.attachments] == ["brief.txt"]
+            return {"overview": "Detached summary", "sections": []}
+
+    monkeypatch.setattr("app.summary_gen.get_brain", lambda: SessionProbeBrain())
+    with SessionLocal() as db:
+        app = App(key="summary-probe", name="Summary probe", owner="qa", repo="sf/summary-probe")
+        r = Request(ref="REQ-SUM-BG", title="T", description="d", type="enh", app=app)
+        r.turns.append(InterviewTurn(order=0, question="Q1", answer="A1"))
+        r.attachments.append(
+            Attachment(
+                filename="brief.txt",
+                mime="text/plain",
+                kind="doc",
+                size=5,
+                stored="summary-probe.txt",
+            )
+        )
+        db.add(r)
+        db.commit()
+        rid = r.id
+
+    summary_gen._generate(rid, expected_turns=1)
+
+    with SessionLocal() as db:
+        assert db.get(Request, rid).summary == {
+            "overview": "Detached summary",
+            "sections": [],
+            "at_turns": 1,
+        }
+
+
+def test_background_summary_drops_result_when_interview_advances_during_call(client, monkeypatch):
+    with SessionLocal() as db:
+        r = Request(ref="REQ-SUM-RACE", title="T", description="d", type="enh")
+        r.turns.append(InterviewTurn(order=0, question="Q1", answer="A1"))
+        db.add(r)
+        db.commit()
+        rid = r.id
+
+    class RacingBrain:
+        def summarize(self, r):
+            with SessionLocal() as db:
+                current = db.get(Request, rid)
+                current.turns.append(InterviewTurn(order=1, question="Q2", answer="A2"))
+                db.commit()
+            return {"overview": "Stale summary", "sections": []}
+
+    monkeypatch.setattr("app.summary_gen.get_brain", lambda: RacingBrain())
+    summary_gen._generate(rid, expected_turns=1)
+
+    with SessionLocal() as db:
+        assert db.get(Request, rid).summary is None
+
+
+def test_sync_summary_calls_brain_with_detached_loaded_request(client, monkeypatch):
+    class SessionProbeBrain:
+        def summarize(self, r):
+            assert object_session(r) is None
+            assert r.app.name == "Sync summary probe"
+            assert [turn.answer for turn in r.turns] == ["A1"]
+            assert [attachment.filename for attachment in r.attachments] == ["sync-brief.txt"]
+            return {"overview": "Detached sync summary", "sections": []}
+
+    monkeypatch.setattr("app.summary_gen.get_brain", lambda: SessionProbeBrain())
+    with SessionLocal() as db:
+        app = App(
+            key="sync-summary-probe",
+            name="Sync summary probe",
+            owner="qa",
+            repo="sf/sync-summary-probe",
+        )
+        r = Request(ref="REQ-SUM-SYNC", title="T", description="d", type="enh", app=app)
+        r.turns.append(InterviewTurn(order=0, question="Q1", answer="A1"))
+        r.attachments.append(
+            Attachment(
+                filename="sync-brief.txt",
+                mime="text/plain",
+                kind="doc",
+                size=5,
+                stored="sync-summary-probe.txt",
+            )
+        )
+        db.add(r)
+        db.commit()
+        result = summary_gen.generate_sync(r, db)
+        rid = r.id
+
+    assert result == {
+        "overview": "Detached sync summary",
+        "sections": [],
+        "at_turns": 1,
+    }
+    with SessionLocal() as db:
+        assert db.get(Request, rid).summary == result
+
+
+def test_sync_summary_drops_result_when_interview_advances_during_call(client, monkeypatch):
+    calls = 0
+    with SessionLocal() as db:
+        r = Request(ref="REQ-SUM-SYNC-RACE", title="T", description="d", type="enh")
+        r.turns.append(InterviewTurn(order=0, question="Q1", answer="A1"))
+        db.add(r)
+        db.commit()
+        rid = r.id
+
+        class RacingBrain:
+            def summarize(self, request):
+                nonlocal calls
+                calls += 1
+                assert object_session(request) is None
+                if calls == 1:
+                    assert [turn.answer for turn in request.turns] == ["A1"]
+                    with SessionLocal() as race_db:
+                        current = race_db.get(Request, rid)
+                        current.turns.append(InterviewTurn(order=1, question="Q2", answer="A2"))
+                        race_db.commit()
+                    return {"overview": "One-answer summary", "sections": []}
+                assert [turn.answer for turn in request.turns] == ["A1", "A2"]
+                return {"overview": "Two-answer summary", "sections": []}
+
+        monkeypatch.setattr("app.summary_gen.get_brain", lambda: RacingBrain())
+        result = summary_gen.generate_sync(r, db)
+
+    assert calls == 2
+    assert result["overview"] == "Two-answer summary"
+    with SessionLocal() as db:
+        assert db.get(Request, rid).summary is None
 
 
 # ── endpoints (SYNC brain via the test client) ──

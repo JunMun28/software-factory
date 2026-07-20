@@ -307,11 +307,13 @@ class RequestCreate(BaseModel):
 
 class ClassifyIn(BaseModel):
     description: str = Field(default="", max_length=5000)
+    request_id: int | None = None
 
 
 class ClassifyOut(BaseModel):
-    type: Literal["bug", "enh", "new", "other"]
-    confidence: float
+    status: Literal["pending", "succeeded", "failed"]
+    type: Literal["bug", "enh", "new", "other"] | None = None
+    confidence: float | None = None
 
 
 class RequestUpdate(BaseModel):

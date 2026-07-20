@@ -6,13 +6,25 @@ from . import settings
 
 DB_URL = settings.DB_URL
 
-if DB_URL.startswith("sqlite"):
-    engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
-else:
+
+def _engine_kwargs(db_url: str) -> dict:
+    if db_url.startswith("sqlite"):
+        return {"connect_args": {"check_same_thread": False}}
     # Azure SQL: the gateway kills idle connections (~30 min) and reconfigures
     # under you — pre-ping detects dead pooled connections, recycle beats the
-    # gateway's idle timeout (spec §3.1, review F-D10)
-    engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=1800)
+    # gateway's idle timeout (spec §3.1, review F-D10). Twenty steady plus
+    # twenty overflow connections match AnyIO's 40-thread default; the bounded
+    # wait fails pressure promptly instead of pinning a request thread.
+    return {
+        "pool_pre_ping": True,
+        "pool_recycle": 1800,
+        "pool_size": 20,
+        "max_overflow": 20,
+        "pool_timeout": 10,
+    }
+
+
+engine = create_engine(DB_URL, **_engine_kwargs(DB_URL))
 
 if DB_URL.startswith("sqlite"):
     @event.listens_for(engine, "connect")

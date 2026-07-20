@@ -20,6 +20,9 @@ CODEX_MODEL = os.environ.get("FACTORY_CODEX_MODEL", "")  # empty → the CLI's c
 OPENCODE_BIN = os.environ.get("OPENCODE_BIN", "opencode")
 # opencode model ids are "provider/model". Default to a provider authed on this host.
 OPENCODE_MODEL = os.environ.get("FACTORY_OPENCODE_MODEL", "openai/gpt-5.5").strip()
+# Full agent CLI subprocesses are memory-heavy; a small global bound prevents
+# concurrent calls from exhausting the API pod's memory and causing an in-pod OOM.
+CLI_CAP = int(os.environ.get("FACTORY_CLI_CAP", "3"))
 # Read-only vs write is a HARD guarantee, enforced by a factory-owned config pointed at
 # via OPENCODE_CONFIG (never the operator's global agents). deny = fail-closed sandbox.
 OPENCODE_CONFIG_DIR = API_DIR / "app" / "opencode"

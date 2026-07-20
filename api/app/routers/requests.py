@@ -16,13 +16,21 @@ import logging
 import threading
 import time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import acceptance, interview_gen, prototype_gen, settings, summary_gen, transitions
+from .. import (
+    acceptance,
+    classify_gen,
+    interview_gen,
+    prototype_gen,
+    settings,
+    summary_gen,
+    transitions,
+)
 from ..agent_exec import runner_mode
 from ..api_helpers import get_request, next_ref, pipeline, prospective_repo, to_out
 from ..auth import current_identity
@@ -31,6 +39,7 @@ from ..events import emit
 from ..interview import (
     DONE_SENTINEL,
     Question,
+    ScriptedBrain,
     answered_count,
     get_brain,
     is_stop_signal,
@@ -153,9 +162,15 @@ def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLo
         push({"type": "state", "state": build_state(db, r).model_dump(mode="json")})
 
     if not acquire(rid):  # another generation in flight — poll for its result
-        for _ in range(timeout + 5):
-            time.sleep(1)
-            with SessionLocal() as db:
+        deadline = time.monotonic() + timeout + 5
+        delay = 1.0
+        with SessionLocal() as db:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                time.sleep(min(delay, remaining))
+                db.expire_all()
                 r = db.get(Request, rid)
                 if r is None:
                     push({"type": "state", "state": None})
@@ -163,6 +178,9 @@ def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLo
                 if resolved(r):
                     emit(db, r)
                     return
+                # End the read transaction so this long-lived waiter does not pin a DB snapshot.
+                db.rollback()
+                delay = min(delay * 2, 5.0)
         push({"type": "state", "state": None})
         return
     try:
@@ -247,10 +265,35 @@ def _prototype_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractE
 # ---------- requests CRUD ----------
 
 @router.post("/api/requests/classify", response_model=ClassifyOut)
-def classify_request(body: ClassifyIn):
-    """Stateless type inference for the composer chip — no Request is created.
-    Track/confidence are Intake-only; the Factory still consumes only the stored type."""
-    return get_brain().classify(body.description)
+def classify_request(body: ClassifyIn, response: Response):
+    """Kick durable classification for a Request, retaining the legacy stateless call."""
+    # NOTE(plan-008): The approved plan assumed classification already wrote Request
+    # fields, but the active endpoint was stateless. Request-bound calls now persist a
+    # separate result while the no-id contract stays deterministic and immediate.
+    if body.request_id is None:
+        return ClassifyOut(status="succeeded", **ScriptedBrain().classify(body.description))
+    if not classify_gen.kick(body.request_id, body.description):
+        raise HTTPException(404, "Request not found")
+    response.status_code = status.HTTP_202_ACCEPTED
+    return ClassifyOut(status="pending")
+
+
+@router.get("/api/requests/{rid}/classify", response_model=ClassifyOut)
+def get_classification(rid: int, db: Session = Depends(get_db)):
+    request = db.get(Request, rid)
+    stored = request.classification_result if request is not None else None
+    result = dict(stored) if stored is not None else None
+    if result is None:
+        raise HTTPException(404, "Classification not found")
+    if result.get("status") == "pending":
+        # Do not retain this poll's checkout while the restart path opens its own session.
+        db.close()
+        classify_gen.ensure_classification(rid)
+    return ClassifyOut(
+        status=result["status"],
+        type=result.get("type"),
+        confidence=result.get("confidence"),
+    )
 
 
 @router.get("/api/requests", response_model=list[RequestOut])
@@ -459,6 +502,8 @@ def get_prototype(rid: int, gen: bool = True, db: Session = Depends(get_db)):
     if r.type != "new":
         return PrototypeState(html=r.prototype_html, status=r.prototype_status)
     thinking = prototype_gen.ensure(db, r) if gen else prototype_gen.is_thinking(r)
+    if prototype_gen.SYNC and gen:
+        r = get_request(db, rid)  # sync generation closes its snapshot session around the model call
     return _prototype_state(db, r, thinking=thinking)
 
 
@@ -484,6 +529,8 @@ def instruct_prototype(rid: int, body: PrototypeInstruction, db: Session = Depen
     db.commit()
     db.refresh(r)
     thinking = prototype_gen.queue_or_resolve(db, r)  # SYNC resolves inline; async → client streams
+    if prototype_gen.SYNC:
+        r = get_request(db, rid)  # sync generation closes its snapshot session around the model call
     return _prototype_state(db, r, thinking=thinking)
 
 

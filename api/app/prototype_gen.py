@@ -87,11 +87,34 @@ def apply_revision(db, r: Request, turn: PrototypeTurn, rev: dict) -> None:
     db.commit()
 
 
-def _resolve(db, r: Request, turn: PrototypeTurn) -> None:
-    rev = get_brain().generate_prototype(
-        r, instruction=turn.instruction, annotation=turn.annotation, current_html=r.prototype_html
-    )
-    apply_revision(db, r, turn, rev)
+def _persist_revision(
+    rid: int,
+    turn_id: int,
+    prototype_status: str,
+    current_html: str | None,
+    rev: dict,
+) -> None:
+    """Apply a generated revision only while its complete input snapshot is current."""
+    with SessionLocal() as db:
+        r = db.get(Request, rid)
+        turn = db.get(PrototypeTurn, turn_id)
+        oldest_pending = pending_turn(r) if r is not None else None
+        # NOTE(plan-008): The approved plan says to preserve an existing
+        # don't-clobber guard, but this path did not have one. Re-check the request
+        # snapshot and original oldest pending turn so skip, restore, or a newer
+        # resolution always wins.
+        if (
+            r is None
+            or turn is None
+            or turn.request_id != rid
+            or turn.mode != "pending"
+            or oldest_pending is None
+            or oldest_pending.id != turn_id
+            or r.prototype_status != prototype_status
+            or r.prototype_html != current_html
+        ):
+            return
+        apply_revision(db, r, turn, rev)
 
 
 def _resolve_sync(db, r: Request) -> None:
@@ -99,9 +122,23 @@ def _resolve_sync(db, r: Request) -> None:
     if acquire(r.id):
         try:
             db.refresh(r)
+            _ = r.app, r.turns, r.attachments
             turn = pending_turn(r)
             if turn is not None:
-                _resolve(db, r, turn)
+                rid = r.id
+                turn_id = turn.id
+                instruction = turn.instruction
+                annotation = turn.annotation
+                current_html = r.prototype_html
+                prototype_status = r.prototype_status
+                db.close()
+                rev = get_brain().generate_prototype(
+                    r,
+                    instruction=instruction,
+                    annotation=annotation,
+                    current_html=current_html,
+                )
+                _persist_revision(rid, turn_id, prototype_status, current_html, rev)
         finally:
             release(r.id)
 
@@ -156,9 +193,24 @@ def _generate(rid: int) -> None:
             r = db.get(Request, rid)
             if r is None:
                 return
+            # The detached brain input must carry every relationship used to build
+            # prompts or attachment workdirs after this short snapshot session closes.
+            _ = r.app, r.turns, r.attachments
             turn = pending_turn(r)
-            if turn is not None:
-                _resolve(db, r, turn)
+            if turn is None:
+                return
+            turn_id = turn.id
+            instruction = turn.instruction
+            annotation = turn.annotation
+            current_html = r.prototype_html
+            prototype_status = r.prototype_status
+        rev = get_brain().generate_prototype(
+            r,
+            instruction=instruction,
+            annotation=annotation,
+            current_html=current_html,
+        )
+        _persist_revision(rid, turn_id, prototype_status, current_html, rev)
     except Exception:
         log.exception("prototype generation failed for request %s", rid)
     finally:

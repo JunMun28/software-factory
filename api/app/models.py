@@ -164,6 +164,9 @@ class Request(Base):
     reporter: Mapped[str] = mapped_column(human_string(80), default="Jordan D.")
     reporter_initials: Mapped[str] = mapped_column(String(4), default="JD")
     labels: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Durable composer classification state. This stays separate from `type` so an
+    # asynchronous suggestion can never overwrite the submitter's current choice.
+    classification_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     send_back_question: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     send_back_response: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)

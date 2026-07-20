@@ -6,11 +6,12 @@ thread + client poll is verified live in the browser. `interview_gen.SYNC` is fl
 off per-test to reach the async router branch without spawning real threads.
 """
 import pytest
+from sqlalchemy.orm import object_session
 
 from app import interview_gen
 from app.db import SessionLocal
 from app.interview import DONE_SENTINEL, Question
-from app.models import InterviewTurn, Request
+from app.models import App, Attachment, InterviewTurn, Request
 
 
 class _FakeBrain:
@@ -56,6 +57,76 @@ def test_generate_writes_pending_question(client, monkeypatch):
     with SessionLocal() as db:
         pq = db.get(Request, rid).pending_question
         assert pq["question"] == "How often?" and pq["options"] == [{"t": "a", "d": "b"}]
+
+
+def test_generate_calls_brain_with_detached_loaded_request(client, monkeypatch):
+    class SessionProbeBrain:
+        def next_question(self, r):
+            assert object_session(r) is None
+            assert r.app.name == "Interview probe"
+            assert [turn.answer for turn in r.turns] == ["A1"]
+            assert [attachment.filename for attachment in r.attachments] == ["evidence.txt"]
+            return Question(question="What changed?")
+
+    monkeypatch.setattr("app.interview_gen.get_brain", lambda: SessionProbeBrain())
+    with SessionLocal() as db:
+        global _seq
+        _seq += 1
+        app = App(
+            key=f"interview-probe-{_seq}",
+            name="Interview probe",
+            owner="qa",
+            repo="sf/interview-probe",
+        )
+        r = Request(
+            ref=f"REQ-PG-{_seq}",
+            title="T",
+            description="d",
+            type="enh",
+            app=app,
+        )
+        r.turns.append(InterviewTurn(order=0, question="Q1", answer="A1"))
+        r.attachments.append(
+            Attachment(
+                filename="evidence.txt",
+                mime="text/plain",
+                kind="doc",
+                size=8,
+                stored="interview-probe.txt",
+            )
+        )
+        db.add(r)
+        db.commit()
+        rid = r.id
+
+    interview_gen._generate(rid, answered_at_start=1)
+
+    with SessionLocal() as db:
+        assert db.get(Request, rid).pending_question["question"] == "What changed?"
+
+
+def test_generate_does_not_clobber_pending_written_during_brain_call(client, monkeypatch):
+    with SessionLocal() as db:
+        rid = _make(db, answered=0).id
+
+    class RacingBrain:
+        def next_question(self, r):
+            with SessionLocal() as db:
+                current = db.get(Request, rid)
+                current.pending_question = {
+                    "question": "newer question",
+                    "sub": None,
+                    "options": None,
+                    "final": False,
+                }
+                db.commit()
+            return Question(question="stale question")
+
+    monkeypatch.setattr("app.interview_gen.get_brain", lambda: RacingBrain())
+    interview_gen._generate(rid, answered_at_start=0)
+
+    with SessionLocal() as db:
+        assert db.get(Request, rid).pending_question["question"] == "newer question"
 
 
 def test_generate_writes_done_sentinel_when_brain_finishes(client, monkeypatch):

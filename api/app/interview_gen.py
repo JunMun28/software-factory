@@ -72,8 +72,14 @@ def _generate(rid: int, answered_at_start: int) -> None:
             r = db.get(Request, rid)
             if r is None:
                 return
-            payload = pending_payload(get_brain().next_question(r))  # the slow model call
-            db.refresh(r)
+            # The detached brain input must carry every relationship used to build
+            # prompts or attachment workdirs after this short snapshot session closes.
+            _ = r.app, r.turns, r.attachments
+        payload = pending_payload(get_brain().next_question(r))  # the slow model call
+        with SessionLocal() as db:
+            r = db.get(Request, rid)
+            if r is None:
+                return
             # never clobber newer state: the submitter may have advanced a turn, or a
             # racing generation may already have written the pending question
             if answered_count(r) != answered_at_start or r.pending_question is not None:
