@@ -26,6 +26,14 @@ CLI_CAP = int(os.environ.get("FACTORY_CLI_CAP", "3"))
 # Direct provider calls hold sockets rather than child processes, so they get a
 # separate, larger sanity bound. The CLI fallback remains capped above.
 API_BRAIN_CAP = int(os.environ.get("FACTORY_API_BRAIN_CAP", "20"))
+# Per-user daily brain budget (Plan 008 Phase 0 / D6). Direct-API billing makes a
+# per-user spend cap mandatory before self-serve end users: once a reporter crosses
+# either cap within a UTC day, their intake generation degrades to the scripted
+# brain (the interview is enrichment, never a blocker) and the throttle is logged
+# as a status="budget" brain_calls row. The two caps are independent; 0 = unlimited
+# on that axis (both 0 disables the budget entirely — today's open behavior).
+USER_DAILY_TOKENS = int(os.environ.get("FACTORY_USER_DAILY_TOKENS", "500000"))
+USER_DAILY_CALLS = int(os.environ.get("FACTORY_USER_DAILY_CALLS", "300"))
 
 
 def brain_tools_enabled() -> bool:

@@ -20,13 +20,21 @@ from . import brain_streams, settings
 from .agent_brain import META_MARKER
 from .brain_calls import (
     active_call,
+    budget_degraded,
     claim_call,
     finish_call,
     model_for_kind,
     prompt_fingerprint,
+    record_budget_call,
 )
 from .db import SessionLocal
-from .interview import answered_count, get_brain, pending_payload, question_ceiling
+from .interview import (
+    ScriptedBrain,
+    answered_count,
+    get_brain,
+    pending_payload,
+    question_ceiling,
+)
 from .models import InterviewTurn, Request
 
 log = logging.getLogger("factory.interview")
@@ -100,27 +108,36 @@ def _generate(rid: int, answered_at_start: int) -> None:
             _ = r.app, r.turns, r.attachments
             type_at_start = r.type
             ceiling_at_start = r.reopen_ceiling
-        call_id = claim_call(
-            request_id=rid,
-            kind="question",
-            dedup_key=(
-                f"question:{rid}:{answered_at_start}:{prompt_fingerprint(r)}"
-            ),
-            model=model_for_kind("question"),
-            stale_after_seconds=settings.INTERVIEW_TIMEOUT + 30,
-        )
-        if call_id is None:
-            return
-        relay = brain_streams.prose_relay("interview", rid, META_MARKER)
-        with active_call(call_id):
-            try:
-                q = brain_streams.invoke_with_delta(
-                    get_brain().next_question,
-                    r,
-                    on_delta=relay.feed,
-                )
-            finally:
-                relay.finish()
+            identity = r.reporter
+        if budget_degraded(identity):
+            # Over the daily budget: serve the scripted question and log the throttle.
+            # The conditional write below still guards against a racing state change.
+            record_budget_call(
+                request_id=rid, kind="question", model=model_for_kind("question")
+            )
+            q = ScriptedBrain().next_question(r)
+        else:
+            call_id = claim_call(
+                request_id=rid,
+                kind="question",
+                dedup_key=(
+                    f"question:{rid}:{answered_at_start}:{prompt_fingerprint(r)}"
+                ),
+                model=model_for_kind("question"),
+                stale_after_seconds=settings.INTERVIEW_TIMEOUT + 30,
+            )
+            if call_id is None:
+                return
+            relay = brain_streams.prose_relay("interview", rid, META_MARKER)
+            with active_call(call_id):
+                try:
+                    q = brain_streams.invoke_with_delta(
+                        get_brain().next_question,
+                        r,
+                        on_delta=relay.feed,
+                    )
+                finally:
+                    relay.finish()
         payload = pending_payload(q)
         with SessionLocal() as db:
             answered_now = _answered_turn_count(rid)

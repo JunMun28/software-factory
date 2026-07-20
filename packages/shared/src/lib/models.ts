@@ -211,6 +211,10 @@ export interface InterviewState {
   turns: Turn[];
   /** a mid-interview type-change proposal (ADR 0023) — pulse the chip, ask consent */
   escalation: { to_type: 'bug' | 'enh' | 'new' | 'other'; why: string } | null;
+  /** over the reporter's daily brain budget (Plan 008 Phase 0) — generation is
+   * degraded to the scripted brain; the interview still works. Optional: absent
+   * on older payloads. */
+  budget_limited?: boolean;
 }
 
 /** One titled section of the structured Review spec. */

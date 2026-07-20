@@ -66,7 +66,7 @@ def test_ensure_classification_starts_a_daemon_thread(client, monkeypatch):
         assert started == created
         assert len(created) == 1
         assert created[0].daemon is True
-        assert created_args == [(rid, "thread probe", "thread-token")]
+        assert created_args == [(rid, "thread probe", "thread-token", "Jordan D.")]
     finally:
         classify_gen.release(rid)
 

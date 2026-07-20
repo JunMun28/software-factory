@@ -15,7 +15,14 @@ import threading
 import uuid
 
 from . import interview, settings
-from .brain_calls import active_call, claim_call, finish_call, model_for_kind
+from .brain_calls import (
+    active_call,
+    budget_degraded,
+    claim_call,
+    finish_call,
+    model_for_kind,
+    record_budget_call,
+)
 from .db import SessionLocal
 from .models import Request
 
@@ -75,6 +82,7 @@ def ensure_classification(rid: int) -> bool:
                 if not result or result.get("status") != "pending":
                     return False
                 description = str(result.get("source_description") or "")
+                identity = request.reporter
                 generation_token = result.get("generation_token")
                 if not isinstance(generation_token, str) or not generation_token:
                     # A pending row created by an older process can still be resumed
@@ -87,7 +95,7 @@ def ensure_classification(rid: int) -> bool:
                     db.commit()
         threading.Thread(
             target=_generate,
-            args=(rid, description, generation_token),
+            args=(rid, description, generation_token, identity),
             daemon=True,
         ).start()
         started = True
@@ -97,24 +105,21 @@ def ensure_classification(rid: int) -> bool:
             release(rid)
 
 
-def _generate(rid: int, source_description: str, generation_token: str) -> None:
+def _generate(
+    rid: int, source_description: str, generation_token: str, identity: str | None = None
+) -> None:
     """Run the slow brain call with no open Session, then persist if still current."""
     call_id: int | None = None
     brain_succeeded = False
     succeeded = False
     try:
-        call_id = claim_call(
-            request_id=rid,
-            kind="classify",
-            dedup_key=f"classify:{rid}:{generation_token}",
-            model=model_for_kind("classify"),
-            stale_after_seconds=settings.INTERVIEW_TIMEOUT + 30,
-        )
-        if call_id is None:
-            return
-        try:
-            with active_call(call_id):
-                classification = interview.get_brain().classify(source_description)
+        if budget_degraded(identity):
+            # Over the daily budget: classify with the scripted brain, log the throttle,
+            # and skip the durable claim (the scripted label is deterministic and free).
+            record_budget_call(
+                request_id=rid, kind="classify", model=model_for_kind("classify")
+            )
+            classification = interview.ScriptedBrain().classify(source_description)
             result = {
                 "status": "succeeded",
                 "source_description": source_description,
@@ -122,12 +127,32 @@ def _generate(rid: int, source_description: str, generation_token: str) -> None:
                 "confidence": classification["confidence"],
             }
             brain_succeeded = True
-        except Exception:
-            log.exception("classification failed for request %s", rid)
-            result = {
-                "status": "failed",
-                "source_description": source_description,
-            }
+        else:
+            call_id = claim_call(
+                request_id=rid,
+                kind="classify",
+                dedup_key=f"classify:{rid}:{generation_token}",
+                model=model_for_kind("classify"),
+                stale_after_seconds=settings.INTERVIEW_TIMEOUT + 30,
+            )
+            if call_id is None:
+                return
+            try:
+                with active_call(call_id):
+                    classification = interview.get_brain().classify(source_description)
+                result = {
+                    "status": "succeeded",
+                    "source_description": source_description,
+                    "type": classification["type"],
+                    "confidence": classification["confidence"],
+                }
+                brain_succeeded = True
+            except Exception:
+                log.exception("classification failed for request %s", rid)
+                result = {
+                    "status": "failed",
+                    "source_description": source_description,
+                }
 
         with _lock:
             with SessionLocal() as db:

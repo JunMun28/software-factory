@@ -20,13 +20,15 @@ from . import brain_streams, settings
 from .agent_brain import PROTO_MARKER
 from .brain_calls import (
     active_call,
+    budget_degraded,
     claim_call,
     finish_call,
     model_for_kind,
     prompt_fingerprint,
+    record_budget_call,
 )
 from .db import SessionLocal
-from .interview import get_brain
+from .interview import ScriptedBrain, get_brain
 from .interview_gen import SYNC
 from .models import PrototypeTurn, Request
 
@@ -203,6 +205,20 @@ def resolve_one(rid: int, *, on_delta=None) -> None:
             annotation = turn.annotation
             current_html = r.prototype_html
             prototype_status = r.prototype_status
+            identity = r.reporter
+        if budget_degraded(identity):
+            # Over the daily budget: serve the scripted revision and log the throttle.
+            record_budget_call(
+                request_id=rid, kind="prototype", model=model_for_kind("prototype")
+            )
+            rev = ScriptedBrain().generate_prototype(
+                r,
+                instruction=instruction,
+                annotation=annotation,
+                current_html=current_html,
+            )
+            _persist_revision(rid, turn_id, prototype_status, current_html, rev)
+            return
         call_id = claim_call(
             request_id=rid,
             kind="prototype",

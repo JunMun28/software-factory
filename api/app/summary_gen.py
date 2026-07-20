@@ -12,10 +12,12 @@ import threading
 from . import settings
 from .brain_calls import (
     active_call,
+    budget_degraded,
     claim_call,
     finish_call,
     model_for_kind,
     prompt_fingerprint,
+    record_budget_call,
 )
 from .db import SessionLocal
 from .interview import ScriptedBrain, answered_count, get_brain
@@ -44,7 +46,22 @@ def _write(db, r: Request, expected_turns: int) -> dict:
     The caller's request session is closed before the model call."""
     rid = r.id
     _ = r.app, r.turns, r.attachments
+    identity = r.reporter
     db.close()
+    if budget_degraded(identity):
+        # Over the daily budget: cache the scripted summary and log the throttle.
+        record_budget_call(
+            request_id=rid, kind="summary", model=model_for_kind("summary")
+        )
+        data = ScriptedBrain().summarize(r)
+        summary = {**data, "at_turns": expected_turns}
+        with SessionLocal() as write_db:
+            current = write_db.get(Request, rid)
+            if current is not None and answered_count(current) == expected_turns:
+                current.summary = summary
+                write_db.commit()
+                return summary
+        return data
     call_id = claim_call(
         request_id=rid,
         kind="summary",
@@ -154,17 +171,24 @@ def _generate(rid: int, expected_turns: int) -> None:
             # The detached brain input must carry every relationship used to build
             # prompts or attachment workdirs after this short snapshot session closes.
             _ = r.app, r.turns, r.attachments
-        call_id = claim_call(
-            request_id=rid,
-            kind="summary",
-            dedup_key=f"summary:{rid}:{expected_turns}:{prompt_fingerprint(r)}",
-            model=model_for_kind("summary"),
-            stale_after_seconds=settings.INTERVIEW_TIMEOUT + 30,
-        )
-        if call_id is None:
-            return
-        with active_call(call_id):
-            data = get_brain().summarize(r)
+            identity = r.reporter
+        if budget_degraded(identity):
+            record_budget_call(
+                request_id=rid, kind="summary", model=model_for_kind("summary")
+            )
+            data = ScriptedBrain().summarize(r)
+        else:
+            call_id = claim_call(
+                request_id=rid,
+                kind="summary",
+                dedup_key=f"summary:{rid}:{expected_turns}:{prompt_fingerprint(r)}",
+                model=model_for_kind("summary"),
+                stale_after_seconds=settings.INTERVIEW_TIMEOUT + 30,
+            )
+            if call_id is None:
+                return
+            with active_call(call_id):
+                data = get_brain().summarize(r)
         with SessionLocal() as db:
             r = db.get(Request, rid)
             if r is None or answered_count(r) != expected_turns:

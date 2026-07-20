@@ -163,7 +163,11 @@ class Request(Base):
     # so it steers exactly one attempt — same scope as SF_GATE_FEEDBACK
     pending_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    reporter: Mapped[str] = mapped_column(human_string(80), default="Jordan D.")
+    # Indexed: the per-user daily brain budget (Plan 008 Phase 0 / D6) anchors its
+    # usage aggregate on this reporter identity (brain_calls join requests).
+    reporter: Mapped[str] = mapped_column(
+        human_string(80), default="Jordan D.", index=True
+    )
     reporter_initials: Mapped[str] = mapped_column(String(4), default="JD")
     labels: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Durable composer classification state. This stays separate from `type` so an

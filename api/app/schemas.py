@@ -352,6 +352,10 @@ class InterviewState(BaseModel):
     final: bool = False
     turns: list[TurnOut] = []
     escalation: dict | None = None  # {"to_type": str, "why": str} — a proposed type change (ADR 0023)
+    # True when this reporter is over their daily brain budget (Plan 008 Phase 0 /
+    # D6): generation is degraded to the scripted brain. Lets the UI show a "daily
+    # budget reached" banner later; the interview still works, so nothing blocks.
+    budget_limited: bool = False
 
 
 class SpecSection(BaseModel):

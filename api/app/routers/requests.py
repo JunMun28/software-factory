@@ -40,10 +40,12 @@ from ..api_helpers import get_request, next_ref, pipeline, prospective_repo, to_
 from ..auth import current_identity
 from ..brain_calls import (
     active_call,
+    budget_degraded,
     claim_call,
     finish_call,
     model_for_kind,
     prompt_fingerprint,
+    record_budget_call,
 )
 from ..db import SessionLocal, get_db
 from ..events import emit
@@ -333,6 +335,25 @@ def _routing_proposal(
     if not allow_call:
         return None
 
+    if budget_degraded(r.reporter):
+        # Over the daily budget: the routing check is enrichment, so skip the provider
+        # call. Log the throttle and cache a no-proposal for this fingerprint so the
+        # poll loop stops re-kicking instead of spamming budget rows.
+        record_budget_call(
+            request_id=r.id, kind="escalation", model=model_for_kind("escalation")
+        )
+        _write_routing_cache(
+            db,
+            r,
+            {
+                "fingerprint": fingerprint,
+                "proposal": None,
+                "declined": False,
+                "accepted": False,
+            },
+        )
+        return None
+
     # End the read transaction before the provider call. The durable brain_calls
     # claim prevents two API replicas from billing the same fingerprint twice.
     _ = r.app, r.turns, r.attachments
@@ -424,7 +445,8 @@ def interview_state(db: Session, r: Request, *, generate: bool = True) -> Interv
     generating itself, so it only wants to read/report the current state."""
     def build(*, done: bool, q: Question | None, thinking: bool) -> InterviewState:
         st = InterviewState(done=done, asked=answered_count(r), total=question_ceiling(r),
-                            thinking=thinking, turns=[t for t in r.turns])
+                            thinking=thinking, turns=[t for t in r.turns],
+                            budget_limited=budget_degraded(r.reporter))
         if q:
             st.question, st.sub, st.options, st.final = q.question, q.sub, q.options, q.final
         # ScriptedBrain and the CLI brain stay silent; ApiBrain can now fill this
@@ -569,10 +591,28 @@ def _resolve_interview(db: Session, r: Request, on_delta=None) -> None:
     answered_at_start = answered_count(r)
     type_at_start = r.type
     ceiling_at_start = r.reopen_ceiling
+    identity = r.reporter
     # End the read transaction before the slow call. expire_on_commit=False keeps
     # the fully loaded brain snapshot while returning the pooled connection.
     _ = r.app, r.turns, r.attachments
     db.commit()
+    if budget_degraded(identity):
+        # Over the daily budget: serve the scripted question and log the throttle;
+        # _persist_generated_question still guards against a racing state change.
+        record_budget_call(
+            request_id=rid, kind="question", model=model_for_kind("question")
+        )
+        q = ScriptedBrain().next_question(r)
+        _persist_generated_question(
+            db,
+            rid=rid,
+            payload=pending_payload(q),
+            answered_at_start=answered_at_start,
+            type_at_start=type_at_start,
+            ceiling_at_start=ceiling_at_start,
+        )
+        db.refresh(r)
+        return
     call_id = claim_call(
         request_id=rid,
         kind="question",
@@ -1173,8 +1213,14 @@ def submit(rid: int, extra: Note | None = None, db: Session = Depends(get_db)):
                       "context": f"Intake interview completed · {len(r.turns)} answers", "Ref": r.ref})
         db.add(AuditEvent(request_id=r.id, actor=r.reporter, action="submitted",
                           note="filed this request and completed intake"))
-        # Stage 1 brain writes the grounded Draft spec, then the spec gate is raised
-        lines, note = get_brain().draft_spec(r)
+        # Stage 1 brain writes the grounded Draft spec, then the spec gate is raised.
+        # Over the daily budget the spec degrades to the scripted draft (the interview
+        # is enrichment, never a blocker); the throttle is logged for ops.
+        if budget_degraded(r.reporter):
+            record_budget_call(request_id=r.id, kind="spec", model=model_for_kind("spec"))
+            lines, note = ScriptedBrain().draft_spec(r)
+        else:
+            lines, note = get_brain().draft_spec(r)
         db.add_all(lines)
         r.spec_open_note = note
         gate = transitions.apply(db, r, "raise_spec_gate", actor=reporter)
