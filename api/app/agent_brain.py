@@ -87,6 +87,11 @@ def _question_prompt(req: Request, answered: int, floor: int, ceiling: int,
         + finish_clause
         + "The question text is ONLY the words the colleague reads — never list, number, quote, "
         "or restate the answer options inside it; the options live solely in the JSON tail. "
+        # NOTE(plan-008): live runs showed tool narration leaking into the prose
+        # ("No prior record found. Continuing with intake.") — the reader must
+        # never see the machinery, only the question informed by it.
+        "If you used lookup tools first, use what you learned silently — never mention "
+        "searches, tools, records found or not found, or your own process in the text. "
         "Reply in this exact shape: first the question itself — no preamble — then on a new line "
         f"the literal marker {META_MARKER} and, on the next line, a JSON object: "
         '{"sub": one-line hint or null, "options": '

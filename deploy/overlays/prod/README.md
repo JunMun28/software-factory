@@ -36,3 +36,35 @@ The app's startup `migrate()` remains for dev compatibility. Production uses
 the backup-gated Job first, so the startup call finds the schema already at
 Alembic head. Azure SQL PITR provisioning and cutover remain an office/user
 handoff rather than something this overlay creates.
+
+## SSE on ARO (plan 008 / ADR 0026)
+
+The intake brain streams tokens over SSE (`/api/requests/*/interview/stream`,
+`/api/requests/*/prototype/stream`). The API already sends
+`X-Accel-Buffering: no` (any nginx hop honors it). For the OpenShift Route
+in front of the API, set a timeout at least as long as the longest generation
+(prototype = 240s) so HAProxy does not cut live streams:
+
+    oc annotate route factory-api haproxy.router.openshift.io/timeout=300s
+
+The Anthropic key rides an optional Secret (`sf-anthropic`, key `api-key`).
+Without it the brain degrades api -> CLI -> scripted; the pod still schedules:
+
+    oc create secret generic sf-anthropic --from-literal=api-key=<key>
+
+## Enabling the Entra wall (SEC-01)
+
+Auth is merged and env-gated (`FACTORY_AUTH=off` by default). One Secret is
+the ON switch — no tenant or client IDs ever enter the repo:
+
+    oc create secret generic sf-entra \
+      --from-literal=mode=entra \
+      --from-literal=tenant-id=<tenant> \
+      --from-literal=api-audience=<audience> \
+      --from-literal=api-client-id=<api-app-id> \
+      --from-literal=console-client-id=<console-app-id> \
+      --from-literal=intake-client-id=<intake-app-id>
+
+Delete the secret (and roll the pod) to fall back to the open dev wall.
+Note: per-user budgets key on the reporter identity, which is real only
+once this wall is on.

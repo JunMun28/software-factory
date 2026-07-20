@@ -68,11 +68,12 @@ spec:
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 10
-          # Plan 008 Phase 1 stopgap while CLI subprocesses still run in-pod;
-          # Phase 3 reverts this once the intake brain leaves the API container.
+          # Plan 008 Phase 3.7: reverted to the lean profile — the api-tier brain
+          # is sockets, not subprocesses; the CLI fallback tier stays bounded by
+          # FACTORY_CLI_CAP=3, sized to fit this limit.
           resources:
-            requests: {cpu: 500m, memory: 1Gi}
-            limits: {cpu: "2", memory: 2Gi}
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "1", memory: 1Gi}
           volumeMounts:
             - name: data
               mountPath: /data

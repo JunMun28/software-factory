@@ -5,6 +5,11 @@ metadata:
 data:
   FACTORY_SEED_DEMO: "0"
   FACTORY_DB_URL: null
+  # Plan 008 / ADR 0026: real users get the direct-API streaming brain. Measured
+  # live 2026-07-20 (classify <1.9s, question first-token ~1s) before this flip.
+  # The base profile stays scripted+sync — the kind/CRC smoke depends on it.
+  FACTORY_BRAIN: "api"
+  FACTORY_INTERVIEW_PREGEN: "async"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -21,3 +26,32 @@ spec:
                 secretKeyRef:
                   name: factory-db
                   key: url
+            # Billing tier credential (ADR 0026). optional: a key-less cluster
+            # degrades api -> CLI -> scripted instead of failing to schedule.
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sf-anthropic
+                  key: api-key
+                  optional: true
+            # SEC-01 Entra wall: creating the sf-entra Secret is the ON switch.
+            # All keys optional — no secret means FACTORY_AUTH stays "off" and
+            # nothing about the tenant ever lands in the repo.
+            - name: FACTORY_AUTH
+              valueFrom:
+                secretKeyRef: {name: sf-entra, key: mode, optional: true}
+            - name: AZURE_TENANT_ID
+              valueFrom:
+                secretKeyRef: {name: sf-entra, key: tenant-id, optional: true}
+            - name: AZURE_API_AUDIENCE
+              valueFrom:
+                secretKeyRef: {name: sf-entra, key: api-audience, optional: true}
+            - name: AZURE_API_CLIENT_ID
+              valueFrom:
+                secretKeyRef: {name: sf-entra, key: api-client-id, optional: true}
+            - name: AZURE_CONSOLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef: {name: sf-entra, key: console-client-id, optional: true}
+            - name: AZURE_INTAKE_CLIENT_ID
+              valueFrom:
+                secretKeyRef: {name: sf-entra, key: intake-client-id, optional: true}

@@ -15,6 +15,10 @@ services:
       SIM_INTERVAL: "8"           # keep the factory alive; set 0 to freeze
       FACTORY_DB_URL: sqlite:////data/factory.db
       FACTORY_SEED_DEMO: "0"      # production DBs start EMPTY; set 1 for the demo world
+      # Plan 008 / ADR 0026: direct-API streaming brain; export ANTHROPIC_API_KEY
+      # on the host to enable, otherwise the chain degrades api -> CLI -> scripted.
+      FACTORY_BRAIN: api
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       FACTORY_WORKSPACES: /data/workspaces   # the factory's output survives rebuilds
       FACTORY_UPLOADS: /data/uploads   # attachment bytes survive rebuilds (ADR 0022)
     volumes:

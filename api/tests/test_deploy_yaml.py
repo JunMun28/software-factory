@@ -67,16 +67,35 @@ def test_kaniko_is_version_pinned_consistently_in_config_and_kind_load():
     assert taskfile.count(image) >= 2
 
 
-def test_api_pod_has_phase_one_in_pod_cli_headroom():
+def test_api_pod_reverted_to_lean_profile_after_api_brain_flip():
+    """Plan 008 Phase 3.7: api-tier brain calls are sockets, so the Phase-1
+    headroom bump is gone; the CLI fallback tier is bounded by FACTORY_CLI_CAP."""
     objects = _objects("factory-api.yaml")
     deployment = next(item for item in objects if item["kind"] == "Deployment")
     containers = deployment["spec"]["template"]["spec"]["containers"]
     api = next(container for container in containers if container["name"] == "api")
 
     assert api["resources"] == {
-        "requests": {"cpu": "500m", "memory": "1Gi"},
-        "limits": {"cpu": "2", "memory": "2Gi"},
+        "requests": {"cpu": "250m", "memory": "512Mi"},
+        "limits": {"cpu": "1", "memory": "1Gi"},
     }
+
+
+def test_prod_overlay_ships_the_api_brain_with_async_pregen():
+    """ADR 0026 flip: real users stream from the direct API; the base profile
+    stays scripted+sync for the kind/CRC smoke."""
+    text = (
+        Path(__file__).resolve().parents[2]
+        / "deploy" / "overlays" / "prod" / "prod-patch.yaml"
+    ).read_text()
+    docs = [d for d in yaml.safe_load_all(text) if d]
+    config = next(d for d in docs if d["kind"] == "ConfigMap")
+    assert config["data"]["FACTORY_BRAIN"] == "api"
+    assert config["data"]["FACTORY_INTERVIEW_PREGEN"] == "async"
+    deployment = next(d for d in docs if d["kind"] == "Deployment")
+    env = deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+    anthropic = next(e for e in env if e["name"] == "ANTHROPIC_API_KEY")
+    assert anthropic["valueFrom"]["secretKeyRef"]["optional"] is True
 
 
 def test_prod_nulls_sqlite_url_and_secret_sources_azure_sql():
