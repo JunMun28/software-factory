@@ -8,6 +8,31 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vite
 import { Session } from '../core/session.service';
 import { Prototype } from './prototype';
 
+class FakeES {
+  static instances: FakeES[] = [];
+  onerror: (() => void) | null = null;
+  closed = false;
+  private handlers = new Map<string, (event: MessageEvent) => void>();
+
+  constructor(public url: string) {
+    FakeES.instances.push(this);
+  }
+
+  addEventListener(type: string, handler: (event: MessageEvent) => void) {
+    this.handlers.set(type, handler);
+  }
+
+  close() {
+    this.closed = true;
+  }
+
+  emit(type: string, data: string) {
+    this.handlers.get(type)?.({ data } as unknown as MessageEvent);
+  }
+}
+
+const stream = () => FakeES.instances[FakeES.instances.length - 1];
+
 function prototypeState(html: string): PrototypeState {
   return {
     html,
@@ -33,6 +58,8 @@ describe('Prototype instruction conflict recovery', () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
+    FakeES.instances = [];
+    vi.stubGlobal('EventSource', FakeES as unknown as typeof EventSource);
     originalUnhandledError = config.onUnhandledError;
     unhandledError = vi.fn();
     config.onUnhandledError = unhandledError;
@@ -93,6 +120,31 @@ describe('Prototype instruction conflict recovery', () => {
     expect(api.prototype).toHaveBeenCalledExactlyOnceWith(71, false);
     expect(comp.st()).toEqual(latest);
     expect(unhandledError).not.toHaveBeenCalled();
+  });
+
+  it('shows streamed delta text in the existing designing bubble until terminal state arrives', () => {
+    const thinking = prototypeState('<main>Initial prototype</main>');
+    thinking.thinking = true;
+    api.prototype.mockReturnValue(of(thinking));
+    const { fixture } = render();
+
+    stream().emit('delta', JSON.stringify({ text: 'Building the\n\n' }));
+    stream().emit('delta', JSON.stringify({ text: 'expense  dashboard…' }));
+    fixture.detectChanges();
+
+    const thread = fixture.nativeElement.querySelector('.chat__thread') as HTMLElement;
+    const streamed = thread.querySelector('.bub--stream') as HTMLElement;
+    expect(streamed.textContent).toContain('Building the\n\nexpense  dashboard…');
+    expect(getComputedStyle(streamed).whiteSpace).toBe('pre-wrap');
+    expect(thread.textContent).not.toContain('designing…');
+
+    const finished = prototypeState('<main>Finished prototype</main>');
+    finished.turns[0].note = 'The expense dashboard is ready.';
+    stream().emit('state', JSON.stringify(finished));
+    fixture.detectChanges();
+
+    expect(thread.textContent).not.toContain('Building the\n\nexpense  dashboard…');
+    expect(thread.textContent).toContain('The expense dashboard is ready.');
   });
 
   it('keeps non-409 instruction failures unhandled and does not re-fetch', () => {

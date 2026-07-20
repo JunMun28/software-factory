@@ -3,9 +3,11 @@
 import threading
 from contextlib import contextmanager
 
+from sqlalchemy import select
+
 from app import classify_gen
 from app.db import SessionLocal
-from app.models import Request
+from app.models import BrainCall, Request
 
 
 def _pending_request(
@@ -105,6 +107,13 @@ def test_generate_holds_no_session_during_brain_call(client, monkeypatch):
             "type": "bug",
             "confidence": 0.61,
         }
+        call = db.scalar(
+            select(BrainCall).where(
+                BrainCall.dedup_key == f"classify:{rid}:test-generation-token"
+            )
+        )
+        assert call is not None
+        assert call.status == "ok"
 
 
 def test_older_token_cannot_overwrite_newer_same_description(client, monkeypatch):

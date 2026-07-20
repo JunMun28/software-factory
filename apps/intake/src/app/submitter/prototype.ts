@@ -62,8 +62,17 @@ import { SubShell } from './sub-shell';
               @if (working()) {
                 <div class="brow fade-in">
                   <span class="bav"><sf-mark [size]="12" color="#fff" /></span>
-                  <div class="bub bub--ai typing" aria-hidden="true">
-                    <span></span><span></span><span></span> designing…
+                  <div
+                    class="bub bub--ai"
+                    [class.typing]="!deltaText().trim()"
+                    [class.bub--stream]="!!deltaText().trim()"
+                    aria-hidden="true"
+                  >
+                    @if (deltaText().trim()) {
+                      {{ deltaText() }}
+                    } @else {
+                      <span></span><span></span><span></span> designing…
+                    }
                   </div>
                 </div>
               }
@@ -311,6 +320,10 @@ import { SubShell } from './sub-shell';
       border: 1px solid var(--hairline);
       border-top-left-radius: 4px;
       color: var(--fg1);
+    }
+    .bub--stream {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     .bub--me {
       background: var(--accent);
@@ -614,12 +627,15 @@ export class Prototype implements OnInit {
         s.status !== 'skipped' && (!s.html || s.thinking || this.hasPending(s)),
       needsStreamAfterEvent: (s) => this.hasPending(s), // a queued edit is still owed
       onState: () => this.scrollToEnd(),
+      onDelta: () => this.scrollToEnd(),
     },
   );
   /** the prototype state — the stream's writable state signal */
   st = this.gen.state;
   /** a revision is streaming in over SSE */
   streaming = this.gen.streaming;
+  /** temporary assistant text received before the terminal state lands */
+  deltaText = this.gen.deltaText;
   msg = signal('');
   annotations = signal<PrototypeAnnotation[]>([]); // point-to-edit selection (multi)
   inspecting = signal(false);

@@ -265,6 +265,21 @@ def test_background_prototype_does_not_clobber_restore_during_call(client, monke
         assert r.prototype_turns[1].mode == "pending"
         assert r.prototype_turns[2].note == "Reverted to an earlier version."
 
+    class RetryAgainstRestoredHtmlBrain:
+        def generate_prototype(self, r, *, instruction, annotation, current_html):
+            assert current_html == "<html>restored</html>"
+            return {"mode": "rewrite", "note": "fresh", "html": "<html>fresh</html>"}
+
+    monkeypatch.setattr(
+        "app.prototype_gen.get_brain", lambda: RetryAgainstRestoredHtmlBrain()
+    )
+    prototype_gen._generate(rid)
+
+    with SessionLocal() as db:
+        r = db.get(Request, rid)
+        assert r.prototype_html == "<html>fresh</html>"
+        assert r.prototype_turns[1].mode == "rewrite"
+
 
 def test_sync_prototype_calls_brain_with_detached_loaded_request(client, monkeypatch):
     class SessionProbeBrain:

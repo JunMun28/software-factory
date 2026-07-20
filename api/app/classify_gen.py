@@ -2,9 +2,8 @@
 
 The model call can take up to 120s on a cold CLI. Instead of blocking the HTTP
 handler on it, we persist a pending result and classify on a background thread;
-the client polls until the durable result lands. Single-worker uvicorn (see
-main.py), so an in-process registry + lock is enough — nothing here survives a
-restart, and a dropped generation is simply re-kicked on the next poll.
+the client polls until the durable result lands. brain_calls is the durable dedup
+source; the process-local registry remains only a fast path.
 
 No database Session remains open during the slow model call. The worker snapshots
 the source description, closes its Session, calls the brain, then reopens a fresh
@@ -16,13 +15,14 @@ import threading
 import uuid
 
 from . import interview
+from .brain_calls import active_call, claim_call, finish_call, model_for_kind
 from .db import SessionLocal
 from .models import Request
 
 log = logging.getLogger("factory.classify")
 
 _lock = threading.Lock()
-_inflight: set[int] = set()  # request ids with a classification running
+_inflight: set[int] = set()  # process-local fast path; brain_calls is authoritative
 
 
 def acquire(rid: int) -> bool:
@@ -99,15 +99,28 @@ def ensure_classification(rid: int) -> bool:
 
 def _generate(rid: int, source_description: str, generation_token: str) -> None:
     """Run the slow brain call with no open Session, then persist if still current."""
+    call_id: int | None = None
+    brain_succeeded = False
+    succeeded = False
     try:
+        call_id = claim_call(
+            request_id=rid,
+            kind="classify",
+            dedup_key=f"classify:{rid}:{generation_token}",
+            model=model_for_kind("classify"),
+        )
+        if call_id is None:
+            return
         try:
-            classification = interview.get_brain().classify(source_description)
+            with active_call(call_id):
+                classification = interview.get_brain().classify(source_description)
             result = {
                 "status": "succeeded",
                 "source_description": source_description,
                 "type": classification["type"],
                 "confidence": classification["confidence"],
             }
+            brain_succeeded = True
         except Exception:
             log.exception("classification failed for request %s", rid)
             result = {
@@ -125,10 +138,17 @@ def _generate(rid: int, source_description: str, generation_token: str) -> None:
                     or current.get("source_description") != source_description
                     or current.get("generation_token") != generation_token
                 ):
+                    succeeded = brain_succeeded
                     return
                 request.classification_result = result
                 db.commit()
+                succeeded = brain_succeeded
     except Exception:
         log.exception("could not persist classification for request %s", rid)
     finally:
+        if call_id is not None:
+            try:
+                finish_call(call_id, success=succeeded)
+            except Exception:
+                log.exception("could not finish classification claim for request %s", rid)
         release(rid)

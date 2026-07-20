@@ -2,10 +2,9 @@
 
 Mirrors interview_gen / summary_gen: a prototype revision is a slow model call (a full
 hi-fi HTML document), so it runs on a background thread and the API reports `thinking`
-until the new revision lands. Single-worker uvicorn → an in-process lock is enough;
-nothing here survives a restart and a dropped generation is re-kicked on the next
-read/stream. SYNC (shared with interview_gen) resolves inline for tests and the smoke
-lifecycle.
+until the new revision lands. brain_calls is the durable dedup source; the
+process-local lock is only a fast path. SYNC (shared with interview_gen) resolves
+inline for tests and the smoke lifecycle.
 
 A "pending" PrototypeTurn (mode='pending', html=None) marks work owed: the auto first
 draft (instruction=None) or a user edit instruction. Resolving it calls the brain and
@@ -17,6 +16,15 @@ import threading
 
 from sqlalchemy import func, select
 
+from . import brain_streams
+from .agent_brain import PROTO_MARKER
+from .brain_calls import (
+    active_call,
+    claim_call,
+    finish_call,
+    model_for_kind,
+    prompt_fingerprint,
+)
 from .db import SessionLocal
 from .interview import get_brain
 from .interview_gen import SYNC
@@ -25,7 +33,7 @@ from .models import PrototypeTurn, Request
 log = logging.getLogger("factory.prototype")
 
 _lock = threading.Lock()
-_inflight: set[int] = set()  # request ids with a revision generation running
+_inflight: set[int] = set()  # process-local fast path; brain_calls is authoritative
 _seed_lock = threading.Lock()  # serializes the first-draft seed so it's created exactly once
 
 
@@ -122,23 +130,11 @@ def _resolve_sync(db, r: Request) -> None:
     if acquire(r.id):
         try:
             db.refresh(r)
-            _ = r.app, r.turns, r.attachments
             turn = pending_turn(r)
             if turn is not None:
                 rid = r.id
-                turn_id = turn.id
-                instruction = turn.instruction
-                annotation = turn.annotation
-                current_html = r.prototype_html
-                prototype_status = r.prototype_status
                 db.close()
-                rev = get_brain().generate_prototype(
-                    r,
-                    instruction=instruction,
-                    annotation=annotation,
-                    current_html=current_html,
-                )
-                _persist_revision(rid, turn_id, prototype_status, current_html, rev)
+                resolve_one(rid)
         finally:
             release(r.id)
 
@@ -187,7 +183,10 @@ def _kick(rid: int) -> bool:
             release(rid)
 
 
-def _generate(rid: int) -> None:
+def resolve_one(rid: int, *, on_delta=None) -> None:
+    """Resolve one exact pending prototype turn under a durable DB claim."""
+    call_id: int | None = None
+    succeeded = False
     try:
         with SessionLocal() as db:
             r = db.get(Request, rid)
@@ -195,7 +194,7 @@ def _generate(rid: int) -> None:
                 return
             # The detached brain input must carry every relationship used to build
             # prompts or attachment workdirs after this short snapshot session closes.
-            _ = r.app, r.turns, r.attachments
+            _ = r.app, r.turns, r.attachments, r.prototype_turns
             turn = pending_turn(r)
             if turn is None:
                 return
@@ -204,14 +203,49 @@ def _generate(rid: int) -> None:
             annotation = turn.annotation
             current_html = r.prototype_html
             prototype_status = r.prototype_status
-        rev = get_brain().generate_prototype(
-            r,
-            instruction=instruction,
-            annotation=annotation,
-            current_html=current_html,
+        call_id = claim_call(
+            request_id=rid,
+            kind="prototype",
+            dedup_key=(
+                f"prototype:{rid}:{turn_id}:"
+                f"{prompt_fingerprint(r, extra={'instruction': instruction, 'annotation': annotation, 'current_html': current_html, 'prototype_status': prototype_status})}"
+            ),
+            model=model_for_kind("prototype"),
         )
+        if call_id is None:
+            return
+        relay = None
+        callback = on_delta
+        if callback is None:
+            relay = brain_streams.prose_relay("prototype", rid, PROTO_MARKER)
+            callback = relay.feed
+        with active_call(call_id):
+            try:
+                rev = brain_streams.invoke_with_delta(
+                    get_brain().generate_prototype,
+                    r,
+                    instruction=instruction,
+                    annotation=annotation,
+                    current_html=current_html,
+                    on_delta=callback,
+                )
+            finally:
+                if relay is not None:
+                    relay.finish()
         _persist_revision(rid, turn_id, prototype_status, current_html, rev)
+        succeeded = True
     except Exception:
         log.exception("prototype generation failed for request %s", rid)
+    finally:
+        if call_id is not None:
+            try:
+                finish_call(call_id, success=succeeded)
+            except Exception:
+                log.exception("could not finish prototype claim for request %s", rid)
+
+
+def _generate(rid: int) -> None:
+    try:
+        resolve_one(rid)
     finally:
         release(rid)

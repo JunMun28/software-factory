@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects import mssql
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -236,6 +237,38 @@ class Request(Base):
         if self.app:
             return self.app.name
         return self.new_app_name or "No app yet"
+
+
+class BrainCall(Base):
+    """One intake-brain generation claim and its provider usage telemetry."""
+
+    __tablename__ = "brain_calls"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requests.id"), nullable=True, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(32))
+    dedup_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    model: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(16))
+    tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ttft_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(TZDateTime(), nullable=True)
+
+    __table_args__ = (
+        # SQL Server otherwise allows only one NULL in a regular UNIQUE index.
+        Index(
+            "uq_brain_calls_dedup_key",
+            "dedup_key",
+            unique=True,
+            sqlite_where=text("dedup_key IS NOT NULL"),
+            mssql_where=text("dedup_key IS NOT NULL"),
+        ),
+    )
 
 
 class InterviewTurn(Base):

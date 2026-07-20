@@ -9,10 +9,10 @@ import pytest
 from sqlalchemy import event, select
 from sqlalchemy.orm import object_session
 
-from app import interview_gen
+from app import brain_streams, interview_gen
 from app.db import SessionLocal, engine
 from app.interview import DONE_SENTINEL, Question
-from app.models import App, Attachment, InterviewTurn, Request
+from app.models import App, Attachment, BrainCall, InterviewTurn, Request
 from app.routers import requests as requests_router
 
 
@@ -59,6 +59,36 @@ def test_generate_writes_pending_question(client, monkeypatch):
     with SessionLocal() as db:
         pq = db.get(Request, rid).pending_question
         assert pq["question"] == "How often?" and pq["options"] == [{"t": "a", "d": "b"}]
+
+
+def test_generate_relays_only_question_prose_and_finishes_durable_claim(client, monkeypatch):
+    class StreamingBrain:
+        def next_question(self, r, on_delta=None):
+            assert on_delta is not None
+            on_delta("Which report?\n===ME")
+            on_delta('TA===\n{"sub":null}')
+            return Question(question="Which report?")
+
+    monkeypatch.setattr("app.interview_gen.get_brain", lambda: StreamingBrain())
+    with SessionLocal() as db:
+        rid = _make(db, answered=0).id
+    events: list[dict] = []
+    unsubscribe = brain_streams.subscribe("interview", rid, events.append)
+    try:
+        interview_gen._generate(rid, 0)
+    finally:
+        unsubscribe()
+
+    assert "".join(event["text"] for event in events) == "Which report?\n"
+    with SessionLocal() as db:
+        call = db.scalar(
+            select(BrainCall).where(
+                BrainCall.dedup_key.like(f"question:{rid}:0:%")
+            )
+        )
+        assert call is not None
+        assert call.status == "ok"
+        assert call.finished_at is not None
 
 
 def test_generate_calls_brain_with_detached_loaded_request(client, monkeypatch):

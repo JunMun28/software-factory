@@ -23,6 +23,18 @@ OPENCODE_MODEL = os.environ.get("FACTORY_OPENCODE_MODEL", "openai/gpt-5.5").stri
 # Full agent CLI subprocesses are memory-heavy; a small global bound prevents
 # concurrent calls from exhausting the API pod's memory and causing an in-pod OOM.
 CLI_CAP = int(os.environ.get("FACTORY_CLI_CAP", "3"))
+# Direct provider calls hold sockets rather than child processes, so they get a
+# separate, larger sanity bound. The CLI fallback remains capped above.
+API_BRAIN_CAP = int(os.environ.get("FACTORY_API_BRAIN_CAP", "20"))
+# Stage-1 provider model tiers. FACTORY_BRAIN remains a per-call mode in
+# agent_exec.py; these stable defaults are read once like the other model knobs.
+CLASSIFY_MODEL = os.environ.get("FACTORY_CLASSIFY_MODEL", "claude-haiku-4-5").strip()
+QUESTION_MODEL = os.environ.get("FACTORY_QUESTION_MODEL", "claude-sonnet-5").strip()
+SUMMARY_MODEL = os.environ.get("FACTORY_SUMMARY_MODEL", "claude-sonnet-5").strip()
+API_PROTOTYPE_MODEL = os.environ.get(
+    "FACTORY_API_PROTOTYPE_MODEL", "claude-sonnet-5"
+).strip()
+SPEC_MODEL = os.environ.get("FACTORY_SPEC_MODEL", "claude-opus-4-8").strip()
 # Read-only vs write is a HARD guarantee, enforced by a factory-owned config pointed at
 # via OPENCODE_CONFIG (never the operator's global agents). deny = fail-closed sandbox.
 OPENCODE_CONFIG_DIR = API_DIR / "app" / "opencode"

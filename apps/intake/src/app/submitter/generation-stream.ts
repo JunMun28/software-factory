@@ -16,6 +16,8 @@ export interface GenerationStreamOptions<T> {
   /** Side effects after each adopted state, with where it came from — components hang
    *  their scroll-to-end / busy-flag bookkeeping here instead of owning the loop. */
   onState?: (s: T, source: 'load' | 'sse' | 'poll') => void;
+  /** Side effects after each SSE text delta is appended. */
+  onDelta?: () => void;
   /** The initial read errored. Default: silent (a revisit retries). */
   onLoadError?: () => void;
   /** A poll tick errored. Default: silent — the loop stops, the read stays retryable. */
@@ -47,6 +49,9 @@ export class GenerationStream<T> {
   private _streaming = signal(false);
   /** An SSE connection is open, driving the generation. */
   readonly streaming: Signal<boolean> = this._streaming.asReadonly();
+  private _deltaText = signal('');
+  /** Temporary text received while the current SSE connection is open. */
+  readonly deltaText: Signal<string> = this._deltaText.asReadonly();
 
   private destroyed = false;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -109,6 +114,10 @@ export class GenerationStream<T> {
     this._streaming.set(true);
     this.closeStreamFn = openEventSource<T>(
       this.streamUrlFn!(),
+      (text) => {
+        this._deltaText.update((current) => current + text);
+        this.opts.onDelta?.();
+      },
       (s) => {
         this.closeStream();
         if ((this.opts.isValidEvent ?? (() => true))(s)) {
@@ -132,6 +141,7 @@ export class GenerationStream<T> {
       this.closeStreamFn = null;
     }
     this._streaming.set(false);
+    this._deltaText.set('');
   }
 
   /** SSE fallback / poll-only loop: read WITH the generation kick, re-poll every
@@ -173,10 +183,29 @@ export class GenerationStream<T> {
  *  invokes it in closeStream() so the `streaming` signal stays in sync. */
 function openEventSource<T>(
   url: string,
+  onDelta: (text: string) => void,
   onState: (data: T) => void,
   onError: () => void,
 ): () => void {
   const es = new EventSource(url);
+  es.addEventListener('delta', (e) => {
+    let data: unknown;
+    try {
+      data = JSON.parse((e as MessageEvent).data) as unknown;
+    } catch {
+      onError();
+      return;
+    }
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      typeof (data as { text?: unknown }).text !== 'string'
+    ) {
+      onError();
+      return;
+    }
+    onDelta((data as { text: string }).text);
+  });
   es.addEventListener('state', (e) => {
     let data: T;
     try {

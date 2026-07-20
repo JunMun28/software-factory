@@ -8,6 +8,31 @@ import { Api, InterviewState, Theme } from '@sf/shared';
 import { Session } from '../core/session.service';
 import { Interview } from './interview';
 
+class FakeES {
+  static instances: FakeES[] = [];
+  onerror: (() => void) | null = null;
+  closed = false;
+  private handlers = new Map<string, (event: MessageEvent) => void>();
+
+  constructor(public url: string) {
+    FakeES.instances.push(this);
+  }
+
+  addEventListener(type: string, handler: (event: MessageEvent) => void) {
+    this.handlers.set(type, handler);
+  }
+
+  close() {
+    this.closed = true;
+  }
+
+  emit(type: string, data: string) {
+    this.handlers.get(type)?.({ data } as unknown as MessageEvent);
+  }
+}
+
+const stream = () => FakeES.instances[FakeES.instances.length - 1];
+
 /** A minimal InterviewState mid-interview, with a pending escalation proposal (ADR 0023). */
 function stateWithEscalation(): InterviewState {
   return {
@@ -37,6 +62,8 @@ describe('Interview escalation (consent-gated type change)', () => {
   let api: any;
 
   beforeEach(async () => {
+    FakeES.instances = [];
+    vi.stubGlobal('EventSource', FakeES as unknown as typeof EventSource);
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn() }));
     // jsdom doesn't implement Element.scrollTo; the thread's scroll-to-end timer calls it.
     Element.prototype.scrollTo = vi.fn();
@@ -127,6 +154,53 @@ describe('Interview escalation (consent-gated type change)', () => {
   it('wires the stream: the initial read does not kick generation (gen=false)', () => {
     render();
     expect(api.interview).toHaveBeenCalledWith(71, false);
+  });
+
+  it('shows streamed delta text in the existing thinking bubble until terminal state arrives', () => {
+    const thinking = {
+      ...stateWithEscalation(),
+      thinking: true,
+      escalation: null,
+    };
+    api.interview.mockReturnValue(of(thinking));
+    const fixture = TestBed.createComponent(Interview);
+    fixture.detectChanges();
+    fixture.componentInstance.phase.set('full');
+    fixture.detectChanges();
+    const initialThinking = (
+      fixture.nativeElement.querySelector('.iv__thread .typing') as HTMLElement
+    ).textContent?.trim();
+
+    stream().emit('delta', JSON.stringify({ text: '  \n' }));
+    fixture.detectChanges();
+    expect(
+      (
+        fixture.nativeElement.querySelector('.iv__thread .typing') as HTMLElement
+      ).textContent?.trim(),
+    ).toBe(initialThinking);
+
+    stream().emit('delta', JSON.stringify({ text: 'Which export\n\n' }));
+    stream().emit('delta', JSON.stringify({ text: 'formats  matter?' }));
+    fixture.detectChanges();
+
+    const thread = fixture.nativeElement.querySelector('.iv__thread') as HTMLElement;
+    const streamed = thread.querySelector('.bub--stream') as HTMLElement;
+    expect(streamed.textContent).toContain('Which export\n\nformats  matter?');
+    expect(getComputedStyle(streamed).whiteSpace).toBe('pre-wrap');
+    expect(thread.textContent).not.toContain('thinking…');
+
+    stream().emit(
+      'state',
+      JSON.stringify({
+        ...thinking,
+        thinking: false,
+        question: 'Which formats must the finished export support?',
+      }),
+    );
+    fixture.detectChanges();
+
+    expect(thread.textContent).not.toContain('Which export\n\nformats  matter?');
+    expect(thread.textContent).toContain('Which formats must the finished export support?');
   });
 
   it('re-fetches canonical interview state when an answer loses with 409', () => {

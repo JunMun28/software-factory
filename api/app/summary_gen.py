@@ -2,22 +2,28 @@
 
 Mirrors interview_gen: the summary model call is slow, so it runs on a background
 thread and is cached on the request (Request.summary), keyed on the answered-turn
-count so it refreshes whenever the interview grows ("Add more detail"). Single-worker
-uvicorn (main.py) → an in-process lock is enough; nothing here survives a restart and
-a dropped generation is re-kicked on the next read. SYNC mode (shared with
-interview_gen) generates inline for tests and the smoke lifecycle.
+count so it refreshes whenever the interview grows ("Add more detail"). brain_calls
+is the durable dedup source; the process-local lock is only a fast path. SYNC mode
+(shared with interview_gen) generates inline for tests and the smoke lifecycle.
 """
 import logging
 import threading
 
+from .brain_calls import (
+    active_call,
+    claim_call,
+    finish_call,
+    model_for_kind,
+    prompt_fingerprint,
+)
 from .db import SessionLocal
-from .interview import answered_count, get_brain
+from .interview import ScriptedBrain, answered_count, get_brain
 from .models import Request
 
 log = logging.getLogger("factory.interview")
 
 _lock = threading.Lock()
-_inflight: set[int] = set()  # request ids with a summary generation running
+_inflight: set[int] = set()  # process-local fast path; brain_calls is authoritative
 
 
 def _fresh(r: Request) -> bool:
@@ -38,22 +44,72 @@ def _write(db, r: Request, expected_turns: int) -> dict:
     rid = r.id
     _ = r.app, r.turns, r.attachments
     db.close()
-    data = get_brain().summarize(r)
-    summary = {**data, "at_turns": expected_turns}
-    with SessionLocal() as write_db:
-        current = write_db.get(Request, rid)
-        if current is None:
+    call_id = claim_call(
+        request_id=rid,
+        kind="summary",
+        dedup_key=f"summary:{rid}:{expected_turns}:{prompt_fingerprint(r)}",
+        model=model_for_kind("summary"),
+    )
+    if call_id is None:
+        return ScriptedBrain().summarize(r)
+    succeeded = False
+    try:
+        with active_call(call_id):
+            data = get_brain().summarize(r)
+        summary = {**data, "at_turns": expected_turns}
+        with SessionLocal() as write_db:
+            current = write_db.get(Request, rid)
+            if current is None:
+                succeeded = True
+                return data
+            if answered_count(current) != expected_turns:
+                _ = current.app, current.turns, current.attachments
+            else:
+                # reassign (not mutate) so JSON persists
+                current.summary = summary
+                write_db.commit()
+                succeeded = True
+                return summary
+        # The first result is stale. Generate once against the newer snapshot and
+        # persist it if that snapshot remains current; otherwise the failed claim
+        # stays reclaimable by the next read.
+        finish_call(call_id, success=True)
+        call_id = None
+        current_turns = answered_count(current)
+        current_fingerprint = prompt_fingerprint(current)
+        retry_id = claim_call(
+            request_id=rid,
+            kind="summary",
+            dedup_key=f"summary:{rid}:{current_turns}:{current_fingerprint}",
+            model=model_for_kind("summary"),
+        )
+        if retry_id is None:
+            return ScriptedBrain().summarize(current)
+        retry_succeeded = False
+        try:
+            with active_call(retry_id):
+                data = get_brain().summarize(current)
+            summary = {**data, "at_turns": current_turns}
+            with SessionLocal() as retry_db:
+                latest = retry_db.get(Request, rid)
+                if latest is None:
+                    retry_succeeded = True
+                    return data
+                _ = latest.app, latest.turns, latest.attachments
+                if (
+                    answered_count(latest) == current_turns
+                    and prompt_fingerprint(latest) == current_fingerprint
+                ):
+                    latest.summary = summary
+                    retry_db.commit()
+                    retry_succeeded = True
+                    return summary
             return data
-        if answered_count(current) != expected_turns:
-            _ = current.app, current.turns, current.attachments
-        else:
-            # reassign (not mutate) so JSON persists
-            current.summary = summary
-            write_db.commit()
-            return summary
-    # Match the old sync behavior: return a fresh response for the newer interview,
-    # but leave it uncached so the normal next read can generate and persist it.
-    return get_brain().summarize(current)
+        finally:
+            finish_call(retry_id, success=retry_succeeded)
+    finally:
+        if call_id is not None:
+            finish_call(call_id, success=succeeded)
 
 
 def generate_sync(r: Request, db) -> dict:
@@ -85,6 +141,8 @@ def ensure_summary(rid: int) -> bool:
 
 
 def _generate(rid: int, expected_turns: int) -> None:
+    call_id: int | None = None
+    succeeded = False
     try:
         with SessionLocal() as db:
             r = db.get(Request, rid)
@@ -93,15 +151,31 @@ def _generate(rid: int, expected_turns: int) -> None:
             # The detached brain input must carry every relationship used to build
             # prompts or attachment workdirs after this short snapshot session closes.
             _ = r.app, r.turns, r.attachments
-        data = get_brain().summarize(r)
+        call_id = claim_call(
+            request_id=rid,
+            kind="summary",
+            dedup_key=f"summary:{rid}:{expected_turns}:{prompt_fingerprint(r)}",
+            model=model_for_kind("summary"),
+        )
+        if call_id is None:
+            return
+        with active_call(call_id):
+            data = get_brain().summarize(r)
         with SessionLocal() as db:
             r = db.get(Request, rid)
             if r is None or answered_count(r) != expected_turns:
+                succeeded = True
                 return
             r.summary = {**data, "at_turns": expected_turns}
             db.commit()
+        succeeded = True
     except Exception:
         log.exception("summary generation failed for request %s", rid)
     finally:
+        if call_id is not None:
+            try:
+                finish_call(call_id, success=succeeded)
+            except Exception:
+                log.exception("could not finish summary claim for request %s", rid)
         with _lock:
             _inflight.discard(rid)

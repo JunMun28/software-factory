@@ -146,7 +146,7 @@ def test_sync_summary_calls_brain_with_detached_loaded_request(client, monkeypat
         assert db.get(Request, rid).summary == result
 
 
-def test_sync_summary_drops_result_when_interview_advances_during_call(client, monkeypatch):
+def test_sync_summary_persists_retry_when_interview_advances_during_call(client, monkeypatch):
     calls = 0
     with SessionLocal() as db:
         r = Request(ref="REQ-SUM-SYNC-RACE", title="T", description="d", type="enh")
@@ -176,7 +176,29 @@ def test_sync_summary_drops_result_when_interview_advances_during_call(client, m
     assert calls == 2
     assert result["overview"] == "Two-answer summary"
     with SessionLocal() as db:
-        assert db.get(Request, rid).summary is None
+        assert db.get(Request, rid).summary == {
+            "overview": "Two-answer summary",
+            "sections": [],
+            "at_turns": 2,
+        }
+
+
+def test_summary_claim_changes_when_non_turn_prompt_input_changes(client):
+    rid = _create(client, type="enh")
+    first = client.get(f"/api/requests/{rid}/summary").json()
+    assert first["overview"] == "gamified guitar app"
+
+    client.patch(
+        f"/api/requests/{rid}",
+        json={"description": "A practice planner with weekly goals"},
+    )
+    second = client.get(f"/api/requests/{rid}/summary").json()
+
+    assert second["overview"] == "A practice planner with weekly goals"
+    with SessionLocal() as db:
+        stored = db.get(Request, rid).summary
+        assert stored is not None
+        assert stored["overview"] == "A practice planner with weekly goals"
 
 
 # ── endpoints (SYNC brain via the test client) ──

@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from .. import (
     acceptance,
+    brain_streams,
     classify_gen,
     interview_gen,
     prototype_gen,
@@ -32,9 +33,17 @@ from .. import (
     summary_gen,
     transitions,
 )
+from ..agent_brain import META_MARKER, PROTO_MARKER
 from ..agent_exec import runner_mode
 from ..api_helpers import get_request, next_ref, pipeline, prospective_repo, to_out
 from ..auth import current_identity
+from ..brain_calls import (
+    active_call,
+    claim_call,
+    finish_call,
+    model_for_kind,
+    prompt_fingerprint,
+)
 from ..db import SessionLocal, get_db
 from ..events import emit
 from ..interview import (
@@ -167,22 +176,7 @@ def _generate_pending_sync(db: Session, r: Request) -> Question | None:
     answered_at_start = answered_count(r)
     if answered_at_start >= question_ceiling(r) or r.pending_question == DONE_SENTINEL:
         return None
-    rid = r.id
-    type_at_start = r.type
-    ceiling_at_start = r.reopen_ceiling
-    _ = r.app, r.turns, r.attachments
-    # NOTE(plan-008): release SQLite's snapshot before the slow brain call, then
-    # let the guarded UPDATE elect the question if another writer moved first.
-    db.commit()
-    payload = pending_payload(get_brain().next_question(r))
-    _persist_generated_question(
-        db,
-        rid=rid,
-        payload=payload,
-        answered_at_start=answered_at_start,
-        type_at_start=type_at_start,
-        ceiling_at_start=ceiling_at_start,
-    )
+    _resolve_interview(db, r)
     db.refresh(r)
     return current_question(r)
 
@@ -243,12 +237,13 @@ def _resolved(r: Request) -> bool:
 
 
 def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLoop", *,
-                acquire, release, timeout: int, resolved, resolve, build_state) -> None:
+                acquire, release, timeout: int, resolved, resolve, build_state,
+                stream_kind: str | None = None, marker: str | None = None) -> None:
     """Shared SSE generation worker (interview + prototype). Claim the per-request slot — or, if a
-    generation is already in flight, poll up to `timeout+5`s for its result — then run the (batch)
-    generation on this background thread, persist, and push exactly one terminal `state` event so
-    the single uvicorn event loop is never frozen. Feature-specific behaviour is the injected
-    `resolved(r)` predicate, `resolve(db, r)` generator, and `build_state(db, r)` serializer."""
+    generation is already in flight, poll up to `timeout+5`s for its result — then run generation
+    on this background thread, relay prose deltas when the brain supports them, persist, and finish
+    with one authoritative `state` event. Feature-specific behaviour is the injected `resolved(r)`
+    predicate, `resolve(db, r)` generator, and `build_state(db, r)` serializer."""
     def push(ev: dict) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, ev)
 
@@ -283,7 +278,26 @@ def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLo
             if r is None:
                 push({"type": "state", "state": None})
                 return
-            resolve(db, r)  # generate + persist if not already resolved (idempotent)
+            relay = (
+                brain_streams.prose_relay(stream_kind, rid, marker)
+                if stream_kind is not None and marker is not None
+                else None
+            )
+            try:
+                brain_streams.invoke_with_delta(
+                    resolve,
+                    db,
+                    r,
+                    on_delta=relay.feed if relay is not None else None,
+                )
+            finally:
+                if relay is not None:
+                    relay.finish()
+            db.expire_all()
+            r = db.get(Request, rid)
+            if r is None:
+                push({"type": "state", "state": None})
+                return
             emit(db, r)
     except Exception:
         log.exception("SSE generation failed for request %s", rid)
@@ -292,22 +306,35 @@ def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLo
         release(rid)
 
 
-def _sse_response(rid: int, worker) -> StreamingResponse:
-    """Run `worker(rid, queue, loop)` on a daemon thread and stream its terminal state as one SSE
-    event. The batch GET stays the reconnect/replay source of truth."""
+def _sse_response(rid: int, worker, *, stream_kind: str) -> StreamingResponse:
+    """Run a worker thread, relay live deltas, then finish with authoritative state."""
     queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
+
+    def push(event: dict) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, event)
+
+    unsubscribe = brain_streams.subscribe(stream_kind, rid, push)
     threading.Thread(target=worker, args=(rid, queue, loop), daemon=True).start()
 
     async def gen():
-        ev = await queue.get()
-        yield _sse("state", ev.get("state") or {})
+        try:
+            while True:
+                ev = await queue.get()
+                event_type = ev.get("type")
+                if event_type == "delta":
+                    yield _sse("delta", {"text": ev.get("text") or ""})
+                    continue
+                yield _sse("state", ev.get("state") or {})
+                return
+        finally:
+            unsubscribe()
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-def _resolve_interview(db: Session, r: Request) -> None:
+def _resolve_interview(db: Session, r: Request, on_delta=None) -> None:
     """Generate + persist the next interview question (batch) unless it's already resolved."""
     if _resolved(r):
         return
@@ -319,22 +346,41 @@ def _resolve_interview(db: Session, r: Request) -> None:
     # the fully loaded brain snapshot while returning the pooled connection.
     _ = r.app, r.turns, r.attachments
     db.commit()
-    q = get_brain().next_question(r)
-    _persist_generated_question(
-        db,
-        rid=rid,
-        payload=pending_payload(q),
-        answered_at_start=answered_at_start,
-        type_at_start=type_at_start,
-        ceiling_at_start=ceiling_at_start,
+    call_id = claim_call(
+        request_id=rid,
+        kind="question",
+        dedup_key=f"question:{rid}:{answered_at_start}:{prompt_fingerprint(r)}",
+        model=model_for_kind("question"),
     )
-    db.refresh(r)
+    if call_id is None:
+        return
+    succeeded = False
+    try:
+        with active_call(call_id):
+            q = brain_streams.invoke_with_delta(
+                get_brain().next_question,
+                r,
+                on_delta=on_delta,
+            )
+        _persist_generated_question(
+            db,
+            rid=rid,
+            payload=pending_payload(q),
+            answered_at_start=answered_at_start,
+            type_at_start=type_at_start,
+            ceiling_at_start=ceiling_at_start,
+        )
+        succeeded = True
+        db.refresh(r)
+    finally:
+        finish_call(call_id, success=succeeded)
 
 
 def _interview_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLoop") -> None:
     _sse_worker(rid, queue, loop, acquire=interview_gen.acquire, release=interview_gen.release,
                 timeout=settings.INTERVIEW_TIMEOUT, resolved=_resolved, resolve=_resolve_interview,
-                build_state=lambda db, r: interview_state(db, r, generate=False))
+                build_state=lambda db, r: interview_state(db, r, generate=False),
+                stream_kind="interview", marker=META_MARKER)
 
 
 def _prototype_state(db: Session, r: Request, *, thinking: bool) -> PrototypeState:
@@ -347,18 +393,16 @@ def _prototype_state(db: Session, r: Request, *, thinking: bool) -> PrototypeSta
     )
 
 
-def _resolve_prototype(db: Session, r: Request) -> None:
+def _resolve_prototype(db: Session, r: Request, on_delta=None) -> None:
     """Seed the first draft if owed, then generate + apply the pending revision (batch)."""
     prototype_gen.seed_first_draft(db, r)
     turn = prototype_gen.pending_turn(r)
     if turn is None:  # nothing to generate — already resolved
         return
-    rev = get_brain().generate_prototype(
-        r, instruction=turn.instruction, annotation=turn.annotation, current_html=r.prototype_html)
-    db.refresh(r)
-    turn = prototype_gen.pending_turn(r)  # re-fetch after refresh; don't clobber a racing write
-    if turn is not None:
-        prototype_gen.apply_revision(db, r, turn, rev)
+    rid = r.id
+    db.commit()
+    db.close()
+    prototype_gen.resolve_one(rid, on_delta=on_delta)
 
 
 def _prototype_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLoop") -> None:
@@ -366,7 +410,8 @@ def _prototype_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractE
                 timeout=settings.PROTOTYPE_TIMEOUT,
                 resolved=lambda r: prototype_gen.pending_turn(r) is None,
                 resolve=_resolve_prototype,
-                build_state=lambda db, r: _prototype_state(db, r, thinking=False))
+                build_state=lambda db, r: _prototype_state(db, r, thinking=False),
+                stream_kind="prototype", marker=PROTO_MARKER)
 
 
 # ---------- requests CRUD ----------
@@ -521,7 +566,7 @@ def get_interview(rid: int, gen: bool = True, db: Session = Depends(get_db)):
 async def stream_interview(rid: int):
     """SSE: drives the next-question generation on a worker thread, then returns the terminal
     InterviewState. Frees the HTTP handler from the blocking model call."""
-    return _sse_response(rid, _interview_worker)
+    return _sse_response(rid, _interview_worker, stream_kind="interview")
 
 
 @router.post("/api/requests/{rid}/interview", response_model=InterviewState)
@@ -676,7 +721,7 @@ def get_prototype(rid: int, gen: bool = True, db: Session = Depends(get_db)):
 @router.get("/api/requests/{rid}/prototype/stream")
 async def stream_prototype(rid: int):
     """SSE: drives the pending prototype revision on a worker thread, then returns the new state."""
-    return _sse_response(rid, _prototype_worker)
+    return _sse_response(rid, _prototype_worker, stream_kind="prototype")
 
 
 @router.post("/api/requests/{rid}/prototype", response_model=PrototypeState)
