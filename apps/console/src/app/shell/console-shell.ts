@@ -56,14 +56,19 @@ import { Session } from '../core/session.service';
         >
           ⌘K
         </button>
+        <!-- Who you are, in words. Approving a gate is irreversible and gets
+             attributed by name ("Already approved by Kim Park"), and two of the
+             seeded operators read "Jun Mun Wong" and "Jun Wong" — a 30px
+             monogram is not enough to tell them apart before you act. -->
         @if (session.operator(); as operator) {
           <a
             class="operator"
             routerLink="/studio"
-            [title]="operator.name"
-            [style.background]="operator.hue"
-            >{{ operator.initials }}</a
+            [attr.aria-label]="'Signed in as ' + operator.name + '. Open your profile.'"
           >
+            <span class="operator-monogram" aria-hidden="true">{{ operator.initials }}</span>
+            <span class="operator-name">{{ operator.name }}</span>
+          </a>
         }
       </header>
       <main>
@@ -236,18 +241,46 @@ import { Session } from '../core/session.service';
       height: 30px;
       font-size: 15px;
     }
+    /* An identity chip, not a coloured bead. The per-operator hue is gone from
+       the bar on purpose: those hues run amber (#B0632E) and violet (#7C5CFC),
+       which are exactly the colours that mean "a gate waits on you" and "brand"
+       everywhere else in this console. The name identifies; colour carries
+       signal. The Studio picker keeps the hues — it has no signal context. */
     .operator {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 11px 3px 3px;
+      color: var(--fg2);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-pill);
+      font-size: 12.5px;
+      font-weight: 500;
+      text-decoration: none;
+      transition:
+        background var(--dur) var(--ease),
+        border-color var(--dur) var(--ease),
+        color var(--dur) var(--ease);
+    }
+    .operator:hover {
+      color: var(--fg1);
+      background: var(--surface-2);
+      border-color: var(--border-strong);
+    }
+    .operator-monogram {
       display: grid;
       place-items: center;
-      width: 30px;
-      height: 30px;
-      color: var(--accent-tx);
-      background: var(--accent-tint);
-      border: 1px solid var(--accent-tint-bd);
+      width: 24px;
+      height: 24px;
+      flex: none;
+      color: var(--fg2);
+      background: var(--surface-2);
       border-radius: 50%;
-      font-size: 11px;
-      font-weight: 700;
-      text-decoration: none;
+      font: 600 9.5px var(--mono);
+    }
+    .operator-name {
+      white-space: nowrap;
     }
     .backdrop {
       position: fixed;
@@ -323,6 +356,15 @@ import { Session } from '../core/session.service';
       }
       .theme {
         display: none;
+      }
+      /* narrow: the monogram carries it, same as the brand name dropping out.
+         The aria-label still speaks the full name, so nothing is lost to a
+         screen reader — only to the pixels. */
+      .operator-name {
+        display: none;
+      }
+      .operator {
+        padding: 3px;
       }
     }
     @media (max-width: 480px) {

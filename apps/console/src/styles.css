@@ -49,7 +49,7 @@
   --fg1: #1a1a1f;
   --fg2: #3a3a42;
   --muted: #6c6c78;
-  --faint: #75757f; /* faint holds 4.5:1 AA on the canvas */
+  --faint: #71717b; /* 4.60:1 on the canvas — the old #75757f measured 4.34 */
   --border: #e6e6ea;
   --border-strong: #d7d7de;
   --hairline: #eeeef2;
@@ -73,7 +73,7 @@
   --accent-tint-bd: #eea6fc;
 
   /* status — amber=gate, red=needs-human, green=success only */
-  --amber: #c77800;
+  --amber: #bd7200; /* 3.59:1 on the canvas — #c77800 measured 2.92 as a bar fill */
   --amber-bg: #fbf0df;
   --amber-tx: #6e4500;
   --amber-line: #e6a53d;
@@ -86,6 +86,18 @@
   --green-tx: #1f5a3a;
   --info: #2a6fb0;
   --info-bg: #e6f0f8;
+
+  /* ── Overview state fills ──
+     Neutrals carry pipeline position; colour is spent only on signal (amber =
+     your gate, red = stuck, accent = human-owned). Green stays reserved for
+     shipped, so an agent simply working never competes with a gate for the eye.
+     Shape does the heavy lifting: a reached stage is a 6px bar, a stage still
+     ahead is a 2px hairline, and a stage held by someone else is hollow — so
+     the reading survives greyscale and colour blindness. */
+  --track: #edecf1; /* stages still ahead */
+  --fill-done: #cdccd7; /* cleared stages — present, silent */
+  --fill-live: #70707d; /* an agent is working (motion says "live") */
+  --fill-wait: #cdccd7; /* held by the requester — drawn hollow */
 
   /* type */
   --display: 'Micron Basis', 'Space Grotesk', system-ui, sans-serif;
@@ -150,7 +162,7 @@
   --fg1: #f0f0f3;
   --fg2: #c7c7cb;
   --muted: #959599;
-  --faint: #7b7b7f; /* ~4.5:1 on --bg */
+  --faint: #818187; /* 4.53:1 on --surface — #7b7b7f held on --bg but not on cards */
   --border: #323237;
   --border-strong: #48484f;
   --hairline: #1e1e21;
@@ -188,6 +200,12 @@
   --green-tx: #84d3a4;
   --info: #4a90d0;
   --info-bg: #142838;
+
+  /* Overview state fills — same roles, flipped for dark */
+  --track: #212127;
+  --fill-done: #3c3c45;
+  --fill-live: #8d8d99;
+  --fill-wait: #3c3c45;
 
   /* elevation — deeper on dark */
   --shadow-pop: 0 6px 22px -8px rgba(0, 0, 0, 0.55), 0 2px 6px -3px rgba(0, 0, 0, 0.45);

@@ -43,8 +43,11 @@ export function displayStageIndex(stage: FactoryRequest['stage']): number {
   return DISPLAY_INDEX[stage] ?? 0;
 }
 
-/** Which of the three Overview bodies is showing; mirrored to the URL query. */
-export type OverviewView = 'stack' | 'line' | 'progress';
+/** Which of the three Overview bodies is showing; mirrored to the URL query.
+ *  Named for what the operator sees, not for the factory metaphor: "line" is
+ *  already the whole pipeline elsewhere in the console ("the factory line is
+ *  stalled", "24 on the line"), so it cannot also name one view of it. */
+export type OverviewView = 'list' | 'board' | 'progress';
 
 export type SegState = 'done' | 'current' | 'todo';
 /** How a request reads right now — drives its colour in every view. */
@@ -65,7 +68,7 @@ export interface OverviewRow {
   queueKind: QueueKind | null;
   /** right-hand status text, in the admin's words */
   state: string;
-  /** live activity line for the Line view — real run/last_event only, never faked */
+  /** live activity line for the Board view — real run/last_event only, never faked */
   activity: string | null;
   /** compact time in current stage, e.g. "4h" — null for shipped rows */
   age: string | null;
@@ -250,6 +253,26 @@ export function laneRows(rows: OverviewRow[]): OverviewRow[][] {
     );
   }
   return lanes;
+}
+
+/* ── Status language ──
+   One vocabulary for all three views, so a request reads the same wherever the
+   admin meets it. Neutral is the default; colour is spent only where a human is
+   the missing piece (amber gate, red stall, accent hand-off) or where something
+   actually shipped (green). An agent merely working stays neutral on purpose —
+   otherwise it competes with the gates for the eye. */
+const STATE_CLASS: Partial<Record<RowKind, string>> = {
+  gate: 'gate',
+  stuck: 'stuck',
+  owned: 'owned',
+  active: 'run',
+  done: 'shipped',
+};
+
+/** The state-dot class for a row; '' means the neutral hollow default
+ *  (`wait` and `draft` — held, but not by us). */
+export function stateClass(row: OverviewRow): string {
+  return STATE_CLASS[row.kind] ?? '';
 }
 
 export type ProgSegClass = 'done' | 'work' | 'gate' | 'wait' | 'stuck' | 'owned' | 'future';

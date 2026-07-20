@@ -10,7 +10,7 @@ import { Session } from '../core/session.service';
 import { Store } from '../core/store.service';
 import { FloorContent } from './floor-content';
 import { FloorPage } from './floor-page';
-import { LineView } from './line-view';
+import { BoardView } from './board-view';
 import { RowActions } from './row-actions';
 import {
   DISPLAY_STAGES,
@@ -22,6 +22,7 @@ import {
   progressGroups,
   progressSegs,
   rowActions,
+  stateClass,
 } from './floor-view';
 
 const simulatedHealth = () =>
@@ -275,6 +276,31 @@ describe('Overview model', () => {
   });
 });
 
+describe('Status language', () => {
+  it('spends colour only where a human is the missing piece, or on a ship', () => {
+    const cls = (over: Partial<FactoryRequest>, r: RunState | null = null) =>
+      stateClass(deriveRow(request(over), r));
+
+    expect(cls({ stage: 'review', gate: 'approve_merge' })).toBe('gate');
+    expect(cls({ needs_human: true, gate: null })).toBe('stuck');
+    expect(cls({ status: 'human_owned', gate: null })).toBe('owned');
+    expect(cls({ status: 'done', stage: 'done', gate: null })).toBe('shipped');
+  });
+
+  it('leaves an agent at work neutral so it never competes with a gate', () => {
+    const working = deriveRow(request({ stage: 'build', status: 'approved', gate: null }), run());
+    // 'run' is a graphite dot + pulse — deliberately not green, which is shipped-only
+    expect(stateClass(working)).toBe('run');
+  });
+
+  it('draws anything held by someone else as the neutral default', () => {
+    const preview = deriveRow(request({ stage: 'preview', gate: 'accept_preview' }), null);
+    const sentBack = deriveRow(request({ status: 'sent_back', gate: null }), null);
+    expect(stateClass(preview)).toBe('');
+    expect(stateClass(sentBack)).toBe('');
+  });
+});
+
 describe('Progress projection', () => {
   it('marks completed segments done, the current stage saturated, the rest future', () => {
     const gateRow = deriveRow(request({ stage: 'review', gate: 'approve_merge' }), null);
@@ -347,56 +373,83 @@ describe('Row action popover', () => {
 });
 
 describe('Overview shell rendering', () => {
-  it('renders the persistent health band with all six gauges', async () => {
+  it('reads the four context gauges as one quiet line, with no cards', async () => {
     const fixture = await renderContent(
       mission({ gates: [gate()], stats: stats({ shipped_7d: 3, cycle_median_h: 52 }) }),
       [request()],
     );
-    const band = fixture.nativeElement.querySelector('.band');
-    const text = band.textContent;
-    expect(text).toContain('On the line');
-    expect(text).toContain('Your decision');
-    expect(text).toContain('Need attention');
-    expect(text).toContain('Shipped / wk');
-    expect(text).toContain('Median cycle');
-    expect(text).toContain('Gate response');
+    const ctx = fixture.nativeElement.querySelector('.ctx');
+    const text = ctx.textContent;
+    expect(text).toContain('on the line');
+    expect(text).toContain('shipped this week');
+    expect(text).toContain('median cycle');
+    expect(text).toContain('gate response');
     expect(text).toContain('2d'); // 52h → 2d
-    expect(band.querySelectorAll('.card')).toHaveLength(6);
+    // context is background detail: nothing here is a card the eye must stop on
+    expect(fixture.nativeElement.querySelectorAll('.band')).toHaveLength(0);
   });
 
-  it('flags only the gauges a human can act on', async () => {
+  it('raises only the counts a human can act on, each jumping to List', async () => {
     const fixture = await renderContent(
       mission({ gates: [gate()], stats: stats({ shipped_7d: 3, cycle_median_h: 52 }) }),
       [request()],
     );
-    // one gate waiting, nothing stalled → the decision card is hot, none is bad
-    const cards = [...fixture.nativeElement.querySelectorAll('.band .card')] as HTMLElement[];
-    const hot = cards.filter((c) => c.classList.contains('hot'));
-    expect(hot).toHaveLength(1);
-    expect(hot[0].textContent).toContain('Your decision');
-    expect(cards.filter((c) => c.classList.contains('bad'))).toHaveLength(0);
+    // one gate waiting, nothing stalled → one hot chip, no bad chip
+    const needs = [...fixture.nativeElement.querySelectorAll('.need')] as HTMLElement[];
+    expect(needs).toHaveLength(1);
+    expect(needs[0].classList.contains('hot')).toBe(true);
+    expect(needs[0].textContent).toContain('waiting on your decision');
+
+    const views: string[] = [];
+    fixture.componentInstance.viewChange.subscribe((v) => views.push(v));
+    (needs[0] as HTMLButtonElement).click();
+    expect(views).toEqual(['list']);
   });
 
-  it('offers the Stack | Line | Progress switcher with Stack active by default', async () => {
+  it('flags a stalled request as the red needs-a-human chip', async () => {
+    const fixture = await renderContent(
+      mission({ stalled: [request({ id: 3, needs_human: true })] }),
+      [request({ id: 3, needs_human: true })],
+    );
+    const bad = [...fixture.nativeElement.querySelectorAll('.need.bad')] as HTMLElement[];
+    expect(bad).toHaveLength(1);
+    expect(bad[0].textContent).toContain('stuck, needs a human');
+  });
+
+  it('says so plainly when nothing is waiting on the operator', async () => {
+    const fixture = await renderContent(mission(), [
+      request({ stage: 'build', status: 'approved', gate: null }),
+    ]);
+    expect(fixture.nativeElement.querySelectorAll('.need')).toHaveLength(0);
+    expect(fixture.nativeElement.querySelector('.need-none')?.textContent).toContain(
+      'Nothing waiting on you',
+    );
+  });
+
+  it('offers the Progress | List | Board switcher with Progress active by default', async () => {
     const fixture = await renderContent(mission(), [request()]);
     const tabs = [...fixture.nativeElement.querySelectorAll('.seg button')] as HTMLButtonElement[];
-    expect(tabs.map((b) => b.textContent?.trim())).toEqual(['Stack', 'Line', 'Progress']);
-    expect(tabs.find((b) => b.classList.contains('on'))?.textContent?.trim()).toBe('Stack');
+    expect(tabs.map((b) => b.textContent?.trim())).toEqual(['Progress', 'List', 'Board']);
+    expect(tabs.find((b) => b.classList.contains('on'))?.textContent?.trim()).toBe('Progress');
   });
 
-  it('never fills the active segment with the pale purple tint', async () => {
+  it('marks the active tab with an ink underline, never the pale purple tint', async () => {
     const fixture = await renderContent(mission(), [request()]);
     const on = fixture.nativeElement.querySelector('.seg button.on') as HTMLElement;
-    const bg = getComputedStyle(on).backgroundColor;
-    // active = a neutral surface, not var(--a50)
-    expect(bg).not.toBe('rgb(251, 233, 254)');
+    const style = getComputedStyle(on);
+    // active = an underline on a bare tab, not a filled var(--a50) segment
+    expect(style.backgroundColor).not.toBe('rgb(251, 233, 254)');
+    expect(style.borderBottomWidth).toBe('2px');
   });
 
-  it('groups Stack rows under the five displayed stages', async () => {
+  it('groups List rows under the five displayed stages', async () => {
     const fixture = await renderContent(mission(), [
       request({ id: 1, ref: 'SF-1', stage: 'build', status: 'approved', gate: null }),
       request({ id: 2, ref: 'SF-2', stage: 'preview', gate: 'accept_preview' }),
     ]);
+    // ask for List explicitly — Progress is the default view
+    fixture.componentRef.setInput('view', 'list');
+    fixture.detectChanges();
     const names = [...fixture.nativeElement.querySelectorAll('.s-name')].map((el) =>
       (el as HTMLElement).textContent?.trim(),
     );
@@ -409,10 +462,10 @@ describe('Overview shell rendering', () => {
     const views: string[] = [];
     fixture.componentInstance.viewChange.subscribe((v) => views.push(v));
     const line = [...fixture.nativeElement.querySelectorAll('.seg button')].find(
-      (b) => (b as HTMLElement).textContent?.trim() === 'Line',
+      (b) => (b as HTMLElement).textContent?.trim() === 'Board',
     ) as HTMLButtonElement;
     line.click();
-    expect(views).toEqual(['line']);
+    expect(views).toEqual(['board']);
   });
 
   it('surfaces a conflict outcome as a banner', async () => {
@@ -432,13 +485,13 @@ describe('Overview shell rendering', () => {
   });
 });
 
-describe('Line view interaction', () => {
+describe('Board view interaction', () => {
   it('names each lane with its agent and opens the action popover on a chip', async () => {
     await TestBed.configureTestingModule({
-      imports: [LineView],
+      imports: [BoardView],
       providers: [provideRouter([])],
     }).compileComponents();
-    const fixture = TestBed.createComponent(LineView);
+    const fixture = TestBed.createComponent(BoardView);
     const rows = [deriveRow(request({ stage: 'review', gate: 'approve_merge' }), null)];
     fixture.componentRef.setInput('rows', rows);
     fixture.detectChanges();
@@ -451,6 +504,24 @@ describe('Line view interaction', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('sf-row-actions')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Approve');
+  });
+
+  it('gives every card an accessible name — the title alone is not enough', async () => {
+    await TestBed.configureTestingModule({
+      imports: [BoardView],
+      providers: [provideRouter([])],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(BoardView);
+    fixture.componentRef.setInput('rows', [
+      deriveRow(request({ stage: 'review', gate: 'approve_merge' }), null),
+    ]);
+    fixture.detectChanges();
+
+    const chip = fixture.nativeElement.querySelector('.lchip') as HTMLButtonElement;
+    // a screen reader must hear what the request is AND why it is sitting there
+    expect(chip.getAttribute('aria-label')).toBe(
+      'Export payroll summary as CSV, Holding for merge approval',
+    );
   });
 });
 
@@ -572,6 +643,23 @@ describe('Floor page', () => {
     const outcome = fixture.nativeElement.querySelector('.action-outcome');
     expect(outcome?.textContent).toContain(`Already approved by Kim Park at ${localTime}`);
     expect(poll.nudge).toHaveBeenCalledOnce();
+  });
+
+  it('still honours the pre-rename ?view= values so old links keep working', async () => {
+    await TestBed.configureTestingModule({
+      imports: [FloorPage],
+      providers: providers(mission(), [request()]),
+    }).compileComponents();
+    const page = TestBed.createComponent(FloorPage).componentInstance;
+    const parse = (v: string | null) =>
+      (page as unknown as { parseView(v: string | null): string }).parseView(v);
+
+    expect(parse('stack')).toBe('list'); // Stack was renamed to List
+    expect(parse('line')).toBe('board'); // Line was renamed to Board
+    expect(parse('board')).toBe('board');
+    expect(parse('progress')).toBe('progress');
+    expect(parse('nonsense')).toBe('progress');
+    expect(parse(null)).toBe('progress'); // a bare /floor opens Progress
   });
 
   it('offers only earlier pipeline stages in the send-back-to picker', async () => {

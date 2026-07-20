@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 
 import { OverviewRow, RowAction, RowActionVerb, actionLabel, rowActions } from './floor-view';
 
-/* The inline action popover shared by the Line and Progress views. It renders the
+/* The inline action popover shared by the Board and Progress views. It renders the
    actions a row's kind allows (from the pure rowActions/floor-view contract) plus
    an always-present Open dossier link. Actions bubble up as one RowAction event so
    the page keeps sole ownership of the confirm modals + api calls. */

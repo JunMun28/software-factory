@@ -3,57 +3,68 @@ import { FactoryRequest, MissionOut, RunState } from '@sf/shared';
 
 import { FloorActionOutcome } from '../shared/action-outcome';
 import { OverviewView, RowAction, deriveOverview, deriveTallies } from './floor-view';
-import { LineView } from './line-view';
+import { BoardView } from './board-view';
 import { ProgressView } from './progress-view';
-import { StackView } from './stack-view';
+import { ListView } from './list-view';
 
-/* The Overview shell: a persistent factory-health band, a Stack | Line | Progress
-   switcher, and whichever view is active. The three view bodies are separate
-   standalone components; this container derives the shared model once and routes
-   inline actions up to the page (which owns the confirm modals + api calls). */
+/* The Overview shell: the title with its four context gauges, the one loud row
+   of counts a human must act on, a List | Board | Progress switcher, and
+   whichever view is active. The three view bodies are separate standalone
+   components; this container derives the shared model once and routes inline
+   actions up to the page (which owns the confirm modals + api calls). */
 
 @Component({
   selector: 'sf-floor-content',
-  imports: [StackView, LineView, ProgressView],
+  imports: [ListView, BoardView, ProgressView],
   template: `
     @if (mission(); as m) {
       <div class="sr-only" role="status" aria-live="polite">
         {{ tallies().deciding }} decisions waiting. {{ tallies().open }} requests on the line.
       </div>
 
+      <!-- Title, then the four context gauges as one quiet line. These are
+           background numbers: nobody acts on them, so they get no cards. -->
       <header class="head">
         <h1>Overview</h1>
+        <div class="ctx" role="group" aria-label="Factory health">
+          <span>
+            <b>{{ tallies().open }}</b> on the line
+          </span>
+          <span class="sep" aria-hidden="true">·</span>
+          <span>
+            <b>{{ tallies().shipped }}</b> shipped this week
+          </span>
+          <span class="sep" aria-hidden="true">·</span>
+          <span>
+            <b>{{ tallies().cycle ?? '—' }}</b> median cycle
+          </span>
+          <span class="sep" aria-hidden="true">·</span>
+          <span>
+            <b>{{ tallies().gateWait ? '~' + tallies().gateWait : '—' }}</b> gate response
+          </span>
+        </div>
       </header>
 
-      <!-- persistent factory-health band, visible in all three views. The two
-           gauges a human can act on run wide; the other four are context. -->
-      <div class="band" role="group" aria-label="Factory health">
-        <div class="card big" [class.hot]="tallies().deciding > 0">
-          <span class="k">Your decision</span>
-          <span class="v mono">{{ tallies().deciding }}</span>
-          <span class="s">gates waiting on you</span>
-        </div>
-        <div class="card big" [class.bad]="tallies().attention > 0">
-          <span class="k">Need attention</span>
-          <span class="v mono">{{ tallies().attention }}</span>
-          <span class="s">stuck / needs a human</span>
-        </div>
-        <div class="card">
-          <span class="k">On the line</span>
-          <span class="v mono">{{ tallies().open }}</span>
-        </div>
-        <div class="card">
-          <span class="k">Shipped / wk</span>
-          <span class="v mono">{{ tallies().shipped }}</span>
-        </div>
-        <div class="card">
-          <span class="k">Median cycle</span>
-          <span class="v mono">{{ tallies().cycle ?? '—' }}</span>
-        </div>
-        <div class="card">
-          <span class="k">Gate response</span>
-          <span class="v mono">{{ tallies().gateWait ? '~' + tallies().gateWait : '—' }}</span>
-        </div>
+      <!-- The only loud row on the page: the two counts a human can act on.
+           Each jumps to List, which already sorts stuck and gates to the top. -->
+      <div class="needs">
+        @if (tallies().deciding > 0) {
+          <button type="button" class="need hot" (click)="viewChange.emit('list')">
+            <i aria-hidden="true"></i>
+            <b>{{ tallies().deciding }}</b> waiting on your decision
+            <span class="go" aria-hidden="true">→</span>
+          </button>
+        }
+        @if (tallies().attention > 0) {
+          <button type="button" class="need bad" (click)="viewChange.emit('list')">
+            <i aria-hidden="true"></i>
+            <b>{{ tallies().attention }}</b> stuck, needs a human
+            <span class="go" aria-hidden="true">→</span>
+          </button>
+        }
+        @if (tallies().deciding === 0 && tallies().attention === 0) {
+          <p class="need-none">Nothing waiting on you. The line is running itself.</p>
+        }
       </div>
 
       <!-- view switcher -->
@@ -81,15 +92,17 @@ import { StackView } from './stack-view';
       }
 
       <div class="stage">
+        <!-- @default is Progress because Progress is the default view: an
+             unrecognised ?view= lands where a bare /floor would. -->
         @switch (view()) {
-          @case ('line') {
-            <sf-line-view [rows]="overview().rows" (act)="act.emit($event)" />
+          @case ('list') {
+            <sf-list-view [rows]="overview().rows" [shipped]="overview().shipped" />
           }
-          @case ('progress') {
-            <sf-progress-view [rows]="overview().rows" (act)="act.emit($event)" />
+          @case ('board') {
+            <sf-board-view [rows]="overview().rows" (act)="act.emit($event)" />
           }
           @default {
-            <sf-stack-view [rows]="overview().rows" [shipped]="overview().shipped" />
+            <sf-progress-view [rows]="overview().rows" (act)="act.emit($event)" />
           }
         }
       </div>
@@ -101,124 +114,145 @@ import { StackView } from './stack-view';
       padding-bottom: 72px;
     }
     .head {
-      padding: 30px 0 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 16px 24px;
+      padding: 30px 0 0;
     }
     h1 {
-      font-size: 23px;
+      font-size: 20px;
       letter-spacing: -0.015em;
     }
 
-    /* ── persistent health band ── */
-    .band {
-      display: grid;
-      grid-template-columns: 1.6fr 1.6fr repeat(4, minmax(0, 1fr));
-      gap: 8px;
-      padding: 2px 0 4px;
-    }
-    .card {
+    /* ── context gauges: one quiet line, no cards ── */
+    .ctx {
       display: flex;
-      flex-direction: column;
-      gap: 3px;
-      min-width: 0;
-      padding: 10px 12px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--r);
-    }
-    .card .k {
-      color: var(--faint);
-      font: 600 8.5px var(--mono);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .card .v {
-      color: var(--fg1);
-      font-size: 20px;
-      font-weight: 640;
-      line-height: 1.05;
-      letter-spacing: -0.03em;
-    }
-    .card .s {
-      overflow: hidden;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 20px;
+      margin-left: auto;
       color: var(--muted);
-      font-size: 10px;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      font-size: 12.5px;
+      font-variant-numeric: tabular-nums;
     }
-    /* the two a human can act on */
-    .card.big {
-      gap: 4px;
-      padding: 12px 14px;
-    }
-    .card.big .v {
-      font-size: 30px;
-      font-weight: 650;
-      letter-spacing: -0.04em;
-    }
-    .card.big.hot .v {
-      color: var(--amber-tx);
-    }
-    .card.big.bad .v {
-      color: var(--red-tx);
-    }
-    /* context: label up, number down, nothing shouting */
-    .card:not(.big) {
-      justify-content: space-between;
-    }
-    .card:not(.big) .v {
+    .ctx b {
+      margin-right: 1px;
       color: var(--fg2);
-      font-size: 16px;
+      font-weight: 600;
+    }
+    .ctx .sep {
+      color: var(--border-strong);
     }
 
-    /* ── view switcher ── */
+    /* ── the only loud row: what a human must act on ── */
+    .needs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 16px 0 0;
+    }
+    .need {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 16px 9px 13px;
+      color: var(--fg2);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font: 400 13px var(--body);
+      cursor: pointer;
+      transition:
+        border-color var(--dur) var(--ease),
+        background var(--dur) var(--ease);
+    }
+    .need:hover {
+      background: var(--surface-2);
+      border-color: var(--border-strong);
+    }
+    .need i {
+      width: 7px;
+      height: 7px;
+      flex: none;
+      border-radius: 50%;
+    }
+    .need b {
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+    .need .go {
+      margin-left: 2px;
+      color: var(--faint);
+      font-size: 12px;
+    }
+    .need.hot i {
+      background: var(--amber);
+    }
+    .need.hot b {
+      color: var(--amber-tx);
+    }
+    .need.bad i {
+      background: var(--red);
+    }
+    .need.bad b {
+      color: var(--red-tx);
+    }
+    .need-none {
+      margin: 0;
+      padding: 9px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ── view switcher: underlined tabs, not a boxed control ── */
     .switcher {
       display: flex;
       align-items: center;
       gap: 14px;
-      margin: 18px 0 20px;
+      margin: 26px 0 0;
+      border-bottom: 1px solid var(--hairline);
     }
     .seg {
       display: inline-flex;
-      gap: 3px;
-      padding: 3px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--r-lg);
+      gap: 26px;
     }
     .seg button {
-      padding: 6px 18px;
+      margin-bottom: -1px;
+      padding: 0 1px 11px;
       color: var(--muted);
       background: transparent;
       border: 0;
-      border-radius: var(--r);
-      font: 600 12.5px var(--body);
+      border-bottom: 2px solid transparent;
+      font: 500 13px var(--body);
       cursor: pointer;
-      transition:
-        color var(--dur) var(--ease),
-        background var(--dur) var(--ease);
+      transition: color var(--dur) var(--ease);
     }
     .seg button:hover {
       color: var(--fg1);
     }
-    /* active segment = neutral surface (never the purple tint) */
+    /* active tab = an ink underline (never the purple tint) */
     .seg button.on {
       color: var(--fg1);
-      background: var(--surface-2);
-      box-shadow: inset 0 0 0 1px var(--border-strong);
+      font-weight: 600;
+      border-bottom-color: var(--fg1);
     }
     .seg button:focus-visible {
       outline: none;
       box-shadow: 0 0 0 2px var(--accent-tint-bd);
     }
     .vhint {
+      margin-left: auto;
+      padding-bottom: 9px;
       color: var(--faint);
-      font-size: 9px;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.02em;
     }
 
     .action-outcome {
-      margin: 0 0 12px;
+      margin: 16px 0 0;
       padding: 8px 12px;
       color: var(--muted);
       background: var(--surface-2);
@@ -234,22 +268,19 @@ import { StackView } from './stack-view';
 
     .stage {
       min-height: 320px;
+      padding-top: 4px;
     }
 
-    /* one row is the point — hold six across until the cards genuinely break */
+    /* the context line is the first thing to give up room — it is background
+       detail, and the title plus the needs-you row must never wrap for it */
     @media (max-width: 820px) {
-      .band {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+      .ctx {
+        margin-left: 0;
       }
     }
     @media (max-width: 640px) {
       .vhint {
         display: none;
-      }
-    }
-    @media (max-width: 560px) {
-      .band {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -262,16 +293,16 @@ import { StackView } from './stack-view';
 export class FloorContent {
   mission = input.required<MissionOut>();
   requests = input.required<FactoryRequest[]>();
-  view = input<OverviewView>('stack');
+  view = input<OverviewView>('progress');
   intakeUrl = input('http://localhost:4201/submit/new');
   actionOutcomes = input<Record<number, FloorActionOutcome>>({});
   viewChange = output<OverviewView>();
   act = output<RowAction>();
 
   views: { id: OverviewView; label: string }[] = [
-    { id: 'stack', label: 'Stack' },
-    { id: 'line', label: 'Line' },
     { id: 'progress', label: 'Progress' },
+    { id: 'list', label: 'List' },
+    { id: 'board', label: 'Board' },
   ];
 
   overview = computed(() => {

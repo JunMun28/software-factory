@@ -4010,3 +4010,219 @@ All Phase 3 latency targets met. Per-user budgets also built (f1994c5).
 - ARO ingress: verify proxy-buffering off on SSE routes.
 - Prompt nit: tool-round narration can leak into question prose
   ("No prior record found...") — tune the question prompt.
+
+---
+
+# Implementation notes — Console Overview premium redesign (2026-07-20)
+
+Redesign of the Overview page (all three views: Stack, Line, Progress) toward a
+Linear/Vercel-calibre surface. Approved from `mockups/overview-premium/line-v1.html`.
+
+## What changed
+
+- **Structure: boxes → hairlines.** The six-card health band, the boxed
+  segmented switcher, and the five bordered lanes all lost their boxes. Stage
+  groups now name themselves over a hairline rule; Line lanes are separated by a
+  single vertical hairline; the switcher is underlined tabs.
+- **Hierarchy.** The four context gauges (on the line / shipped / cycle / gate
+  response) became one quiet inline line — nobody acts on them, so they get no
+  cards. The two actionable counts became the page's only loud row, as chips
+  that jump to Stack (which already sorts stalls and gates to the top).
+- **Type floor raised.** The old page ran 8.5–11px with uppercase mono labels.
+  Now four sizes (11 / 12 / 13 / 20), sentence case, tabular numerals.
+
+## Colour system (the substantive change)
+
+Green was doing work it should not: sage-green "done" bars next to rust-amber
+gate bars read muddy in light theme, and PRODUCT.md already reserves green for
+success only. New rule — **neutrals carry pipeline position, colour carries
+signal**:
+
+| state | treatment |
+|---|---|
+| done | neutral fill, silent |
+| working (agent) | graphite fill + slow pulse; motion says "live", not colour |
+| your gate | amber — now the loudest thing on the page |
+| with requester / draft | hollow ring — held, but not by us |
+| stuck | red, square caps |
+| human-owned | accent purple (a small semantic tag, per PRODUCT.md) |
+| shipped | green — the only place green appears |
+
+## Deviations
+
+- **Two shared brand tokens changed for contrast.** Both ripple beyond this page
+  (pills, badges, every surface), so flagging explicitly:
+  - `--amber` light `#c77800` → `#bd7200`. As a bar fill the old value measured
+    2.92:1 on the canvas, under the 3:1 WCAG 1.4.11 floor for meaningful
+    graphics. Now 3.59:1.
+  - `--faint` light `#75757f` → `#71717b` (4.34 → 4.60:1). The old DESIGN.md
+    comment claimed it held 4.5:1 AA on the canvas; measured, it did not.
+  - `--faint` dark `#7b7b7f` → `#818187`. Held 4.51:1 on `--bg` but only 4.16:1
+    on `--surface`, and the Line view puts faint text on cards.
+- **`done` vs `ahead` is carried by shape, not tint.** Reaching 3:1 by darkening
+  `done` would have made a cleared stage outweigh an active one — wrong
+  hierarchy. Instead a reached stage is a 6px bar and a stage still ahead is a
+  2px hairline. Verified readable in greyscale.
+- **Stuck uses square caps** so it stays distinct from an amber gate without
+  relying on hue (greyscale/colour-blind safe).
+- **Line-view unit dots removed.** The dot cluster at each lane head restated
+  what the cards below already said.
+
+## Bugs found and fixed during verification
+
+- **Status text truncated from the wrong end.** In Stack, `.state` is a
+  right-aligned flex row; an anonymous text child does not ellipsize, so a long
+  stall reason clipped its START ("…ferences a payments API"). The text now
+  lives in its own `.state-t` span that owns the clipping. Same pattern hardened
+  in Line.
+- **Line cards lost their accessible name.** The rewrite dropped the chip's
+  `aria-label`, leaving every card an unnamed button to a screen reader. Restored
+  and pinned with a regression test.
+
+## Not done (deliberately out of scope)
+
+- The global shell nav is untouched; restyling it would affect Library and Studio.
+- Two pre-existing `impeccable` hook findings in `styles.css` are left alone:
+  `.attn__q` border-left (a pull-quote treatment on the intake surface, not a
+  card side-stripe) and `.qprog__fill` width transition (a progress bar where
+  width is the semantic). Both are on Submitter surfaces, outside this page.
+
+## Follow-up: view names (same day)
+
+`Stack | Line | Progress` → **`List | Board | Progress`**. "Stack" and "Line"
+were internal factory metaphors that did not say what the operator would see,
+and **"line" was already taken**: the console uses it for the whole pipeline
+("The factory line is stalled", "Factory line live", "24 on the line"). A tab
+named Line could not also mean one view of that line.
+
+Renamed all the way down rather than just the labels, so the metaphor cannot
+drift back: `line-view.ts` → `board-view.ts` (`LineView` → `BoardView`,
+`sf-line-view` → `sf-board-view`), `stack-view.ts` → `list-view.ts` (`StackView`
+→ `ListView`, `sf-stack-view` → `sf-list-view`), the `OverviewView` ids, and the
+`?view=` query values. Both files moved with `git mv` to keep history.
+
+**Board, not Kanban** (the user's suggestion): "Kanban" names a methodology with
+WIP limits and pull signals, and PRODUCT.md principle 6 explicitly rejects those
+("no WIP limits, no custom views"). It is also Jira/Trello vocabulary, and
+Jira's sprawl is a stated anti-reference. "Board" is what Linear, Notion and
+Height call this, which matches the calibre the redesign targets. One-word flip
+if preferred.
+
+"Progress" was kept — it already says what it shows.
+
+Old `?view=stack` / `?view=line` links are aliased to the new ids in
+`parseView`, so bookmarks still land where they meant; covered by a test.
+
+## Follow-up: Progress legend wording
+
+The legend is a *key* — it teaches what the bar colours mean — so it now says who
+is holding things up, in plain words:
+
+| was | now |
+|---|---|
+| your gate | waiting for you |
+| with requester | waiting for the submitter |
+| ahead | not started |
+
+`done`, `working` and `stuck` were already plain and kept. The two waiting states
+deliberately share one phrasing ("waiting for …"), because telling *you* apart
+from *someone else* is the entire job of that colour.
+
+Row status text ("Holding for spec approval") was left alone: PRODUCT.md's
+vocabulary guard says the Admin face uses Control-center terms while the
+Submitter face gets plain stages, and the row is the operational detail in the
+admin's own register. Only the key was plainly worded. Say the word if the row
+text should follow.
+
+**Known inconsistency, not fixed here:** the codebase calls the same person both
+"submitter" (`deriveRow`'s sent-back state, PRODUCT.md's persona) and "requester"
+(`DISPLAY_STAGES` Review lane agent + gate). The legend follows PRODUCT.md and
+says submitter. Worth unifying in one pass rather than piecemeal.
+
+## Follow-up: operator chip in the console header
+
+The header identity was a 30px circle showing initials, filled with a
+per-operator hue from an inline style, with the name only in a `title` tooltip.
+Rebuilt as a quiet identity chip: neutral surface + 1px border + pill radius
+(matching the ⌘K and theme buttons), a small neutral monogram, and **the name in
+words** next to it.
+
+Three reasons, in order of weight:
+
+1. **Safety.** Approving a gate is irreversible and attributed by name — the 409
+   conflict banner literally reads "Already approved by Kim Park". Two seeded
+   operators are "Jun Mun Wong" (JMW) and "Jun Wong" (JW). A 30px monogram is
+   not enough to confirm who you are before you act on someone's behalf.
+2. **The hues fought the palette.** Operator hues are `#B0632E` (essentially the
+   amber that means "a gate waits on you") and `#7C5CFC` (near the brand accent).
+   A random decorative hue in a bar whose whole discipline is amber = gate,
+   red = stuck, purple = brand is a false signal. The hue is gone from the bar;
+   the Studio picker keeps it, where distinguishing people is the actual job and
+   there is no signal context.
+3. **Accessibility.** The link's accessible name was the literal string "KP".
+   It is now "Signed in as Kim Park. Open your profile." The `title` tooltip is
+   gone (keyboard-inaccessible, invisible on touch, redundant now the name shows).
+
+Also added the hover and focus states the element never had. Below 640px the
+name hides — same breakpoint where the brand name drops — leaving the monogram;
+the aria-label still speaks the full name, so only pixels are lost.
+
+Dead CSS removed: `.operator` declared `background: var(--accent-tint)` that the
+inline `[style.background]` always overrode.
+
+### Bug found while checking the narrow breakpoint
+
+Progress-view titles **painted over the bars** below 860px. The stacked title
+layout used `align-items: flex-start`, which sizes each child to its own content
+on the cross axis — so a 366px title sat inside a 150px column and overflowed
+instead of ellipsizing. Changed to `align-items: stretch`. Verified: 0 rows with
+a title box crossing into the bar column, at 600px and 1440px.
+
+## Follow-up: Progress is now the first tab and the default view
+
+Order is **Progress | List | Board**; a bare `/floor` opens Progress.
+
+Changed together, because these three must not drift apart:
+- `views` in floor-content (tab order) and `VIEWS` in floor-page (the ←/→
+  cycling order) — a mismatch would make the arrow keys jump around visually.
+- `DEFAULT_VIEW` extracted as a constant. It drives the `parseView` fallback AND
+  the `setView` "omit the query param" branch; those were two separate literals
+  that had to agree, which is exactly the kind of pair that rots.
+- The `@switch` `@default` branch now renders Progress, so an unrecognised
+  `?view=` lands where a bare `/floor` does.
+
+Legacy `?view=stack` → List and `?view=line` → Board still resolve (verified
+live). `?view=list` / `?view=board` are now explicit in the URL; Progress is bare.
+
+**A test caught a real consequence:** "groups List rows under the five displayed
+stages" was implicitly relying on List being the default and started asserting
+against an empty Progress view. It now sets `view` to `list` explicitly — the
+test is about List's grouping, so it should ask for List rather than inherit it.
+
+Note: Progress orders rows by pipeline position, not urgency, so the landing
+view no longer front-loads the gates. That is covered by the "waiting on your
+decision" chip directly above the tabs, which jumps to List (List does sort
+stalls and gates to the top). Worth revisiting if the chip ever goes away.
+
+## Tried and reverted: a stronger "running" signal
+
+The working segment's animation is a single white sweep (`rgba(255,255,255,.35)`,
+1.8s) that translates fully off-screen, so most of each cycle shows nothing. On a
+6px bar it is near-invisible — a busy agent and a stalled one look alike.
+
+Tried replacing it with a continuous travelling pulse (seamless
+`repeating-linear-gradient` scrolled one full period by transform, plus a
+`--fill-live-hi` token). It read as too busy and was **reverted** at the user's
+request; the original shimmer is what ships. The underlying problem stands, so
+any future attempt should aim for something quieter than a scrolling gradient.
+
+**Context worth keeping:** when this was investigated the factory had **0 active
+runs** — 19 gates, 1 stalled, 0 working. Nothing was running because everything
+was blocked behind human gates, so the animation is invisible until gates are
+approved. Preview it by injecting `.seg.work` in the DOM.
+
+### Open question, not acted on
+"Interview in progress" derives to kind `wait` (hollow, static) because the
+factory is blocked on the *submitter* answering. The wording reads like the
+machine is busy. Either the state text should say who it is waiting on, or the
+interview should count as active. Needs a product call.

@@ -25,7 +25,13 @@ import {
 import { FloorContent } from './floor-content';
 import { OverviewView, RowAction } from './floor-view';
 
-const VIEWS: readonly OverviewView[] = ['stack', 'line', 'progress'];
+/* Tab order, and therefore the ←/→ cycling order. Keep in step with the
+   `views` array in floor-content, and keep the default first. */
+const VIEWS: readonly OverviewView[] = ['progress', 'list', 'board'];
+const DEFAULT_VIEW: OverviewView = 'progress';
+
+/** Pre-rename query values, so a bookmarked ?view= still lands where it meant. */
+const LEGACY_VIEWS: Readonly<Record<string, OverviewView>> = { stack: 'list', line: 'board' };
 
 @Component({
   selector: 'sf-floor-page',
@@ -155,13 +161,14 @@ export class FloorPage {
   }
 
   private parseView(value: string | null): OverviewView {
-    return VIEWS.includes(value as OverviewView) ? (value as OverviewView) : 'stack';
+    if (VIEWS.includes(value as OverviewView)) return value as OverviewView;
+    return (value && LEGACY_VIEWS[value]) || DEFAULT_VIEW;
   }
 
   setView(view: OverviewView) {
     this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { view: view === 'stack' ? null : view },
+      queryParams: { view: view === DEFAULT_VIEW ? null : view },
       queryParamsHandling: 'merge',
       replaceUrl: true,
     });

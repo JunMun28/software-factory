@@ -3,33 +3,39 @@ import { Component, computed, input, output, signal } from '@angular/core';
 import { DISPLAY_STAGES, OverviewRow, RowAction, progressRows, progressSegs } from './floor-view';
 import { RowActions } from './row-actions';
 
-/* Progress view — a wall of per-request bars. One row per request: title, its
-   app, then five segments. Completed segments are quiet (surface with a faint
-   green bias); the current stage is the row's only saturated segment — working
-   green, gate/requester-wait amber, stuck red; future stages are barely there.
-   One flat list, furthest along first — the unit is the request, not the app,
-   since few requests run against one app at once. A row opens the action popover. */
+/* Progress view — one thin track per request across the five stages. Shape does
+   the reading: a reached stage is a full bar, a stage still ahead is a hairline,
+   and a stage held by the requester is hollow, so where a request has got to
+   survives greyscale and colour blindness. Colour is then layered on for the one
+   thing that matters — amber where a gate waits on us, red where it has stalled,
+   accent where a human took it over. An agent simply working stays neutral and
+   lets its motion say "live". One flat list, furthest along first: the unit is
+   the request, not the app. A row opens the same action popover as the Board. */
 
 @Component({
   selector: 'sf-progress-view',
   imports: [RowActions],
   template: `
+    <!-- The legend is a key, so it says who is holding things up in plain words.
+         The two waiting states share one phrasing on purpose: the whole point of
+         the colour is telling apart "you" from "someone else". -->
     <div class="legend">
-      <span class="lg"><i class="sw done"></i>done</span>
-      <span class="lg"><i class="sw work"></i>working</span>
-      <span class="lg"><i class="sw gate"></i>at gate</span>
-      <span class="lg"><i class="sw wait"></i>requester</span>
-      <span class="lg"><i class="sw stuck"></i>stuck</span>
-      <span class="lg"><i class="sw future"></i>ahead</span>
+      <span><i class="sw done"></i>done</span>
+      <span><i class="sw work"></i>working</span>
+      <span><i class="sw gate"></i>waiting for you</span>
+      <span><i class="sw wait"></i>waiting for the submitter</span>
+      <span><i class="sw stuck"></i>stuck</span>
+      <span><i class="sw future"></i>not started</span>
     </div>
 
     <div class="stage-key" aria-hidden="true">
-      <span class="k-title"></span>
+      <span></span>
       <span class="k-bar">
         @for (stage of stages; track stage.key) {
           <span>{{ stage.label }}</span>
         }
       </span>
+      <span></span>
     </div>
 
     @for (row of ordered(); track row.id) {
@@ -43,7 +49,6 @@ import { RowActions } from './row-actions';
           (click)="toggle(row.id)"
         >
           <span class="p-title">
-            <i class="app-dot"></i>
             <span class="t">{{ row.title }}</span>
             <span class="a">{{ row.app }}</span>
           </span>
@@ -52,6 +57,7 @@ import { RowActions } from './row-actions';
               <span class="seg" [class]="seg"></span>
             }
           </span>
+          <span class="p-age mono">{{ row.age }}</span>
         </button>
         @if (openId() === row.id) {
           <sf-row-actions [row]="row" (act)="act.emit($event)" />
@@ -68,33 +74,33 @@ import { RowActions } from './row-actions';
     .legend {
       display: flex;
       flex-wrap: wrap;
-      gap: 14px;
-      margin-bottom: 14px;
+      align-items: center;
+      gap: 8px 18px;
+      padding: 20px 0 2px;
+      color: var(--muted);
+      font-size: 11.5px;
     }
-    .lg {
+    .legend span {
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      color: var(--muted);
-      font: 500 9.5px var(--mono);
-      letter-spacing: 0.04em;
+      gap: 7px;
     }
+
+    /* ── the segment vocabulary, shared by the legend and the tracks ──
+       full bar = reached · hollow = held elsewhere · hairline = not yet. */
     .sw {
-      width: 11px;
-      height: 11px;
-      border-radius: 3px;
+      width: 14px;
+      height: 6px;
       flex: none;
+      border-radius: var(--r-pill);
     }
-    /* legend + bar swatches share these fills */
     .sw.done,
     .seg.done {
-      background: color-mix(in srgb, var(--green) 12%, var(--surface-2));
-      border: 1px solid color-mix(in srgb, var(--green) 20%, var(--border));
+      background: var(--fill-done);
     }
     .sw.work,
     .seg.work {
-      background: var(--green-bg);
-      border: 1px solid var(--green-line);
+      background: var(--fill-live);
     }
     .sw.gate,
     .seg.gate {
@@ -102,41 +108,44 @@ import { RowActions } from './row-actions';
     }
     .sw.wait,
     .seg.wait {
-      background: var(--amber-bg);
-      border: 1px solid var(--amber-line);
+      background: transparent;
+      box-shadow: inset 0 0 0 1.5px var(--fill-wait);
     }
+    /* square caps, so a stall stays distinct from a gate without relying on hue */
     .sw.stuck,
     .seg.stuck {
       background: var(--red);
-    }
-    .sw.future,
-    .seg.future {
-      background: transparent;
-      border: 1px solid var(--border);
+      border-radius: 1px;
     }
     .sw.owned,
     .seg.owned {
-      background: var(--accent-tint);
-      border: 1px solid var(--accent-tint-bd);
+      background: var(--accent);
     }
+    /* not yet reached: a hairline, not a block — height is the cue, so the
+       distinction survives greyscale and low vision where a tint would not */
+    .sw.future,
+    .seg.future {
+      height: 2px;
+      background: var(--track);
+    }
+
     .stage-key {
       display: grid;
-      grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
-      gap: 12px;
-      margin-bottom: 6px;
+      grid-template-columns: minmax(0, 340px) minmax(0, 1fr) 34px;
+      gap: 16px;
+      padding: 14px 0 6px;
     }
     .k-bar {
       display: flex;
-      gap: 3px;
+      gap: 4px;
     }
     .k-bar span {
       flex: 1;
       color: var(--faint);
-      font: 500 8px var(--mono);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      font-size: 11px;
       text-align: center;
     }
+
     .p-wrap {
       display: flex;
       flex-direction: column;
@@ -144,43 +153,38 @@ import { RowActions } from './row-actions';
     }
     .p-row {
       display: grid;
-      grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 340px) minmax(0, 1fr) 34px;
       align-items: center;
-      gap: 12px;
-      width: 100%;
-      padding: 5px 6px;
+      gap: 16px;
+      width: calc(100% + 20px);
+      margin: 0 -10px;
+      padding: 8px 10px;
       background: transparent;
       border: 0;
-      border-radius: var(--r);
+      border-radius: 7px;
       text-align: left;
       cursor: pointer;
+      transition: background var(--dur) var(--ease);
     }
-    .p-row:hover {
+    .p-row:hover,
+    .p-row.open {
       background: var(--surface-2);
     }
     .p-row:focus-visible {
       outline: none;
       box-shadow: inset 0 0 0 2px var(--accent-tint-bd);
     }
-    .p-row.open {
-      background: var(--surface-2);
-    }
     .p-title {
       display: flex;
-      align-items: center;
-      gap: 8px;
+      align-items: baseline;
+      gap: 10px;
       min-width: 0;
-    }
-    .app-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--border-strong);
-      flex: none;
     }
     .p-title .t {
       color: var(--fg1);
-      font-size: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -189,19 +193,28 @@ import { RowActions } from './row-actions';
     .p-title .a {
       flex: none;
       color: var(--faint);
-      font-size: 10.5px;
+      font-size: 11.5px;
       white-space: nowrap;
     }
+    .p-age {
+      color: var(--faint);
+      font-size: 11px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
     .p-bar {
       display: flex;
-      gap: 3px;
-      height: 14px;
+      align-items: center;
+      gap: 4px;
+      height: 6px;
     }
     .seg {
       flex: 1;
-      border-radius: 3px;
+      height: 6px;
+      border-radius: var(--r-pill);
     }
-    /* the current working segment is the one live element */
+    /* the working segment is the one live element on the wall */
     .seg.work {
       position: relative;
       overflow: hidden;
@@ -210,36 +223,48 @@ import { RowActions } from './row-actions';
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(
-        90deg,
-        transparent,
-        color-mix(in srgb, var(--green) 30%, transparent),
-        transparent
-      );
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
       transform: translateX(-100%);
-      animation: prog-shimmer 1.7s var(--ease) infinite;
+      animation: sf-prog-shimmer 1.8s var(--ease) infinite;
     }
-    @keyframes prog-shimmer {
+    @keyframes sf-prog-shimmer {
       to {
         transform: translateX(100%);
       }
     }
+
     .empty {
-      padding: 26px 8px;
+      padding: 40px 0;
       color: var(--muted);
       font-size: 13px;
       text-align: center;
     }
-    @media (max-width: 720px) {
+
+    @media (max-width: 860px) {
       .stage-key,
       .p-row {
-        grid-template-columns: 140px minmax(0, 1fr);
+        grid-template-columns: 150px minmax(0, 1fr) 34px;
+      }
+      .p-title {
+        flex-direction: column;
+        /* stretch, NOT flex-start: on the cross axis flex-start sizes each child
+           to its own content, so a long title grew past this column and painted
+           over the bars instead of ellipsizing. */
+        align-items: stretch;
+        gap: 1px;
+      }
+      .p-title .a {
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
     }
     @media (prefers-reduced-motion: reduce) {
+      .p-row {
+        transition: none;
+      }
       .seg.work::after {
-        animation: none;
         display: none;
+        animation: none;
       }
     }
   `,

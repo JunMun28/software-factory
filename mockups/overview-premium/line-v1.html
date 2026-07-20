@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overview — premium pass v1 (all three views)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* Inter stands in for Micron Basis in this mockup only. */
+  :root {
+    --bg: #faf9fb;
+    --surface: #ffffff;
+    --surface-2: #f4f3f7;
+    --fg1: #1a1a1f;
+    --fg2: #3a3a42;
+    --muted: #6c6c78;
+    --faint: #71717b;
+    --border: #e6e6ea;
+    --border-strong: #d7d7de;
+    --hairline: #eeeef2;
+    --accent: #a402dc;
+    --amber: #bd7200;
+    --amber-tx: #8a5a00;
+    --red: #c0392b;
+    --red-tx: #a53225;
+    --red-line: rgba(192, 57, 43, 0.35);
+    --red-bg: rgba(192, 57, 43, 0.05);
+    --green: #2e7d52;
+
+    /* progress: neutrals carry position, colour is reserved for signal.
+       amber = your gate, red = stuck. Nothing else is coloured. */
+    --track: #edecf1;      /* stages still ahead */
+    --fill-done: #cdccd7;  /* cleared stages — present, silent */
+    --fill-live: #70707d;  /* the machine is working (motion says "live") */
+    --fill-wait: #cdccd7;  /* with the requester — hollow, not ours */
+
+    --body: 'Inter', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    color-scheme: light;
+  }
+  [data-theme='dark'] {
+    --bg: #0f0f12;
+    --surface: #17171b;
+    --surface-2: #1f1f24;
+    --fg1: #f2f2f5;
+    --fg2: #c8c8cd;
+    --muted: #94949b;
+    --faint: #7c7c84;
+    --border: #2a2a30;
+    --border-strong: #3d3d45;
+    --hairline: #222227;
+    --accent: #d23bf9;
+    --amber: #e0962a;
+    --amber-tx: #eec27a;
+    --red: #e0655a;
+    --red-tx: #f0a89e;
+    --red-line: rgba(224, 101, 90, 0.4);
+    --red-bg: rgba(224, 101, 90, 0.07);
+    --green: #46b07a;
+
+    --track: #212127;
+    --fill-done: #3c3c45;
+    --fill-live: #8d8d99;
+    --fill-wait: #3c3c45;
+
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg1);
+    font-family: var(--body);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: var(--mono); font-variant-ligatures: none; }
+
+  /* ── shell nav: hairline, no box ── */
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    height: 54px;
+    padding: 0 36px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .brand {
+    display: flex; align-items: center; gap: 9px;
+    font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+  }
+  .brand i {
+    width: 9px; height: 9px; border-radius: 3px;
+    background: var(--accent); display: inline-block;
+  }
+  .nav a {
+    color: var(--muted); text-decoration: none;
+    font-size: 13px; font-weight: 500;
+  }
+  .nav a.on { color: var(--fg1); font-weight: 600; }
+  .nav a:hover { color: var(--fg1); }
+  .nav .right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .kbd {
+    font-family: var(--mono); font-size: 10.5px; color: var(--muted);
+    border: 1px solid var(--border); border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 5px; background: var(--surface);
+  }
+  .avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--surface-2); border: 1px solid var(--border);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600; color: var(--fg2);
+  }
+  .theme-btn {
+    font: 500 12px var(--body); color: var(--muted);
+    background: none; border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 10px; cursor: pointer;
+  }
+  .theme-btn:hover { color: var(--fg1); border-color: var(--border-strong); }
+
+  .page { max-width: 1400px; margin: 0 auto; padding: 0 36px 96px; }
+
+  /* ── header: title + quiet context stats, one line ── */
+  .head {
+    display: flex; align-items: baseline; gap: 24px;
+    padding: 34px 0 6px;
+  }
+  h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.015em; }
+  .ctx {
+    margin-left: auto;
+    display: flex; align-items: baseline; gap: 22px;
+    color: var(--muted); font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .ctx b { color: var(--fg2); font-weight: 600; margin-right: 1px; }
+  .ctx .sep { color: var(--border-strong); }
+
+  /* ── needs-you: the only loud row on the page ── */
+  .needs { display: flex; align-items: center; gap: 10px; padding: 16px 0 0; }
+  .need {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 9px 16px 9px 13px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px; color: var(--fg2);
+    cursor: pointer;
+    transition: border-color 140ms cubic-bezier(.2,.6,.2,1), background 140ms cubic-bezier(.2,.6,.2,1);
+  }
+  .need:hover { border-color: var(--border-strong); background: var(--surface-2); }
+  .need i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .need b {
+    font-size: 15px; font-weight: 650; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .need.amber i { background: var(--amber); }
+  .need.amber b { color: var(--amber-tx); }
+  .need.red i { background: var(--red); }
+  .need.red b { color: var(--red-tx); }
+  .need .go { color: var(--faint); font-size: 12px; margin-left: 2px; }
+
+  /* ── tabs: underline, not boxes ── */
+  .tabs {
+    display: flex; align-items: center; gap: 26px;
+    margin-top: 26px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .tab {
+    appearance: none; background: none; border: none; cursor: pointer;
+    font: 500 13px var(--body); color: var(--muted);
+    padding: 0 1px 11px;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--fg1); }
+  .tab.on { color: var(--fg1); font-weight: 600; border-bottom-color: var(--fg1); }
+  .tabs .hint {
+    margin-left: auto; display: flex; align-items: center; gap: 5px;
+    color: var(--faint); font-size: 11px; padding-bottom: 9px;
+  }
+  .tabs .hint .kbd { font-size: 9.5px; padding: 0 4px; }
+
+  .view { display: none; }
+  .view.on { display: block; }
+
+  /* shared state atom: dot + words */
+  .state {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11.5px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* waiting on someone else: a hollow ring — held, but not by us */
+  .state i {
+    width: 6px; height: 6px; border-radius: 50%; flex: none;
+    background: transparent; box-shadow: inset 0 0 0 1.5px var(--fill-wait);
+  }
+  .state.gate { color: var(--amber-tx); font-weight: 500; }
+  .state.gate i { background: var(--amber); box-shadow: none; }
+  /* the machine is working: solid graphite + a slow pulse. Not green —
+     green is reserved for shipped, so amber stays the loudest thing here. */
+  .state.run { color: var(--muted); }
+  .state.run i {
+    background: var(--fill-live); box-shadow: none;
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  .state.stuck { color: var(--red-tx); font-weight: 500; }
+  .state.stuck i { background: var(--red); box-shadow: none; }
+  .state.shipped { color: var(--green); }
+  .state.shipped i { background: var(--green); box-shadow: none; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  /* ============ STACK: grouped list, hairline rows, no boxes ============ */
+  .group { margin-top: 26px; }
+  .group-head {
+    display: flex; align-items: baseline; gap: 8px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .group-head h2 {
+    margin: 0; font-size: 13px; font-weight: 600; color: var(--fg1);
+  }
+  .group-head .count {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .group-head .agent {
+    margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--faint);
+  }
+  .srow {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr) minmax(0, 260px) 34px;
+    align-items: center; gap: 16px;
+    margin: 0 -10px; padding: 9px 10px;
+    border-radius: 7px;
+    text-decoration: none; cursor: pointer;
+    transition: background 140ms cubic-bezier(.2,.6,.2,1);
+  }
+  .srow:hover { background: var(--surface-2); }
+  .srow + .srow { box-shadow: 0 -1px 0 var(--hairline); }
+  .srow:hover + .srow, .srow:hover { box-shadow: none; }
+  .srow .ref { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+  .srow .main { min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+  .srow .title {
+    color: var(--fg1); font-size: 13px; font-weight: 500; letter-spacing: -0.005em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .srow .app { flex: none; color: var(--faint); font-size: 11.5px; }
+  .srow .state { justify-content: flex-end; }
+  .srow .age {
+    font-family: var(--mono); font-size: 11px; color: var(--faint);
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .more {
+    appearance: none; background: none; border: none; cursor: pointer;
+    padding: 10px 2px 0; text-align: left;
+    font: 500 12px var(--body); color: var(--faint);
+  }
+  .more:hover { color: var(--fg1); }
+
+  /* ============ LINE: columns split by hairlines ============ */
+  .board {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin-top: 4px;
+  }
+  .col { min-width: 0; padding: 20px 18px 0 18px; }
+  .col + .col { border-left: 1px solid var(--hairline); }
+  .col:first-child { padding-left: 0; }
+  .col:last-child { padding-right: 0; }
+  .col-head { display: flex; align-items: baseline; gap: 8px; padding-bottom: 4px; }
+  .col-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--fg1); }
+  .col-head .count {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .col-head .agent {
+    margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--faint);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .col-cards { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; }
+  .req {
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 11px 13px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 140ms cubic-bezier(.2,.6,.2,1);
+  }
+  .req:hover { border-color: var(--border-strong); }
+  .req .meta {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    font-family: var(--mono); font-size: 11px; color: var(--faint);
+  }
+  .req h3 {
+    margin: 1px 0 0; font-size: 13px; font-weight: 550; line-height: 1.35;
+    color: var(--fg1); letter-spacing: -0.005em;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .req .app { font-size: 11.5px; color: var(--muted); }
+  .req .state { margin-top: 5px; }
+  .req.stuck { border-color: var(--red-line); background: var(--red-bg); }
+  .col-empty { padding: 26px 0 0; font-size: 12px; color: var(--faint); }
+
+  /* ============ PROGRESS: thin tracks, quiet fills ============ */
+  .pv-legend {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 18px;
+    padding: 20px 0 2px;
+    color: var(--muted); font-size: 11.5px;
+  }
+  .pv-legend span { display: inline-flex; align-items: center; gap: 7px; }
+  /* Shape carries the state; colour only layers on top.
+     full bar = reached · hollow = held elsewhere · thin line = not yet. */
+  .sw { width: 14px; height: 6px; border-radius: 999px; flex: none; }
+  .sw.done,  .pseg.done  { background: var(--fill-done); }
+  .sw.work,  .pseg.work  { background: var(--fill-live); }
+  .sw.gate,  .pseg.gate  { background: var(--amber); }
+  .sw.wait,  .pseg.wait  { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fill-wait); }
+  /* stuck: square caps, so it stays distinct from an amber gate in greyscale */
+  .sw.stuck, .pseg.stuck { background: var(--red); border-radius: 1px; }
+  /* not yet reached: a hairline, not a block — height is the cue, so the
+     distinction survives greyscale and low vision where a tint would not */
+  .sw.ahead, .pseg.ahead {
+    background: var(--track);
+    height: 2px;
+    align-self: center;
+  }
+
+  .pv-key {
+    display: grid;
+    grid-template-columns: minmax(0, 340px) minmax(0, 1fr) 34px;
+    gap: 16px;
+    padding: 14px 0 6px;
+  }
+  .pv-key .k-bar { display: flex; gap: 4px; }
+  .pv-key .k-bar span {
+    flex: 1; text-align: center;
+    font-size: 11px; color: var(--faint);
+  }
+  .prow {
+    display: grid;
+    grid-template-columns: minmax(0, 340px) minmax(0, 1fr) 34px;
+    align-items: center; gap: 16px;
+    margin: 0 -10px; padding: 8px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 140ms cubic-bezier(.2,.6,.2,1);
+  }
+  .prow:hover { background: var(--surface-2); }
+  .prow .main { min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+  .prow .t {
+    color: var(--fg1); font-size: 13px; font-weight: 500; letter-spacing: -0.005em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .prow .a { flex: none; color: var(--faint); font-size: 11.5px; }
+  .pbar { display: flex; align-items: center; gap: 4px; height: 6px; }
+  .pseg { flex: 1; height: 6px; border-radius: 999px; }
+  .pseg.work { position: relative; overflow: hidden; }
+  .pseg.work::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+    transform: translateX(-100%);
+    animation: shimmer 1.8s cubic-bezier(.2,.6,.2,1) infinite;
+  }
+  @keyframes shimmer { to { transform: translateX(100%); } }
+  .prow .age {
+    font-family: var(--mono); font-size: 11px; color: var(--faint);
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .state.run i { animation: none; }
+    .pseg.work::after { animation: none; display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="brand"><i></i>Software Factory</span>
+  <a class="on" href="#">Overview</a>
+  <a href="#">Library</a>
+  <a href="#">Studio</a>
+  <span class="right">
+    <span class="kbd">⌘K</span>
+    <button class="theme-btn" onclick="const h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';this.textContent=h.dataset.theme==='dark'?'Light':'Dark'">Light</button>
+    <span class="avatar">KP</span>
+  </span>
+</nav>
+
+<main class="page">
+
+  <header class="head">
+    <h1>Overview</h1>
+    <div class="ctx">
+      <span><b>24</b> on the line</span><span class="sep">·</span>
+      <span><b>0</b> shipped this week</span><span class="sep">·</span>
+      <span><b>4d</b> median cycle</span><span class="sep">·</span>
+      <span><b>~9h</b> gate response</span>
+    </div>
+  </header>
+
+  <div class="needs">
+    <button class="need amber"><i></i><b>19</b> waiting on your decision <span class="go">→</span></button>
+    <button class="need red"><i></i><b>1</b> stuck, needs a human <span class="go">→</span></button>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" data-view="stack" role="tab">Stack</button>
+    <button class="tab" data-view="line" role="tab">Line</button>
+    <button class="tab" data-view="progress" role="tab">Progress</button>
+    <span class="hint"><span class="kbd">←</span><span class="kbd">→</span> switch view</span>
+  </div>
+
+  <!-- ============ STACK ============ -->
+  <section class="view" id="view-stack">
+
+    <div class="group">
+      <div class="group-head"><h2>Spec</h2><span class="count">20</span><span class="agent">requirements-analyst</span></div>
+      <a class="srow"><span class="ref mono">REQ-2043</span><span class="main"><span class="title">Offline sync mode</span><span class="app">FieldOps</span></span><span class="state stuck"><i></i>Spec generation failed 3×</span><span class="age">6w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2042</span><span class="main"><span class="title">CSV import for vendors</span><span class="app">Vendor Portal</span></span><span class="state gate"><i></i>Holding for spec approval</span><span class="age">6w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2040</span><span class="main"><span class="title">Approval email typo</span><span class="app">Northwind Expenses</span></span><span class="state gate"><i></i>Holding for spec approval</span><span class="age">6w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2045</span><span class="main"><span class="title">Receipts attach one at a time and each upload takes ~20 seconds</span><span class="app">Northwind Expenses</span></span><span class="state gate"><i></i>Holding for spec approval</span><span class="age">6w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2048</span><span class="main"><span class="title">Monthly expense reports are exported one at a time</span><span class="app">Northwind Expenses</span></span><span class="state gate"><i></i>Holding for spec approval</span><span class="age">6w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2049</span><span class="main"><span class="title">Expense approvals are chased by email</span><span class="app">Northwind Expenses</span></span><span class="state gate"><i></i>Holding for spec approval</span><span class="age">6w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2053</span><span class="main"><span class="title">sdf</span><span class="app">Northwind Expenses</span></span><span class="state gate"><i></i>Holding for spec approval</span><span class="age">4w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2054</span><span class="main"><span class="title">Export button crashes</span><span class="app">Northwind Expenses</span></span><span class="state gate"><i></i>Holding for spec approval</span><span class="age">4w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2058</span><span class="main"><span class="title">Let planners bulk-reassign overdue maintenance jobs from one screen</span><span class="app">Maintenance Planner</span></span><span class="state gate"><i></i>Holding for spec approval</span><span class="age">2w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2062</span><span class="main"><span class="title">Role-based access + audit log for the reporting dashboard</span><span class="app">Northwind Expenses</span></span><span class="state gate"><i></i>Holding for spec approval</span><span class="age">2w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2035</span><span class="main"><span class="title">Login button misaligned on iPad</span><span class="app">FieldOps</span></span><span class="state run"><i></i>Interview in progress</span><span class="age">6w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2038</span><span class="main"><span class="title">Add CSV import to vendor list</span><span class="app">Northwind Expenses</span></span><span class="state"><i></i>With the submitter · question open</span><span class="age">6w</span></a>
+      <button class="more">8 more…</button>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><h2>Build</h2><span class="count">4</span><span class="agent">implementer</span></div>
+      <a class="srow"><span class="ref mono">REQ-2136</span><span class="main"><span class="title">A tea-break roster app for our lab team</span><span class="app">No app yet</span></span><span class="state gate"><i></i>Holding for merge approval</span><span class="age">2d</span></a>
+      <a class="srow"><span class="ref mono">REQ-2120</span><span class="main"><span class="title">CSV download 500 error</span><span class="app">FieldOps</span></span><span class="state gate"><i></i>Holding for merge approval</span><span class="age">8d</span></a>
+      <a class="srow"><span class="ref mono">REQ-2041</span><span class="main"><span class="title">Faster expense export</span><span class="app">Northwind Expenses</span></span><span class="state gate"><i></i>Holding for merge approval</span><span class="age">6w</span></a>
+      <a class="srow"><span class="ref mono">REQ-2029</span><span class="main"><span class="title">Migrate auth to SSO</span><span class="app">Billing Portal</span></span><span class="state gate"><i></i>Holding for merge approval</span><span class="age">6w</span></a>
+    </div>
+
+  </section>
+
+  <!-- ============ LINE ============ -->
+  <section class="view" id="view-line">
+    <div class="board">
+
+      <section class="col">
+        <div class="col-head"><h2>Spec</h2><span class="count">20</span><span class="agent">requirements-analyst</span></div>
+        <div class="col-cards">
+          <article class="req">
+            <div class="meta"><span>REQ-2038</span><span>6w</span></div>
+            <h3>Add CSV import to vendor list</h3>
+            <div class="app">Northwind Expenses</div>
+            <div class="state"><i></i>With the submitter · question open</div>
+          </article>
+          <article class="req">
+            <div class="meta"><span>REQ-2035</span><span>6w</span></div>
+            <h3>Login button misaligned on iPad</h3>
+            <div class="app">FieldOps</div>
+            <div class="state run"><i></i>Interview in progress</div>
+          </article>
+          <article class="req">
+            <div class="meta"><span>REQ-2031</span><span>6w</span></div>
+            <h3>Quarterly headcount dashboard</h3>
+            <div class="app">Headcount Dashboard</div>
+            <div class="state run"><i></i>Interview in progress</div>
+          </article>
+          <article class="req">
+            <div class="meta"><span>REQ-2037</span><span>6w</span></div>
+            <h3>Supplier onboarding flow</h3>
+            <div class="app">Supplier Onboarding</div>
+            <div class="state run"><i></i>Interview in progress</div>
+          </article>
+          <article class="req stuck">
+            <div class="meta"><span>REQ-2043</span><span>6w</span></div>
+            <h3>Offline sync mode</h3>
+            <div class="app">FieldOps</div>
+            <div class="state stuck"><i></i>Spec generation failed 3×</div>
+          </article>
+          <article class="req">
+            <div class="meta"><span>REQ-2122</span><span>6d</span></div>
+            <h3>A habit tracker web app where I can log daily habits</h3>
+            <div class="app">No app yet</div>
+            <div class="state gate"><i></i>Holding for spec approval</div>
+          </article>
+          <article class="req">
+            <div class="meta"><span>REQ-2087</span><span>2w</span></div>
+            <h3>A tool for my team to log machine downtime from the floor</h3>
+            <div class="app">Downtime logger</div>
+            <div class="state gate"><i></i>Holding for spec approval</div>
+          </article>
+          <article class="req">
+            <div class="meta"><span>REQ-2082</span><span>2w</span></div>
+            <h3>Guitar learning platform for fingerstyle guitarists</h3>
+            <div class="app">No app yet</div>
+            <div class="state gate"><i></i>Holding for spec approval</div>
+          </article>
+          <button class="more">12 more…</button>
+        </div>
+      </section>
+
+      <section class="col">
+        <div class="col-head"><h2>Arch</h2><span class="count">0</span><span class="agent">architect</span></div>
+        <p class="col-empty">Nothing here yet</p>
+      </section>
+
+      <section class="col">
+        <div class="col-head"><h2>Build</h2><span class="count">4</span><span class="agent">implementer</span></div>
+        <div class="col-cards">
+          <article class="req">
+            <div class="meta"><span>REQ-2136</span><span>2d</span></div>
+            <h3>A tea-break roster app for our lab team</h3>
+            <div class="app">No app yet</div>
+            <div class="state gate"><i></i>Holding for merge approval</div>
+          </article>
+          <article class="req">
+            <div class="meta"><span>REQ-2120</span><span>8d</span></div>
+            <h3>CSV download 500 error</h3>
+            <div class="app">FieldOps</div>
+            <div class="state gate"><i></i>Holding for merge approval</div>
+          </article>
+          <article class="req">
+            <div class="meta"><span>REQ-2041</span><span>6w</span></div>
+            <h3>Faster expense export</h3>
+            <div class="app">Northwind Expenses</div>
+            <div class="state gate"><i></i>Holding for merge approval</div>
+          </article>
+          <article class="req">
+            <div class="meta"><span>REQ-2029</span><span>6w</span></div>
+            <h3>Migrate auth to SSO</h3>
+            <div class="app">Billing Portal</div>
+            <div class="state gate"><i></i>Holding for merge approval</div>
+          </article>
+        </div>
+      </section>
+
+      <section class="col">
+        <div class="col-head"><h2>Review</h2><span class="count">0</span><span class="agent">requester</span></div>
+        <p class="col-empty">Nothing here yet</p>
+      </section>
+
+      <section class="col">
+        <div class="col-head"><h2>Deploy</h2><span class="count">0</span><span class="agent">deployer</span></div>
+        <p class="col-empty">Nothing here yet</p>
+      </section>
+
+    </div>
+  </section>
+
+  <!-- ============ PROGRESS ============ -->
+  <section class="view" id="view-progress">
+
+    <div class="pv-legend">
+      <span><i class="sw done"></i>done</span>
+      <span><i class="sw work"></i>working</span>
+      <span><i class="sw gate"></i>your gate</span>
+      <span><i class="sw wait"></i>with requester</span>
+      <span><i class="sw stuck"></i>stuck</span>
+      <span><i class="sw ahead"></i>ahead</span>
+    </div>
+
+    <div class="pv-key" aria-hidden="true">
+      <span></span>
+      <span class="k-bar"><span>Spec</span><span>Arch</span><span>Build</span><span>Review</span><span>Deploy</span></span>
+      <span></span>
+    </div>
+
+    <div class="prow"><span class="main"><span class="t">Migrate auth to SSO</span><span class="a">Billing Portal</span></span><span class="pbar"><span class="pseg done"></span><span class="pseg done"></span><span class="pseg gate"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">Faster expense export</span><span class="a">Northwind Expenses</span></span><span class="pbar"><span class="pseg done"></span><span class="pseg done"></span><span class="pseg gate"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">CSV download 500 error</span><span class="a">FieldOps</span></span><span class="pbar"><span class="pseg done"></span><span class="pseg done"></span><span class="pseg gate"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">8d</span></div>
+    <div class="prow"><span class="main"><span class="t">A tea-break roster app for our lab team</span><span class="a">No app yet</span></span><span class="pbar"><span class="pseg done"></span><span class="pseg done"></span><span class="pseg gate"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">2d</span></div>
+    <div class="prow"><span class="main"><span class="t">Login button misaligned on iPad</span><span class="a">FieldOps</span></span><span class="pbar"><span class="pseg work"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">Quarterly headcount dashboard</span><span class="a">Headcount Dashboard</span></span><span class="pbar"><span class="pseg work"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">Supplier onboarding flow</span><span class="a">Supplier Onboarding</span></span><span class="pbar"><span class="pseg work"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">Offline sync mode</span><span class="a">FieldOps</span></span><span class="pbar"><span class="pseg stuck"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">Add CSV import to vendor list</span><span class="a">Northwind Expenses</span></span><span class="pbar"><span class="pseg wait"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">CSV import for vendors</span><span class="a">Vendor Portal</span></span><span class="pbar"><span class="pseg gate"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">Approval email typo</span><span class="a">Northwind Expenses</span></span><span class="pbar"><span class="pseg gate"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">Receipts attach one at a time and each upload takes ~20s</span><span class="a">Northwind Expenses</span></span><span class="pbar"><span class="pseg gate"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">Monthly expense reports are exported one at a time</span><span class="a">Northwind Expenses</span></span><span class="pbar"><span class="pseg gate"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">Expense approvals are chased by email</span><span class="a">Northwind Expenses</span></span><span class="pbar"><span class="pseg gate"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6w</span></div>
+    <div class="prow"><span class="main"><span class="t">A habit tracker web app where I can log daily habits</span><span class="a">No app yet</span></span><span class="pbar"><span class="pseg gate"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">6d</span></div>
+    <div class="prow"><span class="main"><span class="t">A tool for my team to log machine downtime from the floor</span><span class="a">Downtime logger</span></span><span class="pbar"><span class="pseg gate"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span><span class="pseg ahead"></span></span><span class="age">2w</span></div>
+    <button class="more">8 more…</button>
+
+  </section>
+
+</main>
+
+<script>
+  const tabs = [...document.querySelectorAll('.tab')];
+  const order = ['stack', 'line', 'progress'];
+  function show(id) {
+    tabs.forEach(t => {
+      const on = t.dataset.view === id;
+      t.classList.toggle('on', on);
+      t.setAttribute('aria-selected', on);
+    });
+    order.forEach(v => document.getElementById('view-' + v).classList.toggle('on', v === id));
+  }
+  tabs.forEach(t => t.addEventListener('click', () => show(t.dataset.view)));
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const cur = order.indexOf(document.querySelector('.tab.on').dataset.view);
+    const next = (cur + (e.key === 'ArrowRight' ? 1 : -1) + order.length) % order.length;
+    show(order[next]);
+  });
+  show('stack');
+</script>
+
+</body>
+</html>
