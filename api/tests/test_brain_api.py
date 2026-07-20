@@ -11,9 +11,16 @@ from app.models import Request
 
 
 class _FakeStream:
-    def __init__(self, chunks: list[str], *, tokens_in: int = 17, tokens_out: int = 9):
+    def __init__(
+        self,
+        chunks: list[str],
+        *,
+        final: SimpleNamespace | None = None,
+        tokens_in: int = 17,
+        tokens_out: int = 9,
+    ):
         self.text_stream = iter(chunks)
-        self._final = SimpleNamespace(
+        self._final = final if final is not None else SimpleNamespace(
             usage=SimpleNamespace(input_tokens=tokens_in, output_tokens=tokens_out)
         )
 
@@ -34,10 +41,12 @@ class _FakeMessages:
         chunks: list[str] | None = None,
         create_text: str | None = None,
         create_responses: list[SimpleNamespace] | None = None,
+        stream_responses: list[tuple[list[str], SimpleNamespace]] | None = None,
     ):
         self.chunks = chunks or []
         self.create_text = create_text
         self.create_responses = list(create_responses or [])
+        self.stream_responses = list(stream_responses or [])
         self.stream_calls: list[dict] = []
         self.create_calls: list[dict] = []
         self.create_error: Exception | None = None
@@ -45,6 +54,9 @@ class _FakeMessages:
 
     def stream(self, **kwargs):
         self.stream_calls.append(kwargs)
+        if self.stream_responses:
+            chunks, final = self.stream_responses.pop(0)
+            return _FakeStream(chunks, final=final)
         if self.stream_error is not None:
             raise self.stream_error
         return _FakeStream(self.chunks)
@@ -238,17 +250,19 @@ def test_question_tool_loop_streams_final_text_and_batches_tool_results(monkeypa
             "Which monthly numbers matter most?\n",
             '===META===\n{"sub":null,"options":null}',
         ],
-        create_responses=[
-            _message(
-                _tool_use("tool-1", "search_past_apps", {"query": "monthly reporting"}),
-                _tool_use(
-                    "tool-2",
-                    "check_team_ownership",
-                    {"description": "Finance needs a monthly report"},
+        stream_responses=[
+            (
+                [],
+                _message(
+                    _tool_use("tool-1", "search_past_apps", {"query": "monthly reporting"}),
+                    _tool_use(
+                        "tool-2",
+                        "check_team_ownership",
+                        {"description": "Finance needs a monthly report"},
+                    ),
+                    stop_reason="tool_use",
                 ),
-                stop_reason="tool_use",
             ),
-            _message({"type": "text", "text": "I have enough context."}),
         ],
     )
     brain_api = _install_client(monkeypatch, messages, tools=True)
@@ -258,16 +272,16 @@ def test_question_tool_loop_streams_final_text_and_batches_tool_results(monkeypa
 
     assert question is not None
     assert question.question == "Which monthly numbers matter most?"
-    assert len(messages.create_calls) == 2
-    assert messages.create_calls[0]["tools"]
+    assert messages.create_calls == []
+    assert messages.stream_calls[0]["tools"]
     result_messages = _tool_result_user_messages(messages)
     assert len(result_messages) == 1
     result_blocks = [
         block for block in result_messages[0]["content"] if block["type"] == "tool_result"
     ]
     assert [block["tool_use_id"] for block in result_blocks] == ["tool-1", "tool-2"]
-    assert len(messages.stream_calls) == 1
-    assert "tools" not in messages.stream_calls[0]
+    assert len(messages.stream_calls) == 2
+    assert messages.stream_calls[1]["tools"]
     assert any("checking past apps" in delta.lower() for delta in deltas)
     assert deltas[-len(messages.chunks) :] == messages.chunks
 
@@ -276,14 +290,17 @@ def test_question_tool_loop_caps_three_rounds_then_forces_tool_free_stream(monke
     migrate()
     messages = _FakeMessages(
         chunks=["What should operators see first?\n===META===\n", '{"sub":null,"options":null}'],
-        create_responses=[
-            _message(
-                _tool_use(
-                    f"tool-{round_number}",
-                    "search_past_apps",
-                    {"query": f"operator dashboard {round_number}"},
+        stream_responses=[
+            (
+                [],
+                _message(
+                    _tool_use(
+                        f"tool-{round_number}",
+                        "search_past_apps",
+                        {"query": f"operator dashboard {round_number}"},
+                    ),
+                    stop_reason="tool_use",
                 ),
-                stop_reason="tool_use",
             )
             for round_number in range(1, 4)
         ],
@@ -295,10 +312,10 @@ def test_question_tool_loop_caps_three_rounds_then_forces_tool_free_stream(monke
 
     assert question is not None
     assert question.question == "What should operators see first?"
-    assert len(messages.create_calls) == 3
-    assert all(call["tools"] for call in messages.create_calls)
-    assert len(messages.stream_calls) == 1
-    assert "tools" not in messages.stream_calls[0]
+    assert messages.create_calls == []
+    assert len(messages.stream_calls) == 4
+    assert all("tools" in call for call in messages.stream_calls[:3])
+    assert "tools" not in messages.stream_calls[3]
     assert sum("checking past apps" in delta.lower() for delta in deltas) == 3
     assert deltas[-len(messages.chunks) :] == messages.chunks
 
@@ -307,7 +324,7 @@ def test_question_tool_provider_failure_falls_back_to_agent_brain(monkeypatch):
     from app.interview import Question
 
     messages = _FakeMessages()
-    messages.create_error = RuntimeError("provider unavailable")
+    messages.stream_error = RuntimeError("provider unavailable")
     brain_api = _install_client(monkeypatch, messages, tools=True)
     expected = Question("Which export formats should work?")
     monkeypatch.setattr(
@@ -316,18 +333,21 @@ def test_question_tool_provider_failure_falls_back_to_agent_brain(monkeypatch):
     )
 
     assert brain_api.ApiBrain().next_question(_request()) is expected
-    assert len(messages.create_calls) == 1
-    assert messages.stream_calls == []
+    assert messages.create_calls == []
+    assert len(messages.stream_calls) == 1
 
 
 def test_question_tool_execution_failure_falls_back_to_agent_brain(monkeypatch):
     from app.interview import Question
 
     messages = _FakeMessages(
-        create_responses=[
-            _message(
-                _tool_use("tool-unknown", "unknown_read_tool", {}),
-                stop_reason="tool_use",
+        stream_responses=[
+            (
+                [],
+                _message(
+                    _tool_use("tool-unknown", "unknown_read_tool", {}),
+                    stop_reason="tool_use",
+                ),
             )
         ]
     )
@@ -339,14 +359,24 @@ def test_question_tool_execution_failure_falls_back_to_agent_brain(monkeypatch):
     )
 
     assert brain_api.ApiBrain().next_question(_request()) is expected
-    assert len(messages.create_calls) == 1
-    assert messages.stream_calls == []
+    assert messages.create_calls == []
+    assert len(messages.stream_calls) == 1
 
 
 def test_question_tool_final_stream_failure_falls_back_to_agent_brain(monkeypatch):
     from app.interview import Question
 
-    messages = _FakeMessages()
+    messages = _FakeMessages(
+        stream_responses=[
+            (
+                [],
+                _message(
+                    _tool_use("tool-1", "search_past_apps", {"query": "reports"}),
+                    stop_reason="tool_use",
+                ),
+            )
+        ]
+    )
     messages.stream_error = RuntimeError("stream disconnected")
     brain_api = _install_client(monkeypatch, messages, tools=True)
     expected = Question("Who should use this report?")
@@ -356,8 +386,8 @@ def test_question_tool_final_stream_failure_falls_back_to_agent_brain(monkeypatc
     )
 
     assert brain_api.ApiBrain().next_question(_request()) is expected
-    assert len(messages.create_calls) == 1
-    assert len(messages.stream_calls) == 1
+    assert messages.create_calls == []
+    assert len(messages.stream_calls) == 2
 
 
 def test_question_tool_plain_final_output_falls_back_to_agent_brain(monkeypatch):
@@ -378,16 +408,18 @@ def test_question_tool_round_count_is_recorded_in_telemetry(monkeypatch):
     migrate()
     messages = _FakeMessages(
         chunks=["Who needs access?\n===META===\n", '{"sub":null,"options":null}'],
-        create_responses=[
-            _message(
-                _tool_use(
-                    "tool-team",
-                    "check_team_ownership",
-                    {"description": "Finance needs a monthly report"},
+        stream_responses=[
+            (
+                [],
+                _message(
+                    _tool_use(
+                        "tool-team",
+                        "check_team_ownership",
+                        {"description": "Finance needs a monthly report"},
+                    ),
+                    stop_reason="tool_use",
                 ),
-                stop_reason="tool_use",
             ),
-            _message({"type": "text", "text": "Ready."}),
         ],
     )
     brain_api = _install_client(monkeypatch, messages, tools=True)
@@ -425,9 +457,9 @@ def test_question_tools_are_enabled_by_default(monkeypatch):
 
     assert brain_api.ApiBrain().next_question(_request()) is not None
 
-    assert len(messages.create_calls) == 1
-    assert messages.create_calls[0]["tools"]
+    assert messages.create_calls == []
     assert len(messages.stream_calls) == 1
+    assert messages.stream_calls[0]["tools"]
 
 
 def test_api_call_uses_cached_knowledge_system_blocks(monkeypatch):

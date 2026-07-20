@@ -9,6 +9,7 @@ is the durable dedup source; the process-local lock is only a fast path. SYNC mo
 import logging
 import threading
 
+from . import settings
 from .brain_calls import (
     active_call,
     claim_call,
@@ -49,6 +50,7 @@ def _write(db, r: Request, expected_turns: int) -> dict:
         kind="summary",
         dedup_key=f"summary:{rid}:{expected_turns}:{prompt_fingerprint(r)}",
         model=model_for_kind("summary"),
+        stale_after_seconds=settings.INTERVIEW_TIMEOUT + 30,
     )
     if call_id is None:
         return ScriptedBrain().summarize(r)
@@ -82,6 +84,7 @@ def _write(db, r: Request, expected_turns: int) -> dict:
             kind="summary",
             dedup_key=f"summary:{rid}:{current_turns}:{current_fingerprint}",
             model=model_for_kind("summary"),
+            stale_after_seconds=settings.INTERVIEW_TIMEOUT + 30,
         )
         if retry_id is None:
             return ScriptedBrain().summarize(current)
@@ -156,6 +159,7 @@ def _generate(rid: int, expected_turns: int) -> None:
             kind="summary",
             dedup_key=f"summary:{rid}:{expected_turns}:{prompt_fingerprint(r)}",
             model=model_for_kind("summary"),
+            stale_after_seconds=settings.INTERVIEW_TIMEOUT + 30,
         )
         if call_id is None:
             return

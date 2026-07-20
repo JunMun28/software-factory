@@ -16,7 +16,7 @@ import threading
 
 from sqlalchemy import func, or_, select, update
 
-from . import brain_streams
+from . import brain_streams, settings
 from .agent_brain import META_MARKER
 from .brain_calls import (
     active_call,
@@ -107,6 +107,7 @@ def _generate(rid: int, answered_at_start: int) -> None:
                 f"question:{rid}:{answered_at_start}:{prompt_fingerprint(r)}"
             ),
             model=model_for_kind("question"),
+            stale_after_seconds=settings.INTERVIEW_TIMEOUT + 30,
         )
         if call_id is None:
             return

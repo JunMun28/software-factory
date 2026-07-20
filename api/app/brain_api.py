@@ -376,16 +376,36 @@ def _question_with_tools(
         if output_config is not None:
             common["output_config"] = output_config
 
+        # NOTE(plan-008): every round streams and a non-tool round's own output is
+        # the final answer. The earlier create-then-restream shape generated the
+        # question twice on the no-tool path — double output billing and a TTFT
+        # gated behind a full hidden generation (cross-phase review finding #1).
+        chunks: list[str] = []
+        first_delta_at: float | None = None
+        final = None
         for _round in range(3):
-            response = _get_client().messages.create(
+            chunks = []
+            with _get_client().messages.stream(
                 **common,
                 messages=list(conversation),
                 tools=brain_tools.TOOL_DEFINITIONS,
-            )
+            ) as stream:
+                for text in stream.text_stream:
+                    if not text:
+                        continue
+                    if first_delta_at is None:
+                        first_delta_at = time.monotonic()
+                    chunks.append(text)
+                    # Pre-tool prose is relayed live; the rare tool round that
+                    # follows appends a status line, and the terminal state event
+                    # remains authoritative for what the user finally sees.
+                    _emit_delta("question", on_delta, text)
+                response = stream.get_final_message()
             tokens_in, tokens_out = _usage(response)
             input_usage.append(tokens_in)
             output_usage.append(tokens_out)
             if getattr(response, "stop_reason", None) != "tool_use":
+                final = response
                 break
             assistant_content = [
                 _block_dict(block) for block in getattr(response, "content", ())
@@ -423,23 +443,25 @@ def _question_with_tools(
             # one user message before the conversation can continue.
             conversation.append({"role": "user", "content": result_blocks})
 
-        chunks: list[str] = []
-        first_delta_at: float | None = None
-        with _get_client().messages.stream(
-            **common,
-            messages=list(conversation),
-        ) as stream:
-            for text in stream.text_stream:
-                if not text:
-                    continue
-                if first_delta_at is None:
-                    first_delta_at = time.monotonic()
-                chunks.append(text)
-                _emit_delta("question", on_delta, text)
-            final = stream.get_final_message()
-        tokens_in, tokens_out = _usage(final)
-        input_usage.append(tokens_in)
-        output_usage.append(tokens_out)
+        if final is None:
+            # Three tool rounds exhausted with the model still asking for tools:
+            # force a plain streaming close without the tool palette.
+            chunks = []
+            with _get_client().messages.stream(
+                **common,
+                messages=list(conversation),
+            ) as stream:
+                for text in stream.text_stream:
+                    if not text:
+                        continue
+                    if first_delta_at is None:
+                        first_delta_at = time.monotonic()
+                    chunks.append(text)
+                    _emit_delta("question", on_delta, text)
+                final = stream.get_final_message()
+            tokens_in, tokens_out = _usage(final)
+            input_usage.append(tokens_in)
+            output_usage.append(tokens_out)
         return _ApiReply(
             text="".join(chunks),
             tokens_in=_token_total(input_usage),

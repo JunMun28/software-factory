@@ -14,7 +14,7 @@ import logging
 import threading
 import uuid
 
-from . import interview
+from . import interview, settings
 from .brain_calls import active_call, claim_call, finish_call, model_for_kind
 from .db import SessionLocal
 from .models import Request
@@ -108,6 +108,7 @@ def _generate(rid: int, source_description: str, generation_token: str) -> None:
             kind="classify",
             dedup_key=f"classify:{rid}:{generation_token}",
             model=model_for_kind("classify"),
+            stale_after_seconds=settings.INTERVIEW_TIMEOUT + 30,
         )
         if call_id is None:
             return

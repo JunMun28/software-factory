@@ -16,7 +16,7 @@ import threading
 
 from sqlalchemy import func, select
 
-from . import brain_streams
+from . import brain_streams, settings
 from .agent_brain import PROTO_MARKER
 from .brain_calls import (
     active_call,
@@ -211,6 +211,7 @@ def resolve_one(rid: int, *, on_delta=None) -> None:
                 f"{prompt_fingerprint(r, extra={'instruction': instruction, 'annotation': annotation, 'current_html': current_html, 'prototype_status': prototype_status})}"
             ),
             model=model_for_kind("prototype"),
+            stale_after_seconds=settings.PROTOTYPE_TIMEOUT + 30,
         )
         if call_id is None:
             return
