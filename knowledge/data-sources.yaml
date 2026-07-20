@@ -1,0 +1,15 @@
+# Example data catalog — replace these rows with approved organizational sources.
+- name: Orders Warehouse
+  contains: Historical orders, fulfilment status, and customer-account identifiers
+  owner: Data Platform
+  access_notes: Request read access through the data catalog
+
+- name: Equipment Events
+  contains: Example equipment state changes, alarms, and maintenance events
+  owner: Manufacturing Systems
+  access_notes: Site approval is required for production data
+
+- name: People Directory
+  contains: Employee names, teams, managers, and office locations
+  owner: Workplace Technology
+  access_notes: Use the approved directory API; sensitive fields are restricted

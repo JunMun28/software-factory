@@ -5,9 +5,9 @@ import json
 import logging
 import threading
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from .db import SessionLocal
@@ -29,6 +29,7 @@ def model_for_kind(kind: str) -> str:
             "summary": settings.SUMMARY_MODEL,
             "prototype": settings.API_PROTOTYPE_MODEL,
             "spec": settings.SPEC_MODEL,
+            "escalation": "claude-haiku-4-5",
         }.get(kind, "api")
     if brain_mode() == "agent":
         return f"cli:{agent_cli()}"
@@ -73,11 +74,20 @@ def prompt_fingerprint(request, *, extra=None) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def claim_call(*, request_id: int | None, kind: str, dedup_key: str, model: str) -> int | None:
+def claim_call(
+    *,
+    request_id: int | None,
+    kind: str,
+    dedup_key: str,
+    model: str,
+    stale_after_seconds: int | None = None,
+    retry_after_seconds: int | None = None,
+) -> int | None:
     """Insert-first idempotent generation claim.
 
-    A live/successful row owns its globally namespaced key. A failed row is
-    deleted and may be inserted again so the existing poll re-kick UX survives.
+    A live/successful row owns its globally namespaced key. Failed rows can be
+    retried after an optional cooldown, and callers may reclaim abandoned running
+    rows after their provider timeout. Defaults preserve the original behavior.
     """
     key = dedup_key.strip().lower()
     for _attempt in range(2):
@@ -98,12 +108,41 @@ def claim_call(*, request_id: int | None, kind: str, dedup_key: str, model: str)
                 existing = db.scalar(
                     select(BrainCall).where(BrainCall.dedup_key == key)
                 )
-                if existing is None or existing.status != "failed":
+                if existing is None:
                     return None
+                now = utcnow()
+                retry_base = existing.finished_at or existing.created_at
+                retryable_status = existing.status == "failed" or (
+                    existing.status == "fallback" and retry_after_seconds is not None
+                )
+                failed_retry_ready = retryable_status and (
+                    retry_after_seconds is None
+                    or retry_after_seconds <= 0
+                    or retry_base <= now - timedelta(seconds=retry_after_seconds)
+                )
+                stale_running = (
+                    existing.status == "running"
+                    and stale_after_seconds is not None
+                    and stale_after_seconds > 0
+                    and existing.created_at
+                    <= now - timedelta(seconds=stale_after_seconds)
+                )
+                if not failed_retry_ready and not stale_running:
+                    return None
+                predicate = (
+                    BrainCall.id == existing.id,
+                    BrainCall.status == existing.status,
+                    BrainCall.created_at == existing.created_at,
+                )
+                # Retain every attempt for cost telemetry. A timed-out caller may
+                # also resume, so keeping its row/id fences it from its successor.
                 removed = db.execute(
-                    delete(BrainCall).where(
-                        BrainCall.id == existing.id,
-                        BrainCall.status == "failed",
+                    update(BrainCall)
+                    .where(*predicate)
+                    .values(
+                        dedup_key=f"abandoned:{existing.id}",
+                        status="failed",
+                        finished_at=now,
                     )
                 )
                 db.commit()
@@ -164,6 +203,7 @@ def record_api_call(
     tokens_out: int | None,
     ttft_ms: int | None,
     duration_ms: int | None,
+    tool_rounds: int | None,
     created_at: datetime,
 ) -> None:
     """Write provider telemetry without ever turning enrichment into a blocker."""
@@ -179,6 +219,7 @@ def record_api_call(
                 row.tokens_out = tokens_out
                 row.ttft_ms = ttft_ms
                 row.duration_ms = duration_ms
+                row.tool_rounds = tool_rounds
                 if status == "fallback":
                     row.status = "fallback"
             else:
@@ -193,6 +234,7 @@ def record_api_call(
                         tokens_out=tokens_out,
                         ttft_ms=ttft_ms,
                         duration_ms=duration_ms,
+                        tool_rounds=tool_rounds,
                         created_at=created_at,
                         finished_at=utcnow(),
                     )

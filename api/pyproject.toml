@@ -9,6 +9,7 @@ dependencies = [
     "kubernetes",
     "pyjwt[crypto]>=2.13.0",
     "pyodbc>=5.3.0", # mssql+pyodbc dialect (Azure SQL) — not imported by application runtime code; used by the mssql URL driver and the CI bootstrap
+    "pyyaml>=6.0.3",
     # pytest is a RUNTIME dependency: the claude runner shells out to it for
     # the RED/GREEN gates, including inside the --no-dev container image
     "pytest>=9.0.3",

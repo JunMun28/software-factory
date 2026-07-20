@@ -41,7 +41,14 @@ def test_alembic_upgrade_head_builds_full_schema_on_fresh_db():
             "stage_jobs",
             "acceptance_criteria",
             "spec_snapshots",
+            "brain_calls",
         } <= tables, tables
+        assert "tool_rounds" in {
+            column["name"] for column in insp.get_columns("brain_calls")
+        }
+        assert "intake_escalation" in {
+            column["name"] for column in insp.get_columns("requests")
+        }
         with create_engine(url).connect() as conn:
             assert conn.exec_driver_sql("SELECT id, epoch FROM leader_epochs").one() == (1, 0)
 
@@ -125,8 +132,9 @@ def test_turn_order_migration_repairs_legacy_duplicates_before_indexing():
                 ]
             )
             db.add(request)
-            db.commit()
+            db.flush()
             rid = request.id
+            db.commit()
         db_engine.dispose()
 
         after = subprocess.run(

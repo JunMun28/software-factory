@@ -19,7 +19,7 @@ from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, null, or_, select, update
+from sqlalchemy import exists, func, null, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,7 @@ from .. import (
     brain_streams,
     classify_gen,
     interview_gen,
+    knowledge,
     prototype_gen,
     settings,
     summary_gen,
@@ -57,7 +58,15 @@ from ..interview import (
     question_budget,
     question_ceiling,
 )
-from ..models import AuditEvent, InterviewTurn, ProgressEvent, PrototypeTurn, Request, utcnow
+from ..models import (
+    AuditEvent,
+    BrainCall,
+    InterviewTurn,
+    ProgressEvent,
+    PrototypeTurn,
+    Request,
+    utcnow,
+)
 from ..schemas import (
     ClassifyIn,
     ClassifyOut,
@@ -188,6 +197,226 @@ def _current_or_generate(db: Session, r: Request) -> Question | None:
     return _generate_pending_sync(db, r)
 
 
+def _routing_fingerprint(r: Request, brain) -> str:
+    return prompt_fingerprint(
+        r,
+        extra={
+            "kind": "team-routing",
+            "brain": type(brain).__name__,
+            "teams": knowledge.teams(),
+        },
+    )
+
+
+def _cached_routing_proposal(
+    cached: dict, fingerprint: str, request_type: str
+) -> tuple[bool, dict | None]:
+    proposal = cached.get("proposal")
+    if (
+        cached.get("accepted")
+        and isinstance(proposal, dict)
+        and proposal.get("to_type") == request_type
+    ):
+        return True, None
+    if cached.get("fingerprint") != fingerprint:
+        return False, None
+    if cached.get("declined"):
+        return True, None
+    if "proposal" not in cached:
+        return False, None
+    return True, proposal if isinstance(proposal, dict) else None
+
+
+def _write_routing_cache(
+    db: Session,
+    r: Request,
+    value: dict,
+    *,
+    call_id: int | None = None,
+    dedup_key: str | None = None,
+) -> bool:
+    """Persist enrichment state without changing the request's business timestamp."""
+    updated_at = r.updated_at
+    previous = r.intake_escalation
+    conditions = [
+        Request.id == r.id,
+        Request.updated_at == updated_at,
+        _request_value_matches(Request.intake_escalation, previous),
+    ]
+    if call_id is not None and dedup_key is not None:
+        conditions.append(
+            exists(
+                select(BrainCall.id).where(
+                    BrainCall.id == call_id,
+                    BrainCall.dedup_key == dedup_key,
+                )
+            )
+        )
+    wrote = db.execute(
+        update(Request)
+        .where(*conditions)
+        .values(
+            intake_escalation=value,
+            updated_at=Request.updated_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
+    if wrote.rowcount != 1:
+        return False
+    db.refresh(r, ["intake_escalation", "updated_at"])
+    return True
+
+
+# NOTE(plan-008): the routing model call must never run on a request thread
+# (the same rule that moved classify to classify_gen). interview_state reads the
+# cache via _routing_state and defers a miss to this in-process worker; the
+# durable brain_calls claim inside _routing_proposal stays the cross-replica
+# dedup, this set is only the cheap same-process fast path.
+_routing_lock = threading.Lock()
+_routing_inflight: set[int] = set()
+
+
+def _kick_routing(rid: int) -> None:
+    with _routing_lock:
+        if rid in _routing_inflight:
+            return
+        _routing_inflight.add(rid)
+    threading.Thread(target=_routing_worker, args=(rid,), daemon=True).start()
+
+
+def _routing_worker(rid: int) -> None:
+    try:
+        with SessionLocal() as db:
+            r = db.get(Request, rid)
+            if r is not None:
+                _routing_proposal(db, r)
+    except Exception:
+        log.exception("background team-routing check failed for request %s", rid)
+    finally:
+        with _routing_lock:
+            _routing_inflight.discard(rid)
+
+
+def _routing_state(db: Session, r: Request, *, allow_call: bool) -> dict | None:
+    """Cache-only read for request threads; a miss kicks the background worker."""
+    brain = get_brain()
+    fingerprint = _routing_fingerprint(r, brain)
+    cached = r.intake_escalation if isinstance(r.intake_escalation, dict) else {}
+    hit, proposal = _cached_routing_proposal(cached, fingerprint, r.type)
+    if hit:
+        return proposal
+    if not allow_call:
+        return None
+    if interview_gen.SYNC:
+        # NOTE(plan-008): inline in SYNC mode so tests and smoke stay deterministic,
+        # mirroring how interview_gen/summary_gen handle their SYNC paths.
+        return _routing_proposal(db, r)
+    _kick_routing(r.id)
+    return None
+
+
+def _routing_proposal(
+    db: Session, r: Request, *, allow_call: bool = True
+) -> dict | None:
+    """Resolve one deduplicated optional team-routing check for this prompt.
+
+    Synchronous by design — request threads must reach it only through
+    _routing_state's SYNC branch; in async mode it runs on _routing_worker's
+    daemon thread with its own session."""
+    brain = get_brain()
+    fingerprint = _routing_fingerprint(r, brain)
+    cached = r.intake_escalation if isinstance(r.intake_escalation, dict) else {}
+    hit, proposal = _cached_routing_proposal(cached, fingerprint, r.type)
+    if hit:
+        return proposal
+    if not allow_call:
+        return None
+
+    # End the read transaction before the provider call. The durable brain_calls
+    # claim prevents two API replicas from billing the same fingerprint twice.
+    _ = r.app, r.turns, r.attachments
+    db.commit()
+    claim_key = f"escalation:{r.id}:{fingerprint}"
+    call_id = claim_call(
+        request_id=r.id,
+        kind="escalation",
+        dedup_key=claim_key,
+        model=model_for_kind("escalation"),
+        stale_after_seconds=settings.ESCALATION_TIMEOUT + 10,
+        retry_after_seconds=settings.ESCALATION_RETRY_SECONDS,
+    )
+    if call_id is None:
+        db.expire(r)
+        if _routing_fingerprint(r, brain) != fingerprint:
+            db.commit()
+            return None
+        cached = r.intake_escalation if isinstance(r.intake_escalation, dict) else {}
+        cached_proposal = _cached_routing_proposal(cached, fingerprint, r.type)[1]
+        db.commit()
+        return cached_proposal
+
+    succeeded = False
+    try:
+        # The previous claimant may have published just before this replacement
+        # acquired the key. Reuse that result instead of making a duplicate call.
+        db.expire(r)
+        if _routing_fingerprint(r, brain) != fingerprint:
+            db.commit()
+            return None
+        cached = r.intake_escalation if isinstance(r.intake_escalation, dict) else {}
+        hit, cached_proposal = _cached_routing_proposal(cached, fingerprint, r.type)
+        db.commit()
+        if hit:
+            succeeded = True
+            return cached_proposal
+        with active_call(call_id):
+            proposal = brain.propose_escalation(r)
+        call_status = db.scalar(
+            select(BrainCall.status).where(BrainCall.id == call_id)
+        )
+        db.commit()
+        if call_status in {"fallback", "failed"}:
+            return None
+        if proposal is not None:
+            if (
+                not isinstance(proposal, dict)
+                or proposal.get("to_type") not in ("bug", "enh", "new", "other")
+                or not isinstance(proposal.get("why"), str)
+            ):
+                return None
+            proposal = {
+                "to_type": proposal["to_type"],
+                "why": proposal["why"][:200],
+            }
+
+        # Do not publish an answer generated from stale request facts or team data.
+        db.expire(r)
+        if _routing_fingerprint(r, brain) != fingerprint:
+            db.commit()
+            return None
+        value = {
+            "fingerprint": fingerprint,
+            "proposal": proposal,
+            "declined": False,
+            "accepted": False,
+        }
+        succeeded = _write_routing_cache(
+            db,
+            r,
+            value,
+            call_id=call_id,
+            dedup_key=claim_key,
+        )
+        return proposal if succeeded else None
+    except Exception:
+        db.rollback()
+        log.exception("optional intake team-routing check failed")
+        return None
+    finally:
+        finish_call(call_id, success=succeeded)
+
+
 def interview_state(db: Session, r: Request, *, generate: bool = True) -> InterviewState:
     """Cheap read of the interview state. If the next question isn't ready yet and
     `generate` is set, kick off background pre-generation and report `thinking` (SYNC
@@ -198,11 +427,9 @@ def interview_state(db: Session, r: Request, *, generate: bool = True) -> Interv
                             thinking=thinking, turns=[t for t in r.turns])
         if q:
             st.question, st.sub, st.options, st.final = q.question, q.sub, q.options, q.final
-        # Surface any mid-interview type-change proposal the brain wants to raise (ADR 0023).
-        # ScriptedBrain (and today's AgentBrain) return None — this is inert wiring for the
-        # seam a future model fills; the UI drives accept/decline via the escalate endpoint.
-        brain = get_brain()
-        prop = brain.propose_escalation(r) if hasattr(brain, "propose_escalation") else None
+        # ScriptedBrain and the CLI brain stay silent; ApiBrain can now fill this
+        # consent-gated seam without repeated polling creating repeated provider calls.
+        prop = _routing_state(db, r, allow_call=not thinking)
         if prop and prop.get("to_type") in ("bug", "enh", "new", "other") and prop["to_type"] != r.type:
             st.escalation = {"to_type": prop["to_type"], "why": str(prop.get("why") or "")[:200]}
         return st
@@ -658,25 +885,66 @@ def reopen_interview(rid: int, body: Note, db: Session = Depends(get_db)):
 def escalate_interview(rid: int, body: EscalateIn, db: Session = Depends(get_db)):
     """Consent gate for a mid-interview type change (ADR 0023). Accept PATCHes the type
     (the draft's other facts persist — lossless); decline leaves it unchanged. Either way
-    the interview continues; the proposal is cleared."""
+    the interview continues; the routing decision is retained for audit."""
     r = get_request(db, rid)
+    cached = r.intake_escalation if isinstance(r.intake_escalation, dict) else None
+    cached_proposal = cached.get("proposal") if cached is not None else None
+    if isinstance(cached_proposal, dict):
+        same_target = cached_proposal.get("to_type") == body.to_type
+        if cached.get("accepted"):
+            if body.accept and same_target and r.type == body.to_type:
+                return interview_state(db, r, generate=interview_gen.SYNC)
+            _conflict(db, "Interview escalation was already accepted.")
+        if cached.get("declined"):
+            if not body.accept and same_target:
+                return interview_state(db, r, generate=interview_gen.SYNC)
+            _conflict(db, "Interview escalation was already declined.")
+        current_fingerprint = _routing_fingerprint(r, get_brain())
+        if (
+            cached.get("fingerprint") != current_fingerprint
+            or cached_proposal.get("to_type") != body.to_type
+        ):
+            _conflict(db, "Interview escalation is stale; refresh and try again.")
+    resolved_cache = (
+        {
+            **cached,
+            "accepted": bool(body.accept),
+            "declined": not body.accept,
+            "resolved_at": utcnow().isoformat(),
+        }
+        if cached is not None and isinstance(cached_proposal, dict)
+        else None
+    )
     if body.accept and r.type != body.to_type:
         type_at_start = r.type
         answered_at_start = answered_count(r)
         pending_at_start = dict(r.pending_question) if r.pending_question is not None else None
+        updated_at_start = r.updated_at
         db.commit()
         claim = db.execute(
             update(Request)
             .where(
                 Request.id == rid,
                 Request.type == type_at_start,
+                Request.updated_at == updated_at_start,
+                _request_value_matches(Request.intake_escalation, cached),
                 _answered_turn_count(rid) == answered_at_start,
                 _request_value_matches(Request.pending_question, pending_at_start),
             )
-            .values(type=body.to_type, summary=null(), pending_question=null())
+            .values(
+                type=body.to_type,
+                summary=null(),
+                pending_question=null(),
+                intake_escalation=(
+                    resolved_cache if resolved_cache is not None else null()
+                ),
+            )
             .execution_options(synchronize_session=False)
         )
         if claim.rowcount != 1:
+            _conflict(db, "Interview escalation was already resolved; refresh and try again.")
+    else:
+        if resolved_cache is not None and not _write_routing_cache(db, r, resolved_cache):
             _conflict(db, "Interview escalation was already resolved; refresh and try again.")
     db.commit()  # preserve decline and same-type accept as successful no-ops
     db.refresh(r)

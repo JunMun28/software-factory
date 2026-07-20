@@ -26,6 +26,13 @@ CLI_CAP = int(os.environ.get("FACTORY_CLI_CAP", "3"))
 # Direct provider calls hold sockets rather than child processes, so they get a
 # separate, larger sanity bound. The CLI fallback remains capped above.
 API_BRAIN_CAP = int(os.environ.get("FACTORY_API_BRAIN_CAP", "20"))
+
+
+def brain_tools_enabled() -> bool:
+    """Keep the Phase 5 question-tool kill-switch runtime reversible."""
+    return os.environ.get("FACTORY_BRAIN_TOOLS", "1") != "0"
+
+
 # Stage-1 provider model tiers. FACTORY_BRAIN remains a per-call mode in
 # agent_exec.py; these stable defaults are read once like the other model knobs.
 CLASSIFY_MODEL = os.environ.get("FACTORY_CLASSIFY_MODEL", "claude-haiku-4-5").strip()
@@ -45,11 +52,20 @@ SAMPLE = Path(os.environ.get("FACTORY_SAMPLE", str(REPO_DIR / "sample")))
 # The ONE stage-prompt store (harness.py): the sf-agent image bakes these files
 # for pod runs; the in-process AgentRunner reads them at call time.
 PROMPTS = Path(os.environ.get("FACTORY_PROMPTS", str(REPO_DIR / "docker" / "sf-agent" / "prompts")))
+KNOWLEDGE_DIR = Path(
+    os.environ.get("FACTORY_KNOWLEDGE_DIR", str(REPO_DIR / "knowledge"))
+)
 STAGE_TIMEOUT = int(os.environ.get("FACTORY_STAGE_TIMEOUT", "300"))
 # Per intake-interview model call. A cold `claude` CLI on a larger model routinely
 # runs 60-90s; too tight a bound makes questions time out and fall back to the
 # shallow scripted script, which defeats the adaptive-depth budget (esp. new apps).
 INTERVIEW_TIMEOUT = int(os.environ.get("FACTORY_INTERVIEW_TIMEOUT", "120"))
+# Optional Haiku routing should never hold a state response as long as a full
+# interview turn. Brief retry spacing also prevents poll traffic amplifying an outage.
+ESCALATION_TIMEOUT = int(os.environ.get("FACTORY_ESCALATION_TIMEOUT", "20"))
+ESCALATION_RETRY_SECONDS = int(
+    os.environ.get("FACTORY_ESCALATION_RETRY_SECONDS", "30")
+)
 # Reasoning-effort dial for the intake brain's read-only calls (low|medium|high|
 # xhigh|max). Empty → the model's default. Lower = faster but a quality risk on
 # deep interviews, so it ships off; --safe-mode already cuts the bulk of the wait.

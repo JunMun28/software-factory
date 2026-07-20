@@ -169,6 +169,9 @@ class Request(Base):
     # Durable composer classification state. This stays separate from `type` so an
     # asynchronous suggestion can never overwrite the submitter's current choice.
     classification_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Cached optional team-routing proposal and consent decision, keyed by prompt
+    # inputs. This prevents poll re-billing and retains accepted handoff evidence.
+    intake_escalation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     send_back_question: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     send_back_response: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
@@ -256,6 +259,7 @@ class BrainCall(Base):
     tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ttft_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tool_rounds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(TZDateTime(), nullable=True)
 
