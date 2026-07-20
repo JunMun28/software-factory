@@ -27,6 +27,46 @@ const FX_TIERS: readonly [number, readonly string[]][] = [
 const FX_CELL_W = 21;
 const FX_CELL_H = 17;
 
+interface ActiveClassification {
+  token: symbol;
+  description: string;
+}
+const activeClassifications = new WeakMap<IntakeDraft, Map<number, ActiveClassification>>();
+
+function claimClassification(draft: IntakeDraft, id: number, description: string): symbol | null {
+  let runs = activeClassifications.get(draft);
+  if (!runs) {
+    runs = new Map<number, ActiveClassification>();
+    activeClassifications.set(draft, runs);
+  }
+  if (runs.get(id)?.description === description) return null;
+  const token = Symbol('classification');
+  runs.set(id, { token, description });
+  return token;
+}
+
+function ownsClassification(
+  draft: IntakeDraft,
+  id: number,
+  token: symbol,
+  description: string,
+): boolean {
+  const run = activeClassifications.get(draft)?.get(id);
+  return (
+    run?.token === token &&
+    run.description === description &&
+    draft.requestId === id &&
+    draft.desc.trim() === description
+  );
+}
+
+function releaseClassification(draft: IntakeDraft, id: number, token: symbol): void {
+  const runs = activeClassifications.get(draft);
+  if (!runs || runs.get(id)?.token !== token) return;
+  runs.delete(id);
+  if (runs.size === 0) activeClassifications.delete(draft);
+}
+
 /** Deterministic per-cell randomness — the field must not reshuffle on
  *  re-render (resize, theme flip), only recolor. */
 function fxHash(x: number, y: number): number {
@@ -532,21 +572,50 @@ export class NewRequest {
     }
   }
 
-  /** classify once (ADR 0023): the guess seeds the Track chip until the basics
-   *  wizard asks the type question. Runs after navigation; the user's own pick
-   *  (typeConfidence 1) always wins over a late guess, and a failed call just
-   *  leaves the provisional New app standing. */
+  /** Kick classification (ADR 0023), then poll its durable result after navigation.
+   *  The user's own pick (typeConfidence 1) always wins over a late guess, and
+   *  a failed call just leaves the provisional New app standing. */
   private async finishInBackground(id: number) {
     void this.draft.uploadPending(id);
-    if (this.draft.typeConfidence !== 0) return; // type came from a restored draft
+    if (this.draft.requestId !== id || this.draft.typeConfidence !== 0) return;
+    const description = this.draft.desc.trim();
+    const token = claimClassification(this.draft, id, description);
+    if (token == null) return;
+    const ownsPendingRun = () =>
+      this.draft.typeConfidence === 0 && ownsClassification(this.draft, id, token, description);
     try {
-      const c = await firstValueFrom(this.api.classify(this.draft.desc.trim()));
-      if (this.draft.requestId !== id || this.draft.typeConfidence !== 0) return;
-      this.draft.type = c.type;
+      if (!ownsPendingRun()) return;
+      let c = await firstValueFrom(this.api.classify(description, id));
+      while (c.status === 'pending') {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (!ownsPendingRun()) return;
+        c = await firstValueFrom(this.api.classification(id));
+      }
+      if (!ownsPendingRun()) return;
+      if (c.status !== 'succeeded' || c.type == null || c.confidence == null) return;
+
+      // NOTE(plan-008): This checkout has no pending Track chip. typeConfidence=0
+      // is its existing pending signal, and Basics preserves an explicit human pick.
+      const inferredType = c.type;
+      this.draft.type = inferredType;
       this.draft.typeConfidence = c.confidence;
-      if (c.type !== 'new') await this.draft.save(); // PATCH the refined type
+      if (inferredType !== 'new') {
+        if (!ownsClassification(this.draft, id, token, description)) return;
+        await firstValueFrom(this.api.updateRequest(id, { type: inferredType }));
+        const humanType = this.draft.type;
+        if (
+          ownsClassification(this.draft, id, token, description) &&
+          this.draft.typeConfidence === 1 &&
+          humanType != null &&
+          humanType !== inferredType
+        ) {
+          await firstValueFrom(this.api.updateRequest(id, { type: humanType }));
+        }
+      }
     } catch {
       /* provisional 'new' stands */
+    } finally {
+      releaseClassification(this.draft, id, token);
     }
   }
 }

@@ -20,6 +20,36 @@ CODEX_MODEL = os.environ.get("FACTORY_CODEX_MODEL", "")  # empty → the CLI's c
 OPENCODE_BIN = os.environ.get("OPENCODE_BIN", "opencode")
 # opencode model ids are "provider/model". Default to a provider authed on this host.
 OPENCODE_MODEL = os.environ.get("FACTORY_OPENCODE_MODEL", "openai/gpt-5.5").strip()
+# Full agent CLI subprocesses are memory-heavy; a small global bound prevents
+# concurrent calls from exhausting the API pod's memory and causing an in-pod OOM.
+CLI_CAP = int(os.environ.get("FACTORY_CLI_CAP", "3"))
+# Direct provider calls hold sockets rather than child processes, so they get a
+# separate, larger sanity bound. The CLI fallback remains capped above.
+API_BRAIN_CAP = int(os.environ.get("FACTORY_API_BRAIN_CAP", "20"))
+# Per-user daily brain budget (Plan 008 Phase 0 / D6). Direct-API billing makes a
+# per-user spend cap mandatory before self-serve end users: once a reporter crosses
+# either cap within a UTC day, their intake generation degrades to the scripted
+# brain (the interview is enrichment, never a blocker) and the throttle is logged
+# as a status="budget" brain_calls row. The two caps are independent; 0 = unlimited
+# on that axis (both 0 disables the budget entirely — today's open behavior).
+USER_DAILY_TOKENS = int(os.environ.get("FACTORY_USER_DAILY_TOKENS", "500000"))
+USER_DAILY_CALLS = int(os.environ.get("FACTORY_USER_DAILY_CALLS", "300"))
+
+
+def brain_tools_enabled() -> bool:
+    """Keep the Phase 5 question-tool kill-switch runtime reversible."""
+    return os.environ.get("FACTORY_BRAIN_TOOLS", "1") != "0"
+
+
+# Stage-1 provider model tiers. FACTORY_BRAIN remains a per-call mode in
+# agent_exec.py; these stable defaults are read once like the other model knobs.
+CLASSIFY_MODEL = os.environ.get("FACTORY_CLASSIFY_MODEL", "claude-haiku-4-5").strip()
+QUESTION_MODEL = os.environ.get("FACTORY_QUESTION_MODEL", "claude-sonnet-5").strip()
+SUMMARY_MODEL = os.environ.get("FACTORY_SUMMARY_MODEL", "claude-sonnet-5").strip()
+API_PROTOTYPE_MODEL = os.environ.get(
+    "FACTORY_API_PROTOTYPE_MODEL", "claude-sonnet-5"
+).strip()
+SPEC_MODEL = os.environ.get("FACTORY_SPEC_MODEL", "claude-opus-4-8").strip()
 # Read-only vs write is a HARD guarantee, enforced by a factory-owned config pointed at
 # via OPENCODE_CONFIG (never the operator's global agents). deny = fail-closed sandbox.
 OPENCODE_CONFIG_DIR = API_DIR / "app" / "opencode"
@@ -30,11 +60,20 @@ SAMPLE = Path(os.environ.get("FACTORY_SAMPLE", str(REPO_DIR / "sample")))
 # The ONE stage-prompt store (harness.py): the sf-agent image bakes these files
 # for pod runs; the in-process AgentRunner reads them at call time.
 PROMPTS = Path(os.environ.get("FACTORY_PROMPTS", str(REPO_DIR / "docker" / "sf-agent" / "prompts")))
+KNOWLEDGE_DIR = Path(
+    os.environ.get("FACTORY_KNOWLEDGE_DIR", str(REPO_DIR / "knowledge"))
+)
 STAGE_TIMEOUT = int(os.environ.get("FACTORY_STAGE_TIMEOUT", "300"))
 # Per intake-interview model call. A cold `claude` CLI on a larger model routinely
 # runs 60-90s; too tight a bound makes questions time out and fall back to the
 # shallow scripted script, which defeats the adaptive-depth budget (esp. new apps).
 INTERVIEW_TIMEOUT = int(os.environ.get("FACTORY_INTERVIEW_TIMEOUT", "120"))
+# Optional Haiku routing should never hold a state response as long as a full
+# interview turn. Brief retry spacing also prevents poll traffic amplifying an outage.
+ESCALATION_TIMEOUT = int(os.environ.get("FACTORY_ESCALATION_TIMEOUT", "20"))
+ESCALATION_RETRY_SECONDS = int(
+    os.environ.get("FACTORY_ESCALATION_RETRY_SECONDS", "30")
+)
 # Reasoning-effort dial for the intake brain's read-only calls (low|medium|high|
 # xhigh|max). Empty → the model's default. Lower = faster but a quality risk on
 # deep interviews, so it ships off; --safe-mode already cuts the bulk of the wait.

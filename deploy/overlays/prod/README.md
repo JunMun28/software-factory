@@ -1,5 +1,9 @@
 # Production database deployment sequence
 
+> **NOTE(plan-008):** Any environment serving real users MUST use this production
+> overlay with Azure SQL. The SQLite base, local, and CRC profiles are single-writer
+> development/local-cluster profiles only.
+
 The production overlay expects an externally managed Secret named `factory-db`
 with a `url` key. Create it through the deployment secret manager; never commit
 the URL:

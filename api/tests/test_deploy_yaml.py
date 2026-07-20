@@ -6,6 +6,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = ROOT / "deploy/base"
+PROD = ROOT / "deploy/overlays/prod"
 
 
 def _objects(name: str) -> list[dict]:
@@ -64,3 +65,42 @@ def test_kaniko_is_version_pinned_consistently_in_config_and_kind_load():
     assert image == "gcr.io/kaniko-project/executor:v1.23.2"
     assert "gcr.io/kaniko-project/executor:latest" not in taskfile
     assert taskfile.count(image) >= 2
+
+
+def test_api_pod_has_phase_one_in_pod_cli_headroom():
+    objects = _objects("factory-api.yaml")
+    deployment = next(item for item in objects if item["kind"] == "Deployment")
+    containers = deployment["spec"]["template"]["spec"]["containers"]
+    api = next(container for container in containers if container["name"] == "api")
+
+    assert api["resources"] == {
+        "requests": {"cpu": "500m", "memory": "1Gi"},
+        "limits": {"cpu": "2", "memory": "2Gi"},
+    }
+
+
+def test_prod_nulls_sqlite_url_and_secret_sources_azure_sql():
+    objects = [
+        item
+        for item in yaml.safe_load_all((PROD / "prod-patch.yaml").read_text())
+        if item
+    ]
+    config = next(item for item in objects if item["kind"] == "ConfigMap")
+    deployment = next(item for item in objects if item["kind"] == "Deployment")
+    api = next(
+        item
+        for item in deployment["spec"]["template"]["spec"]["containers"]
+        if item["name"] == "api"
+    )
+    db_url = next(item for item in api["env"] if item["name"] == "FACTORY_DB_URL")
+
+    assert config["data"]["FACTORY_DB_URL"] is None
+    assert db_url == {
+        "name": "FACTORY_DB_URL",
+        "valueFrom": {
+            "secretKeyRef": {
+                "name": "factory-db",
+                "key": "url",
+            }
+        },
+    }

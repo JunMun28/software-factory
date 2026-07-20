@@ -380,12 +380,16 @@ brain = ScriptedBrain()
 
 
 def get_brain() -> ScriptedBrain:
-    """ADR 0007 seam: FACTORY_BRAIN=agent swaps in the real model (the claude/codex CLI,
-    picked by FACTORY_CLI); scripted is the offline default."""
+    """ADR 0007 seam: scripted (default), agent CLI, or direct API with full fallback."""
     from .agent_exec import brain_mode  # local import — brains subclass ScriptedBrain
 
-    if brain_mode() != "agent":
-        return brain
-    from .agent_brain import AgentBrain
+    mode = brain_mode()
+    if mode == "api":
+        from .brain_api import ApiBrain
 
-    return AgentBrain()
+        return ApiBrain()
+    if mode == "agent":
+        from .agent_brain import AgentBrain
+
+        return AgentBrain()
+    return brain

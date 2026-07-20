@@ -20,6 +20,7 @@ import re
 import signal
 import subprocess
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,6 +32,7 @@ CODEX_BIN = settings.CODEX_BIN
 CODEX_MODEL = settings.CODEX_MODEL
 OPENCODE_BIN = settings.OPENCODE_BIN
 OPENCODE_MODEL = settings.OPENCODE_MODEL
+_CLI_CAPACITY = threading.BoundedSemaphore(settings.CLI_CAP)
 
 log = logging.getLogger("factory.agent")
 
@@ -166,15 +168,20 @@ def run_agent(prompt: str, *, cwd: str | None = None, allow_edits: bool = False,
     images attach to codex via --image (ADR 0022); the claude path ignores them.
     `model` overrides the CLI's default model for this call (the prototype step runs a
     higher-taste model than the fast interview one); pass a model id matching the active CLI."""
-    cli = agent_cli()
-    if cli == "claude":
-        return _run_claude_cli(prompt, cwd=cwd, allow_edits=allow_edits,
-                               timeout=timeout, max_turns=max_turns, model=model)
-    if cli == "codex":
-        return _run_codex_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout,
-                              images=images, model=model)
-    return _run_opencode_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout,
-                             images=images, model=model)
+    if not _CLI_CAPACITY.acquire(timeout=5):
+        return AgentResult(ok=False, text="", error="agent CLI capacity exhausted")
+    try:
+        cli = agent_cli()
+        if cli == "claude":
+            return _run_claude_cli(prompt, cwd=cwd, allow_edits=allow_edits,
+                                   timeout=timeout, max_turns=max_turns, model=model)
+        if cli == "codex":
+            return _run_codex_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout,
+                                  images=images, model=model)
+        return _run_opencode_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout,
+                                 images=images, model=model)
+    finally:
+        _CLI_CAPACITY.release()
 
 
 def _run_claude_cli(prompt: str, *, cwd: str | None, allow_edits: bool,

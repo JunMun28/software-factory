@@ -2,6 +2,9 @@
 handling. No real CLI is ever spawned: builders are pure, and the dispatch
 tests point at binaries that do not exist."""
 import json
+from unittest.mock import Mock
+
+import pytest
 
 from app import agent_exec, settings
 from app.agent_exec import _claude_cmd, _codex_cmd, _opencode_cmd, _parse_opencode_json, run_agent
@@ -10,6 +13,57 @@ from app.agent_exec import _claude_cmd, _codex_cmd, _opencode_cmd, _parse_openco
 def test_default_cli_is_opencode(monkeypatch):
     monkeypatch.delenv("FACTORY_CLI", raising=False)
     assert agent_exec.agent_cli() == "opencode"
+
+
+def test_default_cli_cap_is_three():
+    assert settings.CLI_CAP == 3
+
+
+def test_run_agent_falls_back_when_cli_capacity_is_saturated(monkeypatch):
+    capacity = Mock()
+    capacity.acquire.return_value = False
+    dispatch = Mock()
+    monkeypatch.setattr(agent_exec, "_CLI_CAPACITY", capacity)
+    monkeypatch.setattr(agent_exec, "_run_opencode_cli", dispatch)
+    monkeypatch.setenv("FACTORY_CLI", "opencode")
+
+    result = run_agent("hello")
+
+    assert result == agent_exec.AgentResult(
+        ok=False,
+        text="",
+        error="agent CLI capacity exhausted",
+    )
+    capacity.acquire.assert_called_once_with(timeout=5)
+    dispatch.assert_not_called()
+    capacity.release.assert_not_called()
+
+
+def test_run_agent_releases_cli_capacity_after_success(monkeypatch):
+    capacity = Mock()
+    capacity.acquire.return_value = True
+    expected = agent_exec.AgentResult(ok=True, text="done")
+    monkeypatch.setattr(agent_exec, "_CLI_CAPACITY", capacity)
+    monkeypatch.setattr(agent_exec, "_run_opencode_cli", Mock(return_value=expected))
+    monkeypatch.setenv("FACTORY_CLI", "opencode")
+
+    result = run_agent("hello")
+
+    assert result is expected
+    capacity.release.assert_called_once_with()
+
+
+def test_run_agent_releases_cli_capacity_when_dispatch_raises(monkeypatch):
+    capacity = Mock()
+    capacity.acquire.return_value = True
+    monkeypatch.setattr(agent_exec, "_CLI_CAPACITY", capacity)
+    monkeypatch.setattr(agent_exec, "_run_codex_cli", Mock(side_effect=RuntimeError("boom")))
+    monkeypatch.setenv("FACTORY_CLI", "codex")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        run_agent("hello")
+
+    capacity.release.assert_called_once_with()
 
 
 def test_codex_cmd_sandboxes_instead_of_tool_lists():

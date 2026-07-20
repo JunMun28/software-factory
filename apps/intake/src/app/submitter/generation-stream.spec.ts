@@ -121,6 +121,24 @@ describe('GenerationStream', () => {
     expect(seen).toEqual(['load:busy', 'sse:done']);
   });
 
+  it('appends named delta chunks verbatim until the terminal state discards them', () => {
+    read.mockReturnValue(of(busy));
+    const gen = make(() => '/s');
+    gen.refresh();
+
+    es().emit('delta', JSON.stringify({ text: 'What ' }));
+    es().emit('delta', JSON.stringify({ text: 'matters most?\n' }));
+
+    expect(gen.deltaText()).toBe('What matters most?\n');
+    expect(gen.state()).toEqual(busy);
+    expect(gen.streaming()).toBe(true);
+
+    es().emit('state', JSON.stringify({ thinking: false, tag: 'done' }));
+
+    expect(gen.deltaText()).toBe('');
+    expect(gen.state()!.tag).toBe('done');
+  });
+
   it('an invalid terminal event is NOT adopted and falls back to a kicked poll', () => {
     read.mockReturnValue(of(busy));
     const gen = make(() => '/s', { isValidEvent: (s) => s.tag !== 'bad' });
@@ -135,8 +153,10 @@ describe('GenerationStream', () => {
     read.mockReturnValue(of(busy));
     const gen = make(() => '/s');
     gen.refresh(); // read #1 (false) → stream opens
+    es().emit('delta', JSON.stringify({ text: 'Partial answer' }));
     es().onerror!(); // → poll: read #2 (true), still thinking → schedule
     expect(gen.streaming()).toBe(false);
+    expect(gen.deltaText()).toBe('');
     expect(read).toHaveBeenCalledTimes(2);
     read.mockReturnValue(of(idle));
     vi.advanceTimersByTime(1500); // read #3 (true) → idle → loop stops
@@ -205,13 +225,27 @@ describe('GenerationStream', () => {
     expect(gen.streaming()).toBe(true);
   });
 
+  it('restarting a live stream discards its partial text', () => {
+    const gen = make(() => '/s');
+    gen.ingest(busy, true);
+    es().emit('delta', JSON.stringify({ text: 'Old partial' }));
+
+    gen.ingest(busy, true);
+
+    expect(FakeES.instances).toHaveLength(2);
+    expect(FakeES.instances[0].closed).toBe(true);
+    expect(gen.deltaText()).toBe('');
+  });
+
   it('destroy closes the stream, cancels the pending poll, and blocks further work', () => {
     read.mockReturnValue(of(busy));
     const gen = make(() => '/s');
     gen.refresh();
+    es().emit('delta', JSON.stringify({ text: 'Unfinished' }));
     destroyRef.destroy();
     expect(es().closed).toBe(true);
     expect(gen.streaming()).toBe(false);
+    expect(gen.deltaText()).toBe('');
     gen.refresh(); // a late call after destroy is a no-op
     expect(read).toHaveBeenCalledTimes(1);
 

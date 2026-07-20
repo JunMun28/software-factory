@@ -15,22 +15,44 @@ import json
 import logging
 import threading
 import time
+from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import exists, func, null, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import acceptance, interview_gen, prototype_gen, settings, summary_gen, transitions
+from .. import (
+    acceptance,
+    brain_streams,
+    classify_gen,
+    interview_gen,
+    knowledge,
+    prototype_gen,
+    settings,
+    summary_gen,
+    transitions,
+)
+from ..agent_brain import META_MARKER, PROTO_MARKER
 from ..agent_exec import runner_mode
 from ..api_helpers import get_request, next_ref, pipeline, prospective_repo, to_out
 from ..auth import current_identity
+from ..brain_calls import (
+    active_call,
+    budget_degraded,
+    claim_call,
+    finish_call,
+    model_for_kind,
+    prompt_fingerprint,
+    record_budget_call,
+)
 from ..db import SessionLocal, get_db
 from ..events import emit
 from ..interview import (
     DONE_SENTINEL,
     Question,
+    ScriptedBrain,
     answered_count,
     get_brain,
     is_stop_signal,
@@ -38,7 +60,15 @@ from ..interview import (
     question_budget,
     question_ceiling,
 )
-from ..models import AuditEvent, InterviewTurn, ProgressEvent, PrototypeTurn, Request
+from ..models import (
+    AuditEvent,
+    BrainCall,
+    InterviewTurn,
+    ProgressEvent,
+    PrototypeTurn,
+    Request,
+    utcnow,
+)
 from ..schemas import (
     ClassifyIn,
     ClassifyOut,
@@ -67,6 +97,51 @@ log = logging.getLogger("factory.interview")
 
 # ---------- interview helpers (module-local, no side-effects beyond DB) ----------
 
+def _answered_turn_count(rid: int):
+    """SQL form of answered_count(), usable inside one-statement CAS guards."""
+    return (
+        select(func.count(InterviewTurn.id))
+        .where(
+            InterviewTurn.request_id == rid,
+            or_(InterviewTurn.answer.is_not(None), InterviewTurn.skipped),
+        )
+        .scalar_subquery()
+    )
+
+
+def _request_value_matches(column, expected):
+    """NULL-safe equality for a value captured before ending the read transaction."""
+    return column.is_(None) if expected is None else column == expected
+
+
+def _next_turn_order(db: Session, model, rid: int) -> int:
+    """Derive append order only after the parent request row has been claimed."""
+    value = db.scalar(
+        select(func.coalesce(func.max(model.order), -1) + 1).where(
+            model.request_id == rid
+        )
+    )
+    return int(value)
+
+
+def _pending_prototype_turn_exists(rid: int):
+    return (
+        select(PrototypeTurn.id)
+        .where(PrototypeTurn.request_id == rid, PrototypeTurn.mode == "pending")
+        .exists()
+    )
+
+
+def _conflict(db: Session, detail: str) -> None:
+    db.rollback()
+    raise HTTPException(status.HTTP_409_CONFLICT, detail)
+
+
+def _advance_cas_timestamp(previous):
+    """Return a request timestamp that changes even at SQL Server precision."""
+    return max(utcnow(), previous + timedelta(milliseconds=10))
+
+
 def current_question(r: Request) -> Question | None:
     """The question awaiting an answer, if one is ready. Pure read — the next
     question is produced ahead of time by interview_gen (a background thread), so
@@ -75,19 +150,292 @@ def current_question(r: Request) -> Question | None:
     return Question(**pq) if pq and "question" in pq else None
 
 
+def _persist_generated_question(
+    db: Session,
+    *,
+    rid: int,
+    payload: dict,
+    answered_at_start: int,
+    type_at_start: str,
+    ceiling_at_start: int | None,
+) -> bool:
+    """Elect one still-current generated question with a single guarded write."""
+    result = db.execute(
+        update(Request)
+        .where(
+            Request.id == rid,
+            Request.pending_question.is_(None),
+            _answered_turn_count(rid) == answered_at_start,
+            Request.type == type_at_start,
+            _request_value_matches(Request.reopen_ceiling, ceiling_at_start),
+        )
+        .values(pending_question=payload)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount == 1:
+        db.commit()
+        return True
+    db.rollback()
+    return False
+
+
+def _generate_pending_sync(db: Session, r: Request) -> Question | None:
+    """Generate inline without overwriting a question or turn that wins the race."""
+    q = current_question(r)
+    if q is not None:
+        return q
+    answered_at_start = answered_count(r)
+    if answered_at_start >= question_ceiling(r) or r.pending_question == DONE_SENTINEL:
+        return None
+    _resolve_interview(db, r)
+    db.refresh(r)
+    return current_question(r)
+
+
 def _current_or_generate(db: Session, r: Request) -> Question | None:
     """The pending question, materializing it synchronously if absent. The UI always
     GETs (which pre-generates) before answering, so this only fires for out-of-protocol
     direct POSTs — never the hot path."""
-    q = current_question(r)
-    if q is not None:
-        return q
-    if answered_count(r) >= question_ceiling(r) or r.pending_question == DONE_SENTINEL:
-        return None
-    r.pending_question = pending_payload(get_brain().next_question(r))
+    return _generate_pending_sync(db, r)
+
+
+def _routing_fingerprint(r: Request, brain) -> str:
+    return prompt_fingerprint(
+        r,
+        extra={
+            "kind": "team-routing",
+            "brain": type(brain).__name__,
+            "teams": knowledge.teams(),
+        },
+    )
+
+
+def _cached_routing_proposal(
+    cached: dict, fingerprint: str, request_type: str
+) -> tuple[bool, dict | None]:
+    proposal = cached.get("proposal")
+    if (
+        cached.get("accepted")
+        and isinstance(proposal, dict)
+        and proposal.get("to_type") == request_type
+    ):
+        return True, None
+    if cached.get("fingerprint") != fingerprint:
+        return False, None
+    if cached.get("declined"):
+        return True, None
+    if "proposal" not in cached:
+        return False, None
+    return True, proposal if isinstance(proposal, dict) else None
+
+
+def _write_routing_cache(
+    db: Session,
+    r: Request,
+    value: dict,
+    *,
+    call_id: int | None = None,
+    dedup_key: str | None = None,
+) -> bool:
+    """Persist enrichment state without changing the request's business timestamp."""
+    updated_at = r.updated_at
+    previous = r.intake_escalation
+    conditions = [
+        Request.id == r.id,
+        Request.updated_at == updated_at,
+        _request_value_matches(Request.intake_escalation, previous),
+    ]
+    if call_id is not None and dedup_key is not None:
+        conditions.append(
+            exists(
+                select(BrainCall.id).where(
+                    BrainCall.id == call_id,
+                    BrainCall.dedup_key == dedup_key,
+                )
+            )
+        )
+    wrote = db.execute(
+        update(Request)
+        .where(*conditions)
+        .values(
+            intake_escalation=value,
+            updated_at=Request.updated_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
     db.commit()
-    db.refresh(r)
-    return current_question(r)
+    if wrote.rowcount != 1:
+        return False
+    db.refresh(r, ["intake_escalation", "updated_at"])
+    return True
+
+
+# NOTE(plan-008): the routing model call must never run on a request thread
+# (the same rule that moved classify to classify_gen). interview_state reads the
+# cache via _routing_state and defers a miss to this in-process worker; the
+# durable brain_calls claim inside _routing_proposal stays the cross-replica
+# dedup, this set is only the cheap same-process fast path.
+_routing_lock = threading.Lock()
+_routing_inflight: set[int] = set()
+
+
+def _kick_routing(rid: int) -> None:
+    with _routing_lock:
+        if rid in _routing_inflight:
+            return
+        _routing_inflight.add(rid)
+    threading.Thread(target=_routing_worker, args=(rid,), daemon=True).start()
+
+
+def _routing_worker(rid: int) -> None:
+    try:
+        with SessionLocal() as db:
+            r = db.get(Request, rid)
+            if r is not None:
+                _routing_proposal(db, r)
+    except Exception:
+        log.exception("background team-routing check failed for request %s", rid)
+    finally:
+        with _routing_lock:
+            _routing_inflight.discard(rid)
+
+
+def _routing_state(db: Session, r: Request, *, allow_call: bool) -> dict | None:
+    """Cache-only read for request threads; a miss kicks the background worker."""
+    brain = get_brain()
+    fingerprint = _routing_fingerprint(r, brain)
+    cached = r.intake_escalation if isinstance(r.intake_escalation, dict) else {}
+    hit, proposal = _cached_routing_proposal(cached, fingerprint, r.type)
+    if hit:
+        return proposal
+    if not allow_call:
+        return None
+    if interview_gen.SYNC:
+        # NOTE(plan-008): inline in SYNC mode so tests and smoke stay deterministic,
+        # mirroring how interview_gen/summary_gen handle their SYNC paths.
+        return _routing_proposal(db, r)
+    _kick_routing(r.id)
+    return None
+
+
+def _routing_proposal(
+    db: Session, r: Request, *, allow_call: bool = True
+) -> dict | None:
+    """Resolve one deduplicated optional team-routing check for this prompt.
+
+    Synchronous by design — request threads must reach it only through
+    _routing_state's SYNC branch; in async mode it runs on _routing_worker's
+    daemon thread with its own session."""
+    brain = get_brain()
+    fingerprint = _routing_fingerprint(r, brain)
+    cached = r.intake_escalation if isinstance(r.intake_escalation, dict) else {}
+    hit, proposal = _cached_routing_proposal(cached, fingerprint, r.type)
+    if hit:
+        return proposal
+    if not allow_call:
+        return None
+
+    if budget_degraded(r.reporter):
+        # Over the daily budget: the routing check is enrichment, so skip the provider
+        # call. Log the throttle and cache a no-proposal for this fingerprint so the
+        # poll loop stops re-kicking instead of spamming budget rows.
+        record_budget_call(
+            request_id=r.id, kind="escalation", model=model_for_kind("escalation")
+        )
+        _write_routing_cache(
+            db,
+            r,
+            {
+                "fingerprint": fingerprint,
+                "proposal": None,
+                "declined": False,
+                "accepted": False,
+            },
+        )
+        return None
+
+    # End the read transaction before the provider call. The durable brain_calls
+    # claim prevents two API replicas from billing the same fingerprint twice.
+    _ = r.app, r.turns, r.attachments
+    db.commit()
+    claim_key = f"escalation:{r.id}:{fingerprint}"
+    call_id = claim_call(
+        request_id=r.id,
+        kind="escalation",
+        dedup_key=claim_key,
+        model=model_for_kind("escalation"),
+        stale_after_seconds=settings.ESCALATION_TIMEOUT + 10,
+        retry_after_seconds=settings.ESCALATION_RETRY_SECONDS,
+    )
+    if call_id is None:
+        db.expire(r)
+        if _routing_fingerprint(r, brain) != fingerprint:
+            db.commit()
+            return None
+        cached = r.intake_escalation if isinstance(r.intake_escalation, dict) else {}
+        cached_proposal = _cached_routing_proposal(cached, fingerprint, r.type)[1]
+        db.commit()
+        return cached_proposal
+
+    succeeded = False
+    try:
+        # The previous claimant may have published just before this replacement
+        # acquired the key. Reuse that result instead of making a duplicate call.
+        db.expire(r)
+        if _routing_fingerprint(r, brain) != fingerprint:
+            db.commit()
+            return None
+        cached = r.intake_escalation if isinstance(r.intake_escalation, dict) else {}
+        hit, cached_proposal = _cached_routing_proposal(cached, fingerprint, r.type)
+        db.commit()
+        if hit:
+            succeeded = True
+            return cached_proposal
+        with active_call(call_id):
+            proposal = brain.propose_escalation(r)
+        call_status = db.scalar(
+            select(BrainCall.status).where(BrainCall.id == call_id)
+        )
+        db.commit()
+        if call_status in {"fallback", "failed"}:
+            return None
+        if proposal is not None:
+            if (
+                not isinstance(proposal, dict)
+                or proposal.get("to_type") not in ("bug", "enh", "new", "other")
+                or not isinstance(proposal.get("why"), str)
+            ):
+                return None
+            proposal = {
+                "to_type": proposal["to_type"],
+                "why": proposal["why"][:200],
+            }
+
+        # Do not publish an answer generated from stale request facts or team data.
+        db.expire(r)
+        if _routing_fingerprint(r, brain) != fingerprint:
+            db.commit()
+            return None
+        value = {
+            "fingerprint": fingerprint,
+            "proposal": proposal,
+            "declined": False,
+            "accepted": False,
+        }
+        succeeded = _write_routing_cache(
+            db,
+            r,
+            value,
+            call_id=call_id,
+            dedup_key=claim_key,
+        )
+        return proposal if succeeded else None
+    except Exception:
+        db.rollback()
+        log.exception("optional intake team-routing check failed")
+        return None
+    finally:
+        finish_call(call_id, success=succeeded)
 
 
 def interview_state(db: Session, r: Request, *, generate: bool = True) -> InterviewState:
@@ -97,14 +445,13 @@ def interview_state(db: Session, r: Request, *, generate: bool = True) -> Interv
     generating itself, so it only wants to read/report the current state."""
     def build(*, done: bool, q: Question | None, thinking: bool) -> InterviewState:
         st = InterviewState(done=done, asked=answered_count(r), total=question_ceiling(r),
-                            thinking=thinking, turns=[t for t in r.turns])
+                            thinking=thinking, turns=[t for t in r.turns],
+                            budget_limited=budget_degraded(r.reporter))
         if q:
             st.question, st.sub, st.options, st.final = q.question, q.sub, q.options, q.final
-        # Surface any mid-interview type-change proposal the brain wants to raise (ADR 0023).
-        # ScriptedBrain (and today's AgentBrain) return None — this is inert wiring for the
-        # seam a future model fills; the UI drives accept/decline via the escalate endpoint.
-        brain = get_brain()
-        prop = brain.propose_escalation(r) if hasattr(brain, "propose_escalation") else None
+        # ScriptedBrain and the CLI brain stay silent; ApiBrain can now fill this
+        # consent-gated seam without repeated polling creating repeated provider calls.
+        prop = _routing_state(db, r, allow_call=not thinking)
         if prop and prop.get("to_type") in ("bug", "enh", "new", "other") and prop["to_type"] != r.type:
             st.escalation = {"to_type": prop["to_type"], "why": str(prop.get("why") or "")[:200]}
         return st
@@ -119,11 +466,10 @@ def interview_state(db: Session, r: Request, *, generate: bool = True) -> Interv
     if not generate:
         return build(done=False, q=None, thinking=True)  # generation runs elsewhere
     if interview_gen.SYNC:  # deterministic path (tests / smoke): generate inline
-        r.pending_question = pending_payload(get_brain().next_question(r))
-        db.commit()
+        q = _generate_pending_sync(db, r)
         if r.pending_question == DONE_SENTINEL:
             return build(done=True, q=None, thinking=False)
-        return build(done=False, q=current_question(r), thinking=False)
+        return build(done=False, q=q, thinking=False)
     thinking = interview_gen.ensure_next_question(r.id)  # async: background pre-generation
     return build(done=False, q=None, thinking=thinking)
 
@@ -140,12 +486,13 @@ def _resolved(r: Request) -> bool:
 
 
 def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLoop", *,
-                acquire, release, timeout: int, resolved, resolve, build_state) -> None:
+                acquire, release, timeout: int, resolved, resolve, build_state,
+                stream_kind: str | None = None, marker: str | None = None) -> None:
     """Shared SSE generation worker (interview + prototype). Claim the per-request slot — or, if a
-    generation is already in flight, poll up to `timeout+5`s for its result — then run the (batch)
-    generation on this background thread, persist, and push exactly one terminal `state` event so
-    the single uvicorn event loop is never frozen. Feature-specific behaviour is the injected
-    `resolved(r)` predicate, `resolve(db, r)` generator, and `build_state(db, r)` serializer."""
+    generation is already in flight, poll up to `timeout+5`s for its result — then run generation
+    on this background thread, relay prose deltas when the brain supports them, persist, and finish
+    with one authoritative `state` event. Feature-specific behaviour is the injected `resolved(r)`
+    predicate, `resolve(db, r)` generator, and `build_state(db, r)` serializer."""
     def push(ev: dict) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, ev)
 
@@ -153,9 +500,15 @@ def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLo
         push({"type": "state", "state": build_state(db, r).model_dump(mode="json")})
 
     if not acquire(rid):  # another generation in flight — poll for its result
-        for _ in range(timeout + 5):
-            time.sleep(1)
-            with SessionLocal() as db:
+        deadline = time.monotonic() + timeout + 5
+        delay = 1.0
+        with SessionLocal() as db:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                time.sleep(min(delay, remaining))
+                db.expire_all()
                 r = db.get(Request, rid)
                 if r is None:
                     push({"type": "state", "state": None})
@@ -163,6 +516,9 @@ def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLo
                 if resolved(r):
                     emit(db, r)
                     return
+                # End the read transaction so this long-lived waiter does not pin a DB snapshot.
+                db.rollback()
+                delay = min(delay * 2, 5.0)
         push({"type": "state", "state": None})
         return
     try:
@@ -171,7 +527,26 @@ def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLo
             if r is None:
                 push({"type": "state", "state": None})
                 return
-            resolve(db, r)  # generate + persist if not already resolved (idempotent)
+            relay = (
+                brain_streams.prose_relay(stream_kind, rid, marker)
+                if stream_kind is not None and marker is not None
+                else None
+            )
+            try:
+                brain_streams.invoke_with_delta(
+                    resolve,
+                    db,
+                    r,
+                    on_delta=relay.feed if relay is not None else None,
+                )
+            finally:
+                if relay is not None:
+                    relay.finish()
+            db.expire_all()
+            r = db.get(Request, rid)
+            if r is None:
+                push({"type": "state", "state": None})
+                return
             emit(db, r)
     except Exception:
         log.exception("SSE generation failed for request %s", rid)
@@ -180,36 +555,99 @@ def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLo
         release(rid)
 
 
-def _sse_response(rid: int, worker) -> StreamingResponse:
-    """Run `worker(rid, queue, loop)` on a daemon thread and stream its terminal state as one SSE
-    event. The batch GET stays the reconnect/replay source of truth."""
+def _sse_response(rid: int, worker, *, stream_kind: str) -> StreamingResponse:
+    """Run a worker thread, relay live deltas, then finish with authoritative state."""
     queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
+
+    def push(event: dict) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, event)
+
+    unsubscribe = brain_streams.subscribe(stream_kind, rid, push)
     threading.Thread(target=worker, args=(rid, queue, loop), daemon=True).start()
 
     async def gen():
-        ev = await queue.get()
-        yield _sse("state", ev.get("state") or {})
+        try:
+            while True:
+                ev = await queue.get()
+                event_type = ev.get("type")
+                if event_type == "delta":
+                    yield _sse("delta", {"text": ev.get("text") or ""})
+                    continue
+                yield _sse("state", ev.get("state") or {})
+                return
+        finally:
+            unsubscribe()
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-def _resolve_interview(db: Session, r: Request) -> None:
+def _resolve_interview(db: Session, r: Request, on_delta=None) -> None:
     """Generate + persist the next interview question (batch) unless it's already resolved."""
     if _resolved(r):
         return
-    q = get_brain().next_question(r)
-    db.refresh(r)
-    if r.pending_question is None:  # don't clobber a racing write
-        r.pending_question = pending_payload(q)
-        db.commit()
+    rid = r.id
+    answered_at_start = answered_count(r)
+    type_at_start = r.type
+    ceiling_at_start = r.reopen_ceiling
+    identity = r.reporter
+    # End the read transaction before the slow call. expire_on_commit=False keeps
+    # the fully loaded brain snapshot while returning the pooled connection.
+    _ = r.app, r.turns, r.attachments
+    db.commit()
+    if budget_degraded(identity):
+        # Over the daily budget: serve the scripted question and log the throttle;
+        # _persist_generated_question still guards against a racing state change.
+        record_budget_call(
+            request_id=rid, kind="question", model=model_for_kind("question")
+        )
+        q = ScriptedBrain().next_question(r)
+        _persist_generated_question(
+            db,
+            rid=rid,
+            payload=pending_payload(q),
+            answered_at_start=answered_at_start,
+            type_at_start=type_at_start,
+            ceiling_at_start=ceiling_at_start,
+        )
+        db.refresh(r)
+        return
+    call_id = claim_call(
+        request_id=rid,
+        kind="question",
+        dedup_key=f"question:{rid}:{answered_at_start}:{prompt_fingerprint(r)}",
+        model=model_for_kind("question"),
+    )
+    if call_id is None:
+        return
+    succeeded = False
+    try:
+        with active_call(call_id):
+            q = brain_streams.invoke_with_delta(
+                get_brain().next_question,
+                r,
+                on_delta=on_delta,
+            )
+        _persist_generated_question(
+            db,
+            rid=rid,
+            payload=pending_payload(q),
+            answered_at_start=answered_at_start,
+            type_at_start=type_at_start,
+            ceiling_at_start=ceiling_at_start,
+        )
+        succeeded = True
+        db.refresh(r)
+    finally:
+        finish_call(call_id, success=succeeded)
 
 
 def _interview_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLoop") -> None:
     _sse_worker(rid, queue, loop, acquire=interview_gen.acquire, release=interview_gen.release,
                 timeout=settings.INTERVIEW_TIMEOUT, resolved=_resolved, resolve=_resolve_interview,
-                build_state=lambda db, r: interview_state(db, r, generate=False))
+                build_state=lambda db, r: interview_state(db, r, generate=False),
+                stream_kind="interview", marker=META_MARKER)
 
 
 def _prototype_state(db: Session, r: Request, *, thinking: bool) -> PrototypeState:
@@ -222,18 +660,16 @@ def _prototype_state(db: Session, r: Request, *, thinking: bool) -> PrototypeSta
     )
 
 
-def _resolve_prototype(db: Session, r: Request) -> None:
+def _resolve_prototype(db: Session, r: Request, on_delta=None) -> None:
     """Seed the first draft if owed, then generate + apply the pending revision (batch)."""
     prototype_gen.seed_first_draft(db, r)
     turn = prototype_gen.pending_turn(r)
     if turn is None:  # nothing to generate — already resolved
         return
-    rev = get_brain().generate_prototype(
-        r, instruction=turn.instruction, annotation=turn.annotation, current_html=r.prototype_html)
-    db.refresh(r)
-    turn = prototype_gen.pending_turn(r)  # re-fetch after refresh; don't clobber a racing write
-    if turn is not None:
-        prototype_gen.apply_revision(db, r, turn, rev)
+    rid = r.id
+    db.commit()
+    db.close()
+    prototype_gen.resolve_one(rid, on_delta=on_delta)
 
 
 def _prototype_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLoop") -> None:
@@ -241,16 +677,42 @@ def _prototype_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractE
                 timeout=settings.PROTOTYPE_TIMEOUT,
                 resolved=lambda r: prototype_gen.pending_turn(r) is None,
                 resolve=_resolve_prototype,
-                build_state=lambda db, r: _prototype_state(db, r, thinking=False))
+                build_state=lambda db, r: _prototype_state(db, r, thinking=False),
+                stream_kind="prototype", marker=PROTO_MARKER)
 
 
 # ---------- requests CRUD ----------
 
 @router.post("/api/requests/classify", response_model=ClassifyOut)
-def classify_request(body: ClassifyIn):
-    """Stateless type inference for the composer chip — no Request is created.
-    Track/confidence are Intake-only; the Factory still consumes only the stored type."""
-    return get_brain().classify(body.description)
+def classify_request(body: ClassifyIn, response: Response):
+    """Kick durable classification for a Request, retaining the legacy stateless call."""
+    # NOTE(plan-008): The approved plan assumed classification already wrote Request
+    # fields, but the active endpoint was stateless. Request-bound calls now persist a
+    # separate result while the no-id contract stays deterministic and immediate.
+    if body.request_id is None:
+        return ClassifyOut(status="succeeded", **ScriptedBrain().classify(body.description))
+    if not classify_gen.kick(body.request_id, body.description):
+        raise HTTPException(404, "Request not found")
+    response.status_code = status.HTTP_202_ACCEPTED
+    return ClassifyOut(status="pending")
+
+
+@router.get("/api/requests/{rid}/classify", response_model=ClassifyOut)
+def get_classification(rid: int, db: Session = Depends(get_db)):
+    request = db.get(Request, rid)
+    stored = request.classification_result if request is not None else None
+    result = dict(stored) if stored is not None else None
+    if result is None:
+        raise HTTPException(404, "Classification not found")
+    if result.get("status") == "pending":
+        # Do not retain this poll's checkout while the restart path opens its own session.
+        db.close()
+        classify_gen.ensure_classification(rid)
+    return ClassifyOut(
+        status=result["status"],
+        type=result.get("type"),
+        confidence=result.get("confidence"),
+    )
 
 
 @router.get("/api/requests", response_model=list[RequestOut])
@@ -371,7 +833,7 @@ def get_interview(rid: int, gen: bool = True, db: Session = Depends(get_db)):
 async def stream_interview(rid: int):
     """SSE: drives the next-question generation on a worker thread, then returns the terminal
     InterviewState. Frees the HTTP handler from the blocking model call."""
-    return _sse_response(rid, _interview_worker)
+    return _sse_response(rid, _interview_worker, stream_kind="interview")
 
 
 @router.post("/api/requests/{rid}/interview", response_model=InterviewState)
@@ -380,14 +842,40 @@ def answer_interview(rid: int, body: InterviewAnswer, db: Session = Depends(get_
     q = _current_or_generate(db, r)
     if q is None:
         return interview_state(db, r)  # nothing pending to answer (interview is done)
-    order = len(r.turns)
-    db.add(InterviewTurn(request=r, order=order, question=q.question, sub=q.sub, options=q.options,
-                         answer=None if body.skip else (body.answer or None), skipped=body.skip))
-    r.pending_question = None
-    if not body.skip and is_stop_signal(body.answer or ""):
-        r.pending_question = DONE_SENTINEL  # submitter ended the interview conversationally
+    expected_question = dict(r.pending_question)
+    stop = not body.skip and is_stop_signal(body.answer or "")
+    # NOTE(plan-008): release SQLite's read snapshot before the one-statement
+    # CAS. The exact JSON payload is the question generation being answered.
     db.commit()
+    claim = db.execute(
+        update(Request)
+        .where(
+            Request.id == rid,
+            Request.pending_question.is_not(None),
+            Request.pending_question == expected_question,
+        )
+        .values(pending_question=null())
+        .execution_options(synchronize_session=False)
+    )
+    if claim.rowcount != 1:
+        _conflict(db, "Interview question was already answered; refresh and try again.")
+    order = _next_turn_order(db, InterviewTurn, rid)
+    db.add(InterviewTurn(request_id=rid, order=order, question=q.question, sub=q.sub,
+                         options=q.options, answer=None if body.skip else (body.answer or None),
+                         skipped=body.skip))
+    if stop:
+        db.execute(
+            update(Request)
+            .where(Request.id == rid)
+            .values(pending_question=DONE_SENTINEL)
+            .execution_options(synchronize_session=False)
+        )
+    try:
+        db.commit()
+    except IntegrityError:
+        _conflict(db, "Interview answer conflicted with another turn; refresh and try again.")
     db.refresh(r)
+    db.expire(r, ["turns"])
     # returns immediately with `thinking`. In async mode we DON'T kick pre-gen here —
     # the client drives the next question (SSE stream, or poll which kicks it). SYNC
     # mode (tests/smoke) generates inline so the next question comes back in the POST.
@@ -403,14 +891,33 @@ def reopen_interview(rid: int, body: Note, db: Session = Depends(get_db)):
     note = (body.note or "").strip()
     if not note:
         return interview_state(db, r, generate=interview_gen.SYNC)
-    db.add(InterviewTurn(request=r, order=len(r.turns), question="Anything else to add?",
-                         answer=note[:2000], skipped=False))
-    db.flush()  # count the added note before sizing the allowance
-    # allow up to ~2 follow-ups from where we resumed (overrides the type budget), not a full grill
-    r.reopen_ceiling = answered_count(r) + 2
-    r.pending_question = None  # force the next question to (re)generate
+    answered_at_start = answered_count(r)
+    ceiling_at_start = r.reopen_ceiling
+    pending_at_start = dict(r.pending_question) if r.pending_question is not None else None
     db.commit()
+    claim = db.execute(
+        update(Request)
+        .where(
+            Request.id == rid,
+            _answered_turn_count(rid) == answered_at_start,
+            _request_value_matches(Request.reopen_ceiling, ceiling_at_start),
+            _request_value_matches(Request.pending_question, pending_at_start),
+        )
+        # The note itself becomes one answered turn; keep the existing two-question allowance.
+        .values(reopen_ceiling=answered_at_start + 3, pending_question=null())
+        .execution_options(synchronize_session=False)
+    )
+    if claim.rowcount != 1:
+        _conflict(db, "Interview was already reopened; refresh and try again.")
+    order = _next_turn_order(db, InterviewTurn, rid)
+    db.add(InterviewTurn(request_id=rid, order=order, question="Anything else to add?",
+                         answer=note[:2000], skipped=False))
+    try:
+        db.commit()
+    except IntegrityError:
+        _conflict(db, "Interview reopen conflicted with another turn; refresh and try again.")
     db.refresh(r)
+    db.expire(r, ["turns"])
     return interview_state(db, r, generate=interview_gen.SYNC)
 
 
@@ -418,13 +925,68 @@ def reopen_interview(rid: int, body: Note, db: Session = Depends(get_db)):
 def escalate_interview(rid: int, body: EscalateIn, db: Session = Depends(get_db)):
     """Consent gate for a mid-interview type change (ADR 0023). Accept PATCHes the type
     (the draft's other facts persist — lossless); decline leaves it unchanged. Either way
-    the interview continues; the proposal is cleared."""
+    the interview continues; the routing decision is retained for audit."""
     r = get_request(db, rid)
+    cached = r.intake_escalation if isinstance(r.intake_escalation, dict) else None
+    cached_proposal = cached.get("proposal") if cached is not None else None
+    if isinstance(cached_proposal, dict):
+        same_target = cached_proposal.get("to_type") == body.to_type
+        if cached.get("accepted"):
+            if body.accept and same_target and r.type == body.to_type:
+                return interview_state(db, r, generate=interview_gen.SYNC)
+            _conflict(db, "Interview escalation was already accepted.")
+        if cached.get("declined"):
+            if not body.accept and same_target:
+                return interview_state(db, r, generate=interview_gen.SYNC)
+            _conflict(db, "Interview escalation was already declined.")
+        current_fingerprint = _routing_fingerprint(r, get_brain())
+        if (
+            cached.get("fingerprint") != current_fingerprint
+            or cached_proposal.get("to_type") != body.to_type
+        ):
+            _conflict(db, "Interview escalation is stale; refresh and try again.")
+    resolved_cache = (
+        {
+            **cached,
+            "accepted": bool(body.accept),
+            "declined": not body.accept,
+            "resolved_at": utcnow().isoformat(),
+        }
+        if cached is not None and isinstance(cached_proposal, dict)
+        else None
+    )
     if body.accept and r.type != body.to_type:
-        r.type = body.to_type
-        r.summary = None  # type change invalidates the cached Review summary
-        r.pending_question = None  # and any question pre-generated for the old type
-    db.commit()
+        type_at_start = r.type
+        answered_at_start = answered_count(r)
+        pending_at_start = dict(r.pending_question) if r.pending_question is not None else None
+        updated_at_start = r.updated_at
+        db.commit()
+        claim = db.execute(
+            update(Request)
+            .where(
+                Request.id == rid,
+                Request.type == type_at_start,
+                Request.updated_at == updated_at_start,
+                _request_value_matches(Request.intake_escalation, cached),
+                _answered_turn_count(rid) == answered_at_start,
+                _request_value_matches(Request.pending_question, pending_at_start),
+            )
+            .values(
+                type=body.to_type,
+                summary=null(),
+                pending_question=null(),
+                intake_escalation=(
+                    resolved_cache if resolved_cache is not None else null()
+                ),
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if claim.rowcount != 1:
+            _conflict(db, "Interview escalation was already resolved; refresh and try again.")
+    else:
+        if resolved_cache is not None and not _write_routing_cache(db, r, resolved_cache):
+            _conflict(db, "Interview escalation was already resolved; refresh and try again.")
+    db.commit()  # preserve decline and same-type accept as successful no-ops
     db.refresh(r)
     return interview_state(db, r, generate=interview_gen.SYNC)
 
@@ -459,13 +1021,15 @@ def get_prototype(rid: int, gen: bool = True, db: Session = Depends(get_db)):
     if r.type != "new":
         return PrototypeState(html=r.prototype_html, status=r.prototype_status)
     thinking = prototype_gen.ensure(db, r) if gen else prototype_gen.is_thinking(r)
+    if prototype_gen.SYNC and gen:
+        r = get_request(db, rid)  # sync generation closes its snapshot session around the model call
     return _prototype_state(db, r, thinking=thinking)
 
 
 @router.get("/api/requests/{rid}/prototype/stream")
 async def stream_prototype(rid: int):
     """SSE: drives the pending prototype revision on a worker thread, then returns the new state."""
-    return _sse_response(rid, _prototype_worker)
+    return _sse_response(rid, _prototype_worker, stream_kind="prototype")
 
 
 @router.post("/api/requests/{rid}/prototype", response_model=PrototypeState)
@@ -479,11 +1043,38 @@ def instruct_prototype(rid: int, body: PrototypeInstruction, db: Session = Depen
     instr = (body.instruction or "").strip()
     if not instr:
         return _prototype_state(db, r, thinking=prototype_gen.is_thinking(r))
-    db.add(PrototypeTurn(request=r, order=len(r.prototype_turns), instruction=instr,
-                         annotation=body.annotation, mode="pending"))
+    # The client already exposes one-open-instruction semantics by disabling the
+    # composer while a pending turn exists. Make that rule atomic server-side.
+    updated_at_start = r.updated_at
+    pending_turn_exists = _pending_prototype_turn_exists(rid)
     db.commit()
+    claim = db.execute(
+        update(Request)
+        .where(
+            Request.id == rid,
+            Request.type == "new",
+            Request.updated_at == updated_at_start,
+            ~pending_turn_exists,
+        )
+        # SQL Server DATETIME has coarse precision. Advancing by at least 10 ms
+        # ensures the request timestamp is a real CAS token even on same-tick posts.
+        .values(updated_at=_advance_cas_timestamp(updated_at_start))
+        .execution_options(synchronize_session=False)
+    )
+    if claim.rowcount != 1:
+        _conflict(db, "A prototype instruction is already being processed; refresh and try again.")
+    order = _next_turn_order(db, PrototypeTurn, rid)
+    db.add(PrototypeTurn(request_id=rid, order=order, instruction=instr,
+                         annotation=body.annotation, mode="pending"))
+    try:
+        db.commit()
+    except IntegrityError:
+        _conflict(db, "Prototype instruction conflicted with another turn; refresh and try again.")
     db.refresh(r)
+    db.expire(r, ["prototype_turns"])
     thinking = prototype_gen.queue_or_resolve(db, r)  # SYNC resolves inline; async → client streams
+    if prototype_gen.SYNC:
+        r = get_request(db, rid)  # sync generation closes its snapshot session around the model call
     return _prototype_state(db, r, thinking=thinking)
 
 
@@ -509,12 +1100,35 @@ def restore_prototype(rid: int, body: PrototypeRestore, db: Session = Depends(ge
     target = next((t for t in r.prototype_turns if t.order == body.order and t.html is not None), None)
     if target is None:
         return _prototype_state(db, r, thinking=prototype_gen.is_thinking(r))
-    db.add(PrototypeTurn(request=r, order=len(r.prototype_turns), instruction=None, mode="rewrite",
-                         note="Reverted to an earlier version.", html=target.html))
-    r.prototype_html = target.html
-    r.prototype_status = "edited"
+    target_html = target.html
+    updated_at_start = r.updated_at
     db.commit()
+    claim = db.execute(
+        update(Request)
+        .where(
+            Request.id == rid,
+            Request.type == "new",
+            Request.updated_at == updated_at_start,
+            ~_pending_prototype_turn_exists(rid),
+        )
+        .values(
+            prototype_html=target_html,
+            prototype_status="edited",
+            updated_at=_advance_cas_timestamp(updated_at_start),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if claim.rowcount != 1:
+        _conflict(db, "Prototype history changed before restore; refresh and try again.")
+    order = _next_turn_order(db, PrototypeTurn, rid)
+    db.add(PrototypeTurn(request_id=rid, order=order, instruction=None, mode="rewrite",
+                         note="Reverted to an earlier version.", html=target_html))
+    try:
+        db.commit()
+    except IntegrityError:
+        _conflict(db, "Prototype restore conflicted with another turn; refresh and try again.")
     db.refresh(r)
+    db.expire(r, ["prototype_turns"])
     return _prototype_state(db, r, thinking=False)
 
 
@@ -599,8 +1213,14 @@ def submit(rid: int, extra: Note | None = None, db: Session = Depends(get_db)):
                       "context": f"Intake interview completed · {len(r.turns)} answers", "Ref": r.ref})
         db.add(AuditEvent(request_id=r.id, actor=r.reporter, action="submitted",
                           note="filed this request and completed intake"))
-        # Stage 1 brain writes the grounded Draft spec, then the spec gate is raised
-        lines, note = get_brain().draft_spec(r)
+        # Stage 1 brain writes the grounded Draft spec, then the spec gate is raised.
+        # Over the daily budget the spec degrades to the scripted draft (the interview
+        # is enrichment, never a blocker); the throttle is logged for ops.
+        if budget_degraded(r.reporter):
+            record_budget_call(request_id=r.id, kind="spec", model=model_for_kind("spec"))
+            lines, note = ScriptedBrain().draft_spec(r)
+        else:
+            lines, note = get_brain().draft_spec(r)
         db.add_all(lines)
         r.spec_open_note = note
         gate = transitions.apply(db, r, "raise_spec_gate", actor=reporter)

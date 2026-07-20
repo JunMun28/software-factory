@@ -3972,3 +3972,41 @@ index at tea-roster-8d5849a6.apps-crc.testing.
   requests correctly fold into the displayed **Build** group, and the active
   switcher segment computes to `rgb(244,243,247)` = `--surface-2`, never
   `--a50`.
+
+## Plan 008 — multi-user scalability + chat-grade latency (2026-07-20, branch plan-008-scalability)
+
+Phases 1, 2, 3, 5 built (codex implementer, per-phase full `task verify` + review).
+Phase 0 (Entra merge) left to the user; Phase 4 (API HA) optional, not built.
+
+### Deviations
+- **D8 softened:** `deploy/base` keeps SQLite — kind/CRC golden smoke depends on it.
+  Azure SQL is enforced for the prod overlay by a YAML test instead
+  (`test_deploy_yaml`), plus README note: real users = prod overlay only.
+- **Stateless classify path:** `POST /requests/classify` without a request_id now
+  answers via ScriptedBrain (deterministic, instant); the model-backed result is
+  the durable per-request path. Phase 3's haiku classify supersedes this concern.
+- **Escalation consent:** validated external-team handoff maps to `type="other"`
+  with team/why evidence retained — the existing UI contract has no direct
+  dispatch-to-queue; noted for a follow-up if real queue handoff is wanted.
+- **Cross-phase review findings fixed before finish:** (1) tool-mode questions
+  double-generated (create discarded + re-stream) — now every round streams and
+  a non-tool round's own output is final; (2) question/classify/summary/prototype
+  claims lacked stale reclaim — a hard kill mid-generation wedged the request;
+  all claims now pass stale_after_seconds = provider timeout + 30s.
+- **Routing check off the request thread:** Phase 5 initially ran the first
+  team-routing model call inline in GET /interview; moved to a daemon worker
+  (SYNC stays inline for determinism).
+
+### Live TTFT measurement (2026-07-20, at merge time)
+Measured against a live api-mode server (sonnet-5 questions with tools,
+haiku classify): classify 1.45-1.88s; question first token 0.99-1.31s,
+complete 3.4-7.9s; telemetry in brain_calls confirmed (ttft_ms, tool_rounds).
+All Phase 3 latency targets met. Per-user budgets also built (f1994c5).
+
+### Open items (pre-launch, in plan 008)
+- Flip the FACTORY_BRAIN default to `api` + revert the Phase 1 pod bump
+  (measurement gate now passed — a deliberate config change, do together).
+- Phase 0: Entra merge (budgets key on reporter name until then).
+- ARO ingress: verify proxy-buffering off on SSE routes.
+- Prompt nit: tool-round narration can leak into question prose
+  ("No prior record found...") — tune the question prompt.

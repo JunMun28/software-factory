@@ -4,10 +4,14 @@ The step drafts a self-contained HTML mock from the interview, then the user cha
 (rewrite/patch/chat), can annotate an element to scope a change, undo, or skip. Brain calls run
 through the deterministic ScriptedBrain here; SYNC mode (conftest) resolves revisions inline.
 """
+from sqlalchemy.orm import object_session
+
+from app import prototype_gen
 from app.agent_brain import _apply_ops, _parse_prototype_reply
 from app.agent_exec import extract_html_block
+from app.db import SessionLocal
 from app.interview import ScriptedBrain, scripted_prototype_html
-from app.models import Request
+from app.models import App, Attachment, InterviewTurn, PrototypeTurn, Request
 
 DOC = "<!doctype html><html><body><h1 data-pid=\"t\">Hi</h1></body></html>"
 
@@ -73,6 +77,338 @@ def test_scripted_prototype_html_is_csp_safe():
     html = scripted_prototype_html(_new_req())
     assert "http://" not in html and "https://" not in html  # no network refs
     assert "data-pid" in html and "data-screen-label" in html  # inspector anchors present
+
+
+def test_background_prototype_calls_brain_with_detached_loaded_request(client, monkeypatch):
+    class SessionProbeBrain:
+        def generate_prototype(self, r, *, instruction, annotation, current_html):
+            assert object_session(r) is None
+            assert r.app.name == "Prototype probe"
+            assert [turn.answer for turn in r.turns] == ["A1"]
+            assert [attachment.filename for attachment in r.attachments] == ["mock.txt"]
+            assert instruction == "make it clearer"
+            assert annotation == {"pid": "headline"}
+            assert current_html == "<html>old</html>"
+            return {"mode": "rewrite", "note": "done", "html": "<html>new</html>"}
+
+    monkeypatch.setattr("app.prototype_gen.get_brain", lambda: SessionProbeBrain())
+    with SessionLocal() as db:
+        app = App(
+            key="prototype-probe",
+            name="Prototype probe",
+            owner="qa",
+            repo="sf/prototype-probe",
+        )
+        r = Request(
+            ref="REQ-PROTO-BG",
+            title="T",
+            description="d",
+            type="new",
+            app=app,
+            prototype_html="<html>old</html>",
+            prototype_status="draft",
+        )
+        r.turns.append(InterviewTurn(order=0, question="Q1", answer="A1"))
+        r.attachments.append(
+            Attachment(
+                filename="mock.txt",
+                mime="text/plain",
+                kind="doc",
+                size=4,
+                stored="prototype-probe.txt",
+            )
+        )
+        r.prototype_turns.append(
+            PrototypeTurn(
+                order=0,
+                instruction="make it clearer",
+                annotation={"pid": "headline"},
+                mode="pending",
+            )
+        )
+        db.add(r)
+        db.commit()
+        rid = r.id
+
+    prototype_gen._generate(rid)
+
+    with SessionLocal() as db:
+        r = db.get(Request, rid)
+        assert r.prototype_html == "<html>new</html>"
+        assert r.prototype_turns[0].mode == "rewrite"
+
+
+def test_background_prototype_does_not_clobber_turn_resolved_during_call(client, monkeypatch):
+    with SessionLocal() as db:
+        r = Request(
+            ref="REQ-PROTO-RACE",
+            title="T",
+            description="d",
+            type="new",
+            prototype_html="<html>old</html>",
+            prototype_status="draft",
+        )
+        r.prototype_turns.append(PrototypeTurn(order=0, instruction="edit", mode="pending"))
+        db.add(r)
+        db.commit()
+        rid = r.id
+        turn_id = r.prototype_turns[0].id
+
+    class RacingBrain:
+        def generate_prototype(self, r, *, instruction, annotation, current_html):
+            with SessionLocal() as db:
+                current = db.get(Request, rid)
+                turn = db.get(PrototypeTurn, turn_id)
+                turn.mode = "rewrite"
+                turn.note = "newer"
+                turn.html = "<html>newer</html>"
+                current.prototype_html = turn.html
+                current.prototype_status = "edited"
+                db.commit()
+            return {"mode": "rewrite", "note": "stale", "html": "<html>stale</html>"}
+
+    monkeypatch.setattr("app.prototype_gen.get_brain", lambda: RacingBrain())
+    prototype_gen._generate(rid)
+
+    with SessionLocal() as db:
+        r = db.get(Request, rid)
+        turn = db.get(PrototypeTurn, turn_id)
+        assert r.prototype_html == "<html>newer</html>"
+        assert turn.note == "newer"
+        assert turn.html == "<html>newer</html>"
+
+
+def test_background_prototype_does_not_clobber_skip_during_call(client, monkeypatch):
+    with SessionLocal() as db:
+        r = Request(
+            ref="REQ-PROTO-SKIP-RACE",
+            title="T",
+            description="d",
+            type="new",
+            prototype_html="<html>old</html>",
+            prototype_status="draft",
+        )
+        r.prototype_turns.append(PrototypeTurn(order=0, instruction="edit", mode="pending"))
+        db.add(r)
+        db.commit()
+        rid = r.id
+
+    class SkipDuringCallBrain:
+        def generate_prototype(self, r, *, instruction, annotation, current_html):
+            with SessionLocal() as db:
+                current = db.get(Request, rid)
+                current.prototype_status = "skipped"
+                db.commit()
+            return {"mode": "rewrite", "note": "stale", "html": "<html>stale</html>"}
+
+    monkeypatch.setattr("app.prototype_gen.get_brain", lambda: SkipDuringCallBrain())
+    prototype_gen._generate(rid)
+
+    with SessionLocal() as db:
+        r = db.get(Request, rid)
+        assert r.prototype_status == "skipped"
+        assert r.prototype_html == "<html>old</html>"
+        assert r.prototype_turns[0].mode == "pending"
+
+
+def test_background_prototype_does_not_clobber_restore_during_call(client, monkeypatch):
+    with SessionLocal() as db:
+        r = Request(
+            ref="REQ-PROTO-RESTORE-RACE",
+            title="T",
+            description="d",
+            type="new",
+            prototype_html="<html>old</html>",
+            prototype_status="edited",
+        )
+        r.prototype_turns.extend(
+            [
+                PrototypeTurn(
+                    order=0,
+                    instruction=None,
+                    mode="rewrite",
+                    note="first",
+                    html="<html>restored</html>",
+                ),
+                PrototypeTurn(order=1, instruction="edit", mode="pending"),
+            ]
+        )
+        db.add(r)
+        db.commit()
+        rid = r.id
+
+    class RestoreDuringCallBrain:
+        def generate_prototype(self, r, *, instruction, annotation, current_html):
+            with SessionLocal() as db:
+                current = db.get(Request, rid)
+                current.prototype_turns.append(
+                    PrototypeTurn(
+                        order=2,
+                        instruction=None,
+                        mode="rewrite",
+                        note="Reverted to an earlier version.",
+                        html="<html>restored</html>",
+                    )
+                )
+                current.prototype_html = "<html>restored</html>"
+                current.prototype_status = "edited"
+                db.commit()
+            return {"mode": "rewrite", "note": "stale", "html": "<html>stale</html>"}
+
+    monkeypatch.setattr("app.prototype_gen.get_brain", lambda: RestoreDuringCallBrain())
+    prototype_gen._generate(rid)
+
+    with SessionLocal() as db:
+        r = db.get(Request, rid)
+        assert r.prototype_status == "edited"
+        assert r.prototype_html == "<html>restored</html>"
+        assert r.prototype_turns[1].mode == "pending"
+        assert r.prototype_turns[2].note == "Reverted to an earlier version."
+
+    class RetryAgainstRestoredHtmlBrain:
+        def generate_prototype(self, r, *, instruction, annotation, current_html):
+            assert current_html == "<html>restored</html>"
+            return {"mode": "rewrite", "note": "fresh", "html": "<html>fresh</html>"}
+
+    monkeypatch.setattr(
+        "app.prototype_gen.get_brain", lambda: RetryAgainstRestoredHtmlBrain()
+    )
+    prototype_gen._generate(rid)
+
+    with SessionLocal() as db:
+        r = db.get(Request, rid)
+        assert r.prototype_html == "<html>fresh</html>"
+        assert r.prototype_turns[1].mode == "rewrite"
+
+
+def test_sync_prototype_calls_brain_with_detached_loaded_request(client, monkeypatch):
+    class SessionProbeBrain:
+        def generate_prototype(self, r, *, instruction, annotation, current_html):
+            assert object_session(r) is None
+            assert r.app.name == "Sync prototype probe"
+            assert [turn.answer for turn in r.turns] == ["A1"]
+            assert [attachment.filename for attachment in r.attachments] == ["sync-mock.txt"]
+            return {"mode": "rewrite", "note": "done", "html": "<html>sync-new</html>"}
+
+    monkeypatch.setattr("app.prototype_gen.get_brain", lambda: SessionProbeBrain())
+    with SessionLocal() as db:
+        app = App(
+            key="sync-prototype-probe",
+            name="Sync prototype probe",
+            owner="qa",
+            repo="sf/sync-prototype-probe",
+        )
+        r = Request(
+            ref="REQ-PROTO-SYNC",
+            title="T",
+            description="d",
+            type="new",
+            app=app,
+            prototype_html="<html>old</html>",
+            prototype_status="draft",
+        )
+        r.turns.append(InterviewTurn(order=0, question="Q1", answer="A1"))
+        r.attachments.append(
+            Attachment(
+                filename="sync-mock.txt",
+                mime="text/plain",
+                kind="doc",
+                size=4,
+                stored="sync-prototype-probe.txt",
+            )
+        )
+        r.prototype_turns.append(PrototypeTurn(order=0, instruction="edit", mode="pending"))
+        db.add(r)
+        db.commit()
+        rid = r.id
+        prototype_gen._resolve_sync(db, r)
+
+    with SessionLocal() as db:
+        r = db.get(Request, rid)
+        assert r.prototype_html == "<html>sync-new</html>"
+        assert r.prototype_turns[0].mode == "rewrite"
+
+
+def test_sync_prototype_does_not_clobber_skip_during_call(client, monkeypatch):
+    with SessionLocal() as db:
+        r = Request(
+            ref="REQ-PROTO-SYNC-SKIP-RACE",
+            title="T",
+            description="d",
+            type="new",
+            prototype_html="<html>old</html>",
+            prototype_status="draft",
+        )
+        r.prototype_turns.append(PrototypeTurn(order=0, instruction="edit", mode="pending"))
+        db.add(r)
+        db.commit()
+        rid = r.id
+
+        class SkipDuringCallBrain:
+            def generate_prototype(self, request, *, instruction, annotation, current_html):
+                assert object_session(request) is None
+                with SessionLocal() as race_db:
+                    current = race_db.get(Request, rid)
+                    current.prototype_status = "skipped"
+                    race_db.commit()
+                return {"mode": "rewrite", "note": "stale", "html": "<html>stale</html>"}
+
+        monkeypatch.setattr("app.prototype_gen.get_brain", lambda: SkipDuringCallBrain())
+        prototype_gen._resolve_sync(db, r)
+
+    with SessionLocal() as db:
+        r = db.get(Request, rid)
+        assert r.prototype_status == "skipped"
+        assert r.prototype_html == "<html>old</html>"
+        assert r.prototype_turns[0].mode == "pending"
+
+
+def test_sync_prototype_does_not_clobber_restore_during_call(client, monkeypatch):
+    with SessionLocal() as db:
+        r = Request(
+            ref="REQ-PROTO-SYNC-RESTORE-RACE",
+            title="T",
+            description="d",
+            type="new",
+            prototype_html="<html>old</html>",
+            prototype_status="edited",
+        )
+        r.prototype_turns.extend(
+            [
+                PrototypeTurn(order=0, mode="rewrite", html="<html>restored</html>"),
+                PrototypeTurn(order=1, instruction="edit", mode="pending"),
+            ]
+        )
+        db.add(r)
+        db.commit()
+        rid = r.id
+
+        class RestoreDuringCallBrain:
+            def generate_prototype(self, request, *, instruction, annotation, current_html):
+                assert object_session(request) is None
+                with SessionLocal() as race_db:
+                    current = race_db.get(Request, rid)
+                    current.prototype_turns.append(
+                        PrototypeTurn(
+                            order=2,
+                            mode="rewrite",
+                            note="Reverted to an earlier version.",
+                            html="<html>restored</html>",
+                        )
+                    )
+                    current.prototype_html = "<html>restored</html>"
+                    current.prototype_status = "edited"
+                    race_db.commit()
+                return {"mode": "rewrite", "note": "stale", "html": "<html>stale</html>"}
+
+        monkeypatch.setattr("app.prototype_gen.get_brain", lambda: RestoreDuringCallBrain())
+        prototype_gen._resolve_sync(db, r)
+
+    with SessionLocal() as db:
+        r = db.get(Request, rid)
+        assert r.prototype_html == "<html>restored</html>"
+        assert r.prototype_turns[1].mode == "pending"
+        assert r.prototype_turns[2].note == "Reverted to an earlier version."
 
 
 # ── endpoints (SYNC brain via the test client) ──

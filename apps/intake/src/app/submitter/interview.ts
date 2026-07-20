@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   Component,
   DestroyRef,
@@ -140,8 +141,17 @@ import { IntakeDraft } from './intake-draft.service';
               @if (working()) {
                 <div class="brow fade-in">
                   <span class="bav"><sf-mark [size]="13" color="#fff" /></span>
-                  <div class="bub bub--ai typing" aria-hidden="true">
-                    <span></span><span></span><span></span> thinking…
+                  <div
+                    class="bub bub--ai"
+                    [class.typing]="!deltaText().trim()"
+                    [class.bub--stream]="!!deltaText().trim()"
+                    aria-hidden="true"
+                  >
+                    @if (deltaText().trim()) {
+                      {{ deltaText() }}
+                    } @else {
+                      <span></span><span></span><span></span> thinking…
+                    }
                   </div>
                 </div>
               }
@@ -495,6 +505,10 @@ import { IntakeDraft } from './intake-draft.service';
       border-radius: 14px 14px 14px 4px;
       color: var(--fg1);
     }
+    .bub--stream {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
     .bub--me {
       background: var(--a600);
       color: #fff;
@@ -807,6 +821,7 @@ export class Interview implements OnInit {
         this.busy.set(false);
         this.scrollToEnd();
       },
+      onDelta: () => this.scrollToEnd(),
       onLoadError: () => this.busy.set(false),
       onPollError: () => this.busy.set(false), // give up quietly; the read stays retryable
     },
@@ -815,6 +830,8 @@ export class Interview implements OnInit {
   st = this.gen.state;
   /** the question is streaming in over SSE */
   streaming = this.gen.streaming;
+  /** temporary question text received before the terminal state lands */
+  deltaText = this.gen.deltaText;
   req = signal<RequestDetail | null>(null);
   busy = signal(false);
   msg = signal('');
@@ -1055,7 +1072,13 @@ export class Interview implements OnInit {
         this.scrollToEnd();
         this.planPanel()?.refresh(); // the answer changes the plan — let it catch up
       },
-      error: () => this.busy.set(false),
+      error: (error: HttpErrorResponse) => {
+        if (error.status === 409) {
+          this.gen.refresh();
+          return;
+        }
+        this.busy.set(false);
+      },
     });
   }
 
@@ -1100,7 +1123,17 @@ export class Interview implements OnInit {
         this.api.request(this.id).subscribe((r) => this.req.set(r)); // type/rows re-shape
         this.planPanel()?.refresh();
       },
-      error: () => this.busy.set(false),
+      error: (error: HttpErrorResponse) => {
+        if (error.status === 409) {
+          this.gen.refresh();
+          this.api.request(this.id).subscribe((r) => {
+            this.req.set(r);
+            this.planPanel()?.refresh();
+          });
+          return;
+        }
+        this.busy.set(false);
+      },
     });
   }
   /** Decline the proposal: the type stands and the interview continues (the proposal clears). */
@@ -1145,7 +1178,13 @@ export class Interview implements OnInit {
         this.scrollToEnd();
         this.planPanel()?.refresh();
       },
-      error: () => this.busy.set(false),
+      error: (error: HttpErrorResponse) => {
+        if (error.status === 409) {
+          this.gen.refresh();
+          return;
+        }
+        this.busy.set(false);
+      },
     });
   }
 

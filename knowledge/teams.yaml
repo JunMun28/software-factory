@@ -1,0 +1,16 @@
+# Example team registry — replace every row with your organization. The brain uses
+# scope to suggest a handoff; contact and queue tell a colleague where that work goes.
+- team: Data Platform
+  scope: Shared datasets, governed data products, and warehouse ingestion
+  contact: data-platform@example.test
+  queue: DATA
+
+- team: Business Applications
+  scope: Enterprise workflow applications and business-system integrations
+  contact: business-apps@example.test
+  queue: BIZAPPS
+
+- team: Workplace Technology
+  scope: Employee devices, collaboration tools, identity, and desktop support
+  contact: workplace-tech@example.test
+  queue: WORKPLACE

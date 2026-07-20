@@ -10,10 +10,12 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects import mssql
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -161,9 +163,19 @@ class Request(Base):
     # so it steers exactly one attempt — same scope as SF_GATE_FEEDBACK
     pending_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    reporter: Mapped[str] = mapped_column(human_string(80), default="Jordan D.")
+    # Indexed: the per-user daily brain budget (Plan 008 Phase 0 / D6) anchors its
+    # usage aggregate on this reporter identity (brain_calls join requests).
+    reporter: Mapped[str] = mapped_column(
+        human_string(80), default="Jordan D.", index=True
+    )
     reporter_initials: Mapped[str] = mapped_column(String(4), default="JD")
     labels: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Durable composer classification state. This stays separate from `type` so an
+    # asynchronous suggestion can never overwrite the submitter's current choice.
+    classification_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Cached optional team-routing proposal and consent decision, keyed by prompt
+    # inputs. This prevents poll re-billing and retains accepted handoff evidence.
+    intake_escalation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     send_back_question: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
     send_back_response: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
@@ -179,7 +191,10 @@ class Request(Base):
     sim_step: Mapped[int] = mapped_column(Integer, default=0)
     # the generated-but-unanswered interview question — persisted so the question the
     # submitter sees is exactly the one recorded with their answer (and the brain runs once)
-    pending_question: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # NOTE(plan-008): SQL NULL is the CAS-visible "no question" state. JSON's
+    # default would encode Python None as JSON text `null`, which still matches
+    # `IS NOT NULL` and lets a losing answer claim the row a second time.
+    pending_question: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     # AI-written review spec ({overview, sections, at_turns}); cached and regenerated
     # when the interview grows. at_turns is the answered-count it was written for (freshness key).
     summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -231,6 +246,39 @@ class Request(Base):
         return self.new_app_name or "No app yet"
 
 
+class BrainCall(Base):
+    """One intake-brain generation claim and its provider usage telemetry."""
+
+    __tablename__ = "brain_calls"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requests.id"), nullable=True, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(32))
+    dedup_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    model: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(16))
+    tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ttft_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tool_rounds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(TZDateTime(), nullable=True)
+
+    __table_args__ = (
+        # SQL Server otherwise allows only one NULL in a regular UNIQUE index.
+        Index(
+            "uq_brain_calls_dedup_key",
+            "dedup_key",
+            unique=True,
+            sqlite_where=text("dedup_key IS NOT NULL"),
+            mssql_where=text("dedup_key IS NOT NULL"),
+        ),
+    )
+
+
 class InterviewTurn(Base):
     __tablename__ = "interview_turns"
 
@@ -244,6 +292,15 @@ class InterviewTurn(Base):
     skipped: Mapped[bool] = mapped_column(Boolean, default=False)
 
     request: Mapped[Request] = relationship(back_populates="turns")
+
+    __table_args__ = (
+        Index(
+            "uq_interview_turns_request_order",
+            "request_id",
+            "order",
+            unique=True,
+        ),
+    )
 
 
 class PrototypeTurn(Base):
@@ -268,6 +325,15 @@ class PrototypeTurn(Base):
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
     request: Mapped[Request] = relationship(back_populates="prototype_turns")
+
+    __table_args__ = (
+        Index(
+            "uq_prototype_turns_request_order",
+            "request_id",
+            "order",
+            unique=True,
+        ),
+    )
 
 
 class PreviewFeedback(Base):

@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   Component,
   DestroyRef,
@@ -12,6 +13,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { EMPTY, catchError, throwError } from 'rxjs';
 
 import { Api, Icon, Mark, PrototypeAnnotation, PrototypeState, prototypeSrcdoc } from '@sf/shared';
 import { GenerationStream } from './generation-stream';
@@ -60,8 +62,17 @@ import { SubShell } from './sub-shell';
               @if (working()) {
                 <div class="brow fade-in">
                   <span class="bav"><sf-mark [size]="12" color="#fff" /></span>
-                  <div class="bub bub--ai typing" aria-hidden="true">
-                    <span></span><span></span><span></span> designing…
+                  <div
+                    class="bub bub--ai"
+                    [class.typing]="!deltaText().trim()"
+                    [class.bub--stream]="!!deltaText().trim()"
+                    aria-hidden="true"
+                  >
+                    @if (deltaText().trim()) {
+                      {{ deltaText() }}
+                    } @else {
+                      <span></span><span></span><span></span> designing…
+                    }
                   </div>
                 </div>
               }
@@ -309,6 +320,10 @@ import { SubShell } from './sub-shell';
       border: 1px solid var(--hairline);
       border-top-left-radius: 4px;
       color: var(--fg1);
+    }
+    .bub--stream {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     .bub--me {
       background: var(--accent);
@@ -612,12 +627,15 @@ export class Prototype implements OnInit {
         s.status !== 'skipped' && (!s.html || s.thinking || this.hasPending(s)),
       needsStreamAfterEvent: (s) => this.hasPending(s), // a queued edit is still owed
       onState: () => this.scrollToEnd(),
+      onDelta: () => this.scrollToEnd(),
     },
   );
   /** the prototype state — the stream's writable state signal */
   st = this.gen.state;
   /** a revision is streaming in over SSE */
   streaming = this.gen.streaming;
+  /** temporary assistant text received before the terminal state lands */
+  deltaText = this.gen.deltaText;
   msg = signal('');
   annotations = signal<PrototypeAnnotation[]>([]); // point-to-edit selection (multi)
   inspecting = signal(false);
@@ -696,27 +714,39 @@ export class Prototype implements OnInit {
     }
   }
 
+  private recoverConflict(error: HttpErrorResponse) {
+    if (error.status !== 409) return throwError(() => error);
+    this.gen.refresh();
+    return EMPTY;
+  }
+
   send() {
     const instruction = this.msg().trim();
     if (!instruction || this.working()) return;
     const picked = this.annotations();
     const annotation = picked.length === 0 ? null : picked.length === 1 ? picked[0] : picked;
-    this.api.instructPrototype(this.id, instruction, annotation).subscribe((s) => {
-      this.gen.ingest(s, s.thinking || this.hasPending(s)); // stream the revision (async brain)
-      this.msg.set('');
-      this.clearAnnots();
-      this.scrollToEnd();
-    });
+    this.api
+      .instructPrototype(this.id, instruction, annotation)
+      .pipe(catchError((error: HttpErrorResponse) => this.recoverConflict(error)))
+      .subscribe((s) => {
+        this.gen.ingest(s, s.thinking || this.hasPending(s)); // stream the revision (async brain)
+        this.msg.set('');
+        this.clearAnnots();
+        this.scrollToEnd();
+      });
   }
 
   undo() {
     const revs = this.turns().filter((t) => t.revision);
     if (revs.length < 2) return;
     const target = revs[revs.length - 2]; // revert to the revision before the current
-    this.api.restorePrototype(this.id, target.order).subscribe((s) => {
-      this.gen.ingest(s);
-      this.scrollToEnd();
-    });
+    this.api
+      .restorePrototype(this.id, target.order)
+      .pipe(catchError((error: HttpErrorResponse) => this.recoverConflict(error)))
+      .subscribe((s) => {
+        this.gen.ingest(s);
+        this.scrollToEnd();
+      });
   }
 
   skip() {
