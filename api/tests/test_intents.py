@@ -71,9 +71,11 @@ def test_complete_and_recovery_scan():
     key = f"req2:trigger_build:sha9-{uuid.uuid4().hex}"
     with SessionLocal() as db:
         intents.begin(db, key, "trigger_build", 2, {})
-        assert [i.key for i in intents.open_intents(db)] == [key]
+        # scope to our own key: under FACTORY_TEST_USE_ENV_DB=1 (runbook step 8,
+        # live Azure SQL) the table is shared and other suites' intents persist
+        assert [i.key for i in intents.open_intents(db) if i.key == key] == [key]
         intents.complete(db, key, {"build": "b-1"})
-        assert intents.open_intents(db) == []
+        assert [i for i in intents.open_intents(db) if i.key == key] == []
         row = db.get(Intent, key)
         assert row is not None
         assert row.status == "done" and json.loads(row.outcome_json)["build"] == "b-1"

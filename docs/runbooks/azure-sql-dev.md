@@ -1,5 +1,16 @@
 # Azure SQL dev database
 
+> **Status (2026-07-20): PROVISIONED & LIVE-PROVEN.** Server
+> `sf-dev-sql-8da737.database.windows.net` (southeastasia), db `factory`
+> (Basic, LRS backups), admin `sffactory` — credentials live ONLY in
+> `api/.env` (gitignored) and, for clusters, the `factory-db` Secret.
+> DTU 80% alert `sf-factory-dtu80` + $20/mo budget `sf-monthly-cap` are live.
+> Alembic migrated to head; step-8 trio (leader `sp_getapplock` through the
+> real gateway, transitions, intents) = 52/52 green. Note: step 8 shares one
+> durable DB across runs — suites must scope assertions to their own rows
+> (test_intents was fixed for this on 2026-07-20).
+
+
 1. **User action (Azure portal or `az` CLI):** Create resource group `sf-dev`
    in the region nearest you.
 2. **User action (Azure portal or `az` CLI):** Create logical server
