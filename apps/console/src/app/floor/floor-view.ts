@@ -1,322 +1,365 @@
-import {
-  Evidence,
-  EvidenceBit,
-  FactoryRequest,
-  MissionOut,
-  RunState,
-  evidenceBits,
-  timeAgo,
-} from '@sf/shared';
+import { FactoryRequest, MissionOut, RunState, timeAgo } from '@sf/shared';
 
-/* ── The line: every request as one track across five stages ──
-   The two human gates live in the geometry: a ◆ joint between
-   Intake & Spec → Architecture (build approval) and between
-   Review & Preview → Deploy (deploy approval). Everything between
-   the joints runs on its own. */
+/* ── The five displayed stages ──
+   A DISPLAY-only projection over the backend's finer stage machine. The agent
+   code-review loop is folded into BUILD (backend stage `review`); the requester
+   preview becomes its own REVIEW lane (backend stage `preview`). Nothing here
+   writes back — request.stage and the append-only log are untouched. */
 
-export interface StageDef {
-  key: 'intake' | 'architecture' | 'build' | 'review' | 'deploy';
+export interface DisplayStageDef {
+  key: 'spec' | 'arch' | 'build' | 'review' | 'deploy';
   label: string;
-  /** Non-null → a human approval opens this stage; drawn as a ◆ joint on the track. */
-  gate: string | null;
+  /** the agent that owns the stage — a mono name plate on the lane */
+  agent: string;
+  /** the single human moment that ends the stage */
+  gate: string;
 }
 
-export const STAGES: readonly StageDef[] = [
-  { key: 'intake', label: 'Intake & Spec', gate: null },
-  { key: 'architecture', label: 'Architecture', gate: 'Build approval' },
-  { key: 'build', label: 'Build', gate: null },
-  { key: 'review', label: 'Review & Preview', gate: null },
-  { key: 'deploy', label: 'Deploy', gate: 'Deploy approval' },
+export const DISPLAY_STAGES: readonly DisplayStageDef[] = [
+  { key: 'spec', label: 'Spec', agent: 'requirements-analyst', gate: 'Spec approval' },
+  { key: 'arch', label: 'Arch', agent: 'architect', gate: 'ADR sign-off' },
+  { key: 'build', label: 'Build', agent: 'implementer', gate: 'Merge approval' },
+  { key: 'review', label: 'Review', agent: 'requester', gate: 'Requester feedback' },
+  { key: 'deploy', label: 'Deploy', agent: 'deployer', gate: 'Deploy approval' },
 ];
 
-const STAGE_INDEX: Record<FactoryRequest['stage'], number> = {
+/** Backend stage → displayed lane index. `done` returns 5 (shipped, not a lane).
+ *  Fixes the prior STAGE_INDEX gap that had no `preview` entry — it fell back to
+ *  0 (Spec), so a requester-preview request wrongly showed at the start of the
+ *  line. `review` (the agent code-review loop) folds into BUILD; `preview` (the
+ *  requester preview) is the REVIEW lane. */
+const DISPLAY_INDEX: Record<FactoryRequest['stage'], number> = {
   intake: 0,
   spec: 0,
   architecture: 1,
   build: 2,
-  review: 3,
+  review: 2,
+  preview: 3,
   deploy: 4,
   done: 5,
 };
 
-export type SegState = 'done' | 'current' | 'todo';
-export type GateState = 'todo' | 'waiting' | 'passed';
-export type RowTone = 'run' | 'wait' | 'gate' | 'human' | 'owned' | 'draft' | 'done';
+export function displayStageIndex(stage: FactoryRequest['stage']): number {
+  return DISPLAY_INDEX[stage] ?? 0;
+}
 
-export interface TrackRow {
+/** Which of the three Overview bodies is showing; mirrored to the URL query. */
+export type OverviewView = 'stack' | 'line' | 'progress';
+
+export type SegState = 'done' | 'current' | 'todo';
+/** How a request reads right now — drives its colour in every view. */
+export type RowKind = 'active' | 'gate' | 'wait' | 'stuck' | 'owned' | 'draft' | 'done';
+/** How the page routes an inline action; null → nothing for a human to do here. */
+export type QueueKind = 'gate' | 'stalled' | 'owned';
+
+export interface OverviewRow {
   id: number;
   ref: string;
   title: string;
   app: string;
-  tone: RowTone;
-  /** one entry per stage; 'current' is where the request sits right now */
-  segs: SegState[];
-  /** the two approval joints: [build approval, deploy approval] */
-  gates: [GateState, GateState];
-  /** in-stage progress 0..1, only when a live run reports steps */
-  progress: number | null;
+  /** displayed lane, 0..4 live, 5 = shipped */
+  stageIndex: number;
+  kind: RowKind;
+  /** a person must act (admin gate, stall, or hand-off) */
+  needsHuman: boolean;
+  queueKind: QueueKind | null;
   /** right-hand status text, in the admin's words */
   state: string;
-  glyph: 'dotted' | 'ring' | 'check' | 'flag' | null;
+  /** live activity line for the Line view — real run/last_event only, never faked */
+  activity: string | null;
   /** compact time in current stage, e.g. "4h" — null for shipped rows */
   age: string | null;
+  /** one SegState per displayed stage */
+  segs: SegState[];
   /** sort keys, not rendered */
-  stageIndex: number;
   enteredMs: number;
   updatedMs: number;
-}
-
-export interface LineView {
-  /** live rows, closest-to-shipping first */
-  rows: TrackRow[];
-  /** recently shipped, newest first (capped) */
-  shipped: TrackRow[];
-  /** live requests sitting in each of the five stages */
-  counts: number[];
-  /** requests parked at [build approval, deploy approval] right now */
-  gateCounts: [number, number];
+  /** carried so inline actions can address the request without a second lookup */
+  request: FactoryRequest;
 }
 
 /** How many shipped requests stay visible under the live rows. */
 const SHIPPED_SHOWN = 5;
 
-const TONE_RANK: Record<RowTone, number> = {
-  human: 0,
+const KIND_RANK: Record<RowKind, number> = {
+  stuck: 0,
   gate: 1,
   owned: 2,
-  run: 3,
-  wait: 4,
+  wait: 3,
+  active: 4,
   draft: 5,
   done: 6,
 };
 
-function gateStates(r: FactoryRequest, stageIndex: number): [GateState, GateState] {
-  const atGate1 = r.gate === 'approve_spec';
-  const atGate2 = r.gate === 'approve_merge' || r.gate === 'approve_deploy';
-  const gate1: GateState = atGate1 ? 'waiting' : stageIndex >= 1 ? 'passed' : 'todo';
-  const gate2: GateState = atGate2
-    ? 'waiting'
-    : stageIndex >= 5 || (stageIndex === 4 && !r.gate)
-      ? 'passed'
-      : 'todo';
-  return [gate1, gate2];
-}
-
-function segStates(stageIndex: number, parkedAtGate: boolean): SegState[] {
-  return STAGES.map((_, i) => {
+function segStates(stageIndex: number): SegState[] {
+  return DISPLAY_STAGES.map((_, i) => {
     if (stageIndex >= 5) return 'done';
     if (i < stageIndex) return 'done';
-    if (i === stageIndex) return parkedAtGate ? 'done' : 'current';
+    if (i === stageIndex) return 'current';
     return 'todo';
   });
 }
 
-export function deriveTrack(r: FactoryRequest, run: RunState | null): TrackRow {
-  const stageIndex = STAGE_INDEX[r.stage] ?? 0;
-  const parkedAtGate = r.gate !== null;
+/** The live activity line for a running request — real data only. A healthy run
+ *  reports its step; otherwise we fall back to the last recorded event, quietly.
+ *  No simulator, no random text. */
+function liveActivity(r: FactoryRequest, run: RunState | null): string | null {
+  if (run && run.health !== 'no_signal') {
+    if (run.label) return run.of ? `${run.label} · ${run.step}/${run.of}` : run.label;
+  }
+  return r.last_event ?? null;
+}
+
+export function deriveRow(r: FactoryRequest, run: RunState | null): OverviewRow {
+  const stageIndex = displayStageIndex(r.stage);
   const base = {
     id: r.id,
     ref: r.ref,
     title: r.title,
     app: r.app_name || r.new_app_name || 'New app',
-    segs: segStates(stageIndex, parkedAtGate),
-    gates: gateStates(r, stageIndex),
-    progress: null as number | null,
-    age: r.stage_entered_at ? timeAgo(r.stage_entered_at) : null,
     stageIndex,
+    segs: segStates(stageIndex),
+    age: r.stage_entered_at ? timeAgo(r.stage_entered_at) : null,
     enteredMs: r.stage_entered_at ? Date.parse(r.stage_entered_at) : 0,
     updatedMs: Date.parse(r.updated_at) || 0,
+    request: r,
   };
+  const done = (kind: RowKind, extra: Partial<OverviewRow>): OverviewRow => ({
+    ...base,
+    kind,
+    needsHuman: false,
+    queueKind: null,
+    activity: null,
+    state: '',
+    ...extra,
+  });
+
   if (r.status === 'done')
-    return {
-      ...base,
-      tone: 'done',
-      glyph: 'check',
-      state: `Shipped · ${timeAgo(r.updated_at)}`,
-      age: null,
-    };
+    return done('done', { state: `Shipped · ${timeAgo(r.updated_at)}`, age: null });
   if (r.needs_human)
-    return {
-      ...base,
-      tone: 'human',
-      glyph: 'flag',
+    return done('stuck', {
+      needsHuman: true,
+      queueKind: 'stalled',
       state: r.needs_human_reason || 'Needs a human',
-    };
+    });
   if (r.status === 'human_owned')
-    return { ...base, tone: 'owned', glyph: 'flag', state: 'Human-owned · automation off' };
+    return done('owned', {
+      needsHuman: true,
+      queueKind: 'owned',
+      state: 'Human-owned · automation off',
+    });
   if (r.gate === 'approve_spec')
-    return { ...base, tone: 'gate', glyph: null, state: 'Holding for build approval' };
+    return done('gate', {
+      needsHuman: true,
+      queueKind: 'gate',
+      state: 'Holding for spec approval',
+    });
   if (r.gate === 'approve_architecture')
-    return { ...base, tone: 'gate', glyph: null, state: 'Holding for architecture review' };
+    return done('gate', { needsHuman: true, queueKind: 'gate', state: 'Holding for ADR sign-off' });
+  if (r.gate === 'approve_merge')
+    return done('gate', {
+      needsHuman: true,
+      queueKind: 'gate',
+      state: 'Holding for merge approval',
+    });
+  if (r.gate === 'approve_deploy')
+    return done('gate', {
+      needsHuman: true,
+      queueKind: 'gate',
+      state: 'Holding for deploy approval',
+    });
+  // The requester's preview feedback is an amber wait, not an admin gate — no
+  // approve/send-back here; the requester acts from their own app.
   if (r.gate === 'accept_preview')
-    return { ...base, tone: 'gate', glyph: null, state: 'Preview live · awaiting review' };
-  if (r.gate === 'approve_merge' || r.gate === 'approve_deploy')
-    return { ...base, tone: 'gate', glyph: null, state: 'Holding for deploy approval' };
+    return done('wait', { state: 'Preview live · awaiting requester feedback' });
   if (r.status === 'sent_back')
-    return { ...base, tone: 'wait', glyph: 'dotted', state: 'With the submitter · question open' };
-  if (r.status === 'draft')
-    return { ...base, tone: 'draft', glyph: 'dotted', state: 'Draft · not submitted yet' };
+    return done('wait', { state: 'With the submitter · question open' });
+  if (r.status === 'draft') return done('draft', { state: 'Draft · not submitted yet' });
   if (run) {
     const quiet = run.health !== 'healthy';
-    return {
-      ...base,
-      tone: 'run',
-      glyph: 'ring',
+    return done('active', {
       state: quiet
         ? 'Quiet · no signal recently'
         : `${run.label || 'Working'} · ${run.step}/${run.of}`,
-      progress: run.of ? Math.min(1, run.step / run.of) : null,
-    };
+      activity: liveActivity(r, run),
+    });
   }
   if (r.stage === 'deploy')
-    return {
-      ...base,
-      tone: 'run',
-      glyph: 'ring',
+    return done('active', {
       state: r.last_event || 'Building image · deploying',
-    };
+      activity: liveActivity(r, null),
+    });
+  // The intake interview is the submitter's turn (amber wait); drafting the spec
+  // is the analyst agent working (green), so the two must not share a colour.
   if (r.stage === 'intake' || r.stage === 'spec')
-    return {
-      ...base,
-      tone: 'wait',
-      glyph: 'dotted',
-      state: r.status === 'submitted' ? 'Interview in progress' : 'Drafting the spec',
-    };
-  return { ...base, tone: 'run', glyph: 'ring', state: r.last_event || 'Working' };
+    return r.status === 'submitted'
+      ? done('wait', { state: 'Interview in progress' })
+      : done('active', { state: 'Drafting the spec', activity: liveActivity(r, null) });
+  return done('active', { state: r.last_event || 'Working', activity: liveActivity(r, null) });
 }
 
-/** The whole line from the requests projection + mission run overlays. */
-export function deriveLine(requests: FactoryRequest[], runs: Map<number, RunState>): LineView {
+export interface OverviewModel {
+  /** live rows, closest-to-shipping first */
+  rows: OverviewRow[];
+  /** recently shipped, newest first (capped) */
+  shipped: OverviewRow[];
+  /** live requests sitting in each of the five displayed stages */
+  counts: number[];
+}
+
+/** The whole board from the requests projection + mission run overlays. */
+export function deriveOverview(
+  requests: FactoryRequest[],
+  runs: Map<number, RunState>,
+): OverviewModel {
   const open = requests.filter((r) => r.status !== 'cancelled');
-  const rows: TrackRow[] = [];
-  const shipped: TrackRow[] = [];
-  const counts = STAGES.map(() => 0);
-  const gateCounts: [number, number] = [0, 0];
+  const rows: OverviewRow[] = [];
+  const shipped: OverviewRow[] = [];
+  const counts = DISPLAY_STAGES.map(() => 0);
   for (const r of open) {
-    const track = deriveTrack(r, runs.get(r.id) ?? null);
-    if (track.tone === 'done') {
-      shipped.push(track);
+    const row = deriveRow(r, runs.get(r.id) ?? null);
+    if (row.kind === 'done') {
+      shipped.push(row);
       continue;
     }
-    counts[Math.min(track.stageIndex, 4)] += 1;
-    if (track.gates[0] === 'waiting') gateCounts[0] += 1;
-    if (track.gates[1] === 'waiting') gateCounts[1] += 1;
-    rows.push(track);
+    counts[Math.min(row.stageIndex, 4)] += 1;
+    rows.push(row);
   }
   // Closest to shipping on top; urgency breaks ties; then longest in stage.
   rows.sort(
     (a, b) =>
       b.stageIndex - a.stageIndex ||
-      TONE_RANK[a.tone] - TONE_RANK[b.tone] ||
+      KIND_RANK[a.kind] - KIND_RANK[b.kind] ||
       a.enteredMs - b.enteredMs,
   );
   shipped.sort((a, b) => b.updatedMs - a.updatedMs);
-  return { rows, shipped: shipped.slice(0, SHIPPED_SHOWN), counts, gateCounts };
+  return { rows, shipped: shipped.slice(0, SHIPPED_SHOWN), counts };
 }
 
-/* ── Needs you: the decision rail ── */
+/** Live rows bucketed into the five lanes — active chips first, waiting/stuck
+ *  chips piled after (they settle at the lane's edge). Shipped rows excluded. */
+export function laneRows(rows: OverviewRow[]): OverviewRow[][] {
+  const lanes = DISPLAY_STAGES.map(() => [] as OverviewRow[]);
+  for (const row of rows) if (row.stageIndex < 5) lanes[Math.min(row.stageIndex, 4)].push(row);
+  for (const lane of lanes) {
+    lane.sort(
+      (a, b) =>
+        Number(a.needsHuman) - Number(b.needsHuman) ||
+        KIND_RANK[a.kind] - KIND_RANK[b.kind] ||
+        b.enteredMs - a.enteredMs,
+    );
+  }
+  return lanes;
+}
 
-export type QueueKind = 'gate' | 'stalled' | 'owned';
+export type ProgSegClass = 'done' | 'work' | 'gate' | 'wait' | 'stuck' | 'owned' | 'future';
 
-export interface QueueItem {
-  kind: QueueKind;
+/** The current lane's saturated tone — the row's one loud segment. */
+function currentSegClass(kind: RowKind): ProgSegClass {
+  if (kind === 'gate') return 'gate';
+  if (kind === 'stuck') return 'stuck';
+  if (kind === 'wait') return 'wait';
+  if (kind === 'owned') return 'owned';
+  return 'work';
+}
+
+/** Five progress segments for one row: completed are quiet, the current stage is
+ *  the only saturated one, future stages are barely there. */
+export function progressSegs(row: OverviewRow): ProgSegClass[] {
+  return DISPLAY_STAGES.map((_, i) => {
+    if (row.stageIndex >= 5 || i < row.stageIndex) return 'done';
+    if (i > row.stageIndex) return 'future';
+    return currentSegClass(row.kind);
+  });
+}
+
+/** Progress rows as one flat list — the unit is the request, not the app: a
+ *  handful of requests rarely run against the same app at once, so grouping
+ *  bought headers and no grouping. Furthest along first, then longest sitting. */
+export function progressRows(rows: OverviewRow[]): OverviewRow[] {
+  return rows.slice().sort((a, b) => b.stageIndex - a.stageIndex || a.enteredMs - b.enteredMs);
+}
+
+export interface ProgressGroup {
+  app: string;
+  rows: OverviewRow[];
+}
+
+/** Progress rows grouped by app, most-advanced first inside each group; groups
+ *  ordered by their furthest-along request. */
+export function progressGroups(rows: OverviewRow[]): ProgressGroup[] {
+  const byApp = new Map<string, OverviewRow[]>();
+  for (const row of rows) {
+    const list = byApp.get(row.app) ?? [];
+    list.push(row);
+    byApp.set(row.app, list);
+  }
+  const groups = [...byApp.entries()].map(([app, list]) => ({
+    app,
+    rows: list.slice().sort((a, b) => b.stageIndex - a.stageIndex || a.enteredMs - b.enteredMs),
+  }));
+  groups.sort((a, b) => b.rows[0].stageIndex - a.rows[0].stageIndex || a.app.localeCompare(b.app));
+  return groups;
+}
+
+/* ── Inline actions ──
+   The Overview drops the decision rail, so every action rides on the row it
+   belongs to. Which buttons a row offers is a pure function of its kind. The
+   action plumbing (api calls + confirm modals) still lives on the page. */
+
+export type RowActionVerb =
+  | 'approve'
+  | 'sendBack'
+  | 'retry'
+  | 'sendBackToStage'
+  | 'takeOver'
+  | 'cancel';
+
+export interface RowAction {
+  verb: RowActionVerb;
   request: FactoryRequest;
-  evidence: Evidence | null;
-  /** gate rows only: what an approval unlocks, in the admin's words */
-  headline: string | null;
-  facts: EvidenceBit[];
-  /** owned rows only */
-  owner: string | null;
-  /** time waiting at this gate/stage — the queue's aging signal */
-  age: string | null;
-  /** waited past a day: escalate the row visually */
-  aged: boolean;
 }
 
-/** Urgency captured at intake finally orders the queue (gap #3). */
-const PRIORITY_RANK: Record<string, number> = {
-  critical: 0,
-  urgent: 0,
-  high: 1,
-  normal: 2,
-  low: 3,
+export function rowActions(row: OverviewRow): RowActionVerb[] {
+  if (row.queueKind === 'gate') return ['approve', 'sendBack'];
+  if (row.queueKind === 'stalled') return ['retry', 'sendBackToStage', 'takeOver', 'cancel'];
+  if (row.queueKind === 'owned') return ['cancel'];
+  return [];
+}
+
+const ACTION_LABEL: Record<RowActionVerb, string> = {
+  approve: 'Approve',
+  sendBack: 'Send back',
+  retry: 'Retry stage',
+  sendBackToStage: 'Send back to…',
+  takeOver: 'Take over',
+  cancel: 'Cancel',
 };
-
-const AGED_AFTER_MS = 24 * 60 * 60 * 1000;
-
-function queueMeta(r: FactoryRequest): { age: string | null; aged: boolean; entered: number } {
-  const entered = r.stage_entered_at ? Date.parse(r.stage_entered_at) : 0;
-  return {
-    age: r.stage_entered_at ? timeAgo(r.stage_entered_at) : null,
-    aged: entered > 0 && Date.now() - entered > AGED_AFTER_MS,
-    entered,
-  };
+export function actionLabel(verb: RowActionVerb): string {
+  return ACTION_LABEL[verb];
 }
 
-function priorityRank(r: FactoryRequest): number {
-  return PRIORITY_RANK[(r.priority || 'normal').toLowerCase()] ?? 2;
-}
+/* ── Compact time helpers (kept from the previous cockpit) ── */
 
-type Aging = QueueItem & { entered: number };
-
-export function deriveQueue(m: MissionOut): QueueItem[] {
-  const gates: Aging[] = m.gates.map((g) => ({
-    kind: 'gate' as const,
-    request: g.request,
-    evidence: g.evidence,
-    headline:
-      g.request.gate === 'approve_deploy'
-        ? 'Approve to go live'
-        : g.request.gate === 'approve_merge'
-          ? 'Approve to deploy'
-          : g.request.gate === 'approve_architecture'
-            ? 'Review the architecture plan'
-            : 'Approve to build',
-    facts: evidenceBits(g.evidence),
-    owner: null,
-    ...queueMeta(g.request),
-  }));
-  // Highest priority first; ties go to whoever has waited longest.
-  gates.sort((a, b) => priorityRank(a.request) - priorityRank(b.request) || a.entered - b.entered);
-  const stalled: Aging[] = m.stalled.map((request) => ({
-    kind: 'stalled' as const,
-    request,
-    evidence: null,
-    headline: null,
-    facts: [],
-    owner: null,
-    ...queueMeta(request),
-  }));
-  const owned: Aging[] = m.human_owned.map((o) => ({
-    kind: 'owned' as const,
-    request: o.request,
-    evidence: null,
-    headline: null,
-    facts: [],
-    owner: o.taken_over_by,
-    ...queueMeta(o.request),
-  }));
-  return [...gates, ...stalled, ...owned].map(({ entered: _entered, ...item }) => item);
-}
-
-/** The rail chip: which approval (or condition) this card is about. */
-export function queueChip(item: QueueItem): string {
-  if (item.kind === 'stalled') return 'Needs human';
-  if (item.kind === 'owned') return 'Human-owned';
-  if (item.request.gate === 'approve_architecture') return 'Architecture review';
-  if (item.request.gate === 'accept_preview') return 'Preview review';
-  return item.request.gate === 'approve_spec' ? 'Build approval' : 'Deploy approval';
-}
-
-/** Compact hours for the pulse line: <1h · 7h · 3d. */
+/** Compact hours for the gauge line: <1h · 7h · 3d. */
 export function fmtHours(h: number): string {
   if (h < 1) return '<1h';
   if (h < 48) return `${Math.round(h)}h`;
   return `${Math.round(h / 24)}d`;
 }
 
-/** Header math: the one-line pulse of the factory. */
-export function deriveTallies(m: MissionOut, requests: FactoryRequest[]) {
+export interface HealthTallies {
+  open: number;
+  deciding: number;
+  attention: number;
+  shipped: number;
+  cycle: string | null;
+  gateWait: string | null;
+}
+
+/** The persistent health band's six numbers, computed client-side from the data
+ *  the floor already loads — no new endpoint. */
+export function deriveTallies(m: MissionOut, requests: FactoryRequest[]): HealthTallies {
   const open = requests.filter((r) => r.status !== 'cancelled' && r.status !== 'done');
   const stats = m.stats ?? null;
   return {

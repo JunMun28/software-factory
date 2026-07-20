@@ -1,14 +1,8 @@
-import {
-  Component,
-  ElementRef,
-  HostListener,
-  computed,
-  effect,
-  inject,
-  signal,
-} from '@angular/core';
-import { Router } from '@angular/router';
+import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { Api, FactoryRequest, MissionGate, MissionOut, Poll } from '@sf/shared';
 
 import { INTAKE_URL, intakeNewRequestUrl } from '../core/intake-url';
@@ -29,7 +23,9 @@ import {
   floorActionOutcome,
 } from '../shared/action-outcome';
 import { FloorContent } from './floor-content';
-import { deriveQueue } from './floor-view';
+import { OverviewView, RowAction } from './floor-view';
+
+const VIEWS: readonly OverviewView[] = ['stack', 'line', 'progress'];
 
 @Component({
   selector: 'sf-floor-page',
@@ -48,18 +44,11 @@ import { deriveQueue } from './floor-view';
         <sf-floor-content
           [mission]="m"
           [requests]="store.requests()"
-          [queue]="visibleQueue()"
-          [appOptions]="appOptions()"
-          [activeFilter]="appFilter()"
-          (filterChanged)="appFilter.set($event)"
+          [view]="view()"
           [intakeUrl]="intakeUrl"
           [actionOutcomes]="actionOutcomes()"
-          (approved)="confirming.set($event)"
-          (sentBack)="sendingBack.set($event)"
-          (retryRequested)="retrying.set($event)"
-          (sendBackToStageRequested)="sendingStageBack.set($event)"
-          (takeOverRequested)="takingOver.set($event)"
-          (cancelled)="cancelling.set($event)"
+          (viewChange)="setView($event)"
+          (act)="handleAction($event)"
         />
       } @else {
         <p class="loading" role="status">Bringing the line into view…</p>
@@ -128,7 +117,7 @@ export class FloorPage {
   private poll = inject(Poll);
   private session = inject(Session);
   private router = inject(Router);
-  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private route = inject(ActivatedRoute);
   store = inject(Store);
   mission = signal<MissionOut | null>(null);
   confirming = signal<MissionGate | null>(null);
@@ -139,43 +128,23 @@ export class FloorPage {
   sendingStageBack = signal<FactoryRequest | null>(null);
   actionOutcomes = signal<Record<number, FloorActionOutcome>>({});
   intakeUrl = intakeNewRequestUrl(inject(INTAKE_URL));
-  /** -1 = nothing focused yet, so the first J lands on the first row. */
-  focusIndex = signal(-1);
-  appFilter = signal('all');
-  /** One derivation feeds both the rendered rows and the keyboard order. */
-  fullQueue = computed(() => {
-    const m = this.mission();
-    return m ? deriveQueue(m) : [];
-  });
-  appOptions = computed(() => {
-    const queue = this.fullQueue();
-    if (queue.length <= 6) return [];
-    const counts = new Map<string, number>();
-    for (const item of queue) {
-      const app = item.request.app_name || 'No app yet';
-      counts.set(app, (counts.get(app) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, count]) => ({ key: label, label, count }));
-  });
-  visibleQueue = computed(() => {
-    const filter = this.appFilter();
-    const queue = this.fullQueue();
-    if (filter === 'all') return queue;
-    return queue.filter((item) => (item.request.app_name || 'No app yet') === filter);
-  });
-  /** Keyboard rows mirror the visible queue exactly (sorted + filtered). */
-  focusables = computed(() =>
-    this.visibleQueue().map((item) =>
-      item.kind === 'gate'
-        ? {
-            kind: 'gate' as const,
-            gate: { request: item.request, evidence: item.evidence },
-            request: item.request,
-          }
-        : { kind: item.kind, request: item.request },
-    ),
+
+  /** The chosen view lives in the URL (?view=stack|line|progress) so it is
+   *  shareable and survives a reload; default stack. */
+  private queryView = toSignal(
+    this.route.queryParamMap.pipe(map((params) => this.parseView(params.get('view')))),
+    { initialValue: this.parseView(this.route.snapshot.queryParamMap.get('view')) },
+  );
+  view = computed(() => this.queryView());
+
+  private anyModalOpen = computed(
+    () =>
+      !!this.confirming() ||
+      !!this.sendingBack() ||
+      !!this.retrying() ||
+      !!this.takingOver() ||
+      !!this.sendingStageBack() ||
+      !!this.cancelling(),
   );
 
   constructor() {
@@ -184,6 +153,56 @@ export class FloorPage {
       this.api.mission().subscribe((mission) => this.mission.set(mission));
     });
   }
+
+  private parseView(value: string | null): OverviewView {
+    return VIEWS.includes(value as OverviewView) ? (value as OverviewView) : 'stack';
+  }
+
+  setView(view: OverviewView) {
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { view: view === 'stack' ? null : view },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  private cycleView(direction: 1 | -1) {
+    const index = VIEWS.indexOf(this.view());
+    this.setView(VIEWS[(index + direction + VIEWS.length) % VIEWS.length]);
+  }
+
+  /** Every view routes its inline actions here; the confirm modals + api calls
+   *  stay owned by the page. Gate actions rebuild the MissionGate (with evidence)
+   *  from the current mission so the Approve modal shows the evidence strip. */
+  handleAction(action: RowAction) {
+    switch (action.verb) {
+      case 'approve':
+        this.confirming.set(this.gateFor(action.request));
+        break;
+      case 'sendBack':
+        this.sendingBack.set(this.gateFor(action.request));
+        break;
+      case 'retry':
+        this.retrying.set(action.request);
+        break;
+      case 'sendBackToStage':
+        this.sendingStageBack.set(action.request);
+        break;
+      case 'takeOver':
+        this.takingOver.set(action.request);
+        break;
+      case 'cancel':
+        this.cancelling.set(action.request);
+        break;
+    }
+  }
+
+  private gateFor(request: FactoryRequest): MissionGate {
+    const found = this.mission()?.gates.find((g) => g.request.id === request.id);
+    return found ?? { request, evidence: null };
+  }
+
   approve(request: FactoryRequest) {
     this.confirming.set(null);
     this.runAction(request, 'approve', this.api.approve(request.id, this.session.operatorId()!));
@@ -243,10 +262,7 @@ export class FloorPage {
   stageLabel(request: FactoryRequest) {
     return request.stage;
   }
-  private focusRow() {
-    const rows = this.host.nativeElement.querySelectorAll<HTMLElement>('article.need');
-    rows[Math.min(this.focusIndex(), rows.length - 1)]?.focus();
-  }
+
   @HostListener('window:keydown', ['$event'])
   onKey(event: KeyboardEvent) {
     const tag = (event.target as HTMLElement)?.tagName?.toLowerCase();
@@ -254,34 +270,16 @@ export class FloorPage {
       ['input', 'textarea', 'button'].includes(tag) ||
       event.metaKey ||
       event.ctrlKey ||
-      this.confirming() ||
-      this.sendingBack() ||
-      this.retrying() ||
-      this.takingOver() ||
-      this.sendingStageBack() ||
-      this.cancelling()
+      event.altKey ||
+      this.anyModalOpen()
     )
       return;
-    const items = this.focusables();
-    const current = items[this.focusIndex()];
-    const key = event.key.toLowerCase();
-    if (key === 'j' || event.key === 'ArrowDown') {
+    if (event.key === 'ArrowRight') {
       event.preventDefault();
-      this.focusIndex.set(Math.min(items.length - 1, this.focusIndex() + 1));
-      this.focusRow();
-    } else if (key === 'k' || event.key === 'ArrowUp') {
+      this.cycleView(1);
+    } else if (event.key === 'ArrowLeft') {
       event.preventDefault();
-      this.focusIndex.set(Math.max(0, this.focusIndex() - 1));
-      this.focusRow();
-    } else if (event.key === 'Enter' && current) {
-      event.preventDefault();
-      this.router.navigateByUrl(`/requests/${current.request.id}`);
-    } else if (key === 'a' && current?.kind === 'gate') {
-      event.preventDefault();
-      this.confirming.set(current.gate);
-    } else if (key === 's' && current?.kind === 'gate') {
-      event.preventDefault();
-      this.sendingBack.set(current.gate);
+      this.cycleView(-1);
     }
   }
 }
