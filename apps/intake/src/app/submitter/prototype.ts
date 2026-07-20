@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   Component,
   DestroyRef,
@@ -12,6 +13,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { EMPTY, catchError, throwError } from 'rxjs';
 
 import { Api, Icon, Mark, PrototypeAnnotation, PrototypeState, prototypeSrcdoc } from '@sf/shared';
 import { GenerationStream } from './generation-stream';
@@ -696,27 +698,39 @@ export class Prototype implements OnInit {
     }
   }
 
+  private recoverConflict(error: HttpErrorResponse) {
+    if (error.status !== 409) return throwError(() => error);
+    this.gen.refresh();
+    return EMPTY;
+  }
+
   send() {
     const instruction = this.msg().trim();
     if (!instruction || this.working()) return;
     const picked = this.annotations();
     const annotation = picked.length === 0 ? null : picked.length === 1 ? picked[0] : picked;
-    this.api.instructPrototype(this.id, instruction, annotation).subscribe((s) => {
-      this.gen.ingest(s, s.thinking || this.hasPending(s)); // stream the revision (async brain)
-      this.msg.set('');
-      this.clearAnnots();
-      this.scrollToEnd();
-    });
+    this.api
+      .instructPrototype(this.id, instruction, annotation)
+      .pipe(catchError((error: HttpErrorResponse) => this.recoverConflict(error)))
+      .subscribe((s) => {
+        this.gen.ingest(s, s.thinking || this.hasPending(s)); // stream the revision (async brain)
+        this.msg.set('');
+        this.clearAnnots();
+        this.scrollToEnd();
+      });
   }
 
   undo() {
     const revs = this.turns().filter((t) => t.revision);
     if (revs.length < 2) return;
     const target = revs[revs.length - 2]; // revert to the revision before the current
-    this.api.restorePrototype(this.id, target.order).subscribe((s) => {
-      this.gen.ingest(s);
-      this.scrollToEnd();
-    });
+    this.api
+      .restorePrototype(this.id, target.order)
+      .pipe(catchError((error: HttpErrorResponse) => this.recoverConflict(error)))
+      .subscribe((s) => {
+        this.gen.ingest(s);
+        this.scrollToEnd();
+      });
   }
 
   skip() {

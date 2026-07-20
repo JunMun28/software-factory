@@ -15,10 +15,11 @@ import json
 import logging
 import threading
 import time
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import func, null, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -47,7 +48,7 @@ from ..interview import (
     question_budget,
     question_ceiling,
 )
-from ..models import AuditEvent, InterviewTurn, ProgressEvent, PrototypeTurn, Request
+from ..models import AuditEvent, InterviewTurn, ProgressEvent, PrototypeTurn, Request, utcnow
 from ..schemas import (
     ClassifyIn,
     ClassifyOut,
@@ -76,6 +77,51 @@ log = logging.getLogger("factory.interview")
 
 # ---------- interview helpers (module-local, no side-effects beyond DB) ----------
 
+def _answered_turn_count(rid: int):
+    """SQL form of answered_count(), usable inside one-statement CAS guards."""
+    return (
+        select(func.count(InterviewTurn.id))
+        .where(
+            InterviewTurn.request_id == rid,
+            or_(InterviewTurn.answer.is_not(None), InterviewTurn.skipped),
+        )
+        .scalar_subquery()
+    )
+
+
+def _request_value_matches(column, expected):
+    """NULL-safe equality for a value captured before ending the read transaction."""
+    return column.is_(None) if expected is None else column == expected
+
+
+def _next_turn_order(db: Session, model, rid: int) -> int:
+    """Derive append order only after the parent request row has been claimed."""
+    value = db.scalar(
+        select(func.coalesce(func.max(model.order), -1) + 1).where(
+            model.request_id == rid
+        )
+    )
+    return int(value)
+
+
+def _pending_prototype_turn_exists(rid: int):
+    return (
+        select(PrototypeTurn.id)
+        .where(PrototypeTurn.request_id == rid, PrototypeTurn.mode == "pending")
+        .exists()
+    )
+
+
+def _conflict(db: Session, detail: str) -> None:
+    db.rollback()
+    raise HTTPException(status.HTTP_409_CONFLICT, detail)
+
+
+def _advance_cas_timestamp(previous):
+    """Return a request timestamp that changes even at SQL Server precision."""
+    return max(utcnow(), previous + timedelta(milliseconds=10))
+
+
 def current_question(r: Request) -> Question | None:
     """The question awaiting an answer, if one is ready. Pure read — the next
     question is produced ahead of time by interview_gen (a background thread), so
@@ -84,19 +130,68 @@ def current_question(r: Request) -> Question | None:
     return Question(**pq) if pq and "question" in pq else None
 
 
+def _persist_generated_question(
+    db: Session,
+    *,
+    rid: int,
+    payload: dict,
+    answered_at_start: int,
+    type_at_start: str,
+    ceiling_at_start: int | None,
+) -> bool:
+    """Elect one still-current generated question with a single guarded write."""
+    result = db.execute(
+        update(Request)
+        .where(
+            Request.id == rid,
+            Request.pending_question.is_(None),
+            _answered_turn_count(rid) == answered_at_start,
+            Request.type == type_at_start,
+            _request_value_matches(Request.reopen_ceiling, ceiling_at_start),
+        )
+        .values(pending_question=payload)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount == 1:
+        db.commit()
+        return True
+    db.rollback()
+    return False
+
+
+def _generate_pending_sync(db: Session, r: Request) -> Question | None:
+    """Generate inline without overwriting a question or turn that wins the race."""
+    q = current_question(r)
+    if q is not None:
+        return q
+    answered_at_start = answered_count(r)
+    if answered_at_start >= question_ceiling(r) or r.pending_question == DONE_SENTINEL:
+        return None
+    rid = r.id
+    type_at_start = r.type
+    ceiling_at_start = r.reopen_ceiling
+    _ = r.app, r.turns, r.attachments
+    # NOTE(plan-008): release SQLite's snapshot before the slow brain call, then
+    # let the guarded UPDATE elect the question if another writer moved first.
+    db.commit()
+    payload = pending_payload(get_brain().next_question(r))
+    _persist_generated_question(
+        db,
+        rid=rid,
+        payload=payload,
+        answered_at_start=answered_at_start,
+        type_at_start=type_at_start,
+        ceiling_at_start=ceiling_at_start,
+    )
+    db.refresh(r)
+    return current_question(r)
+
+
 def _current_or_generate(db: Session, r: Request) -> Question | None:
     """The pending question, materializing it synchronously if absent. The UI always
     GETs (which pre-generates) before answering, so this only fires for out-of-protocol
     direct POSTs — never the hot path."""
-    q = current_question(r)
-    if q is not None:
-        return q
-    if answered_count(r) >= question_ceiling(r) or r.pending_question == DONE_SENTINEL:
-        return None
-    r.pending_question = pending_payload(get_brain().next_question(r))
-    db.commit()
-    db.refresh(r)
-    return current_question(r)
+    return _generate_pending_sync(db, r)
 
 
 def interview_state(db: Session, r: Request, *, generate: bool = True) -> InterviewState:
@@ -128,11 +223,10 @@ def interview_state(db: Session, r: Request, *, generate: bool = True) -> Interv
     if not generate:
         return build(done=False, q=None, thinking=True)  # generation runs elsewhere
     if interview_gen.SYNC:  # deterministic path (tests / smoke): generate inline
-        r.pending_question = pending_payload(get_brain().next_question(r))
-        db.commit()
+        q = _generate_pending_sync(db, r)
         if r.pending_question == DONE_SENTINEL:
             return build(done=True, q=None, thinking=False)
-        return build(done=False, q=current_question(r), thinking=False)
+        return build(done=False, q=q, thinking=False)
     thinking = interview_gen.ensure_next_question(r.id)  # async: background pre-generation
     return build(done=False, q=None, thinking=thinking)
 
@@ -217,11 +311,24 @@ def _resolve_interview(db: Session, r: Request) -> None:
     """Generate + persist the next interview question (batch) unless it's already resolved."""
     if _resolved(r):
         return
+    rid = r.id
+    answered_at_start = answered_count(r)
+    type_at_start = r.type
+    ceiling_at_start = r.reopen_ceiling
+    # End the read transaction before the slow call. expire_on_commit=False keeps
+    # the fully loaded brain snapshot while returning the pooled connection.
+    _ = r.app, r.turns, r.attachments
+    db.commit()
     q = get_brain().next_question(r)
+    _persist_generated_question(
+        db,
+        rid=rid,
+        payload=pending_payload(q),
+        answered_at_start=answered_at_start,
+        type_at_start=type_at_start,
+        ceiling_at_start=ceiling_at_start,
+    )
     db.refresh(r)
-    if r.pending_question is None:  # don't clobber a racing write
-        r.pending_question = pending_payload(q)
-        db.commit()
 
 
 def _interview_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLoop") -> None:
@@ -423,14 +530,40 @@ def answer_interview(rid: int, body: InterviewAnswer, db: Session = Depends(get_
     q = _current_or_generate(db, r)
     if q is None:
         return interview_state(db, r)  # nothing pending to answer (interview is done)
-    order = len(r.turns)
-    db.add(InterviewTurn(request=r, order=order, question=q.question, sub=q.sub, options=q.options,
-                         answer=None if body.skip else (body.answer or None), skipped=body.skip))
-    r.pending_question = None
-    if not body.skip and is_stop_signal(body.answer or ""):
-        r.pending_question = DONE_SENTINEL  # submitter ended the interview conversationally
+    expected_question = dict(r.pending_question)
+    stop = not body.skip and is_stop_signal(body.answer or "")
+    # NOTE(plan-008): release SQLite's read snapshot before the one-statement
+    # CAS. The exact JSON payload is the question generation being answered.
     db.commit()
+    claim = db.execute(
+        update(Request)
+        .where(
+            Request.id == rid,
+            Request.pending_question.is_not(None),
+            Request.pending_question == expected_question,
+        )
+        .values(pending_question=null())
+        .execution_options(synchronize_session=False)
+    )
+    if claim.rowcount != 1:
+        _conflict(db, "Interview question was already answered; refresh and try again.")
+    order = _next_turn_order(db, InterviewTurn, rid)
+    db.add(InterviewTurn(request_id=rid, order=order, question=q.question, sub=q.sub,
+                         options=q.options, answer=None if body.skip else (body.answer or None),
+                         skipped=body.skip))
+    if stop:
+        db.execute(
+            update(Request)
+            .where(Request.id == rid)
+            .values(pending_question=DONE_SENTINEL)
+            .execution_options(synchronize_session=False)
+        )
+    try:
+        db.commit()
+    except IntegrityError:
+        _conflict(db, "Interview answer conflicted with another turn; refresh and try again.")
     db.refresh(r)
+    db.expire(r, ["turns"])
     # returns immediately with `thinking`. In async mode we DON'T kick pre-gen here —
     # the client drives the next question (SSE stream, or poll which kicks it). SYNC
     # mode (tests/smoke) generates inline so the next question comes back in the POST.
@@ -446,14 +579,33 @@ def reopen_interview(rid: int, body: Note, db: Session = Depends(get_db)):
     note = (body.note or "").strip()
     if not note:
         return interview_state(db, r, generate=interview_gen.SYNC)
-    db.add(InterviewTurn(request=r, order=len(r.turns), question="Anything else to add?",
-                         answer=note[:2000], skipped=False))
-    db.flush()  # count the added note before sizing the allowance
-    # allow up to ~2 follow-ups from where we resumed (overrides the type budget), not a full grill
-    r.reopen_ceiling = answered_count(r) + 2
-    r.pending_question = None  # force the next question to (re)generate
+    answered_at_start = answered_count(r)
+    ceiling_at_start = r.reopen_ceiling
+    pending_at_start = dict(r.pending_question) if r.pending_question is not None else None
     db.commit()
+    claim = db.execute(
+        update(Request)
+        .where(
+            Request.id == rid,
+            _answered_turn_count(rid) == answered_at_start,
+            _request_value_matches(Request.reopen_ceiling, ceiling_at_start),
+            _request_value_matches(Request.pending_question, pending_at_start),
+        )
+        # The note itself becomes one answered turn; keep the existing two-question allowance.
+        .values(reopen_ceiling=answered_at_start + 3, pending_question=null())
+        .execution_options(synchronize_session=False)
+    )
+    if claim.rowcount != 1:
+        _conflict(db, "Interview was already reopened; refresh and try again.")
+    order = _next_turn_order(db, InterviewTurn, rid)
+    db.add(InterviewTurn(request_id=rid, order=order, question="Anything else to add?",
+                         answer=note[:2000], skipped=False))
+    try:
+        db.commit()
+    except IntegrityError:
+        _conflict(db, "Interview reopen conflicted with another turn; refresh and try again.")
     db.refresh(r)
+    db.expire(r, ["turns"])
     return interview_state(db, r, generate=interview_gen.SYNC)
 
 
@@ -464,10 +616,24 @@ def escalate_interview(rid: int, body: EscalateIn, db: Session = Depends(get_db)
     the interview continues; the proposal is cleared."""
     r = get_request(db, rid)
     if body.accept and r.type != body.to_type:
-        r.type = body.to_type
-        r.summary = None  # type change invalidates the cached Review summary
-        r.pending_question = None  # and any question pre-generated for the old type
-    db.commit()
+        type_at_start = r.type
+        answered_at_start = answered_count(r)
+        pending_at_start = dict(r.pending_question) if r.pending_question is not None else None
+        db.commit()
+        claim = db.execute(
+            update(Request)
+            .where(
+                Request.id == rid,
+                Request.type == type_at_start,
+                _answered_turn_count(rid) == answered_at_start,
+                _request_value_matches(Request.pending_question, pending_at_start),
+            )
+            .values(type=body.to_type, summary=null(), pending_question=null())
+            .execution_options(synchronize_session=False)
+        )
+        if claim.rowcount != 1:
+            _conflict(db, "Interview escalation was already resolved; refresh and try again.")
+    db.commit()  # preserve decline and same-type accept as successful no-ops
     db.refresh(r)
     return interview_state(db, r, generate=interview_gen.SYNC)
 
@@ -524,10 +690,35 @@ def instruct_prototype(rid: int, body: PrototypeInstruction, db: Session = Depen
     instr = (body.instruction or "").strip()
     if not instr:
         return _prototype_state(db, r, thinking=prototype_gen.is_thinking(r))
-    db.add(PrototypeTurn(request=r, order=len(r.prototype_turns), instruction=instr,
-                         annotation=body.annotation, mode="pending"))
+    # The client already exposes one-open-instruction semantics by disabling the
+    # composer while a pending turn exists. Make that rule atomic server-side.
+    updated_at_start = r.updated_at
+    pending_turn_exists = _pending_prototype_turn_exists(rid)
     db.commit()
+    claim = db.execute(
+        update(Request)
+        .where(
+            Request.id == rid,
+            Request.type == "new",
+            Request.updated_at == updated_at_start,
+            ~pending_turn_exists,
+        )
+        # SQL Server DATETIME has coarse precision. Advancing by at least 10 ms
+        # ensures the request timestamp is a real CAS token even on same-tick posts.
+        .values(updated_at=_advance_cas_timestamp(updated_at_start))
+        .execution_options(synchronize_session=False)
+    )
+    if claim.rowcount != 1:
+        _conflict(db, "A prototype instruction is already being processed; refresh and try again.")
+    order = _next_turn_order(db, PrototypeTurn, rid)
+    db.add(PrototypeTurn(request_id=rid, order=order, instruction=instr,
+                         annotation=body.annotation, mode="pending"))
+    try:
+        db.commit()
+    except IntegrityError:
+        _conflict(db, "Prototype instruction conflicted with another turn; refresh and try again.")
     db.refresh(r)
+    db.expire(r, ["prototype_turns"])
     thinking = prototype_gen.queue_or_resolve(db, r)  # SYNC resolves inline; async → client streams
     if prototype_gen.SYNC:
         r = get_request(db, rid)  # sync generation closes its snapshot session around the model call
@@ -556,12 +747,35 @@ def restore_prototype(rid: int, body: PrototypeRestore, db: Session = Depends(ge
     target = next((t for t in r.prototype_turns if t.order == body.order and t.html is not None), None)
     if target is None:
         return _prototype_state(db, r, thinking=prototype_gen.is_thinking(r))
-    db.add(PrototypeTurn(request=r, order=len(r.prototype_turns), instruction=None, mode="rewrite",
-                         note="Reverted to an earlier version.", html=target.html))
-    r.prototype_html = target.html
-    r.prototype_status = "edited"
+    target_html = target.html
+    updated_at_start = r.updated_at
     db.commit()
+    claim = db.execute(
+        update(Request)
+        .where(
+            Request.id == rid,
+            Request.type == "new",
+            Request.updated_at == updated_at_start,
+            ~_pending_prototype_turn_exists(rid),
+        )
+        .values(
+            prototype_html=target_html,
+            prototype_status="edited",
+            updated_at=_advance_cas_timestamp(updated_at_start),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if claim.rowcount != 1:
+        _conflict(db, "Prototype history changed before restore; refresh and try again.")
+    order = _next_turn_order(db, PrototypeTurn, rid)
+    db.add(PrototypeTurn(request_id=rid, order=order, instruction=None, mode="rewrite",
+                         note="Reverted to an earlier version.", html=target_html))
+    try:
+        db.commit()
+    except IntegrityError:
+        _conflict(db, "Prototype restore conflicted with another turn; refresh and try again.")
     db.refresh(r)
+    db.expire(r, ["prototype_turns"])
     return _prototype_state(db, r, thinking=False)
 
 

@@ -15,9 +15,11 @@ import logging
 import os
 import threading
 
+from sqlalchemy import func, or_, select, update
+
 from .db import SessionLocal
 from .interview import answered_count, get_brain, pending_payload, question_ceiling
-from .models import Request
+from .models import InterviewTurn, Request
 
 log = logging.getLogger("factory.interview")
 
@@ -25,6 +27,17 @@ SYNC = os.environ.get("FACTORY_INTERVIEW_PREGEN", "async").lower() == "sync"
 
 _lock = threading.Lock()
 _inflight: set[int] = set()  # request ids with a generation running
+
+
+def _answered_turn_count(rid: int):
+    return (
+        select(func.count(InterviewTurn.id))
+        .where(
+            InterviewTurn.request_id == rid,
+            or_(InterviewTurn.answer.is_not(None), InterviewTurn.skipped),
+        )
+        .scalar_subquery()
+    )
 
 
 def acquire(rid: int) -> bool:
@@ -75,17 +88,34 @@ def _generate(rid: int, answered_at_start: int) -> None:
             # The detached brain input must carry every relationship used to build
             # prompts or attachment workdirs after this short snapshot session closes.
             _ = r.app, r.turns, r.attachments
+            type_at_start = r.type
+            ceiling_at_start = r.reopen_ceiling
         payload = pending_payload(get_brain().next_question(r))  # the slow model call
         with SessionLocal() as db:
-            r = db.get(Request, rid)
-            if r is None:
-                return
-            # never clobber newer state: the submitter may have advanced a turn, or a
-            # racing generation may already have written the pending question
-            if answered_count(r) != answered_at_start or r.pending_question is not None:
-                return
-            r.pending_question = payload
-            db.commit()
+            answered_now = _answered_turn_count(rid)
+            ceiling_matches = (
+                Request.reopen_ceiling.is_(None)
+                if ceiling_at_start is None
+                else Request.reopen_ceiling == ceiling_at_start
+            )
+            # NOTE(plan-008): one conditional write closes the old refresh/check
+            # gap. A stale generation is normal work to discard, not an error.
+            result = db.execute(
+                update(Request)
+                .where(
+                    Request.id == rid,
+                    Request.pending_question.is_(None),
+                    answered_now == answered_at_start,
+                    Request.type == type_at_start,
+                    ceiling_matches,
+                )
+                .values(pending_question=payload)
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount == 1:
+                db.commit()
+            else:
+                db.rollback()
     except Exception:
         log.exception("interview pre-generation failed for request %s", rid)
     finally:

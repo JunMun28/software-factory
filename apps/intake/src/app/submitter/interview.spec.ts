@@ -1,5 +1,6 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { ActivatedRoute, provideRouter, Router } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -42,6 +43,9 @@ describe('Interview escalation (consent-gated type change)', () => {
     api = {
       request: vi.fn(() => of({ id: 71, type: 'bug', title: 'Broken export' })),
       interview: vi.fn(() => of(stateWithEscalation())),
+      interviewStreamUrl: vi.fn(() => '/api/requests/71/interview/stream'),
+      answer: vi.fn(() => of(stateWithEscalation())),
+      reopenInterview: vi.fn(() => of(stateWithEscalation())),
       summary: vi.fn(() => of({ overview: null, sections: [], thinking: false })),
       escalate: vi.fn(() => of({ ...stateWithEscalation(), escalation: null })),
       attachmentRawUrl: vi.fn(() => ''),
@@ -123,5 +127,88 @@ describe('Interview escalation (consent-gated type change)', () => {
   it('wires the stream: the initial read does not kick generation (gen=false)', () => {
     render();
     expect(api.interview).toHaveBeenCalledWith(71, false);
+  });
+
+  it('re-fetches canonical interview state when an answer loses with 409', () => {
+    const latest = {
+      ...stateWithEscalation(),
+      asked: 2,
+      question: 'Which export format should work?',
+      escalation: null,
+    };
+    api.answer.mockReturnValue(
+      throwError(() => new HttpErrorResponse({ status: 409, statusText: 'Conflict' })),
+    );
+    const { comp } = render();
+    api.interview.mockClear();
+    api.interview.mockReturnValue(of(latest));
+
+    comp.answer('CSV');
+
+    expect(api.answer).toHaveBeenCalledWith(71, { answer: 'CSV' });
+    expect(api.interview).toHaveBeenCalledExactlyOnceWith(71, false);
+    expect(comp.st()).toEqual(latest);
+    expect(comp.busy()).toBe(false);
+  });
+
+  it('keeps the current answer error behavior for non-409 failures', () => {
+    api.answer.mockReturnValue(
+      throwError(() => new HttpErrorResponse({ status: 503, statusText: 'Unavailable' })),
+    );
+    const { comp } = render();
+    api.interview.mockClear();
+
+    comp.answer('CSV');
+
+    expect(api.interview).not.toHaveBeenCalled();
+    expect(comp.busy()).toBe(false);
+  });
+
+  it('re-fetches interview and request state when escalation loses with 409', () => {
+    const latest = { ...stateWithEscalation(), escalation: null };
+    api.escalate.mockReturnValue(
+      throwError(() => new HttpErrorResponse({ status: 409, statusText: 'Conflict' })),
+    );
+    const { comp } = render();
+    const planRefresh = vi.spyOn(comp.planPanel()!, 'refresh');
+    api.interview.mockClear();
+    api.request.mockClear();
+    api.interview.mockReturnValue(of(latest));
+    api.request.mockReturnValue(of({ id: 71, type: 'new', title: 'New export app' }));
+
+    comp.acceptEscalation('new');
+
+    expect(api.interview).toHaveBeenCalledExactlyOnceWith(71, false);
+    expect(api.request).toHaveBeenCalledExactlyOnceWith(71);
+    expect(comp.st()).toEqual(latest);
+    expect(comp.req()?.type).toBe('new');
+    expect(planRefresh).toHaveBeenCalledOnce();
+    expect(comp.busy()).toBe(false);
+  });
+
+  it('re-fetches canonical interview state when reopen loses with 409', () => {
+    const latest = {
+      ...stateWithEscalation(),
+      escalation: null,
+      question: 'What else should the new flow cover?',
+    };
+    api.reopenInterview.mockReturnValue(
+      throwError(() => new HttpErrorResponse({ status: 409, statusText: 'Conflict' })),
+    );
+    const { comp } = render();
+    api.interview.mockClear();
+    api.interview.mockReturnValue(of(latest));
+    comp.st.set({ ...stateWithEscalation(), done: true, question: null, escalation: null });
+    comp.msg.set('Also support recurring exports');
+
+    comp.enter();
+
+    expect(api.reopenInterview).toHaveBeenCalledExactlyOnceWith(
+      71,
+      'Also support recurring exports',
+    );
+    expect(api.interview).toHaveBeenCalledExactlyOnceWith(71, false);
+    expect(comp.st()).toEqual(latest);
+    expect(comp.busy()).toBe(false);
   });
 });

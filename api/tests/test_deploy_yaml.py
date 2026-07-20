@@ -6,6 +6,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = ROOT / "deploy/base"
+PROD = ROOT / "deploy/overlays/prod"
 
 
 def _objects(name: str) -> list[dict]:
@@ -75,4 +76,31 @@ def test_api_pod_has_phase_one_in_pod_cli_headroom():
     assert api["resources"] == {
         "requests": {"cpu": "500m", "memory": "1Gi"},
         "limits": {"cpu": "2", "memory": "2Gi"},
+    }
+
+
+def test_prod_nulls_sqlite_url_and_secret_sources_azure_sql():
+    objects = [
+        item
+        for item in yaml.safe_load_all((PROD / "prod-patch.yaml").read_text())
+        if item
+    ]
+    config = next(item for item in objects if item["kind"] == "ConfigMap")
+    deployment = next(item for item in objects if item["kind"] == "Deployment")
+    api = next(
+        item
+        for item in deployment["spec"]["template"]["spec"]["containers"]
+        if item["name"] == "api"
+    )
+    db_url = next(item for item in api["env"] if item["name"] == "FACTORY_DB_URL")
+
+    assert config["data"]["FACTORY_DB_URL"] is None
+    assert db_url == {
+        "name": "FACTORY_DB_URL",
+        "valueFrom": {
+            "secretKeyRef": {
+                "name": "factory-db",
+                "key": "url",
+            }
+        },
     }

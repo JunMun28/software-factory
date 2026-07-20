@@ -232,6 +232,102 @@ def test_migrate_defaults_new_not_null_columns(client):
     assert all(r["repo_ready"] is False for r in resp.json())
 
 
+def test_migrate_repairs_missing_model_indexes(client):
+    """SQLite create_all skips indexes on existing tables; migrate closes that drift."""
+    from sqlalchemy import inspect, select, text
+
+    from app.db import SessionLocal, engine, migrate
+    from app.models import InterviewTurn, PrototypeTurn
+
+    if engine.dialect.name != "sqlite":
+        pytest.skip("PRAGMA index repair is the SQLite path; MSSQL schema is alembic-owned")
+    expected = {
+        "interview_turns": "uq_interview_turns_request_order",
+        "prototype_turns": "uq_prototype_turns_request_order",
+    }
+    with engine.begin() as conn:
+        for name in expected.values():
+            conn.execute(text(f'DROP INDEX "{name}"'))
+    rid = client.post(
+        "/api/requests",
+        json={
+            "type": "new",
+            "title": "Legacy duplicate orders",
+            "description": "Repair duplicate turn order before adding indexes.",
+            "new_app_name": "Legacy repair",
+        },
+    ).json()["id"]
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                InterviewTurn(request_id=rid, order=0, question="Q1", answer="A1"),
+                InterviewTurn(request_id=rid, order=0, question="Q1 duplicate", answer="A2"),
+                InterviewTurn(request_id=rid, order=1, question="Q2", answer="A3"),
+                PrototypeTurn(request_id=rid, order=0, instruction="First", mode="pending"),
+                PrototypeTurn(request_id=rid, order=0, instruction="Second", mode="pending"),
+                PrototypeTurn(request_id=rid, order=1, instruction="Third", mode="pending"),
+            ]
+        )
+        db.commit()
+
+    added = migrate()
+    schema = inspect(engine)
+    for table, name in expected.items():
+        assert f"{table}.{name}" in added
+        index = next(item for item in schema.get_indexes(table) if item["name"] == name)
+        assert index["column_names"] == ["request_id", "order"]
+        assert index["unique"] == 1
+    with SessionLocal() as db:
+        assert list(
+            db.scalars(
+                select(InterviewTurn.order)
+                .where(InterviewTurn.request_id == rid)
+                .order_by(InterviewTurn.id)
+            )
+        ) == [0, 1, 2]
+        assert list(
+            db.scalars(
+                select(PrototypeTurn.order)
+                .where(PrototypeTurn.request_id == rid)
+                .order_by(PrototypeTurn.id)
+            )
+        ) == [0, 1, 2]
+
+
+def test_migrate_normalizes_legacy_pending_question_json_null(client):
+    """Plan 008 CAS treats only SQL NULL as the empty pending-question state."""
+    from sqlalchemy import text
+
+    from app.db import engine, migrate
+
+    if engine.dialect.name != "sqlite":
+        pytest.skip("SQLite legacy JSON encoding is repaired by the PRAGMA migration path")
+    rid = client.post(
+        "/api/requests",
+        json={
+            "type": "enh",
+            "title": "Legacy JSON null",
+            "description": "Normalize the pending question storage state.",
+        },
+    ).json()["id"]
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE requests SET pending_question = 'null' WHERE id = :rid"),
+            {"rid": rid},
+        )
+        assert conn.scalar(
+            text("SELECT pending_question IS NOT NULL FROM requests WHERE id = :rid"),
+            {"rid": rid},
+        ) == 1
+
+    migrate()
+    with engine.connect() as conn:
+        assert conn.scalar(
+            text("SELECT pending_question IS NULL FROM requests WHERE id = :rid"),
+            {"rid": rid},
+        ) == 1
+
+
 # ---------- a double submit drafts exactly one spec ----------
 
 def test_submit_replay_never_drafts_twice(client):

@@ -1,5 +1,5 @@
 """Database setup — SQLAlchemy, SQLite locally (ADR 0007: DB-agnostic, swap-later seam)."""
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from . import settings
@@ -68,15 +68,43 @@ def _default_literal(col) -> str | None:
     return None
 
 
+def _repair_duplicate_turn_orders(conn, table) -> int:
+    """Renumber a duplicate legacy history in stable ``(order, id)`` order."""
+    rows = conn.execute(
+        select(table.c.id, table.c.request_id, table.c.order).order_by(
+            table.c.request_id,
+            table.c.order,
+            table.c.id,
+        )
+    ).all()
+    by_request: dict[int, list[tuple[int, int]]] = {}
+    for turn_id, request_id, order in rows:
+        by_request.setdefault(request_id, []).append((turn_id, order))
+
+    repaired = 0
+    for request_rows in by_request.values():
+        orders = [order for _, order in request_rows]
+        if len(set(orders)) == len(orders):
+            continue
+        for next_order, (turn_id, order) in enumerate(request_rows):
+            if order == next_order:
+                continue
+            conn.execute(
+                table.update().where(table.c.id == turn_id).values(order=next_order)
+            )
+            repaired += 1
+    return repaired
+
+
 def migrate() -> list[str]:
     """SQLite: create_all + PRAGMA differ (fast test/dev path).
     Anything else (Azure SQL): versioned Alembic migrations only —
     the schema now outlives deployments (spec §3.1).
 
-    SQLite path: create_all never adds columns to existing tables, so diff
-    every model against PRAGMA table_info and ALTER TABLE ADD COLUMN whatever
-    is missing. Generic on purpose: the next model change must not need a
-    hand-written branch here to avoid 500ing existing DBs at runtime (ADR 0013).
+    SQLite path: create_all never adds columns or indexes to existing tables, so
+    diff every model against PRAGMA metadata and add whatever is missing. Generic
+    on purpose: the next model change must not need a hand-written schema branch
+    here to avoid 500ing existing DBs at runtime (ADR 0013).
 
     Columns with a scalar default carry it into the DDL, so pre-existing rows
     take the model's default instead of NULL — a new NOT NULL column must
@@ -93,6 +121,13 @@ def migrate() -> list[str]:
     Base.metadata.create_all(engine)
     added: list[str] = []
     with engine.connect() as conn:
+        # NOTE(plan-008): Phase 1 databases can legitimately predate the order
+        # uniqueness rule. Preserve every turn and its deterministic chronology
+        # before creating the backstop indexes.
+        repaired = sum(
+            _repair_duplicate_turn_orders(conn, Base.metadata.tables[table_name])
+            for table_name in ("interview_turns", "prototype_turns")
+        )
         for table in Base.metadata.sorted_tables:
             have = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table.name})"))}
             for col in table.columns:
@@ -103,6 +138,25 @@ def migrate() -> list[str]:
                         ddl += f" DEFAULT {lit}" if col.nullable else f" NOT NULL DEFAULT {lit}"
                     conn.execute(text(ddl))
                     added.append(f"{table.name}.{col.name}")
-        if added:
+            for index in sorted(table.indexes, key=lambda item: item.name or ""):
+                if index.name is None:
+                    continue
+                have_indexes = {
+                    row[1]
+                    for row in conn.execute(text(f"PRAGMA index_list({table.name})"))
+                }
+                if index.name not in have_indexes:
+                    index.create(bind=conn)
+                    added.append(f"{table.name}.{index.name}")
+        # NOTE(plan-008): older SQLite files may contain JSON text `null` from
+        # JSON(none_as_null=False). Normalize it so pending-question CAS guards
+        # see the same SQL NULL state as new databases and Azure SQL.
+        normalized = conn.execute(
+            text(
+                "UPDATE requests SET pending_question = NULL "
+                "WHERE pending_question = 'null'"
+            )
+        ).rowcount
+        if added or normalized or repaired:
             conn.commit()
     return added

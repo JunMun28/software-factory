@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   Component,
   DestroyRef,
@@ -1055,7 +1056,13 @@ export class Interview implements OnInit {
         this.scrollToEnd();
         this.planPanel()?.refresh(); // the answer changes the plan — let it catch up
       },
-      error: () => this.busy.set(false),
+      error: (error: HttpErrorResponse) => {
+        if (error.status === 409) {
+          this.gen.refresh();
+          return;
+        }
+        this.busy.set(false);
+      },
     });
   }
 
@@ -1100,7 +1107,17 @@ export class Interview implements OnInit {
         this.api.request(this.id).subscribe((r) => this.req.set(r)); // type/rows re-shape
         this.planPanel()?.refresh();
       },
-      error: () => this.busy.set(false),
+      error: (error: HttpErrorResponse) => {
+        if (error.status === 409) {
+          this.gen.refresh();
+          this.api.request(this.id).subscribe((r) => {
+            this.req.set(r);
+            this.planPanel()?.refresh();
+          });
+          return;
+        }
+        this.busy.set(false);
+      },
     });
   }
   /** Decline the proposal: the type stands and the interview continues (the proposal clears). */
@@ -1145,7 +1162,13 @@ export class Interview implements OnInit {
         this.scrollToEnd();
         this.planPanel()?.refresh();
       },
-      error: () => this.busy.set(false),
+      error: (error: HttpErrorResponse) => {
+        if (error.status === 409) {
+          this.gen.refresh();
+          return;
+        }
+        this.busy.set(false);
+      },
     });
   }
 

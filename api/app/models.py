@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -182,7 +183,10 @@ class Request(Base):
     sim_step: Mapped[int] = mapped_column(Integer, default=0)
     # the generated-but-unanswered interview question — persisted so the question the
     # submitter sees is exactly the one recorded with their answer (and the brain runs once)
-    pending_question: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # NOTE(plan-008): SQL NULL is the CAS-visible "no question" state. JSON's
+    # default would encode Python None as JSON text `null`, which still matches
+    # `IS NOT NULL` and lets a losing answer claim the row a second time.
+    pending_question: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     # AI-written review spec ({overview, sections, at_turns}); cached and regenerated
     # when the interview grows. at_turns is the answered-count it was written for (freshness key).
     summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -248,6 +252,15 @@ class InterviewTurn(Base):
 
     request: Mapped[Request] = relationship(back_populates="turns")
 
+    __table_args__ = (
+        Index(
+            "uq_interview_turns_request_order",
+            "request_id",
+            "order",
+            unique=True,
+        ),
+    )
+
 
 class PrototypeTurn(Base):
     """One prototype exchange (append-only, ordered) — modeled on InterviewTurn.
@@ -271,6 +284,15 @@ class PrototypeTurn(Base):
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
     request: Mapped[Request] = relationship(back_populates="prototype_turns")
+
+    __table_args__ = (
+        Index(
+            "uq_prototype_turns_request_order",
+            "request_id",
+            "order",
+            unique=True,
+        ),
+    )
 
 
 class PreviewFeedback(Base):
