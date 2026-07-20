@@ -121,6 +121,18 @@
         "4204"
       ],
       "port": 4204
+    },
+    {
+      "name": "learning-docs",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4457",
+        "--directory",
+        "/Users/wongjunmun/development/ai-development/monorepo-learning"
+      ],
+      "port": 4457
     }
   ]
 }

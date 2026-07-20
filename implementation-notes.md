@@ -3907,3 +3907,68 @@ index at tea-roster-8d5849a6.apps-crc.testing.
   escalation message: with reworks the terminal message is "after 3
   attempts" and the precise count is asserted via the two review_rework
   audit rows instead — more honest, less brittle.
+
+## Deviations — Overview redesign (Stack | Line | Progress, 2026-07-19)
+
+- **`preview` added to the shared `FactoryRequest['stage']` union.** The backend
+  has emitted `preview` since the C1 preview loop (`api/app/models.py` STAGES,
+  `transitions.py:801`), but the TS model never listed it, so the old
+  `STAGE_INDEX` had no entry and a request in the requester-preview stage fell
+  back to index 0 — it rendered at the *start* of the line instead of near the
+  end. Fixing the mapping bug required widening the type. Type-only, additive,
+  zero backend/API change; `STAGE_LABEL` gained a matching `preview: 'Preview'`.
+
+- **The old view-model (`STAGES`, `deriveTrack`, `deriveLine`, `deriveQueue`,
+  `queueChip`) was removed, not kept alongside the new one.** Those functions
+  encoded the previous two-joint track geometry and the "Needs you" rail, both
+  of which the approved redesign deletes. They had no consumers outside the
+  floor module, so leaving them would have been dead code. `deriveTallies` and
+  `fmtHours` survive (they feed the new health band). Their tests were rewritten
+  against the new pure functions rather than deleted.
+
+- **Stack rows carry no inline action buttons; Line and Progress do.** The brief
+  said actions must stay reachable "on the rows/expanded rows as they are
+  today" — but today they lived on the rail, which is gone. The approved mock's
+  Stack rows are plain display rows, so Stack rows stay links to the Dossier
+  (where every action lives) while the Line chips and Progress rows expand to a
+  shared `sf-row-actions` popover carrying the full verb set (approve, send
+  back, retry, send back to…, take over, cancel) plus "Open dossier". No action
+  plumbing was deleted: `FloorPage` still owns every confirm modal and api call,
+  now reached through one `RowAction` dispatch.
+
+- **`accept_preview` renders as an amber *wait*, not an admin gate.** Per the
+  gate rhythm, REVIEW ends at *requester* feedback, which is not the admin's
+  action — so that row offers no Approve/Send back, only "Open dossier".
+
+- **"Drafting the spec" was recoloured from wait (amber) to active (green).**
+  The old `deriveTrack` lumped the intake interview and spec drafting into one
+  `wait` tone. In the new colour language amber means *a person must act*, so
+  only the submitter-facing interview (`status === 'submitted'`) stays amber;
+  the analyst agent drafting is green. Caught while reviewing the live Progress
+  wall — many bars read "waiting on you" when an agent was in fact working.
+
+- **Four class names were renamed to dodge global-stylesheet bleed.** Angular's
+  emulated encapsulation scopes a component's own rules but does *not* stop
+  global `styles.css` rules from matching component elements. `.pop`
+  (`position: absolute`), `.chip` (`align-items: center` + `white-space:
+  nowrap`), `.sub` (`display: flex; background: var(--bg)`) and `.row` all
+  leaked. Renamed to `.rowpop`, `.lchip`, `.kpi-sub`, `.srow`. Caught live: the
+  Line popover was collapsing to 0 height and overflowing its lane, and chips
+  were centre-aligned with unwrappable titles. `.eyebrow`, `.card` and `.pill`
+  were deliberately *kept* — their global rules are the console's established
+  look and layer correctly.
+
+- **Lane children are `flex: none`.** Lanes stretch to the tallest column, so a
+  default-shrinking flex child let an expanded popover squash itself to zero
+  height instead of growing its lane.
+
+- **Rail-scoped keyboard nav (J/K/Enter/A/S) was dropped** with the rail it
+  drove; ArrowLeft/ArrowRight now cycle the three views (no conflict — the shell
+  owns ArrowUp/Down for the palette and the G-chords). The app filter
+  (`appOptions`/`visibleQueue`) went with the rail too.
+
+- Verified live on the real console (:4202 against a seeded `factory.db`, 24 in
+  flight / 19 gates / 1 stuck) in **both themes**: the 4 backend `review`-stage
+  requests correctly fold into the displayed **Build** group, and the active
+  switcher segment computes to `rgb(244,243,247)` = `--surface-2`, never
+  `--a50`.
