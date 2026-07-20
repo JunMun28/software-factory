@@ -97,9 +97,15 @@ def test_migration_human_text_types_compile_to_nvarchar_not_ntext():
 
 
 class _MigrationOps:
-    def __init__(self, dialect_name):
-        self.bind = SimpleNamespace(dialect=SimpleNamespace(name=dialect_name))
+    """Fake alembic op. `unique_row` is what sys.indexes hands back on MSSQL:
+    (index name, is_unique_constraint). None means the lookup found nothing."""
+
+    def __init__(self, dialect_name, unique_row=("UQ__operators__email", True)):
         self.calls = []
+        self.bind = SimpleNamespace(
+            dialect=SimpleNamespace(name=dialect_name),
+            execute=lambda _stmt: SimpleNamespace(first=lambda: unique_row),
+        )
 
     def get_bind(self):
         return self.bind
@@ -117,17 +123,26 @@ class _MigrationOps:
     def create_unique_constraint(self, name, table, columns):
         self.calls.append(("create_unique_constraint", name, table, columns))
 
+    def drop_index(self, name, table_name=None):
+        self.calls.append(("drop_index", name, table_name))
+
+    def create_index(self, name, table, columns, unique=False):
+        self.calls.append(("create_index", name, table, columns, unique))
+
 
 def test_mssql_migration_drops_and_recreates_operator_email_unique(monkeypatch):
     migration = _unicode_migration()
     operations = _MigrationOps("mssql")
-    inspector = SimpleNamespace(
-        get_unique_constraints=lambda _table: [
-            {"name": "UQ__operators__email", "column_names": ["email"]}
-        ]
-    )
+    # No sa.inspect stub on purpose. SQLAlchemy's MSSQL dialect does not
+    # implement get_unique_constraints — the real Inspector raises
+    # NotImplementedError — so a test that stubs one is testing a database
+    # that does not exist. The MSSQL path must reach sys.indexes via the bind.
     monkeypatch.setattr(migration, "op", operations)
-    monkeypatch.setattr(migration.sa, "inspect", lambda _bind: inspector)
+    monkeypatch.setattr(
+        migration.sa,
+        "inspect",
+        lambda _bind: pytest.fail("MSSQL path must not use the inspector"),
+    )
 
     migration.upgrade()
 
@@ -149,6 +164,38 @@ def test_mssql_migration_drops_and_recreates_operator_email_unique(monkeypatch):
     )
     assert drop_at < email_alter_at < recreate_at
     assert not any(call[0] == "batch" for call in operations.calls)
+
+
+def test_mssql_migration_uses_drop_index_for_a_plain_unique_index(monkeypatch):
+    """is_unique_constraint = 0 means a bare unique index, and SQL Server wants
+    DROP INDEX for it — ALTER TABLE DROP CONSTRAINT only works on constraints.
+    Getting this backwards fails at DDL time, long after reflection looked fine."""
+    migration = _unicode_migration()
+    operations = _MigrationOps("mssql", unique_row=("ix_operators_email", False))
+    monkeypatch.setattr(migration, "op", operations)
+
+    migration.upgrade()
+
+    drop_at = operations.calls.index(("drop_index", "ix_operators_email", "operators"))
+    recreate_at = operations.calls.index(
+        ("create_index", "ix_operators_email", "operators", ["email"], True)
+    )
+    email_alter_at = next(
+        i
+        for i, call in enumerate(operations.calls)
+        if call[:3] == ("alter", "operators", "email")
+    )
+    assert drop_at < email_alter_at < recreate_at
+    assert not any(call[0] == "drop_constraint" for call in operations.calls)
+
+
+def test_mssql_migration_fails_loudly_when_the_unique_is_missing(monkeypatch):
+    migration = _unicode_migration()
+    operations = _MigrationOps("mssql", unique_row=None)
+    monkeypatch.setattr(migration, "op", operations)
+
+    with pytest.raises(RuntimeError, match="operators.email UNIQUE"):
+        migration.upgrade()
 
 
 def test_unicode_migration_downgrade_rejects_lossy_conversion():
