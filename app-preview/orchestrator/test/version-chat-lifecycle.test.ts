@@ -201,6 +201,34 @@ describe('version recovery and chat lifecycle API', () => {
     expect(missing.status).toBe(404);
   });
 
+  it('pokes a live sandbox to the restored commit (cloud previews hold their own clone)', async () => {
+    const context = await makeContext();
+    const chatId = await createChat(context, { title: 'Restore resync' });
+
+    await commitVersion(context, chatId, 'first', 'Version one', async (dir) => {
+      await writeFile(path.join(dir, 'hello.txt'), 'version one\n');
+    });
+    await commitVersion(context, chatId, 'second', 'Version two', async (dir) => {
+      await writeFile(path.join(dir, 'hello.txt'), 'version two\n');
+    });
+    const before = await listVersions(context, chatId);
+
+    const resyncs: Array<{ chatId: string; sha: string }> = [];
+    context.chatStore.onVersionCreated = (id, sha) => {
+      resyncs.push({ chatId: id, sha });
+    };
+
+    const response = await context.app.request(
+      `/chats/${chatId}/versions/${before[0]!.id}/restore`,
+      { method: 'POST' },
+    );
+    expect(response.status).toBe(201);
+    const restored = (await response.json()) as VersionJson;
+
+    expect(resyncs).toHaveLength(1);
+    expect(resyncs[0]).toMatchObject({ chatId, sha: restored.commit });
+  });
+
   it('forks a version into an independent chat in the same project', async () => {
     const context = await makeContext();
     const projectResponse = await context.app.request('/projects', {

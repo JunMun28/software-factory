@@ -444,6 +444,11 @@ export class ChatStore {
       files,
     );
     await this.db.touchChat(chatId);
+    // A cloud sandbox holds its OWN clone and only moves when poked — the same
+    // reason runTurn fires this. Without it a restore changes the version list
+    // and the workspace but the live preview keeps serving the pre-restore
+    // code (invisible locally, where the dev server watches the directory).
+    this.onVersionCreated?.(chatId, commit);
     await chat.session?.dispose();
     chat.session = null;
     return toVersionDetails(version);
