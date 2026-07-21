@@ -118,7 +118,7 @@ must run against a non-empty prod DB without corrupting existing rows).
 
 **Bring back:**
 - `FACTORY_DB_URL` (prod) →
-  `mssql+pyodbc://sffactory:<pw>@sf-prod-sql-<suffix>.database.windows.net:1433/factory?driver=ODBC+Driver+18+for+SQL+Server`
+  `mssql+pyodbc://<admin-login>:<pw>@sf-prod-sql-<suffix>.database.windows.net:1433/factory?driver=ODBC+Driver+18+for+SQL+Server`
 - Confirmation that PITR retention is set.
 
 ---
