@@ -15,7 +15,7 @@ import {
 // A recording fake for the k8s wire seam. Rollout + frontend readiness are
 // programmable so start() can be driven down both the happy and timeout paths.
 interface FakeCall {
-  kind: 'apply' | 'delete' | 'rollout' | 'get' | 'post';
+  kind: 'apply' | 'delete' | 'rollout' | 'get' | 'post' | 'list';
   arg: string;
   body?: string;
 }
@@ -26,6 +26,7 @@ class FakeKubeClient implements KubeSandboxClient {
   rolloutResult = true;
   frontendStatus = 200;
   resyncStatus = 200;
+  sessionSlugs: string[] = [];
 
   async apply(manifest: KubeManifest): Promise<void> {
     this.applied.push(manifest);
@@ -49,6 +50,11 @@ class FakeKubeClient implements KubeSandboxClient {
   async httpPost(url: string, body?: string): Promise<SandboxHttpResponse> {
     this.calls.push({ kind: 'post', arg: url, body });
     return { status: this.resyncStatus };
+  }
+
+  async listSessionSlugs(): Promise<string[]> {
+    this.calls.push({ kind: 'list', arg: 'sf/tier=sandbox' });
+    return this.sessionSlugs;
   }
 }
 
@@ -319,5 +325,50 @@ describe('resolveSandboxNamespace', () => {
       }),
     ).toBe('a');
     expect(resolveSandboxNamespace({})).toBe('software-factory');
+  });
+});
+
+describe('reapOrphans', () => {
+  it('deletes only the unknown slugs', async () => {
+    const client = new FakeKubeClient();
+    client.sessionSlugs = ['a', 'b', 'c'];
+    const sandbox = new KubeSandbox({ client, pollMs: 0 });
+
+    const reaped = await sandbox.reapOrphans(['a', 'c']);
+
+    expect(reaped).toEqual(['b']);
+    const deletes = client.calls.filter((c) => c.kind === 'delete');
+    expect(deletes).toEqual([{ kind: 'delete', arg: 'sf/session=b' }]);
+  });
+
+  it('deletes nothing when every sandbox is known', async () => {
+    const client = new FakeKubeClient();
+    client.sessionSlugs = ['a', 'b'];
+    const sandbox = new KubeSandbox({ client, pollMs: 0 });
+
+    const reaped = await sandbox.reapOrphans(['a', 'b']);
+
+    expect(reaped).toEqual([]);
+    expect(client.calls.some((c) => c.kind === 'delete')).toBe(false);
+  });
+
+  it('maps chat ids through sandboxSlug so a rewritten id is not falsely reaped', async () => {
+    // Not RFC1123 as-is (uppercase, longer than 40 chars once hyphenated) so
+    // sandboxSlug() rewrites it — a naive `new Set(knownChatIds)` would miss
+    // this and delete a live user's preview.
+    const messyChatId =
+      'REQ-2046-Some-Very-Long-Chat-Id-With-Uppercase-And-Extra-Length';
+    const slug = sandboxSlug(messyChatId);
+    expect(slug).not.toBe(messyChatId); // sanity: this id really does get rewritten
+
+    const client = new FakeKubeClient();
+    client.sessionSlugs = [slug, 'orphan-slug'];
+    const sandbox = new KubeSandbox({ client, pollMs: 0 });
+
+    const reaped = await sandbox.reapOrphans([messyChatId]);
+
+    expect(reaped).toEqual(['orphan-slug']);
+    const deletes = client.calls.filter((c) => c.kind === 'delete');
+    expect(deletes).toEqual([{ kind: 'delete', arg: 'sf/session=orphan-slug' }]);
   });
 });
