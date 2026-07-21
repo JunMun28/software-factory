@@ -1,0 +1,2 @@
+ALTER TABLE generations
+ADD COLUMN narration TEXT NOT NULL DEFAULT '';
