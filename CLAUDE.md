@@ -4,7 +4,7 @@ Full agent guidance lives in [AGENTS.md](AGENTS.md) — read it first.
 
 Three highest-value rules:
 
-1. **Verify with `make verify`** before merging anything — lint + pytest +
+1. **Verify with `task verify`** before merging anything — lint + pytest +
    vitest + Angular build + smoke must all be green.
 2. **Never UPDATE or DELETE `progress_event` rows** — the log is append-only
    (ADR 0008); mutations break replay and cursors.

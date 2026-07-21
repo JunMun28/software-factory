@@ -1,4 +1,4 @@
-# Software Factory — design system (implemented in web/src/styles.css)
+# Software Factory — design system (implemented in apps/intake/src/styles.css and apps/console/src/styles.css)
 
 ## Color (light, single accent)
 - Canvas `--bg #FAF9FB` · surface `#FFFFFF` · wells `#F4F3F7` / `#ECEBF1`

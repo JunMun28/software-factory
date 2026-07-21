@@ -45,7 +45,7 @@ Claude Code session in this repo):
   tries to **refute** it against the live code (stranded requests, cancel
   wins, honest deploy, engine pragmas, O(new) polling, isolation-gate config
   surface, one-owner rules) and reports any gaps. Run it after touching
-  `api/app/` or `web/src/app/core/`.
+  `api/app/` or `packages/shared/src/lib/`.
 
 `task verify` stays the token-free gate; the workflows are the deeper,
 agent-driven layer on top.

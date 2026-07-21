@@ -93,7 +93,7 @@ The CLI binary is chosen separately (ADR 0021):
 
 | Env var | Values | Default |
 |---|---|---|
-| `FACTORY_CLI` | `codex` \| `claude` | `codex` (for now) |
+| `FACTORY_CLI` | `codex` \| `claude` \| `opencode` | code default is `opencode` (ADR 0024); the cluster (`deploy/base/configmap.yaml`) currently pins `codex` — the two disagree |
 | `CODEX_BIN` / `FACTORY_CODEX_MODEL` | binary path / model override | `codex` / the CLI's default |
 | `CLAUDE_BIN` / `FACTORY_CLAUDE_MODEL` | binary path / model | `claude` / `claude-haiku-4-5` |
 
@@ -163,11 +163,15 @@ no silent stranding (ADR 0013).
 - **Inline templates.** All component templates are inline (`template:`),
   not in separate `.html` files.
 - **Kit components.** Shared UI primitives live in
-  `web/src/app/kit/kit.ts`.  Reach for them before writing new component
-  boilerplate.
-- **Design tokens first.** Global design tokens are in
-  `web/src/styles.css`.  Do not introduce new global CSS without checking
-  whether a token already covers it.
+  `packages/shared/src/lib/kit/` (one file per component — `avatar`, `glyph`,
+  `icon`, `mark`, `pill`, `sig`, `track-chip`, `type-chip`), re-exported
+  through `packages/shared/src/public-api.ts`.  Reach for them before writing
+  new component boilerplate.
+- **Design tokens first.** Each app owns its global tokens:
+  `apps/intake/src/styles.css` and `apps/console/src/styles.css`.  Do not
+  introduce new global CSS without checking whether a token already covers it.
+  (The two files duplicate most token names and have already drifted on a
+  couple of values — check both when changing one.)
 
 ---
 
@@ -184,12 +188,22 @@ no silent stranding (ADR 0013).
 | `api/app/events.py` | Append-only helpers for `progress_event` log |
 | `api/app/db.py` | SQLite WAL setup, session factory |
 | `api/app/models.py` | Domain model — Request, stages, gates, `progress_event` |
-| `api/app/routers/` | HTTP layer wired in `main.py` — `system`, `registry`, `events` (feed/comments/inbox), `gates` (gate + recovery actions), `mission` (control-center aggregate), `requests` (CRUD/intake/submit) |
-| `web/src/app/kit/kit.ts` | Shared Angular UI kit components |
-| `web/src/styles.css` | Global design tokens |
-| `sample/` | Template workspace copied for each real pipeline run |
+| `api/app/routers/` | HTTP layer wired in `main.py` — 9 routers: `system` (health/auth-config), `registry` (app registry + fleet reads), `events` (feed/comments/inbox), `gates` (gate + recovery actions), `mission` (control-center aggregate), `requests` (CRUD/intake/submit), `attachments` (request-scoped upload/list/delete), `harness` (read-only failure-pressure report), `operators` (named console operators + actor resolution) |
+| `api/app/kube_runner.py` | The runner the CLUSTER uses (`FACTORY_RUNNER=kube`) — stage/gate Jobs, preview loop, build+deploy, rollback, import-edit. The largest file in the backend (~3,700 lines) |
+| `api/app/kube_jobs.py` / `kube_client.py` | Job manifests, and the thin k8s wire seam they are tested against (`FakeKubeClient`) |
+| `api/app/workspace.py` | Git-as-workspace — frozen-surface hash, graded-SHA merge, bundle import |
+| `api/app/settings.py` | Every env-driven knob in one place (ADR 0013) |
+| `api/app/auth.py` | Entra JWT wall + identity seam (`FACTORY_AUTH`) |
+| `api/app/deploy_manifests.py` | Factory-owned, digest-pinned manifests for produced apps |
+| `packages/shared/src/lib/kit/` | Shared Angular UI kit components (per-file, re-exported via `public-api.ts`) |
+| `apps/intake/src/styles.css` / `apps/console/src/styles.css` | Global design tokens, one file per app |
+| `sample/` | Unit-test / `FACTORY_RUNNER=agent` workspace, copied per request. The cluster's golden profile overrides this with `FACTORY_SAMPLE` (see `templates/golden/` below) |
+| `templates/golden/` | The production template workspace (`FACTORY_SAMPLE=/srv/templates/golden` on the cluster) |
+| `deploy/` | kind + Calico + kustomize manifests (`task kind-up kind-load kind-deploy`) |
+| `docker/sf-agent/` | The stage/gate container image and its entrypoint + gate script |
+| `app-preview/` | The ng-v0 live-editing surface: orchestrator (Node/Hono), UI, and the per-chat sandbox pod image |
 | `scripts/smoke.sh` | End-to-end lifecycle smoke test |
-| `docs/adr/` | Architecture Decision Records 0001–0015 |
+| `docs/adr/` | Architecture Decision Records 0001–0026 (0018–0020 are absent from main — the decisions shipped, the records did not) |
 | `CONTEXT.md` | Domain vocabulary (canonical) |
 | `VERIFICATION.md` | Manual verification flows and expected outcomes |
 
