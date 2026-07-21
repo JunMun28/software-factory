@@ -75,6 +75,12 @@ export interface KubeSandboxClient {
   httpGet(url: string): Promise<SandboxHttpResponse>;
   /** POST a URL with an optional JSON body. */
   httpPost(url: string, body?: string): Promise<SandboxHttpResponse>;
+  /**
+   * The `sf/session` slug of every sandbox Deployment currently in the
+   * namespace, whether or not this process created it. Used by the boot
+   * reconcile to reap orphans (plans/013).
+   */
+  listSessionSlugs(): Promise<string[]>;
 }
 
 export interface KubeSandboxOptions {
@@ -325,6 +331,24 @@ export class KubeSandbox implements SandboxProvider {
     }
   }
 
+  /**
+   * Delete every sandbox in the namespace whose slug does not belong to a known
+   * chat. Sandboxes are the most expensive object this service creates and the
+   * only delete path is an in-memory handle, so a crashed start, a killed
+   * process, or a SIGTERM used to leak them permanently and invisibly — the
+   * concurrency cap counts records, not pods, so orphans were not even capped.
+   * Returns the slugs it reaped. plans/013.
+   */
+  async reapOrphans(knownChatIds: readonly string[]): Promise<string[]> {
+    const known = new Set(knownChatIds.map((id) => sandboxSlug(id)));
+    const live = await this.client.listSessionSlugs();
+    const orphans = live.filter((slug) => !known.has(slug));
+    for (const slug of orphans) {
+      await this.client.deleteByLabel(`sf/session=${slug}`);
+    }
+    return orphans;
+  }
+
   private async waitForFrontend(targetUrl: string): Promise<boolean> {
     const deadline = Date.now() + this.readyTimeoutMs;
     for (;;) {
@@ -483,6 +507,16 @@ export async function createKubeSandboxClient(
         body,
       });
       return { status: res.status, body: await res.text() };
+    },
+
+    async listSessionSlugs(): Promise<string[]> {
+      const list = await appsApi.listNamespacedDeployment({
+        namespace,
+        labelSelector: 'sf/tier=sandbox',
+      });
+      return (list.items ?? [])
+        .map((item) => item.metadata?.labels?.['sf/session'])
+        .filter((slug): slug is string => typeof slug === 'string' && slug.length > 0);
     },
   };
 }

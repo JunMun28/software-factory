@@ -64,7 +64,7 @@ export async function createOrchestratorDeps(options?: {
   let sandboxProvider: SandboxProvider | undefined;
   if (config.sandboxMode === 'kube') {
     const namespace = resolveSandboxNamespace();
-    sandboxProvider = new KubeSandbox({
+    const kubeSandbox = new KubeSandbox({
       client: await createKubeSandboxClient(namespace),
       namespace,
       // Host-routed previews through the orchestrator's main server (empty
@@ -72,6 +72,22 @@ export async function createOrchestratorDeps(options?: {
       previewDomain: config.previewDomain,
       previewExternalPort: config.previewExternalPort,
     });
+    sandboxProvider = kubeSandbox;
+
+    // Reconcile: anything labelled sf/tier=sandbox that no longer maps to a
+    // known chat is an orphan from a crash, a kill, or a pre-await SIGTERM.
+    // Nothing else can ever delete it — the normal delete path needs an
+    // in-memory handle this process no longer has. plans/013.
+    try {
+      const known = (await chatStore.listChats()).map((chat) => chat.chatId);
+      const reaped = await kubeSandbox.reapOrphans(known);
+      if (reaped.length > 0) {
+        console.log(`Reaped ${reaped.length} orphaned sandbox(es): ${reaped.join(', ')}`);
+      }
+    } catch (error) {
+      // Never let a reconcile failure stop the orchestrator from booting.
+      console.error('Sandbox orphan reconcile failed:', error);
+    }
   }
   const previewManager =
     options?.previewManager ??
