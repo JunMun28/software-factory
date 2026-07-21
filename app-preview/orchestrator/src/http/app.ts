@@ -9,6 +9,7 @@ import {
   type ChatStore,
 } from '../chat-store.js';
 import type { PreviewManager } from '../preview-manager.js';
+import { previewProxyMiddleware } from './preview-proxy.js';
 import type {
   ChatLevelEvent,
   OrchestratorEvent,
@@ -29,6 +30,11 @@ export interface AppDeps {
 
 export function createApp({ chatStore, previewManager }: AppDeps): Hono {
   const app = new Hono();
+
+  // Host-routed kube previews first: a request whose Host is a live preview host
+  // is proxied to that sandbox (overlay-injected) before any API route sees it.
+  // No-op in local mode (the host map is empty).
+  app.use('*', previewProxyMiddleware(previewManager));
 
   app.onError((error, c) => {
     const mapped = mapDomainError(error);

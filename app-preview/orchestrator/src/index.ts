@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import { createOrchestratorDeps } from './factory.js';
 import { createApp } from './http/app.js';
+import { tunnelUpgrade } from './preview-bridge.js';
 
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled promise rejection; orchestrator remains available:', reason);
@@ -31,7 +32,7 @@ function shutdown(signal: string): void {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-serve(
+const server = serve(
   {
     fetch: app.fetch,
     port: config.port,
@@ -42,3 +43,16 @@ serve(
     console.log(`Orchestrator listening on http://${config.hostname}:${info.port}`);
   },
 );
+
+// Host-routed kube previews: the dev server's HMR/live-reload WebSocket arrives
+// as an upgrade on the main server. Route it to the matching sandbox by Host,
+// reusing the same tunnel as the local per-chat bridge. Non-preview upgrades
+// (none in local mode) are closed.
+server.on('upgrade', (req, socket, head) => {
+  const target = previewManager.resolvePreviewTarget(req.headers.host);
+  if (target) {
+    tunnelUpgrade(target, req, socket, head);
+  } else {
+    socket.destroy();
+  }
+});

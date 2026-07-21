@@ -4337,3 +4337,125 @@ Deviations / conservative choices where the doc was silent:
   4 skipped.
 - **app-preview/ui deps:** that workspace vendors its own package.json and had no
   node_modules in this env; ran `npm install` there to execute its vitest suite.
+
+### ng-v0 bridge — cross-half interop proven with real artifacts (2026-07-21)
+
+- **What was closed:** each side's suite (`seed-export.test.ts`, `test_import_edit.py`)
+  proves its own half with real git but *fakes the other side's bundle*. Ran a one-time
+  cross-half proof: the orchestrator's REAL export path (`gitBundleRange` throwaway-branch
+  bundle) emitted a real base64 bundle; the factory's REAL `workspace.py` helpers
+  (`verify_bundle` → `fetch_bundle` → `commit_chain` → `fast_forward_work_branch`) consumed
+  those exact bytes against a factory workspace whose work branch sat at the preview sha.
+  All 10 checks green: bundle verifies, lands on `refs/import/round-0`, chain matches the
+  declared versions 1:1, work branch untouched by the fetch then fast-forwards to v2, file
+  contents replay. Proof scripts live in the session scratchpad (not shipped); temp
+  orchestrator driver deleted from the repo.
+- **Remaining gap = codex-gated, not code-gated.** The only unproven step is the live
+  full-cluster HTTP run (seed a chat from a request parked at `accept_preview`, edit, send
+  back over the wire). Reaching `accept_preview` from scratch runs the build stage via
+  codex-in-pod, and codex is at its usage cap until **2026-07-26 01:33**. The re-grade
+  itself needs no LLM (gates carry no credential), so once a request is parked at the gate
+  after the reset, the end-to-end is one `kind-smoke`-shaped run. No new code is required
+  for it — the flags (`FACTORY_PREVIEW` + `FACTORY_IMPORT_EDIT`) and both halves are ready.
+
+### Cloud sandbox pods — Phase 0 (orchestrator + UI as cluster pods) — DONE 2026-07-21
+
+- Design/spec: docs/design/cloud-sandbox-pods.md. Load-bearing decision: sandbox
+  pods are dev-servers that TRACK the chat's git ref (orchestrator pokes
+  fetch+reset after each green turn); turns keep running in the orchestrator, no
+  agent-in-pod, no shared volume. Built by 3 parallel opus-4.8 subagents
+  (orchestrator image / UI image / k8s manifests), contracts pre-agreed.
+- **Live-proven on kind:** `ng-v0-orchestrator` (2/2 — app + git-daemon sidecar)
+  and `ng-v0-ui` both Running; UI served at http://ngv0.localtest.me:8081 (HTTP
+  200, ng-v0 title); UI→orchestrator through the in-cluster nginx `/api` strip
+  works (`/api/projects` returned the seeded `local-workspace` from the PVC
+  SQLite, `/api/chats` returned `[]`). Orchestrator binds 0.0.0.0:7071.
+- Images: `sf-ngv0-orchestrator:dev` (466MB, node:24-slim, bakes templates/golden
+  at /app/templates/golden, ships git for the sidecar), `sf-ngv0-ui:dev` (62MB,
+  node build to nginx:alpine, `/api/` trailing-slash strip to
+  `http://ng-v0-orchestrator:7071/` + SPA fallback + WS upgrade for HMR).
+- **DB decision:** in-cluster platform DB is PVC+SQLite (`sf-ngv0-data`,
+  Recreate, single writer — mirrors factory-api `sf-data`), NOT Azure SQL. The
+  pod can't `az login`; Azure SQL becomes a config swap once a service-principal
+  Secret exists. `APPVIEW_DB_URL` stays the switch.
+- **PodSecurity finding (not a regression):** the namespace ENFORCES `baseline`
+  (ng-v0 passes) and only WARNS on `restricted`. factory-api/intake/console set
+  NO securityContext either — restricted is reserved for produced/untrusted apps
+  (deploy_manifests.py). ng-v0 infra pods match their siblings. NOTE for Phase
+  1/2: sandbox pods run user-influenced code and SHOULD carry the restricted
+  securityContext like produced apps.
+- Deviation: readiness probe is `tcpSocket:7071` (orchestrator exposes no
+  `/health` route). Consider adding `/health` for a real httpGet probe.
+
+### Cloud sandbox pods — Phase 1 + Phase 2 — CORE LIVE-PROVEN 2026-07-21
+
+- Built by opus-4.8 subagents + coordinator wiring: `SandboxProvider` seam
+  (src/sandbox.ts) with `LocalProcessSandbox` (extracted, unchanged behaviour) and
+  `KubeSandbox` (src/kube-sandbox.ts, `@kubernetes/client-node`, testable client
+  seam); sandbox pod image `sf-ngv0-sandbox:dev` (app-preview/sandbox/, clones the
+  workspace from the git-daemon, installs/seeds, runs backend uvicorn :8001 +
+  frontend ng serve :8080, resync HTTP server :8090); idle-GC + concurrency-cap
+  lifecycle guards on PreviewManager (provider-agnostic); resync-on-green-turn
+  wired (ChatStore.onVersionCreated → PreviewManager.resync → handle.resync).
+  Selected via `APPVIEW_SANDBOX=kube`; local stays the default. **179 vitest,
+  typecheck, dist build all green.**
+- Deploy-side (Phase 2): `sf-ngv0-sandbox` RBAC (create/deletecollection
+  deployments+services, read rollout status — `can-i` verified), `sandbox-walls`
+  NetworkPolicy (ingress from the orchestrator on 8080/8090; egress DNS +
+  git-daemon 9418 + package registries), git-door opened to the sandbox tier,
+  `sf-ngv0-sandbox:dev` in Taskfile `kind-load`.
+- **LIVE-PROVEN on kind end-to-end:** created a chat → `POST /preview` →
+  KubeSandbox created a real per-chat Deployment+Service+pod
+  (`sf-sandbox-<chatId>`, ports 8080/8090); the pod cloned from the git-daemon,
+  `uv sync` + `python -m app.seed` (Seed complete) + backend up on 8001, `npm
+  install` + `ng serve` up on 8080; the pod ran **non-root, dropped ALL caps**
+  (restricted SC, arbitrary UID — produced-app posture); the orchestrator bridge
+  proxied through to the sandbox and the preview flipped **ready**, serving HTTP
+  200 with `<app-root>` AND the `data-ng-v0-design-bridge` overlay injected.
+- **Bug found + fixed live:** Angular 22's Vite dev server 403s a request whose
+  Host is the Service DNS (host-check). Fixed with `--allowed-hosts` (Vite
+  `allowedHosts=true`) in the sandbox entrypoint. Also added two missing
+  orchestrator envs the pod needs but a source checkout provides ambiently:
+  `TEMPLATE_PATH=/app/templates/golden` (baked template) and `GIT_AUTHOR_*` /
+  `GIT_COMMITTER_*` (a pod has no git identity for the baseline commit).
+- **Honest remaining (task #4):** (1) the preview bridge binds 127.0.0.1 inside
+  the orchestrator pod, so the returned preview URL is not browser-reachable
+  in-cluster yet — route it through the orchestrator's own HTTP/ingress
+  (/preview/<chat>) and point the UI iframe there. (2) resync-on-turn is wired +
+  unit-tested but not proven with a LIVE turn (needs opencode/gpt-5.5 to run a
+  real edit, then confirm pod git fetch+reset → HMR). Core mechanism is proven;
+  these are UX/wiring completeness.
+- Left the kind cluster running; test sandbox + chat cleaned up.
+
+### Cloud sandbox pods — Phase 1 follow-ups (task #4) — LIVE-PROVEN 2026-07-21
+
+- **Preview browser-routing (DONE + LIVE).** The bridge bound pod-localhost, so
+  the preview URL wasn't browser-reachable. Fixed with HOST-BASED routing through
+  the orchestrator's main server (subpath was out — Angular serves assets at
+  absolute `/`). Each kube sandbox now gets `<slug>.<APPVIEW_PREVIEW_DOMAIN>`;
+  a Hono middleware + a raw `server.on('upgrade')` handler in index.ts resolve the
+  Host to that chat's sandbox and proxy it, reusing `injectDesignBridge` +
+  `tunnelUpgrade` (refactored `proxyPreviewResponse`/`tunnelUpgrade` exported from
+  preview-bridge.ts). PreviewManager keeps a `previewHostTargets` map + public
+  `resolvePreviewTarget(host)`; the status url becomes the external URL and NO
+  localhost bridge is started in kube mode. Local mode unchanged (localhost
+  bridge). SandboxHandle gained optional `previewHost`/`externalPreviewUrl`.
+  Deploy: wildcard ingress `*.preview.ngv0.localtest.me` → ng-v0-orchestrator:7071,
+  orchestrator env `APPVIEW_PREVIEW_DOMAIN`/`APPVIEW_PREVIEW_PORT`, and the
+  orchestrator :7071 NetworkPolicy opened to ingress-nginx (preview traffic
+  arrives from the ingress, not just the UI pod). 188 vitest green.
+  **Live proof:** GET `http://<uuid>.preview.ngv0.localtest.me:8081/` THROUGH the
+  ingress → HTTP 200 with `<app-root>` + the `data-ng-v0-design-bridge` overlay
+  injected; `/@vite/client` → 200 (absolute asset paths resolve at root).
+- **Live resync loop (DONE + LIVE).** Proved without an LLM turn (faithful to the
+  wired path): committed a visible change (`<title>Frontend</title>` →
+  `RESYNC-PROVEN-42`) on `main` in the orchestrator's `/data/workspaces/<chat>`,
+  then POSTed the sandbox pod's `:8090/resync` with the new sha (the EXACT call
+  `PreviewManager.resync` → `handle.resync` makes after a green turn) → pod
+  `git fetch + reset --hard` → the preview served through the ingress then showed
+  `<title>RESYNC-PROVEN-42</title>`. The only synthetic step is that a human/LLM
+  turn would author the commit; the green-turn→resync wiring itself is
+  unit-tested (ChatStore.onVersionCreated → PreviewManager.resync).
+- Net: the whole "fully cloud" loop is live — a chat → per-chat pod → browser
+  preview with overlay → edits reflected via git resync — on the kind cluster.
+  All still UNCOMMITTED.

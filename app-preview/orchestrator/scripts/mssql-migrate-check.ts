@@ -48,6 +48,19 @@ try {
   driver = await createDriver(TARGET);
   console.log('connected, dialect =', driver.dialect);
 
+  // This check DROPS every appview table. Refuse when the database holds real
+  // chats — an orchestrator that has been used in anger — unless forced.
+  const hasChats = await driver.get<{ n: number }>(
+    "SELECT CASE WHEN OBJECT_ID('chats') IS NULL THEN 0 ELSE (SELECT COUNT(*) FROM chats) END AS n",
+  );
+  if ((hasChats?.n ?? 0) > 0 && !process.argv.includes('--force')) {
+    console.error(
+      `REFUSING: ${hasChats?.n} chat(s) exist in this database and this check drops every table.\n` +
+        'Point APPVIEW_DB_URL at a scratch database, or re-run with --force to destroy the data.',
+    );
+    process.exit(1);
+  }
+
   // Start from clean so this is a true fresh-database run.
   await drop(driver);
 

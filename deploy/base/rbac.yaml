@@ -63,3 +63,36 @@ subjects:
   - kind: ServiceAccount
     name: sf-api
     namespace: software-factory
+---
+# ng-v0 orchestrator (Phase 2, docs/design/cloud-sandbox-pods.md): the sf-ngv0 SA
+# creates and reaps one sandbox Deployment+Service per chat. Same shape as
+# sf-api-deploy (namespace+type scoped; create can't be label-scoped, teardown
+# uses deletecollection with an sf/session selector). No ingresses (sandboxes are
+# reached through the orchestrator's in-process bridge, not a per-sandbox ingress).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sf-ngv0-sandbox
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "get", "list", "watch", "patch", "delete", "deletecollection"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/status"]   # KubeSandbox.rolloutReady reads status
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "get", "list", "patch", "delete", "deletecollection"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sf-ngv0-sandbox
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sf-ngv0-sandbox
+subjects:
+  - kind: ServiceAccount
+    name: sf-ngv0
+    namespace: software-factory

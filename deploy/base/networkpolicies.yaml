@@ -234,3 +234,105 @@ spec:
               - 192.168.0.0/16          # pod CIDR
               - 10.96.0.0/12            # service CIDR
               - 169.254.0.0/16          # link-local/IMDS
+---
+# ng-v0 orchestrator (Phase 0, docs/design/cloud-sandbox-pods.md) — modelled on
+# api-walls. Under default-deny it would be unreachable; these open only the two
+# doors it needs. The http door: the UI pod (its nginx proxy_pass targets
+# ng-v0-orchestrator:7071 and tunnels the preview/HMR upgrade). The git door:
+# the ngv0 tier only, on 9418 — the Phase 1 sandbox pods that clone workspaces.
+# Egress is the trusted-control-plane `- {}` (same as api-walls): the
+# orchestrator runs turns (LLM endpoints on the internet) and drives the k8s API
+# in Phase 1; DNS already rides the shared allow-dns.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ng-v0-orchestrator-walls
+spec:
+  podSelector:
+    matchLabels:
+      app: ng-v0-orchestrator
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:                             # the http door: the UI pod (nginx proxy)
+        - podSelector:                  # AND ingress-nginx (host-routed previews
+            matchLabels:                # <slug>.preview.ngv0... arrive from the
+              app: ng-v0-ui             # ingress controller, proxied to a sandbox)
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - {protocol: TCP, port: 7071}
+    - from:                             # the git door: ngv0 + sandbox tiers, 9418 ONLY
+        - podSelector:
+            matchLabels:
+              sf/tier: ngv0
+        - podSelector:                  # Phase 1 sandbox pods clone their workspace
+            matchLabels:
+              sf/tier: sandbox
+      ports:
+        - {protocol: TCP, port: 9418}
+  egress:
+    - {}                                # turns (LLM), k8s API (Phase 1), Azure SQL
+---
+# ng-v0 UI (Phase 0) — modelled on spa-walls: users arrive through
+# ingress-nginx on :80, and the nginx proxy dials the orchestrator on :7071.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ng-v0-ui-walls
+spec:
+  podSelector:
+    matchLabels:
+      app: ng-v0-ui
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - {protocol: TCP, port: 80}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ng-v0-orchestrator
+      ports:
+        - {protocol: TCP, port: 7071}
+---
+# ng-v0 sandbox pods (Phase 1/2): one per chat, a live dev server that tracks the
+# chat's git ref. Only the orchestrator bridge may dial in — the preview proxy on
+# 8080 and the resync poke on 8090. Egress: DNS (shared allow-dns) + the
+# orchestrator git-daemon (9418, clone/fetch the workspace) + package registries
+# for npm install / uv sync (internet-except-cluster, same trade-off as build-walls).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-walls
+spec:
+  podSelector:
+    matchLabels:
+      sf/tier: sandbox
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:                             # the orchestrator bridge proxy + resync poke
+        - podSelector:
+            matchLabels:
+              app: ng-v0-orchestrator
+      ports:
+        - {protocol: TCP, port: 8080}
+        - {protocol: TCP, port: 8090}
+  egress:
+    - to:                               # clone/fetch the workspace from the git-daemon
+        - podSelector:
+            matchLabels:
+              app: ng-v0-orchestrator
+      ports:
+        - {protocol: TCP, port: 9418}
+    - to:                               # package registries (npm/uv) — internet-except-
+        - ipBlock:                      # cluster; FQDN allowlists need Calico EE
+            cidr: 0.0.0.0/0
+            except:
+              - 192.168.0.0/16          # pod CIDR
+              - 10.96.0.0/12            # service CIDR
+              - 169.254.0.0/16          # link-local/IMDS

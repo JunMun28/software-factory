@@ -7,6 +7,17 @@ const repoRoot = path.resolve(
   '../..',
 );
 
+/** Parse a non-negative integer env var, falling back to `fallback` when unset
+ * or unparseable. Guards against a stray `APPVIEW_SANDBOX_MAX=""` disabling the
+ * cap by accident. */
+function numberFromEnv(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === '') {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 export function loadConfig(
   overrides: Partial<OrchestratorConfig> = {},
 ): OrchestratorConfig {
@@ -44,6 +55,25 @@ export function loadConfig(
     dbTarget: process.env.APPVIEW_DB_URL ?? platformDbPath,
     gateTimeoutMs: 15 * 60 * 1000,
     opencodeModel: process.env.OPENCODE_MODEL,
+    // Default local so nothing changes off-cluster; set APPVIEW_SANDBOX=kube
+    // in-cluster to run each chat's dev server as a pod.
+    sandboxMode: process.env.APPVIEW_SANDBOX === 'kube' ? 'kube' : 'local',
+    // Dev-server sandboxes are expensive, so guard them: idle GC + a global
+    // concurrency cap. Defaults keep live sandboxes bounded without any config.
+    sandboxIdleTtlMs: numberFromEnv(
+      process.env.APPVIEW_SANDBOX_IDLE_TTL_MS,
+      30 * 60 * 1000,
+    ),
+    sandboxIdleSweepMs: numberFromEnv(
+      process.env.APPVIEW_SANDBOX_IDLE_SWEEP_MS,
+      60 * 1000,
+    ),
+    sandboxMaxLive: numberFromEnv(process.env.APPVIEW_SANDBOX_MAX, 5),
+    // Host-routed kube previews (see types.ts). Empty domain = disabled, so
+    // off-cluster/local keeps the per-chat localhost bridge. Empty port omits
+    // the `:port` from the browser-facing URL (i.e. default 80).
+    previewDomain: process.env.APPVIEW_PREVIEW_DOMAIN ?? '',
+    previewExternalPort: process.env.APPVIEW_PREVIEW_PORT ?? '',
     ...overrides,
   };
 }

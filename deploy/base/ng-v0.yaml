@@ -1,0 +1,195 @@
+# ng-v0 (app-preview) cloud sandbox control plane — Phase 0 of
+# docs/design/cloud-sandbox-pods.md. Mirrors factory-api exactly: ONE replica,
+# strategy Recreate (the control loop + preview manager assume a single
+# process, and the RWO volume can never deadlock a rolling update), an
+# init-dirs container, and a git-daemon sidecar reusing the same image.
+#
+# Phase 0 only stands the orchestrator + UI up as cluster citizens. The SA
+# sf-ngv0 automounts its token because Phase 1 (per-chat sandbox pods) drives
+# the k8s API from inside this pod — but NO RBAC is granted yet (Phase 2).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sf-ngv0-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ng-v0-orchestrator
+  labels:
+    app: ng-v0-orchestrator
+    sf/tier: ngv0
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ng-v0-orchestrator
+  template:
+    metadata:
+      labels:
+        app: ng-v0-orchestrator
+        sf/tier: ngv0
+    spec:
+      # Phase 1 needs the k8s API from inside the pod, so the token is mounted
+      # (the SA sets automountServiceAccountToken:true). Phase 0 grants it no
+      # RBAC — the token can authenticate but authorizes nothing yet.
+      serviceAccountName: sf-ngv0
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: sf-ngv0-data
+      initContainers:
+        - name: init-dirs
+          image: sf-ngv0-orchestrator:dev
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "mkdir -p /data/workspaces /data/preview /data/trusted"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: orchestrator
+          image: sf-ngv0-orchestrator:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PORT
+              value: "7071"
+            - name: ORCHESTRATOR_HOSTNAME
+              value: "0.0.0.0"
+            - name: PLATFORM_DB_PATH
+              value: "/data/platform.db"
+            - name: WORKSPACES_ROOT
+              value: "/data/workspaces"
+            - name: PREVIEW_ROOT
+              value: "/data/preview"
+            - name: TRUSTED_ROOT
+              value: "/data/trusted"
+            # The golden template is baked into the image here (config.ts's
+            # computed default assumes a source checkout, which the pod is not).
+            - name: TEMPLATE_PATH
+              value: "/app/templates/golden"
+            # The workspace repos are committed by the orchestrator; a pod has no
+            # ambient git identity, so provide one (git honours these env vars).
+            - name: GIT_AUTHOR_NAME
+              value: "ng-v0"
+            - name: GIT_AUTHOR_EMAIL
+              value: "ng-v0@software-factory.local"
+            - name: GIT_COMMITTER_NAME
+              value: "ng-v0"
+            - name: GIT_COMMITTER_EMAIL
+              value: "ng-v0@software-factory.local"
+            # Phase 1/2: run each chat sandbox as a pod (KubeSandbox) rather than
+            # a local child process. The sf-ngv0 SA token (automounted) + the
+            # sf-ngv0-sandbox Role authorize the create/reap.
+            - name: APPVIEW_SANDBOX
+              value: "kube"
+            - name: APPVIEW_KUBE_NAMESPACE
+              value: "software-factory"
+            # Host-routed previews: each chat's sandbox is reached at
+            # <slug>.preview.ngv0.localtest.me:8081, proxied through this server.
+            - name: APPVIEW_PREVIEW_DOMAIN
+              value: "preview.ngv0.localtest.me"
+            - name: APPVIEW_PREVIEW_PORT
+              value: "8081"
+          ports:
+            - containerPort: 7071
+          readinessProbe:
+            tcpSocket:
+              port: 7071
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+        # The git backbone (factory-api pattern): exports /data/workspaces so
+        # each Phase 1 sandbox pod clones git://ng-v0-orchestrator:9418/<chat>.
+        # receive-pack is enabled; the walls (ng-v0-orchestrator-walls) keep
+        # 9418 reachable only from the ngv0 tier.
+        - name: git-daemon
+          image: sf-ngv0-orchestrator:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - git
+            - daemon
+            - --reuseaddr
+            - --verbose
+            - --export-all
+            - --enable=receive-pack
+            - --base-path=/data/workspaces
+            - /data/workspaces
+          ports:
+            - containerPort: 9418
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ng-v0-orchestrator
+  labels:
+    app: ng-v0-orchestrator
+spec:
+  selector:
+    app: ng-v0-orchestrator
+  ports:
+    - name: http
+      port: 7071
+      targetPort: 7071
+    - name: git
+      port: 9418
+      targetPort: 9418
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ng-v0-ui
+  labels:
+    app: ng-v0-ui
+    sf/tier: ngv0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ng-v0-ui
+  template:
+    metadata:
+      labels:
+        app: ng-v0-ui
+        sf/tier: ngv0
+    spec:
+      containers:
+        - name: web
+          image: sf-ngv0-ui:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ng-v0-ui
+  labels:
+    app: ng-v0-ui
+spec:
+  selector:
+    app: ng-v0-ui
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

@@ -2,6 +2,7 @@
 #   intake:  http://intake.localtest.me:8081
 #   console: http://console.localtest.me:8081
 #   api:     http://api.localtest.me:8081/api/health
+#   ng-v0:   http://ngv0.localtest.me:8081
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -30,3 +31,22 @@ spec:
             pathType: Prefix
             backend:
               service: {name: api, port: {number: 8000}}
+    - host: ngv0.localtest.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: ng-v0-ui, port: {number: 80}}
+    # Each chat's preview is served by its sandbox pod but PROXIED through the
+    # orchestrator (overlay injection + HMR tunnel), keyed by Host. The
+    # wildcard routes every <slug>.preview.ngv0.localtest.me to the orchestrator,
+    # which resolves the slug to that chat's sandbox Service.
+    #   preview: http://<slug>.preview.ngv0.localtest.me:8081
+    - host: "*.preview.ngv0.localtest.me"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: ng-v0-orchestrator, port: {number: 7071}}

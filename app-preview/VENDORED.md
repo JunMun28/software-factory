@@ -43,9 +43,39 @@ the review-stage editing work, not an integrated app:
   intentionally NOT under `apps/`, which would collide with the root workspace
   that builds `console` and `intake`.
 - The bridge contract itself (seed a chat from a request ref, import the edit
-  back through the preview-revision machinery) is designed but unbuilt — see
-  `docs/design/ng-v0-bridge.md`, which currently lives on the
-  `plan-008-scalability` worktree rather than `main`.
+  back as a direct apply) is built on both sides behind flags
+  (`FACTORY_PREVIEW` + `FACTORY_IMPORT_EDIT`, default off) — see
+  `docs/design/ng-v0-bridge.md` for the contract.
+
+## Switching the database (local ↔ Azure SQL)
+
+The orchestrator runs on either backend through the same `SqlDriver` seam;
+local SQLite is the zero-config default and Azure SQL is one word away:
+
+```
+npm run dev          # local SQLite (orchestrator/var/platform.db)
+npm run dev:azure    # Azure SQL — loads orchestrator/.env.azure
+```
+
+(Or from the repo root: `task appview` / `task appview-azure`. The factory API
+has the same pair: `task api` / `task api-azure`.)
+
+`.env.azure` is gitignored (public repo) and holds only `APPVIEW_DB_URL` — no
+password: auth is your `az login` identity, or a service principal via
+`APPVIEW_DB_CLIENT_ID/_SECRET/_TENANT_ID`.
+
+Schema migrations make the switch safe in both directions: `PlatformDb.open`
+records applied migrations in `appview_migrations` and fast-forwards whichever
+database is behind on startup. The rules that keep that true:
+
+- **Append-only.** Never edit an applied migration; add the next numbered file.
+- **Both dialects, same filenames.** `migrations/sqlite/` and
+  `migrations/mssql/` must stay in lockstep — `test/migrations-parity.test.ts`
+  fails the suite if they diverge.
+- **Prove new mssql migrations on real Azure** before relying on them:
+  `npm run migrate:check:azure` (fresh run + re-run; refuses to touch a
+  database that already holds chats unless `--force`).
+- **Data does not follow.** Local is a scratch copy for testing, not a mirror.
 
 ## Keeping it honest
 

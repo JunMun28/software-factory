@@ -46,6 +46,30 @@ tasks:
     cmds:
       - uv run uvicorn app.main:app --port 8000 --reload
 
+  # Backend against Azure SQL. FACTORY_DB_URL lives in api/.env (gitignored;
+  # see docs/runbooks/azure-sql-dev.md) — nothing loads it implicitly, so this
+  # is the explicit switch. Plain `task api` stays local SQLite.
+  api-azure:
+    desc: Backend on :8000 against Azure SQL (loads api/.env)
+    dir: api
+    env:
+      SIM_INTERVAL: "8"
+    cmds:
+      - uv run --env-file .env uvicorn app.main:app --port 8000 --reload
+
+  # app-preview orchestrator (the ng-v0 sandbox backend, :7071).
+  appview:
+    desc: app-preview orchestrator on :7071 (local SQLite)
+    dir: app-preview/orchestrator
+    cmds:
+      - npm run dev
+
+  appview-azure:
+    desc: app-preview orchestrator on :7071 against Azure SQL (loads .env.azure)
+    dir: app-preview/orchestrator
+    cmds:
+      - npm run dev:azure
+
   # Serve the Intake app (the default `web` target — back-compat alias for intake).
   web:
     desc: Alias for `intake` (back-compat)
@@ -181,17 +205,24 @@ tasks:
       - ./scripts/calico-probe.sh
 
   kind-load:
-    desc: Build all four images and load them into the kind cluster
+    desc: Build all seven images and load them into the kind cluster
     cmds:
       - docker build -t sf-api:dev -f api/Dockerfile .
       - docker build -t sf-intake:dev -f apps/intake/Dockerfile .
       - docker build -t sf-console:dev -f apps/console/Dockerfile .
       - docker build -t sf-agent:dev -f docker/sf-agent/Dockerfile .
+      # ng-v0 (docs/design/cloud-sandbox-pods.md): the app-preview orchestrator
+      # (repo-root context; the git-daemon sidecar reuses this image), its
+      # Angular→nginx UI (self-contained app, own context), and the per-chat
+      # sandbox image (Phase 1 — a live dev server that tracks the chat's git ref).
+      - docker build -f app-preview/orchestrator/Dockerfile -t sf-ngv0-orchestrator:dev .
+      - docker build -f app-preview/ui/Dockerfile -t sf-ngv0-ui:dev app-preview/ui
+      - docker build -f app-preview/sandbox/Dockerfile -t sf-ngv0-sandbox:dev app-preview/sandbox
       # B3: kaniko + registry are pre-pulled and loaded so build pods never need
       # image-pull egress (build-walls allow only git + registry)
       - docker pull gcr.io/kaniko-project/executor:v1.23.2
       - docker pull registry:2
-      - kind load docker-image sf-api:dev sf-intake:dev sf-console:dev sf-agent:dev gcr.io/kaniko-project/executor:v1.23.2 registry:2 --name software-factory
+      - kind load docker-image sf-api:dev sf-intake:dev sf-console:dev sf-agent:dev sf-ngv0-orchestrator:dev sf-ngv0-ui:dev sf-ngv0-sandbox:dev gcr.io/kaniko-project/executor:v1.23.2 registry:2 --name software-factory
 
   kind-down:
     desc: Delete the software-factory kind cluster
@@ -205,6 +236,8 @@ tasks:
       - kubectl -n software-factory rollout status deployment/factory-api --timeout=300s
       - kubectl -n software-factory rollout status deployment/intake --timeout=180s
       - kubectl -n software-factory rollout status deployment/console --timeout=180s
+      - kubectl -n software-factory rollout status deployment/ng-v0-orchestrator --timeout=300s
+      - kubectl -n software-factory rollout status deployment/ng-v0-ui --timeout=180s
 
   sync-codex-auth:
     desc: Sync ~/.codex/auth.json into the sf-codex-auth Secret (single-developer, spec §2)

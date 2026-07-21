@@ -7,7 +7,13 @@ import { ChatStore } from './chat-store.js';
 import { OpenCodeHarness } from './harness/opencode-harness.js';
 import { PlatformDb } from './platform-db.js';
 import { PreviewManager } from './preview-manager.js';
+import {
+  createKubeSandboxClient,
+  KubeSandbox,
+  resolveSandboxNamespace,
+} from './kube-sandbox.js';
 import { LocalWorkspaceProvider } from './workspace-provider.js';
+import type { SandboxProvider } from './sandbox.js';
 import type { GateRunner, Harness, OrchestratorConfig, WorkspaceProvider } from './types.js';
 
 export interface OrchestratorDeps {
@@ -52,13 +58,40 @@ export async function createOrchestratorDeps(options?: {
   if (restored > 0) {
     console.log(`Rehydrated ${restored} chat(s) from ${config.dbTarget}`);
   }
+  // In-cluster (APPVIEW_SANDBOX=kube) each chat's dev server runs as a pod;
+  // otherwise the default LocalProcessSandbox spawns child processes. The
+  // preview bridge, records, and status handling are identical either way.
+  let sandboxProvider: SandboxProvider | undefined;
+  if (config.sandboxMode === 'kube') {
+    const namespace = resolveSandboxNamespace();
+    sandboxProvider = new KubeSandbox({
+      client: await createKubeSandboxClient(namespace),
+      namespace,
+      // Host-routed previews through the orchestrator's main server (empty
+      // domain keeps targetUrl-only behaviour).
+      previewDomain: config.previewDomain,
+      previewExternalPort: config.previewExternalPort,
+    });
+  }
   const previewManager =
     options?.previewManager ??
     new PreviewManager({
       workspacesRoot: config.workspacesRoot,
       previewRoot: config.previewRoot,
       connectionEnv: (chatId) => connectionEnv(platformDb, chatId),
+      // Lifecycle guards: idle GC + concurrency cap keep expensive dev-server
+      // sandboxes bounded (provider-agnostic — works for local and kube).
+      idleTtlMs: config.sandboxIdleTtlMs,
+      idleSweepIntervalMs: config.sandboxIdleSweepMs,
+      maxLiveSandboxes: config.sandboxMaxLive,
+      ...(sandboxProvider ? { sandboxProvider } : {}),
     });
+
+  // A green turn writes a new Version; point any live sandbox at it (no-op for
+  // the local dev server, which already watches the workspace directory).
+  chatStore.onVersionCreated = (chatId, sha) => {
+    void previewManager.resync(chatId, sha);
+  };
 
   return { config, chatStore, previewManager, platformDb };
 }

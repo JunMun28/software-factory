@@ -84,6 +84,11 @@ export class ChatStore {
     private readonly connectionTester: ConnectionTester = new ConnectionTester(),
   ) {}
 
+  // Wired by the factory to PreviewManager.resync: a green turn writes a new
+  // Version, so a live sandbox should fast-forward to it. Optional so tests and
+  // the local flow (dev server watches the workspace directly) need no wiring.
+  onVersionCreated?: (chatId: string, sha: string) => void;
+
   // Chats must survive an orchestrator restart (issue 0025): reload the
   // registry from the metadata store, skipping rows whose workspace is gone.
   async rehydrate(): Promise<number> {
@@ -764,6 +769,9 @@ export class ChatStore {
             diffStat,
             files,
           );
+          // A live sandbox tracks the work branch: poke it to the new commit so
+          // the preview reflects this turn. Fire-and-forget; never fail the turn.
+          this.onVersionCreated?.(chatId, event.commit);
         }
         if (event.type === 'turn-finished') {
           result = event.result;

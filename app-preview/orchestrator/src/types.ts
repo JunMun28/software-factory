@@ -123,6 +123,27 @@ export interface OrchestratorConfig {
   dbTarget: string;
   gateTimeoutMs: number;
   opencodeModel?: string;
+  // Which sandbox provider backs previews: `local` spawns child processes
+  // (default — unchanged local dev + tests); `kube` runs one Deployment+Service
+  // per chat in-cluster (see kube-sandbox.ts). Env: APPVIEW_SANDBOX.
+  sandboxMode: 'local' | 'kube';
+  // Idle GC: stop a live sandbox after this many ms with no activity and zero
+  // subscribers (re-created lazily on next preview). Env
+  // APPVIEW_SANDBOX_IDLE_TTL_MS; default ~30 min. `0` disables the sweep.
+  sandboxIdleTtlMs: number;
+  // How often the idle sweep runs (ms). Env APPVIEW_SANDBOX_IDLE_SWEEP_MS;
+  // default 60s.
+  sandboxIdleSweepMs: number;
+  // Global cap on concurrently-live sandboxes (dev-server pods are expensive).
+  // Env APPVIEW_SANDBOX_MAX; default 5. `0` = unlimited.
+  sandboxMaxLive: number;
+  // Host-routed kube previews: the base domain each sandbox's preview host hangs
+  // off (`<slug>.<previewDomain>`), routed through the orchestrator's main
+  // server. Env APPVIEW_PREVIEW_DOMAIN; default '' (disabled — local bridge).
+  previewDomain: string;
+  // The browser-facing port for the preview host URL. Env APPVIEW_PREVIEW_PORT;
+  // default '' (treated as 80 / omitted from the URL).
+  previewExternalPort: string;
 }
 
 export type PreviewStatusValue = 'stopped' | 'starting' | 'ready' | 'failed';

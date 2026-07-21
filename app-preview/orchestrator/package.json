@@ -5,13 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "dev:azure": "tsx --env-file=.env.azure src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "migrate:check:azure": "tsx --env-file=.env.azure scripts/mssql-migrate-check.ts"
   },
   "dependencies": {
     "@azure/identity": "^4.13.1",
     "@hono/node-server": "^1.19.6",
+    "@kubernetes/client-node": "^1.4.0",
     "@opencode-ai/sdk": "^1.17.15",
     "hono": "^4.11.1",
     "mssql": "^12.7.0"

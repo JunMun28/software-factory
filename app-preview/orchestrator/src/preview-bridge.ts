@@ -86,7 +86,13 @@ export function injectDesignBridge(html: string): string {
     : `${html}${script}`;
 }
 
-function tunnelUpgrade(
+/**
+ * Tunnel a protocol upgrade (the dev server's HMR/live-reload WebSocket) through
+ * to `targetUrl`, reusing the original request path and stripping browser
+ * credentials. Exported so the orchestrator's MAIN server can reuse it for
+ * host-routed kube sandboxes, not just the per-chat localhost bridge.
+ */
+export function tunnelUpgrade(
   targetUrl: string,
   request: import('node:http').IncomingMessage,
   socket: import('node:stream').Duplex,
@@ -152,6 +158,75 @@ async function proxyRequest(
     response.setHeader('content-type', 'text/plain; charset=utf-8');
     response.end(error instanceof Error ? error.message : 'Preview bridge failed');
   }
+}
+
+/**
+ * Fetch→Response twin of {@link proxyRequest}: proxy `targetUrl` (the full
+ * upstream URL, i.e. sandbox target + path) using the incoming web `Request`,
+ * applying the same header filtering and `injectDesignBridge` HTML rewrite.
+ * Usable from Hono middleware so the orchestrator's MAIN server can host-route
+ * kube sandboxes with the identical overlay-injection semantics as the local
+ * per-chat bridge.
+ */
+export async function proxyPreviewResponse(
+  targetUrl: string,
+  request: Request,
+): Promise<Response> {
+  try {
+    const method = request.method ?? 'GET';
+    const headers = toUpstreamHeadersFromWeb(request.headers);
+    const body =
+      method === 'GET' || method === 'HEAD'
+        ? undefined
+        : await request.arrayBuffer();
+    const upstream = await fetch(targetUrl, {
+      method,
+      headers,
+      body,
+      redirect: 'manual',
+    });
+
+    const responseHeaders = toBrowserHeaders(upstream.headers);
+    const contentType = upstream.headers.get('content-type') ?? '';
+    if (contentType.includes('text/html')) {
+      responseHeaders.set('content-type', contentType);
+      return new Response(injectDesignBridge(await upstream.text()), {
+        status: upstream.status,
+        headers: responseHeaders,
+      });
+    }
+
+    // 204/304 and empty bodies must not carry a body in the Response ctor.
+    const buffer = await upstream.arrayBuffer();
+    const nullBody =
+      upstream.status === 204 ||
+      upstream.status === 304 ||
+      buffer.byteLength === 0;
+    return new Response(nullBody ? null : buffer, {
+      status: upstream.status,
+      headers: responseHeaders,
+    });
+  } catch (error) {
+    return new Response(
+      error instanceof Error ? error.message : 'Preview bridge failed',
+      {
+        status: 502,
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+      },
+    );
+  }
+}
+
+/** {@link toUpstreamHeaders} for a web `Headers` object (host/encoding/creds off). */
+export function toUpstreamHeadersFromWeb(input: Headers): Headers {
+  const headers = new Headers();
+  input.forEach((value, key) => {
+    if (BLOCKED_UPSTREAM_REQUEST_HEADERS.has(key.toLowerCase())) {
+      return;
+    }
+    headers.set(key, value);
+  });
+  return headers;
 }
 
 export function toUpstreamHeaders(input: IncomingHttpHeaders): Headers {

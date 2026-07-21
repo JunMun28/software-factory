@@ -11,4 +11,5 @@ resources:
   - registry.yaml
   - intake.yaml
   - console.yaml
+  - ng-v0.yaml
   - networkpolicies.yaml
