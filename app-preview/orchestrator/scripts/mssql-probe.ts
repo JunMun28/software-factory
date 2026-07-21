@@ -68,15 +68,18 @@ try {
   const miss = await driver.run(`UPDATE ${TABLE} SET n = ? WHERE id = ?`, [9, 'ghost']);
   ok('rowsAffected', upd.changes === 1 && miss.changes === 0, `${upd.changes}/${miss.changes}`);
 
-  await driver.begin();
-  await driver.run(`INSERT INTO ${TABLE} (id, n) VALUES (?, ?)`, ['tx', 3]);
-  await driver.rollback();
+  await driver
+    .withTransaction(async () => {
+      await driver!.run(`INSERT INTO ${TABLE} (id, n) VALUES (?, ?)`, ['tx', 3]);
+      throw new Error('rollback-probe');
+    })
+    .catch(() => {});
   const gone = await driver.get(`SELECT id FROM ${TABLE} WHERE id = ?`, ['tx']);
   ok('rollback discards', gone === undefined);
 
-  await driver.begin();
-  await driver.run(`INSERT INTO ${TABLE} (id, n) VALUES (?, ?)`, ['tx2', 4]);
-  await driver.commit();
+  await driver.withTransaction(async () => {
+    await driver!.run(`INSERT INTO ${TABLE} (id, n) VALUES (?, ?)`, ['tx2', 4]);
+  });
   const kept = await driver.get(`SELECT id FROM ${TABLE} WHERE id = ?`, ['tx2']);
   ok('commit persists', kept !== undefined);
 

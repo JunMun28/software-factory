@@ -209,6 +209,43 @@ describe('PlatformDb', () => {
     await db.close();
   });
 
+  it('keeps every row and a gapless sequence when two generations append events concurrently (plans/015)', async () => {
+    // Before the transaction gate, chat B's begin() would throw mid-flight
+    // through chat A's transaction, and B's catch would roll back A's
+    // already-inserted rows — silent turn-history loss under exactly this
+    // interleave.
+    const db = await memoryDb();
+    await db.insertChat('chat-1', '/tmp/ws');
+    const firstGeneration = await db.beginGeneration('chat-1', 'first');
+    const secondGeneration = await db.beginGeneration('chat-1', 'second');
+
+    const EVENTS_PER_GENERATION = 25;
+    const fire = (generationId: string) =>
+      Promise.all(
+        Array.from({ length: EVENTS_PER_GENERATION }, (_, i) =>
+          db.appendTurnEvent(generationId, {
+            type: 'narration',
+            text: `event-${i}`,
+          }),
+        ),
+      );
+
+    // Interleaved, not sequential: both generations' inserts race each other.
+    await Promise.all([fire(firstGeneration), fire(secondGeneration)]);
+
+    for (const generationId of [firstGeneration, secondGeneration]) {
+      const events = await db.listTurnEvents(generationId);
+      expect(events).toHaveLength(EVENTS_PER_GENERATION);
+      expect(events.map((event) => event.seq).sort((a, b) => a - b)).toEqual(
+        Array.from({ length: EVENTS_PER_GENERATION }, (_, i) => i + 1),
+      );
+      expect(new Set(events.map((event) => event.seq)).size).toBe(
+        EVENTS_PER_GENERATION,
+      );
+    }
+    await db.close();
+  });
+
   it('rolls back a failed version cut so a later cut can allocate its sequence', async () => {
     const db = await memoryDb();
     await db.insertChat('chat-1', '/tmp/ws');

@@ -72,19 +72,79 @@ describe('SqliteDriver', () => {
 
   it('rolls a transaction back', async () => {
     const d = await open();
-    await d.begin();
-    await d.run('INSERT INTO t (id, n) VALUES (?, ?)', ['a', 1]);
-    await d.rollback();
+    await expect(
+      d.withTransaction(async () => {
+        await d.run('INSERT INTO t (id, n) VALUES (?, ?)', ['a', 1]);
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
     expect(await d.all('SELECT id FROM t')).toEqual([]);
     await d.close();
   });
 
   it('commits a transaction', async () => {
     const d = await open();
-    await d.begin();
-    await d.run('INSERT INTO t (id, n) VALUES (?, ?)', ['a', 1]);
-    await d.commit();
+    await d.withTransaction(async () => {
+      await d.run('INSERT INTO t (id, n) VALUES (?, ?)', ['a', 1]);
+    });
     expect(await d.all('SELECT id FROM t')).toEqual([{ id: 'a' }]);
+    await d.close();
+  });
+});
+
+describe('withTransaction', () => {
+  const open = async () => {
+    const d = new SqliteDriver(':memory:');
+    await d.exec('CREATE TABLE t (id TEXT PRIMARY KEY, n INTEGER)');
+    return d;
+  };
+
+  it('serializes overlapping transactions', async () => {
+    // This driver owns exactly one connection, so two bodies started without
+    // awaiting between them must still run one at a time, start to finish —
+    // never interleaved. plans/015.
+    const d = await open();
+    const marks: string[] = [];
+
+    const p1 = d.withTransaction(async () => {
+      marks.push('enter1');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      marks.push('exit1');
+    });
+    const p2 = d.withTransaction(async () => {
+      marks.push('enter2');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      marks.push('exit2');
+    });
+
+    await Promise.all([p1, p2]);
+    expect(marks).toEqual(['enter1', 'exit1', 'enter2', 'exit2']);
+    await d.close();
+  });
+
+  it('a throwing body rolls back and does not wedge the queue', async () => {
+    const d = await open();
+
+    await expect(
+      d.withTransaction(async () => {
+        await d.run('INSERT INTO t (id, n) VALUES (?, ?)', ['a', 1]);
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+    expect(await d.all('SELECT id FROM t')).toEqual([]);
+
+    // The failed body must not wedge the gate: a later transaction still runs.
+    await d.withTransaction(async () => {
+      await d.run('INSERT INTO t (id, n) VALUES (?, ?)', ['b', 2]);
+    });
+    expect(await d.all('SELECT id FROM t')).toEqual([{ id: 'b' }]);
+    await d.close();
+  });
+
+  it("returns the body's value", async () => {
+    const d = await open();
+    const result = await d.withTransaction(async () => 42);
+    expect(result).toBe(42);
     await d.close();
   });
 });

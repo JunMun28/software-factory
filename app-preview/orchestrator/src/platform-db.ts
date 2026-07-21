@@ -244,8 +244,7 @@ export class PlatformDb {
       const legacy = await driver.get<{ id: string; createdAt: string }>(legacySql, [
         FOUNDER_USER_ID,
       ]);
-      await driver.begin();
-      try {
+      await driver.withTransaction(async () => {
         await driver.run(
           'INSERT INTO projects (id, user_id, name, created_at) VALUES (?, ?, ?, ?)',
           [
@@ -262,11 +261,7 @@ export class PlatformDb {
           ]);
           await driver.run('DELETE FROM projects WHERE id = ?', [legacy.id]);
         }
-        await driver.commit();
-      } catch (error) {
-        await driver.rollback();
-        throw error;
-      }
+      });
     }
     await driver.run('UPDATE projects SET name = ? WHERE id = ? AND user_id = ?', [
       DEFAULT_PROJECT_NAME,
@@ -466,53 +461,53 @@ export class PlatformDb {
         ? 'UPDATE generations SET narration = narration + ? WHERE id = ?'
         : 'UPDATE generations SET narration = narration || ? WHERE id = ?';
 
-    await this.driver.begin();
-    try {
-      const generation = await this.driver.get<{ chatId: string }>(
-        'SELECT chat_id AS chatId FROM generations WHERE id = ?',
-        [generationId],
-      );
-      if (!generation) {
-        throw new Error(`Generation not found: ${generationId}`);
-      }
-      let next = this.nextEventSeq.get(generationId);
-      if (next === undefined) {
-        const row = await this.driver.get<{ n: number }>(
-          'SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM turn_events WHERE generation_id = ?',
+    return this.driver
+      .withTransaction(async () => {
+        const generation = await this.driver.get<{ chatId: string }>(
+          'SELECT chat_id AS chatId FROM generations WHERE id = ?',
           [generationId],
         );
-        next = row?.n ?? 1;
-      }
-      const createdAt = now();
-      await this.driver.run(
-        'INSERT INTO turn_events (chat_id, generation_id, seq, type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-        [
-          generation.chatId,
+        if (!generation) {
+          throw new Error(`Generation not found: ${generationId}`);
+        }
+        let next = this.nextEventSeq.get(generationId);
+        if (next === undefined) {
+          const row = await this.driver.get<{ n: number }>(
+            'SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM turn_events WHERE generation_id = ?',
+            [generationId],
+          );
+          next = row?.n ?? 1;
+        }
+        const createdAt = now();
+        await this.driver.run(
+          'INSERT INTO turn_events (chat_id, generation_id, seq, type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          [
+            generation.chatId,
+            generationId,
+            next,
+            event.type,
+            JSON.stringify(event),
+            createdAt,
+          ],
+        );
+        this.nextEventSeq.set(generationId, next + 1);
+        if (event.type === 'narration') {
+          await this.driver.run(appendNarration, [event.text, generationId]);
+        }
+        return {
+          chatId: generation.chatId,
           generationId,
-          next,
-          event.type,
-          JSON.stringify(event),
+          seq: next,
+          type: event.type,
+          event,
           createdAt,
-        ],
-      );
-      this.nextEventSeq.set(generationId, next + 1);
-      if (event.type === 'narration') {
-        await this.driver.run(appendNarration, [event.text, generationId]);
-      }
-      await this.driver.commit();
-      return {
-        chatId: generation.chatId,
-        generationId,
-        seq: next,
-        type: event.type,
-        event,
-        createdAt,
-      };
-    } catch (error) {
-      await this.driver.rollback();
-      this.nextEventSeq.delete(generationId);
-      throw error;
-    }
+        };
+      })
+      .catch((error) => {
+        // The seq cache tracked writes that the rollback just undid.
+        this.nextEventSeq.delete(generationId);
+        throw error;
+      });
   }
 
   async listTurnEvents(generationId: string, sinceSeq = 0): Promise<TurnEventRow[]> {
@@ -554,8 +549,7 @@ export class PlatformDb {
     diffStat: VersionDiffStat | null = null,
     files: VersionFileChange[] | null = null,
   ): Promise<VersionRow> {
-    await this.driver.begin();
-    try {
+    return this.driver.withTransaction(async () => {
       const next = await this.driver.get<{ n: number }>(
         'SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM versions WHERE chat_id = ?',
         [chatId],
@@ -578,7 +572,6 @@ export class PlatformDb {
           files ? JSON.stringify(files) : null,
         ],
       );
-      await this.driver.commit();
       return {
         id,
         chatId,
@@ -591,10 +584,7 @@ export class PlatformDb {
         diffStat: diffStat ?? null,
         files: files ?? null,
       };
-    } catch (error) {
-      await this.driver.rollback();
-      throw error;
-    }
+    });
   }
 
   async listVersions(chatId: string): Promise<VersionRow[]> {
@@ -632,8 +622,7 @@ export class PlatformDb {
     chatId: string,
     blueprint: DashboardBlueprint,
   ): Promise<BlueprintRevisionRow> {
-    await this.driver.begin();
-    try {
+    return this.driver.withTransaction(async () => {
       const next = await this.driver.get<{ n: number }>(
         'SELECT COALESCE(MAX(revision), 0) + 1 AS n FROM blueprint_revisions WHERE chat_id = ?',
         [chatId],
@@ -645,7 +634,6 @@ export class PlatformDb {
         'INSERT INTO blueprint_revisions (id, chat_id, revision, blueprint_json, approved_at, created_at) VALUES (?, ?, ?, ?, NULL, ?)',
         [id, chatId, revision, JSON.stringify(blueprint), createdAt],
       );
-      await this.driver.commit();
       return {
         id,
         chatId,
@@ -655,10 +643,7 @@ export class PlatformDb {
         approvedAt: null,
         createdAt,
       };
-    } catch (error) {
-      await this.driver.rollback();
-      throw error;
-    }
+    });
   }
 
   // At most one approved revision per chat: clearing every other revision's
@@ -668,15 +653,17 @@ export class PlatformDb {
     chatId: string,
     revisionId: string,
   ): Promise<BlueprintRevisionRow | null> {
-    await this.driver.begin();
-    try {
+    // The "not found" branch never wrote anything, so committing an empty
+    // transaction there is behaviourally identical to the old rollback — there
+    // is nothing to undo either way. A returned sentinel (not a thrown error)
+    // keeps that a normal, non-exceptional outcome, matching the original.
+    const found = await this.driver.withTransaction(async () => {
       const existing = await this.driver.get<{ id: string }>(
         'SELECT id FROM blueprint_revisions WHERE chat_id = ? AND id = ?',
         [chatId, revisionId],
       );
       if (!existing) {
-        await this.driver.rollback();
-        return null;
+        return false;
       }
       await this.driver.run(
         'UPDATE blueprint_revisions SET approved_at = NULL WHERE chat_id = ? AND id <> ?',
@@ -686,12 +673,9 @@ export class PlatformDb {
         'UPDATE blueprint_revisions SET approved_at = ? WHERE chat_id = ? AND id = ?',
         [now(), chatId, revisionId],
       );
-      await this.driver.commit();
-    } catch (error) {
-      await this.driver.rollback();
-      throw error;
-    }
-    return this.getBlueprintRevision(chatId, revisionId);
+      return true;
+    });
+    return found ? this.getBlueprintRevision(chatId, revisionId) : null;
   }
 
   async listBlueprintRevisions(chatId: string): Promise<BlueprintRevisionRow[]> {
@@ -729,8 +713,7 @@ export class PlatformDb {
   ): Promise<ConnectionSummary> {
     const id = randomUUID();
     const createdAt = now();
-    await this.driver.begin();
-    try {
+    return this.driver.withTransaction(async () => {
       const existing = await this.driver.get<{ id: string }>(
         'SELECT id FROM connections WHERE chat_id = ? AND name = ?',
         [chatId, name],
@@ -750,12 +733,8 @@ export class PlatformDb {
           createdAt,
         ],
       );
-      await this.driver.commit();
       return { id, chatId, name, kind, config, createdAt };
-    } catch (error) {
-      await this.driver.rollback();
-      throw error;
-    }
+    });
   }
 
   async listConnections(chatId: string): Promise<ConnectionSummary[]> {
@@ -822,8 +801,7 @@ export class PlatformDb {
   }
 
   async deleteChat(chatId: string): Promise<boolean> {
-    await this.driver.begin();
-    try {
+    return this.driver.withTransaction(async () => {
       await this.driver.run(
         'UPDATE versions SET restored_from_version_id = NULL WHERE chat_id = ?',
         [chatId],
@@ -837,12 +815,8 @@ export class PlatformDb {
       ]);
       await this.driver.run('DELETE FROM connections WHERE chat_id = ?', [chatId]);
       const result = await this.driver.run('DELETE FROM chats WHERE id = ?', [chatId]);
-      await this.driver.commit();
       return result.changes > 0;
-    } catch (error) {
-      await this.driver.rollback();
-      throw error;
-    }
+    });
   }
 
   async countVersions(chatId: string): Promise<number> {

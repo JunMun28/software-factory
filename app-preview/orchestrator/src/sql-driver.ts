@@ -27,10 +27,38 @@ export interface SqlDriver {
   all<T>(sql: string, params?: unknown[]): Promise<T[]>;
   get<T>(sql: string, params?: unknown[]): Promise<T | undefined>;
   run(sql: string, params?: unknown[]): Promise<RunResult>;
-  begin(): Promise<void>;
-  commit(): Promise<void>;
-  rollback(): Promise<void>;
+  /**
+   * Run `fn` inside a transaction, serialized against every other
+   * withTransaction on this driver. Commits on return, rolls back on throw and
+   * rethrows. NOT reentrant — calling it from inside `fn` deadlocks.
+   */
+  withTransaction<T>(fn: () => Promise<T>): Promise<T>;
   close(): Promise<void>;
+}
+
+/**
+ * Serializes transaction bodies onto one chain.
+ *
+ * Every driver here owns exactly ONE connection (SQLite's DatabaseSync; the
+ * MssqlDriver's single `tx` field), so two overlapping begin…commit blocks
+ * share one transaction scope. Before this gate existed, chat B's begin() threw
+ * and B's catch called rollback(), which discarded chat A's already-inserted
+ * rows — silent turn-history loss under exactly the concurrency this service is
+ * built for. plans/015.
+ */
+class TransactionGate {
+  private tail: Promise<void> = Promise.resolve();
+
+  run<T>(fn: () => Promise<T>): Promise<T> {
+    // Chain onto the tail whether the previous body settled or threw; a failed
+    // transaction must not wedge the queue.
+    const next = this.tail.then(fn, fn);
+    this.tail = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  }
 }
 
 /**
@@ -64,6 +92,7 @@ export function translatePlaceholders(sql: string): string {
 export class SqliteDriver implements SqlDriver {
   readonly dialect = 'sqlite' as const;
   private readonly db: DatabaseSync;
+  private readonly gate = new TransactionGate();
 
   constructor(target: string) {
     if (target !== ':memory:') {
@@ -99,16 +128,30 @@ export class SqliteDriver implements SqlDriver {
     return { changes: Number(result.changes) };
   }
 
-  async begin(): Promise<void> {
+  private async begin(): Promise<void> {
     this.db.exec('BEGIN IMMEDIATE');
   }
 
-  async commit(): Promise<void> {
+  private async commit(): Promise<void> {
     this.db.exec('COMMIT');
   }
 
-  async rollback(): Promise<void> {
+  private async rollback(): Promise<void> {
     this.db.exec('ROLLBACK');
+  }
+
+  async withTransaction<T>(fn: () => Promise<T>): Promise<T> {
+    return this.gate.run(async () => {
+      await this.begin();
+      try {
+        const result = await fn();
+        await this.commit();
+        return result;
+      } catch (error) {
+        await this.rollback();
+        throw error;
+      }
+    });
   }
 
   async close(): Promise<void> {
@@ -121,6 +164,7 @@ export class MssqlDriver implements SqlDriver {
   private readonly pool: import('mssql').ConnectionPool;
   private readonly mssql: typeof import('mssql');
   private tx: import('mssql').Transaction | null = null;
+  private readonly gate = new TransactionGate();
 
   constructor(mssql: typeof import('mssql'), pool: import('mssql').ConnectionPool) {
     this.mssql = mssql;
@@ -170,7 +214,7 @@ export class MssqlDriver implements SqlDriver {
     return { changes: affected };
   }
 
-  async begin(): Promise<void> {
+  private async begin(): Promise<void> {
     if (this.tx) {
       throw new Error('MssqlDriver: a transaction is already open');
     }
@@ -179,7 +223,7 @@ export class MssqlDriver implements SqlDriver {
     this.tx = tx;
   }
 
-  async commit(): Promise<void> {
+  private async commit(): Promise<void> {
     if (!this.tx) {
       throw new Error('MssqlDriver: commit without an open transaction');
     }
@@ -188,13 +232,27 @@ export class MssqlDriver implements SqlDriver {
     await tx.commit();
   }
 
-  async rollback(): Promise<void> {
+  private async rollback(): Promise<void> {
     if (!this.tx) {
       return; // rollback on a closed transaction is a no-op, not an error
     }
     const tx = this.tx;
     this.tx = null;
     await tx.rollback();
+  }
+
+  async withTransaction<T>(fn: () => Promise<T>): Promise<T> {
+    return this.gate.run(async () => {
+      await this.begin();
+      try {
+        const result = await fn();
+        await this.commit();
+        return result;
+      } catch (error) {
+        await this.rollback();
+        throw error;
+      }
+    });
   }
 
   async close(): Promise<void> {
