@@ -41,6 +41,43 @@ const fakeBridgeProxy = {
   },
 };
 
+/**
+ * A provider whose start() is held open until the test releases it. The
+ * existing FakeSandboxProvider resolves immediately, so nothing could express
+ * "a stop/remove/sweep landed while KubeSandbox.start was still waiting for a
+ * rollout" — the window that leaks real Deployments. See plans/013.
+ */
+class DeferredSandboxProvider implements SandboxProvider {
+  readonly started: string[] = [];
+  readonly stopped: string[] = [];
+  private release?: (handle: SandboxHandle) => void;
+
+  async start(chatId: string, _options?: SandboxStartOptions): Promise<SandboxHandle> {
+    this.started.push(chatId);
+    return new Promise<SandboxHandle>((resolve) => {
+      this.release = resolve;
+    });
+  }
+
+  /** Resolve the pending start with a handle, as a real provider eventually would. */
+  finish(chatId: string, options: { previewHost?: string } = {}): void {
+    const handle: SandboxHandle = {
+      targetUrl: `http://sandbox/${chatId}`,
+      ...(options.previewHost
+        ? {
+            previewHost: options.previewHost,
+            externalPreviewUrl: `http://${options.previewHost}/`,
+          }
+        : {}),
+      resync: async () => {},
+      stop: async () => {
+        this.stopped.push(chatId);
+      },
+    };
+    this.release?.(handle);
+  }
+}
+
 /** Captures the sweep callback so a test can fire it deterministically. */
 class FakeScheduler implements IntervalScheduler {
   callback?: () => void;
@@ -94,6 +131,28 @@ function makeManager(options: {
       now = ms;
     },
   };
+}
+
+interface DeferredHarness {
+  manager: PreviewManager;
+  provider: DeferredSandboxProvider;
+}
+
+function makeDeferredManager(): DeferredHarness {
+  const provider = new DeferredSandboxProvider();
+  const manager = new PreviewManager({
+    workspacesRoot: '/unused',
+    previewRoot: '/unused',
+    sandboxProvider: provider,
+    portAllocator: new FakePortAllocator(),
+    bridgeProxy: fakeBridgeProxy,
+  } as never);
+  return { manager, provider };
+}
+
+/** Let the microtask queue drain so a just-released promise's `.then`s run. */
+async function flushMicrotasks(): Promise<void> {
+  await new Promise((resolve) => setImmediate(resolve));
 }
 
 describe('PreviewManager idle GC sweep', () => {
@@ -249,5 +308,120 @@ describe('PreviewManager concurrency cap', () => {
     for (const id of ['a', 'b', 'c', 'd', 'e', 'f']) {
       expect(manager.status(id).status).toBe('ready');
     }
+  });
+});
+
+describe('PreviewManager start-vs-stop guard (plans/013)', () => {
+  it('stop() during a pending start tears the late handle down', async () => {
+    const { manager, provider } = makeDeferredManager();
+
+    void manager.ensure('c1');
+    await manager.stop('c1');
+    provider.finish('c1');
+    await flushMicrotasks();
+
+    expect(provider.stopped).toContain('c1');
+    expect(manager.status('c1').status).toBe('stopped');
+  });
+
+  it('remove() during a pending start registers no preview host', async () => {
+    const { manager, provider } = makeDeferredManager();
+
+    void manager.ensure('c1');
+    await manager.remove('c1');
+    provider.finish('c1', { previewHost: 'c1.preview.test' });
+    await flushMicrotasks();
+
+    expect(manager.resolvePreviewTarget('c1.preview.test')).toBeUndefined();
+  });
+
+  it('stop() waits for the sandbox to be torn down', async () => {
+    let releaseStop: (() => void) | undefined;
+    const provider: SandboxProvider = {
+      async start(chatId: string) {
+        return {
+          targetUrl: `http://sandbox/${chatId}`,
+          resync: async () => {},
+          stop: () =>
+            new Promise<void>((resolve) => {
+              releaseStop = resolve;
+            }),
+        } satisfies SandboxHandle;
+      },
+    };
+    const manager = new PreviewManager({
+      workspacesRoot: '/unused',
+      previewRoot: '/unused',
+      sandboxProvider: provider,
+      portAllocator: new FakePortAllocator(),
+      bridgeProxy: fakeBridgeProxy,
+    } as never);
+
+    await manager.ensure('c1');
+
+    let settled = false;
+    const stopPromise = manager.stop('c1').then(() => {
+      settled = true;
+    });
+
+    // Race against a sentinel resolved on the next macrotask: if stop()
+    // settled before the sandbox teardown resolved, this would already be
+    // true here.
+    await flushMicrotasks();
+    expect(settled).toBe(false);
+
+    releaseStop?.();
+    await stopPromise;
+    expect(settled).toBe(true);
+  });
+
+  it('dispose() awaits every sandbox teardown', async () => {
+    // stop() only resolves when the test explicitly releases it, so this can
+    // tell a fire-and-forget dispose() (resolves immediately, before either
+    // teardown lands) apart from one that genuinely waits.
+    const stopped: string[] = [];
+    const releasers: Record<string, () => void> = {};
+    const provider: SandboxProvider = {
+      async start(chatId: string) {
+        return {
+          targetUrl: `http://sandbox/${chatId}`,
+          resync: async () => {},
+          stop: () =>
+            new Promise<void>((resolve) => {
+              releasers[chatId] = () => {
+                stopped.push(chatId);
+                resolve();
+              };
+            }),
+        } satisfies SandboxHandle;
+      },
+    };
+    const manager = new PreviewManager({
+      workspacesRoot: '/unused',
+      previewRoot: '/unused',
+      sandboxProvider: provider,
+      portAllocator: new FakePortAllocator(),
+      bridgeProxy: fakeBridgeProxy,
+    } as never);
+
+    await manager.ensure('c1');
+    await manager.ensure('c2');
+
+    let disposed = false;
+    const disposePromise = Promise.resolve(manager.dispose()).then(() => {
+      disposed = true;
+    });
+
+    await flushMicrotasks();
+    expect(disposed).toBe(false);
+    expect(stopped).toEqual([]);
+
+    releasers['c1']?.();
+    releasers['c2']?.();
+    await disposePromise;
+
+    expect(disposed).toBe(true);
+    expect(stopped).toContain('c1');
+    expect(stopped).toContain('c2');
   });
 });
