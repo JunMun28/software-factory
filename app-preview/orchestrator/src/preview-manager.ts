@@ -106,6 +106,14 @@ interface PreviewRecord {
    * unregister it. Undefined for local (localhost-bridge) previews.
    */
   previewHost?: string;
+  /**
+   * Bumped by every teardown. `runEnsure` captures it and bails after each
+   * await when it no longer matches — otherwise a stop()/remove()/sweep that
+   * lands during a (minutes-long) sandbox start is invisible to the start,
+   * which then registers a handle and a Host route onto a dead record. The old
+   * failed-only guard caught status 'failed' but never 'stopped'. plans/013.
+   */
+  startToken: number;
 }
 
 export class PreviewManager {
@@ -287,7 +295,7 @@ export class PreviewManager {
   private getOrCreateRecord(chatId: string): PreviewRecord {
     let record = this.records.get(chatId);
     if (!record) {
-      record = { status: 'stopped', lastActivity: this.clock() };
+      record = { status: 'stopped', lastActivity: this.clock(), startToken: 0 };
       this.records.set(chatId, record);
     }
     return record;
@@ -364,8 +372,12 @@ export class PreviewManager {
 
   private async runEnsure(chatId: string, record: PreviewRecord): Promise<void> {
     this.setStatus(chatId, record, { status: 'starting' });
+    const token = record.startToken;
 
     const onExit = (error: Error): void => {
+      if (isStale(this, chatId, record, token)) {
+        return;
+      }
       if (record.status !== 'starting' && record.status !== 'ready') {
         return;
       }
@@ -380,8 +392,11 @@ export class PreviewManager {
 
     try {
       const handle = await this.sandbox.start(chatId, { onExit });
-      if (isFailed(record)) {
-        void handle.stop();
+      if (isStale(this, chatId, record, token)) {
+        // A stop/remove/sweep landed while this start was in flight. The
+        // handle we just got is the only reference to a live Deployment, so
+        // tear it down here or it leaks forever (nothing else can see it).
+        await handle.stop().catch(() => {});
         return;
       }
       record.sandbox = handle;
@@ -413,8 +428,10 @@ export class PreviewManager {
         targetUrl: handle.targetUrl,
         port: bridgePort,
       });
-      if (isFailed(record)) {
-        void bridgeHandle.close();
+      if (isStale(this, chatId, record, token)) {
+        // At this point record.sandbox is already set, so a teardown will
+        // handle the sandbox; only the orphaned bridge needs closing here.
+        await bridgeHandle.close();
         return;
       }
       record.bridgeHandle = bridgeHandle;
@@ -423,11 +440,11 @@ export class PreviewManager {
         url: bridgeHandle.url,
       });
     } catch (error) {
-      if (isFailed(record)) {
+      if (isStale(this, chatId, record, token)) {
         return;
       }
       const message = error instanceof Error ? error.message : String(error);
-      this.teardown(record);
+      await this.teardown(record);
       this.setStatus(chatId, record, { status: 'failed', error: message });
     }
   }
@@ -442,11 +459,17 @@ export class PreviewManager {
   private async teardown(record: PreviewRecord): Promise<void> {
     const sandbox = record.sandbox;
     const bridge = record.bridgeHandle;
+    record.startToken += 1;
     record.sandbox = undefined;
     record.bridgeHandle = undefined;
     this.unregisterPreviewHost(record);
     record.url = undefined;
     await Promise.allSettled([sandbox?.stop(), bridge?.close()]);
+  }
+
+  /** True when `record` is still the live record registered for `chatId`. */
+  hasRecord(chatId: string, record: PreviewRecord): boolean {
+    return this.records.get(chatId) === record;
   }
 
   /** Drop a host-routed sandbox's `Host → target` mapping (no-op for local). */
@@ -494,12 +517,23 @@ export class PreviewManager {
 }
 
 /**
- * Reads `record.status` through a function boundary so the check is not affected
- * by TypeScript's control-flow narrowing — the status can be mutated
- * asynchronously by the sandbox `onExit` callback between awaits.
+ * True when an in-flight start no longer owns its record: the preview failed,
+ * a teardown bumped the start token (stop / remove / idle sweep / capacity
+ * eviction), or the record was dropped from the map entirely by remove().
+ * Read through a function boundary so TypeScript's control-flow narrowing does
+ * not cache the values across an await.
  */
-function isFailed(record: PreviewRecord): boolean {
-  return record.status === 'failed';
+function isStale(
+  manager: PreviewManager,
+  chatId: string,
+  record: PreviewRecord,
+  token: number,
+): boolean {
+  return (
+    record.status === 'failed' ||
+    record.startToken !== token ||
+    !manager.hasRecord(chatId, record)
+  );
 }
 
 /** Lowercase a Host and drop any `:port` suffix, for host-map keys + lookups. */

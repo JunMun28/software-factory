@@ -4459,3 +4459,22 @@ Deviations / conservative choices where the doc was silent:
 - Net: the whole "fully cloud" loop is live — a chat → per-chat pod → browser
   preview with overlay → edits reflected via git resync — on the kind cluster.
   All still UNCOMMITTED.
+
+## Plan 013 — sandbox lifecycle (stop leaking sandbox pods), branch advisor/013-sandbox-lifecycle
+
+- Worktree started stale (HEAD `3b36cab`, `app-preview/` missing). Reset to
+  `7645d10` per the plan's Step 0 instructions before doing anything else.
+- All 4 new `sandbox-lifecycle.test.ts` tests confirmed FAIL pre-fix, then
+  PASS post-fix, exactly as the plan's Step 1/2/4 verification tables predict.
+  Full suite: 188 baseline → 192 green (24 files) after all steps;
+  `npm run typecheck` clean throughout.
+
+### Deviations
+
+- The plan's own suggested doc-comment for `PreviewRecord.startToken`
+  (Step 4) contains the literal string `` `isFailed` `` — but the plan's Done
+  criteria requires `grep -c "isFailed" src/preview-manager.ts` to return 0.
+  These two instructions conflict. Picked the conservative option: kept the
+  comment's intent (explaining why the old guard was insufficient) but reworded
+  it to "the old failed-only guard" instead of naming the removed function, so
+  the machine-checkable Done criterion holds. No behavior change.
