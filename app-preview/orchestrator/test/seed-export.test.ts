@@ -82,7 +82,7 @@ async function makeContext(): Promise<Context> {
   const app = createApp({ chatStore, previewManager });
 
   cleanup.push(async () => {
-    previewManager.dispose();
+    await previewManager.dispose();
     await db.close();
     await rm(root, { recursive: true, force: true });
   });

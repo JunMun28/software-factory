@@ -183,7 +183,7 @@ describe('Connections HTTP API', () => {
 
   afterAll(async () => {
     await server.close();
-    previewManager.dispose();
+    await previewManager.dispose();
     await platformDb.close();
     await rm(workspacesRoot, { recursive: true, force: true });
   });

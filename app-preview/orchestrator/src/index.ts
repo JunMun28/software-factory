@@ -19,18 +19,29 @@ const app = createApp({ chatStore, previewManager });
 
 let shuttingDown = false;
 
-function shutdown(signal: string): void {
+/** Give sandbox teardown this long before exiting anyway. */
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+
+async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) {
     return;
   }
   shuttingDown = true;
   console.log(`Received ${signal}, shutting down preview servers…`);
-  previewManager.dispose();
+  // Await it: dispose() deletes each chat's sandbox Deployment, and exiting
+  // first orphaned every one of them (plans/013). Bounded so a wedged k8s API
+  // call cannot hold the pod past its grace period.
+  await Promise.race([
+    previewManager.dispose(),
+    new Promise((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
+  ]).catch((error) => {
+    console.error('Preview teardown failed during shutdown:', error);
+  });
   process.exit(0);
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
 const server = serve(
   {

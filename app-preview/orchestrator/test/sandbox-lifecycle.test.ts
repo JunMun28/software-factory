@@ -172,7 +172,7 @@ describe('PreviewManager idle GC sweep', () => {
     expect(manager.status('watched').status).toBe('ready');
     expect(provider.stopped).toEqual(['idle']);
 
-    manager.dispose();
+    await manager.dispose();
     expect(scheduler.cancelled).toBe(true);
   });
 
