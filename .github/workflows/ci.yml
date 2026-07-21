@@ -52,6 +52,34 @@ jobs:
       - name: task verify
         run: task verify
 
+  verify-appview:
+    runs-on: ubuntu-latest
+    # The ng-v0 half (app-preview/) is two npm projects with their own
+    # lockfiles, outside the repo-root Angular workspace — the `verify` job's
+    # root `npm ci` does not install them. Its own job so it runs in parallel
+    # and a failure names the right half of the repo. See plans/012.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install app-preview dependencies
+        run: task appview-install
+
+      - name: Typecheck + test
+        run: |
+          task appview-typecheck
+          task appview-test
+
   test-mssql:
     runs-on: ubuntu-latest
     services:

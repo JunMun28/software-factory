@@ -107,6 +107,27 @@ tasks:
       - npx ng test console
       - npx ng test shared
 
+  # The ng-v0 half (app-preview/): its own npm projects with their own
+  # lockfiles, so they need their own install. Until this recipe existed,
+  # `task verify` went green without ever running the orchestrator's ~24 test
+  # files or the UI's 45 specs — see plans/012.
+  appview-install:
+    desc: Install the app-preview orchestrator + UI dependencies
+    cmds:
+      - cd app-preview/orchestrator && npm ci
+      - cd app-preview/ui && npm ci
+
+  appview-test:
+    desc: ng-v0 orchestrator + UI unit tests (vitest + ng test)
+    cmds:
+      - cd app-preview/orchestrator && npm test
+      - cd app-preview/ui && npm test
+
+  appview-typecheck:
+    desc: ng-v0 orchestrator typecheck (tsc --noEmit)
+    cmds:
+      - cd app-preview/orchestrator && npm run typecheck
+
   # Frontend production build of BOTH apps (catches template/type errors).
   build:
     desc: Production build of both apps (intake + console)
@@ -136,11 +157,13 @@ tasks:
   # Everything: lint + backend tests + web tests + build + smoke. Green = safe.
   # PARITY with the old `make verify`.
   verify:
-    desc: "Everything: lint + pytest + vitest(x3) + build(x2) + smoke. Green = safe"
+    desc: "Everything: lint + pytest + vitest(x3) + appview + build(x2) + smoke. Green = safe"
     cmds:
       - task: lint
       - task: test
       - task: test-web
+      - task: appview-typecheck
+      - task: appview-test
       - task: build
       - task: smoke
       - echo ""
