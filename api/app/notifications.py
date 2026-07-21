@@ -125,6 +125,18 @@ def notify_gate_raised(db: Session, req: Request) -> None:
     )
 
 
+def notify_import_rejected(req: Request, reason: str) -> None:
+    """The factory gate rejected an imported sandbox edit — tell the requester so
+    they keep editing in the sandbox where they already were (ng-v0 bridge)."""
+    _notify_requester(
+        req,
+        "Software Factory: sandbox edit needs another pass",
+        f"{req.ref} {req.title}: the factory gate did not pass your imported "
+        f"edit. {reason.strip()[:400]} Keep editing in the sandbox and send it "
+        "back when ready.",
+    )
+
+
 def notify_escalation(db: Session, req: Request) -> None:
     _notify(
         db,

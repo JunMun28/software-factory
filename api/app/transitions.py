@@ -90,6 +90,7 @@ DECISIVE_ACTIONS = (
     "deploy_approval_failed",
     "preview_accepted",
     "changes_requested",
+    "import_edited",
     "rejected_merge",
     "rejected_deploy",
     "sent_back",
@@ -399,6 +400,26 @@ def _ev_request_changes(db: Session, req: Request, actor: Actor, params: dict) -
     )
 
 
+def _ev_import_edit(db: Session, req: Request, actor: Actor, params: dict) -> None:
+    emit(
+        db,
+        req,
+        "milestone_summary",
+        f"Sandbox edit imported by {actor.name} — round {req.preview_round} "
+        "re-verifying at review",
+        actor=actor.name,
+        bot=False,
+        broadcast=True,
+        payload={
+            "Ref": req.ref,
+            "round": req.preview_round,
+            "versions": params.get("versions"),
+            "diffstat": params.get("diffstat"),
+            "head_sha": params.get("head_sha"),
+        },
+    )
+
+
 def _ev_advance_stage(db: Session, req: Request, actor: Actor, params: dict) -> None:
     if not params.get("announce"):
         return  # the AgentRunner advances silently; only the simulator announces (feed parity)
@@ -604,6 +625,31 @@ TABLE: dict[str, Transition] = {t.name: t for t in (
         audit_action="changes_requested",
         replay_actions=("changes_requested",),
         conflict_detail=lambda r: f"Cannot request changes on a {r.status} request",
+    ),
+    Transition(
+        # ng-v0 bridge, piece 2: a sandbox edit the factory RE-PROVED under its
+        # own gate lands directly (build/architecture skipped — the code already
+        # exists). Same accept-preview precondition as request_changes, but the
+        # work is already done, so resume at REVIEW, not architecture. Bumps the
+        # preview round exactly like request_changes so review → begin_preview
+        # builds a fresh round. Machine-applied by the runner once the gate is
+        # green, but attributed to the REQUESTER (ng-v0 identity), never Factory.
+        name="import_edit",
+        pre=Pre(status_in=(APPROVED,), gate=GATE_ACCEPT_PREVIEW),
+        effects=lambda p: {
+            "gate": None,
+            "stage": "review",
+            "preview_round": Request.preview_round + 1,
+            "sim_step": 0,
+            "stage_entered_at": utcnow(),
+            "needs_human": False,
+            "needs_human_reason": None,
+        },
+        events=_ev_import_edit,
+        audit_action="import_edited",
+        audit_note=lambda p: p.get("note"),
+        replay_actions=("import_edited",),
+        conflict_detail=lambda r: f"Cannot import a sandbox edit on a {r.status} request",
     ),
     Transition(
         # A human's structured "no" at the merge gate (self-harness analysis

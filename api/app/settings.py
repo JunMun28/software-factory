@@ -311,6 +311,20 @@ def preview_enabled() -> bool:
     return app_deploy_enabled() and PREVIEW
 
 
+# ---------- ng-v0 bridge: import a sandbox edit directly (piece 2) ----------
+# Off by default. When on (AND preview_enabled()), the requester can post a git
+# bundle of their ng-v0 sandbox session to /preview/import-edit; the factory
+# re-proves it under its own gate and, on green, fast-forwards the work branch
+# and resumes at review. Per-call read so tests flip it with monkeypatch.
+def import_edit_enabled() -> bool:
+    return os.environ.get("FACTORY_IMPORT_EDIT", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def app_deploy_enabled() -> bool:
     """B3 build+deploy is active only with a git backbone AND a registry AND the
     switch. Any one unset -> B2 behavior (merge ends at main)."""

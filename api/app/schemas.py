@@ -449,6 +449,30 @@ class PreviewChangesIn(BaseModel):
     operator_id: int | None = None
 
 
+class ImportEditVersion(BaseModel):
+    """One sandbox Version: its commit sha and the chat turn that produced it."""
+    sha: str = Field(pattern=r"^[0-9a-fA-F]{40}$")
+    message: str = Field(default="", max_length=2000)
+
+
+class ImportEditIn(BaseModel):
+    """A sandbox (ng-v0) edit session posted back for direct apply."""
+    bundle: str = Field(min_length=1)  # base64 git bundle of the Version chain
+    summary: str = Field(default="", max_length=8000)
+    versions: list[ImportEditVersion] = Field(min_length=1)
+    actor: str = Field(default="", max_length=80)
+    operator_id: int | None = None
+
+
+class ImportEditOut(BaseModel):
+    import_id: int
+    request_id: int
+    status: str
+    round: int
+    head_sha: str
+    versions: int
+
+
 class PreviewFeedbackOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     round: int
@@ -460,6 +484,14 @@ class PreviewFeedbackOut(BaseModel):
     created_at: datetime
 
 
+class PreviewSeedOut(BaseModel):
+    """ng-v0 bridge: the clone source a sandbox seeds from — the request's
+    read-only git-daemon URL (``GIT_REMOTE_BASE/<ref>``) at the previewed head
+    sha. Present only when the preview is `editable`."""
+    url: str
+    ref: str
+
+
 class PreviewStatusOut(BaseModel):
     round: int
     url: str | None = None
@@ -468,6 +500,11 @@ class PreviewStatusOut(BaseModel):
     digest: str | None = None
     state: str
     feedback: list[PreviewFeedbackOut] = Field(default_factory=list)
+    # ng-v0 bridge (piece 2): the requester may edit this preview conversationally
+    # in an ng-v0 sandbox when import-edit is enabled AND the request is waiting at
+    # the accept gate. `seed` is where that sandbox clones from (null unless editable).
+    editable: bool = False
+    seed: PreviewSeedOut | None = None
 
 
 class SendBackToStageIn(BaseModel):

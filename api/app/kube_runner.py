@@ -47,6 +47,7 @@ from . import (
     deploy_manifests,
     harness,
     intents,
+    notifications,
     registry,
     settings,
     simulator,
@@ -61,6 +62,7 @@ from .kube_jobs import (
     KUBE_STAGES,
     REQUEST_STAGE,
     gate_job_manifest,
+    import_gate_job_manifest,
     job_name,
     ndjson_events,
     parse_digest,
@@ -73,10 +75,12 @@ from .log_scrub import scrub_secrets
 from .models import (
     App,
     AuditEvent,
+    ImportEdit,
     Intent,
     PreviewFeedback,
     ProgressEvent,
     Request,
+    SpecLine,
     StageJob,
     utcnow,
 )
@@ -270,6 +274,7 @@ class KubeJobRunner:
         defer_spawn.update(self._drive_build_work(db, moved))
         self._reap_finished_previews(db, moved)
         self._sweep_preview_ttl(db, moved)
+        self._drive_import_edits(db, moved)
         for sj in db.scalars(
             select(StageJob)
             .where(
@@ -1603,6 +1608,284 @@ class KubeJobRunner:
             f"- {row.body}" + (f" (on {row.page_path})" if row.page_path else "")
             for row in rows
         )[:8192]
+
+    # ---------- ng-v0 bridge: import a sandbox edit directly (piece 2) ----------
+    def _drive_import_edits(self, db: Session, moved: list[str]) -> None:
+        """Grade each pending imported sandbox edit in the pipeline (never in the
+        HTTP request): spawn the factory gate on the temp ref, then land it
+        (green → fast-forward + spec record + resume at review) or reject it
+        (red → temp ref deleted, work branch untouched, requester notified)."""
+        if not (settings.preview_enabled() and settings.import_edit_enabled()):
+            return
+        imports = db.scalars(
+            select(ImportEdit)
+            .where(ImportEdit.status.in_(("pending", "grading")))
+            .order_by(ImportEdit.id)
+        ).all()
+        for imp in imports:
+            req = db.get(Request, imp.request_id)
+            try:
+                self._drive_one_import(db, req, imp, moved)
+            except Exception:
+                db.rollback()
+                log.exception(
+                    "import-edit driver failed for %s",
+                    req.ref if req is not None else imp.request_id,
+                )
+
+    def _drive_one_import(
+        self, db: Session, req: Request | None, imp: ImportEdit, moved: list[str]
+    ) -> None:
+        # Stale: the requester accepted / requested changes / cancelled since the
+        # bundle was posted. The conservative answer — drop it; work is untouched.
+        if (
+            req is None
+            or req.status != transitions.APPROVED
+            or req.gate != transitions.GATE_ACCEPT_PREVIEW
+            or req.stage != "preview"
+            or req.needs_human
+        ):
+            self._abandon_import(db, req, imp, moved)
+            return
+        if imp.status == "pending":
+            self._spawn_import_gate(db, req, imp, moved)
+            return
+        name = imp.gate_job
+        if not name:
+            imp.status = "pending"
+            db.commit()
+            return
+        view = self.client.get_job(name)
+        now = utcnow()
+        if view.phase == "running" and (
+            imp.deadline_at is None or now < imp.deadline_at
+        ):
+            return
+        view = self.client.get_job(name, capture=True)
+        tail = _bounded_logs_tail(view.logs)
+        self.client.delete_job(name, uid=imp.gate_uid)
+        if view.phase == "absent":
+            # never landed / vanished under us: re-spawn (bounded by the gate
+            # wall clock — a stuck import is dropped when its deadline passes)
+            imp.status = "pending"
+            imp.gate_job = None
+            imp.gate_uid = None
+            db.commit()
+            moved.append(f"{req.ref}: import gate absent — re-running")
+            return
+        if view.phase == "running":
+            self._reject_import(
+                db, req, imp, "the factory gate exceeded its wall clock", tail, moved
+            )
+            return
+        envelope = parse_envelope(view.termination_message)
+        if (envelope or {}).get("outcome") == "pass":
+            self._land_import(db, req, imp, tail, moved)
+            return
+        reason = (envelope or {}).get(
+            "reason"
+        ) or "the factory gate did not pass the imported edit"
+        self._reject_import(db, req, imp, reason, tail, moved)
+
+    def _spawn_import_gate(
+        self, db: Session, req: Request, imp: ImportEdit, moved: list[str]
+    ) -> bool:
+        name = f"sf-{req.ref.lower()}-import-r{imp.round}-gate"
+        intents.begin(db, f"spawn:{name}", intents.SPAWN_GATE_JOB, req.id, {"job": name})
+        imp.status = "grading"
+        imp.gate_job = name
+        imp.gate_uid = None
+        imp.deadline_at = utcnow() + timedelta(seconds=settings.GATE_WALL_CLOCK)
+        emit(
+            db,
+            req,
+            "step_summary",
+            f"Import gate grading round {imp.round} ({name})",
+            payload={
+                "Ref": req.ref,
+                "job": name,
+                "round": imp.round,
+                "head_sha": imp.head_sha,
+            },
+        )
+        db.commit()
+        try:
+            uid = self.client.create_job(
+                import_gate_job_manifest(req.ref, imp.round, imp.head_sha)
+            )
+        except Exception as exc:
+            intents.fail(db, f"spawn:{name}", {"error": str(exc)[:300]})
+            imp.status = "pending"
+            imp.gate_job = None
+            db.commit()
+            log.exception("import gate create failed for %s", req.ref)
+            return False
+        imp.gate_uid = uid
+        intents.complete(db, f"spawn:{name}", {"job": name, "uid": uid})
+        db.commit()
+        moved.append(f"{req.ref}: import gate spawned ({name})")
+        return True
+
+    def _land_import(
+        self,
+        db: Session,
+        req: Request,
+        imp: ImportEdit,
+        tail: str | None,
+        moved: list[str],
+    ) -> None:
+        """Green gate: fast-forward the work branch to the imported head, write
+        the spec record, and resume at review — all as one transaction (a spec
+        record and the branch move never drift apart)."""
+        ws = workspace.workspace_for(req)
+        diffstat = self._import_diffstat(ws, imp)
+        versions = imp.versions or []
+        lines = [
+            f"Preview round {imp.round} edited in the sandbox by {imp.actor} "
+            f"({len(versions)} checkpoint(s); {diffstat})."
+        ]
+        if (imp.summary or "").strip():
+            lines.append(f"Summary: {imp.summary.strip()}")
+        for index, version in enumerate(versions, 1):
+            message = (version.get("message") or "").strip()
+            lines.append(f"  {index}. {message or (version.get('sha') or '')[:12]}")
+        db.add(
+            SpecLine(
+                request=req,
+                order=len(req.spec_lines),
+                text="\n".join(lines),
+                prov=f"import {imp.round}",
+            )
+        )
+        # Resume at review: supersede the graded review rows so review RE-RUNS on
+        # the imported diff. architecture/red/green stay graded — never re-derived.
+        self._supersede_review_rows(db, req)
+        res = transitions.apply(
+            db,
+            req,
+            "import_edit",
+            actor=transitions.Actor(name=imp.actor),
+            params={
+                "versions": [version.get("message") for version in versions],
+                "diffstat": diffstat,
+                "head_sha": imp.head_sha,
+                "note": (
+                    f"imported {len(versions)} sandbox checkpoint(s) at round "
+                    f"{imp.round}"
+                ),
+            },
+            epoch=get_elector().epoch,
+            expected_stage="preview",
+        )
+        if isinstance(res, transitions.Loss):
+            db.rollback()
+            reloaded = db.get(ImportEdit, imp.id)
+            if reloaded is not None:
+                reloaded.status = "superseded"
+                reloaded.gate_tail = tail
+                db.commit()
+            log.info("%s: import_edit lost (%s)", req.ref, res.detail)
+            return
+        # CAS won (staged). Move the branch as the external side effect; roll the
+        # whole transaction back if it is no longer a clean fast-forward.
+        ff_error = workspace.fast_forward_work_branch(
+            ws, req.ref, imp.head_sha, imp.base_sha
+        )
+        if ff_error:
+            db.rollback()
+            reloaded = db.get(ImportEdit, imp.id)
+            reloaded_req = db.get(Request, imp.request_id)
+            if reloaded is not None and reloaded_req is not None:
+                self._reject_import(db, reloaded_req, reloaded, ff_error, tail, moved)
+            return
+        imp.status = "applied"
+        imp.gate_tail = tail
+        workspace.delete_ref(ws, imp.temp_ref)
+        db.commit()
+        res.notify()
+        moved.append(
+            f"{req.ref}: sandbox edit imported — review re-running "
+            f"(round {req.preview_round})"
+        )
+
+    def _reject_import(
+        self,
+        db: Session,
+        req: Request,
+        imp: ImportEdit,
+        reason: str,
+        tail: str | None,
+        moved: list[str],
+    ) -> None:
+        try:
+            ws = workspace.workspace_for(req)
+            workspace.delete_ref(ws, imp.temp_ref)  # work branch untouched
+        except Exception:
+            log.exception("import temp-ref cleanup failed for %s", imp.temp_ref)
+        imp.status = "rejected"
+        imp.gate_tail = tail or reason
+        emit(
+            db,
+            req,
+            "gate_event",
+            "Imported sandbox edit rejected by the factory gate — keep editing "
+            "in the sandbox",
+            body=(tail or reason)[:4000],
+            broadcast=True,
+            payload={
+                "gate": transitions.GATE_ACCEPT_PREVIEW,
+                "Ref": req.ref,
+                "round": imp.round,
+                "reason": reason[:2000],
+                "import_id": imp.id,
+            },
+        )
+        db.commit()
+        notifications.notify_import_rejected(req, reason)
+        moved.append(f"{req.ref}: imported edit rejected — {reason[:60]}")
+
+    def _abandon_import(
+        self, db: Session, req: Request | None, imp: ImportEdit, moved: list[str]
+    ) -> None:
+        imp.status = "superseded"
+        if req is not None:
+            try:
+                ws = workspace.workspace_for(req)
+                workspace.delete_ref(ws, imp.temp_ref)
+            except Exception:
+                log.exception("import temp-ref cleanup failed for %s", imp.temp_ref)
+        if imp.gate_job:
+            try:
+                self.client.delete_job(imp.gate_job, uid=imp.gate_uid)
+            except Exception:
+                log.exception("import gate cleanup failed for %s", imp.gate_job)
+        db.commit()
+        moved.append(
+            f"{req.ref if req is not None else imp.request_id}: "
+            "import abandoned — request left the preview gate"
+        )
+
+    def _supersede_review_rows(self, db: Session, req: Request) -> None:
+        rows = db.scalars(
+            select(StageJob).where(
+                StageJob.request_id == req.id,
+                StageJob.stage == "review",
+                StageJob.status != "superseded",
+            )
+        ).all()
+        for row in rows:
+            row.status = "superseded"
+
+    def _import_diffstat(self, ws, imp: ImportEdit) -> str:
+        try:
+            rows = workspace.numstat_at(ws, imp.base_sha, imp.head_sha)
+        except workspace.GitTimeout:
+            return "diffstat unavailable"
+        if not rows:
+            return "no file changes"
+        added = sum(row["added"] for row in rows)
+        removed = sum(row["removed"] for row in rows)
+        return f"+{added} −{removed} across {len(rows)} file(s)"
 
     def _drive_deploys(self, db: Session, moved: list[str]) -> None:
         if not settings.app_deploy_enabled():

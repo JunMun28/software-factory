@@ -15,11 +15,17 @@ event seam); losses resolve through api_helpers.conflict_response. These are
 HUMAN-initiated transitions: no epoch fence — valid from any replica.
 """
 
+import base64
+import binascii
+import re
+import tempfile
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import acceptance, settings, simulator, transitions
+from .. import acceptance, settings, simulator, transitions, workspace
 from ..agent_exec import runner_mode
 from ..api_helpers import conflict_response, get_request, pipeline, prospective_repo, to_out
 from ..auth import current_identity
@@ -28,6 +34,7 @@ from ..events import emit
 from ..models import (
     PIPELINE_STAGES,
     AuditEvent,
+    ImportEdit,
     PreviewFeedback,
     ProgressEvent,
     SpecLine,
@@ -37,11 +44,14 @@ from ..models import (
 from ..schemas import (
     AcceptanceItem,
     AcceptanceOut,
+    ImportEditIn,
+    ImportEditOut,
     Note,
     OperatorNote,
     PreviewAcceptIn,
     PreviewChangesIn,
     PreviewFeedbackOut,
+    PreviewSeedOut,
     PreviewStatusOut,
     RejectGateIn,
     RequestDetail,
@@ -157,14 +167,35 @@ def preview_status(rid: int, db: Session = Depends(get_db)):
         .order_by(PreviewFeedback.round, PreviewFeedback.order, PreviewFeedback.id)
     ).all()
     slug = r.app.key if r.app else r.ref.lower()
+    # ng-v0 bridge (piece 2): the preview is editable in a sandbox only when
+    # import-edit is on, the request is parked at the accept gate, and we know
+    # the previewed head sha to seed the clone from. `preview_enabled()` already
+    # implies GIT_REMOTE_BASE, so the seed URL is always well-formed here.
+    preview_sha = envelope.get("sha")
+    editable = (
+        settings.preview_enabled()
+        and settings.import_edit_enabled()
+        and r.gate == transitions.GATE_ACCEPT_PREVIEW
+        and bool(preview_sha)
+    )
+    seed = (
+        PreviewSeedOut(
+            url=f"{settings.GIT_REMOTE_BASE}/{r.ref.lower()}",
+            ref=preview_sha,
+        )
+        if editable
+        else None
+    )
     return PreviewStatusOut(
         round=r.preview_round + 1,
         url=(f"http://{slug}-preview.{settings.APP_INGRESS_DOMAIN}" if live else None),
         gate=r.gate if r.gate == transitions.GATE_ACCEPT_PREVIEW else None,
-        sha=envelope.get("sha"),
+        sha=preview_sha,
         digest=envelope.get("digest"),
         state=state,
         feedback=[PreviewFeedbackOut.model_validate(item) for item in feedback],
+        editable=editable,
+        seed=seed,
     )
 
 
@@ -249,6 +280,136 @@ def request_preview_changes(
     db.commit()
     changed.notify()
     return to_out(r, RequestDetail)
+
+
+@router.post(
+    "/api/requests/{rid}/preview/import-edit",
+    response_model=ImportEditOut,
+    status_code=202,
+)
+def import_preview_edit(rid: int, body: ImportEditIn, db: Session = Depends(get_db)):
+    """ng-v0 bridge (piece 2): accept a sandbox edit as a git bundle, fetch it
+    onto a TEMP ref, and queue it for the factory gate.
+
+    The gate runs asynchronously in the pipeline (tick loop), never here — a 202
+    means "accepted for grading", not "landed". Green fast-forwards the work
+    branch and resumes at review (new preview round); red notifies the requester
+    and leaves the work branch untouched. All synchronous validation
+    (preconditions, concurrency, commit chain) happens here so a bad bundle is
+    rejected immediately with an HTTP error."""
+    if not (settings.preview_enabled() and settings.import_edit_enabled()):
+        raise HTTPException(404, "Preview import-edit is not enabled")
+    r = get_request(db, rid)
+    actor = (
+        _operator_actor(db, body.operator_id)
+        if body.operator_id is not None
+        else Actor(name=body.actor or r.reporter)
+    )
+    # Precondition: exactly the accept-preview wait state (same as request_changes).
+    if not (
+        r.status == transitions.APPROVED
+        and r.gate == transitions.GATE_ACCEPT_PREVIEW
+        and r.stage == "preview"
+    ):
+        raise HTTPException(
+            409,
+            "Request is not waiting at the preview-acceptance gate "
+            f"(status={r.status!r}, gate={r.gate!r}, stage={r.stage!r})",
+        )
+    # One in-flight import per request: a second post while one is pending/grading
+    # is a client double-fire, not a new edit.
+    if db.scalar(
+        select(ImportEdit.id).where(
+            ImportEdit.request_id == r.id,
+            ImportEdit.status.in_(("pending", "grading")),
+        )
+    ) is not None:
+        raise HTTPException(409, "An imported edit is already being graded")
+
+    ws = workspace.workspace_for(r)
+    if not (ws / ".git").exists():
+        raise HTTPException(409, "Request has no workspace repository to import into")
+    work_head = workspace.head_sha(ws, workspace.work_branch(r.ref))
+    if not (isinstance(work_head, str) and re.fullmatch(r"[0-9a-f]{40}", work_head)):
+        raise HTTPException(409, "Work-branch head could not be read")
+
+    try:
+        bundle_bytes = base64.b64decode(body.bundle, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(422, "bundle is not valid base64")
+    if not bundle_bytes:
+        raise HTTPException(422, "bundle is empty")
+
+    round_number = r.preview_round
+    temp_ref = workspace.import_ref(round_number)
+    with tempfile.TemporaryDirectory() as tmp:
+        bundle_path = Path(tmp) / "import.bundle"
+        bundle_path.write_bytes(bundle_bytes)
+        # Concurrency: every prerequisite the bundle needs must exist here — a
+        # moved work branch (the seed sha is gone) fails verify → re-seed.
+        if not workspace.verify_bundle(ws, bundle_path):
+            raise HTTPException(
+                409,
+                "Bundle prerequisites are missing — the preview moved; re-seed "
+                "from the current preview and replay the edits",
+            )
+        workspace.delete_ref(ws, temp_ref)  # clear a stale ref from a prior reject
+        fetch_error = workspace.fetch_bundle(ws, bundle_path, temp_ref)
+    if fetch_error:
+        raise HTTPException(422, f"Could not fetch the bundle: {fetch_error}")
+
+    imported_head = workspace.head_sha(ws, temp_ref)
+    chain = workspace.commit_chain(ws, work_head, imported_head)
+    if chain is None:
+        workspace.delete_ref(ws, temp_ref)
+        raise HTTPException(
+            409,
+            "Imported edits do not sit on the current preview head — the "
+            "preview moved; re-seed and replay the edits",
+        )
+    expected = [v.sha.lower() for v in body.versions]
+    if [sha.lower() for sha in chain] != expected:
+        workspace.delete_ref(ws, temp_ref)
+        raise HTTPException(
+            422, "Imported commit chain does not match the declared versions 1:1"
+        )
+
+    record = ImportEdit(
+        request_id=r.id,
+        round=round_number,
+        base_sha=work_head,
+        head_sha=imported_head,
+        temp_ref=temp_ref,
+        summary=body.summary,
+        versions=[{"sha": v.sha, "message": v.message} for v in body.versions],
+        actor=actor.name,
+        status="pending",
+    )
+    db.add(record)
+    emit(
+        db,
+        r,
+        "milestone_summary",
+        f"Sandbox edit received from {actor.name} — {len(expected)} checkpoint(s) "
+        "queued for the factory gate",
+        actor=actor.name,
+        bot=False,
+        payload={
+            "Ref": r.ref,
+            "round": round_number,
+            "head_sha": imported_head,
+            "versions": len(expected),
+        },
+    )
+    db.commit()
+    return ImportEditOut(
+        import_id=record.id,
+        request_id=r.id,
+        status=record.status,
+        round=round_number,
+        head_sha=imported_head,
+        versions=len(expected),
+    )
 
 
 @router.post("/api/requests/{rid}/approve", response_model=RequestDetail)

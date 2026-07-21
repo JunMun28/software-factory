@@ -359,6 +359,44 @@ class PreviewFeedback(Base):
     request: Mapped[Request] = relationship(back_populates="preview_feedback")
 
 
+class ImportEdit(Base):
+    """A sandbox (ng-v0) edit session being imported into the request's repo
+    (ng-v0 bridge, piece 2). The requester posts a git bundle of their Version
+    chain; the factory fetches it onto a TEMP ref, re-proves it under its own
+    gate in the pipeline, and on green fast-forwards the work branch and resumes
+    at review. This row is the durable pending-import record the tick loop grades
+    (the HTTP request never blocks on the gate). Not append-only: `status` and
+    the gate-observation columns advance as the pipeline drives it.
+    """
+
+    __tablename__ = "import_edits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"), index=True)
+    # the preview_round the edit was seeded from (names the temp ref)
+    round: Mapped[int] = mapped_column(Integer, default=0)
+    # prerequisite = the previewed work-branch head the sandbox seeded from
+    base_sha: Mapped[str] = mapped_column(String(40))
+    # the imported head (== versions[-1].sha)
+    head_sha: Mapped[str] = mapped_column(String(40))
+    temp_ref: Mapped[str] = mapped_column(String(80))  # refs/import/round-<n>
+    summary: Mapped[str] = mapped_column(HUMAN_TEXT, default="")
+    # [{sha, message}] — one entry per sandbox Version, order preserved 1:1
+    versions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    actor: Mapped[str] = mapped_column(human_string(80))
+    # pending -> grading -> applied | rejected | superseded
+    status: Mapped[str] = mapped_column(String(12), default="pending")
+    gate_job: Mapped[str | None] = mapped_column(String(63), nullable=True)
+    gate_uid: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # the gate output tail shown to the requester when the factory rejects it
+    gate_tail: Mapped[str | None] = mapped_column(HUMAN_TEXT, nullable=True)
+    deadline_at: Mapped[datetime | None] = mapped_column(TZDateTime(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDateTime(), default=utcnow, onupdate=utcnow
+    )
+
+
 class SpecLine(Base):
     """One grounded Draft-spec line with its provenance tag."""
 

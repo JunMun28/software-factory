@@ -467,6 +467,84 @@ def reset_branch(ws: Path, ref: str, to_sha: str) -> bool:
     return ok
 
 
+# ---------- ng-v0 bridge: import a sandbox edit bundle (piece 2) ----------
+
+def import_ref(round_number: int) -> str:
+    """The temp ref an imported bundle lands on — never the work branch."""
+    return f"refs/import/round-{int(round_number)}"
+
+
+def verify_bundle(ws: Path, bundle_path: Path) -> bool:
+    """True iff the bundle is well-formed AND every prerequisite commit it
+    requires already exists in this repo. A moved work branch (the seed sha is
+    gone) or a corrupt file both fail here — the conservative reject."""
+    out = _git(ws, "bundle", "verify", str(bundle_path))
+    return out.returncode == 0
+
+
+def fetch_bundle(ws: Path, bundle_path: Path, temp_ref: str) -> str | None:
+    """Fetch the bundle's single head onto ``temp_ref`` (never the work branch).
+    Returns an error string, or None on success."""
+    heads = _git(ws, "bundle", "list-heads", str(bundle_path))
+    if heads.returncode != 0:
+        return "not a valid git bundle"
+    lines = [line for line in heads.stdout.splitlines() if line.strip()]
+    if not lines:
+        return "bundle carries no ref to import"
+    parts = lines[0].split(maxsplit=1)
+    src = parts[1] if len(parts) == 2 else parts[0]
+    out = _git(ws, "fetch", str(bundle_path), f"{src}:{temp_ref}")
+    if out.returncode != 0:
+        return (out.stderr or out.stdout).strip()[:200] or "bundle fetch failed"
+    return None
+
+
+def commit_chain(ws: Path, base_sha: str, head_sha_value: str) -> list[str] | None:
+    """The commits (oldest→newest) that ``head_sha_value`` adds on top of
+    ``base_sha``. None when the shas are malformed or base is not an ancestor of
+    head (the edit does not sit directly on the current work-branch head — the
+    branch moved, so the requester must re-seed)."""
+    for value in (base_sha, head_sha_value):
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", value or ""):
+            return None
+    ancestor = _git(ws, "merge-base", "--is-ancestor", base_sha, head_sha_value)
+    if ancestor.returncode != 0:
+        return None
+    out = _git(ws, "rev-list", "--reverse", f"{base_sha}..{head_sha_value}")
+    if out.returncode != 0:
+        return None
+    return [line.strip() for line in out.stdout.splitlines() if line.strip()]
+
+
+def delete_ref(ws: Path, ref: str) -> None:
+    """Drop a temp import ref (best-effort — a stale ref never blocks a re-import)."""
+    _git(ws, "update-ref", "-d", ref)
+
+
+def fast_forward_work_branch(
+    ws: Path, ref: str, to_sha: str, base_sha: str
+) -> str | None:
+    """Move the work branch forward to the imported head — only when it is a
+    real fast-forward from ``base_sha`` (still the current head). Returns an
+    error string, or None on success. The branch is checked out
+    (denyCurrentBranch=updateInstead), so move via checkout + reset --hard."""
+    br = work_branch(ref)
+    current = head_sha(ws, br)
+    if current != base_sha:
+        return (
+            f"work branch head {(current or 'missing')[:12]} moved from the "
+            f"seed sha {base_sha[:12]} — re-seed"
+        )
+    if _git(ws, "merge-base", "--is-ancestor", base_sha, to_sha).returncode != 0:
+        return "imported head is not a fast-forward of the work branch"
+    if _git(ws, "checkout", "-q", br).returncode != 0:
+        return f"could not check out {br}"
+    if _git(ws, "reset", "-q", "--hard", to_sha).returncode != 0:
+        return f"could not fast-forward {br} to {to_sha[:12]}"
+    _git(ws, "clean", "-fdq")
+    return None
+
+
 def merge_graded(ws: Path, ref: str, sha: str, actor: str) -> str | None:
     """Merge exactly the graded SHA into main. Returns an error string, or
     None on success (main checked out — 'deployed' in the B2 sense)."""

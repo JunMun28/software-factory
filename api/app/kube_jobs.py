@@ -257,6 +257,32 @@ def gate_job_manifest(
     )
 
 
+def import_gate_job_manifest(ref: str, round_number: int, sha: str) -> dict:
+    """Re-prove an imported sandbox edit (ng-v0 bridge, piece 2): run the
+    produced-app test gate against the imported head ``sha`` on its own uniquely
+    named Job, so it never collides with the request's real green/review gates.
+    Same envelope contract as gate_job_manifest ({"outcome": "pass"|"fail"})."""
+    if not re.fullmatch(r"REQ-\d+", ref or ""):
+        raise ValueError(f"refusing import-gate job name for malformed ref {ref!r}")
+    name = f"sf-{ref.lower()}-import-r{int(round_number)}-gate"
+    env = {
+        "SF_REF": ref,
+        "SF_STAGE": "green",  # the test gate: does the imported head stay green?
+        "SF_ATTEMPT": 1,
+        "SF_ROLE": "gate",
+        "SF_SHA": sha,
+    }
+    return _base_job(
+        name,
+        role="gate",
+        ref=ref,
+        stage="green",
+        attempt=1,
+        deadline=settings.GATE_ACTIVE_DEADLINE,
+        env=env,
+    )
+
+
 def parse_envelope(msg: str) -> dict | None:
     """Parse the termination-message envelope, or return None for garbage."""
     try:
