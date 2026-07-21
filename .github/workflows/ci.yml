@@ -82,19 +82,20 @@ jobs:
 
   test-mssql:
     runs-on: ubuntu-latest
-    services:
-      mssql:
-        image: mcr.microsoft.com/mssql/server:2022-latest
-        env:
-          ACCEPT_EULA: "Y"
-          MSSQL_SA_PASSWORD: "Factory-CI-Passw0rd"
-        ports: ["1433:1433"]
-        options: >-
-          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Factory-CI-Passw0rd -Q 'SELECT 1' || exit 1"
-          --health-interval 10s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      # The SA password is generated per run: nothing is hardcoded, so there is
+      # no password literal in this public repo (plans/019). ::add-mask:: keeps
+      # it out of the log even if a later command echoes a connection string.
+      - name: Start SQL Server
+        run: |
+          PW="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)Aa1!"
+          echo "::add-mask::$PW"
+          echo "MSSQL_SA_PASSWORD=$PW" >> "$GITHUB_ENV"
+          docker run -d --name mssql \
+            -e ACCEPT_EULA=Y -e "MSSQL_SA_PASSWORD=$PW" \
+            -p 1433:1433 mcr.microsoft.com/mssql/server:2022-latest
       - name: Install ODBC driver 18
         run: |
           curl -sSL -O https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
@@ -103,18 +104,34 @@ jobs:
       - name: Install python deps
         working-directory: api
         run: uv sync
+      - name: Wait for SQL Server
+        working-directory: api
+        run: |
+          for i in $(seq 1 30); do
+            if uv run python -c "
+          import os, pyodbc
+          pyodbc.connect(
+              'DRIVER={ODBC Driver 18 for SQL Server};SERVER=localhost,1433;UID=sa;'
+              'PWD=' + os.environ['MSSQL_SA_PASSWORD'] + ';TrustServerCertificate=yes',
+              timeout=5,
+          )" 2>/dev/null; then echo "ready after ${i} attempt(s)"; exit 0; fi
+            sleep 5
+          done
+          echo "SQL Server did not become ready"; docker logs mssql | tail -50; exit 1
       # Create the database over the same driver stack the tests use (pyodbc +
       # ODBC Driver 18) — no docker exec into the service container, whose id
       # lookup is brittle ($(docker ps -q --filter ...) empty-substitutes).
       - name: Create database
         working-directory: api
         run: |
-          uv run python -c "import pyodbc; cn=pyodbc.connect('DRIVER={ODBC Driver 18 for SQL Server};SERVER=localhost,1433;UID=sa;PWD=Factory-CI-Passw0rd;TrustServerCertificate=yes', autocommit=True); cn.execute(\"IF DB_ID('factory') IS NULL CREATE DATABASE factory\")"
+          uv run python -c "import os, pyodbc; cn=pyodbc.connect('DRIVER={ODBC Driver 18 for SQL Server};SERVER=localhost,1433;UID=sa;PWD=' + os.environ['MSSQL_SA_PASSWORD'] + ';TrustServerCertificate=yes', autocommit=True); cn.execute(\"IF DB_ID('factory') IS NULL CREATE DATABASE factory\")"
       - name: Run suite against MSSQL
         working-directory: api
-        env:
-          FACTORY_DB_URL: "mssql+pyodbc://sa:Factory-CI-Passw0rd@localhost:1433/factory?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
         run: |
+          ENC_PW=$(uv run python -c "import urllib.parse, os; print(urllib.parse.quote(os.environ['MSSQL_SA_PASSWORD'], safe=''))")
+          FACTORY_DB_URL="mssql+pyodbc://sa:${ENC_PW}@localhost:1433/factory?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
+          echo "FACTORY_DB_URL=$FACTORY_DB_URL" >> "$GITHUB_ENV"
+          export FACTORY_DB_URL
           # upgrade must run BEFORE pytest: conftest's _truncate_all() executes
           # before the app lifespan migrates, so the tables must already exist
           uv run alembic upgrade head
