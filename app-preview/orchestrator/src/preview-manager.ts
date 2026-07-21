@@ -262,8 +262,11 @@ export class PreviewManager {
     if (!record) {
       return;
     }
-    this.teardown(record);
+    // Flip the status FIRST (synchronously): the idle sweep and the capacity
+    // check both call this without awaiting and rely on the record no longer
+    // counting as live before the loop continues.
     this.setStatus(chatId, record, { status: 'stopped' });
+    await this.teardown(record);
   }
 
   async remove(chatId: string): Promise<void> {
@@ -272,12 +275,11 @@ export class PreviewManager {
     this.listeners.delete(chatId);
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.cancelSweep?.();
     this.cancelSweep = undefined;
-    for (const record of this.records.values()) {
-      this.teardown(record);
-    }
+    const records = [...this.records.values()];
+    await Promise.allSettled(records.map((record) => this.teardown(record)));
     this.records.clear();
     this.listeners.clear();
   }
@@ -326,8 +328,9 @@ export class PreviewManager {
       if (now - record.lastActivity <= this.idleTtlMs) {
         continue;
       }
-      // stop() runs synchronously up to its (fire-and-forget) teardown, so the
-      // record flips to 'stopped' before the loop continues.
+      // stop() flips the record's status to 'stopped' synchronously before it
+      // awaits the (now-awaited) teardown, so the loop's live/idle view stays
+      // correct even though this call is fire-and-forget.
       void this.stop(chatId);
     }
   }
@@ -429,13 +432,21 @@ export class PreviewManager {
     }
   }
 
-  private teardown(record: PreviewRecord): void {
-    void record.sandbox?.stop();
+  /**
+   * Tear a record's sandbox + bridge down and WAIT for it. Callers await this:
+   * a fire-and-forget delete meant SIGTERM orphaned every live sandbox
+   * Deployment, because the process exited before the k8s call left the wire
+   * (plans/013). Never throws — a teardown failure must not abort a shutdown
+   * or a restart.
+   */
+  private async teardown(record: PreviewRecord): Promise<void> {
+    const sandbox = record.sandbox;
+    const bridge = record.bridgeHandle;
     record.sandbox = undefined;
-    void record.bridgeHandle?.close();
     record.bridgeHandle = undefined;
     this.unregisterPreviewHost(record);
     record.url = undefined;
+    await Promise.allSettled([sandbox?.stop(), bridge?.close()]);
   }
 
   /** Drop a host-routed sandbox's `Host → target` mapping (no-op for local). */
