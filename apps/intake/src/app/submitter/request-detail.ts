@@ -8,6 +8,7 @@ import {
   Icon,
   Pill,
   Poll,
+  PreviewSeed,
   PreviewStatus,
   RequestDetail,
   Sig,
@@ -17,6 +18,7 @@ import {
   plainStage,
   timeAgo,
 } from '@sf/shared';
+import { NgV0Bridge, SendBackResult } from '../core/ngv0-bridge.service';
 import { Session } from '../core/session.service';
 import { SubShell } from './sub-shell';
 
@@ -125,15 +127,47 @@ interface TlRow {
                 >
                   Request changes
                 </button>
-                <button
-                  class="btn"
-                  disabled
-                  aria-label="Edit in ng-v0 — coming soon"
-                  title="Editing the app conversationally in ng-v0 is coming; for now, describe the change and the agent will make it."
-                >
-                  Edit in ng-v0
-                </button>
+                @if (p.editable && p.seed) {
+                  <a class="btn" [href]="editUrl(r, p.seed)" target="_blank" rel="noopener">
+                    Edit in ng-v0 <sf-icon name="arrowRight" [size]="15" />
+                  </a>
+                } @else {
+                  <button
+                    class="btn"
+                    disabled
+                    aria-label="Edit in ng-v0 — coming soon"
+                    title="Editing the app conversationally in ng-v0 is coming; for now, describe the change and the agent will make it."
+                  >
+                    Edit in ng-v0
+                  </button>
+                }
+                @if (hasSandboxChat()) {
+                  <button class="btn" [disabled]="sendBusy()" (click)="sendBack(r)">
+                    Send back to the factory
+                  </button>
+                }
               </div>
+              @if (sendResult(); as sr) {
+                <div
+                  class="card fade-in"
+                  role="status"
+                  aria-live="polite"
+                  style="margin-top:12px;padding:11px 14px;display:flex;align-items:center;gap:9px"
+                  [style.background]="sr.ok ? 'var(--green-bg)' : 'var(--surface-2)'"
+                  [style.border-color]="sr.ok ? 'var(--green-line)' : 'var(--border)'"
+                >
+                  <sf-glyph
+                    [type]="sr.ok ? 'check' : 'flag'"
+                    [size]="16"
+                    [color]="sr.ok ? 'var(--green)' : 'var(--muted)'"
+                  />
+                  <span
+                    style="font-size:13.5px"
+                    [style.color]="sr.ok ? 'var(--green-tx)' : 'var(--fg1)'"
+                    >{{ sr.message }}</span
+                  >
+                </div>
+              }
             </div>
           }
           @if (r.status === 'cancelled') {
@@ -194,6 +228,7 @@ export class SubRequestDetail {
   private router = inject(Router);
   private session = inject(Session);
   private poll = inject(Poll);
+  private bridge = inject(NgV0Bridge);
   id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
 
   req = signal<RequestDetail | null>(null);
@@ -202,6 +237,12 @@ export class SubRequestDetail {
   previewNote = '';
   sent = signal(false);
   reply = '';
+  // ng-v0 bridge: whether a sandbox chat exists for this preview (drives the
+  // "Send back" action), the in-flight guard, and the last send outcome.
+  hasSandboxChat = signal(false);
+  sendBusy = signal(false);
+  sendResult = signal<SendBackResult | null>(null);
+  private probedRef: string | null = null;
 
   constructor() {
     this.poll.start();
@@ -216,6 +257,38 @@ export class SubRequestDetail {
       if (this.req()?.gate === 'accept_preview') {
         this.api.previewStatus(this.id).subscribe((p) => this.preview.set(p));
       }
+    });
+    // Probe the orchestrator for a sandbox chat once per previewed sha (not every
+    // poll): the "Send back" action only shows when the requester actually has
+    // edits waiting in ng-v0.
+    effect(() => {
+      const p = this.preview();
+      const ref = p?.editable && p.seed ? p.seed.ref : null;
+      if (ref === this.probedRef) return;
+      this.probedRef = ref;
+      if (ref) {
+        this.bridge.findChat(ref).then((chat) => this.hasSandboxChat.set(!!chat));
+      } else {
+        this.hasSandboxChat.set(false);
+      }
+    });
+  }
+
+  /** The ng-v0 editor URL for this request's previewed head. */
+  editUrl(r: RequestDetail, seed: PreviewSeed): string {
+    return this.bridge.editUrl(r.ref, seed);
+  }
+
+  /** Export the sandbox's latest edits and hand them to the factory to re-check. */
+  sendBack(r: RequestDetail) {
+    const seed = this.preview()?.seed;
+    if (!seed || this.sendBusy()) return;
+    this.sendBusy.set(true);
+    this.sendResult.set(null);
+    this.bridge.sendBack(r.id, seed.ref).then((result) => {
+      this.sendResult.set(result);
+      this.sendBusy.set(false);
+      if (result.ok) this.poll.nudge();
     });
   }
 

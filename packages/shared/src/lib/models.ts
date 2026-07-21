@@ -297,6 +297,12 @@ export interface PreviewFeedbackItem {
   created_at: string;
 }
 
+/** Where an ng-v0 sandbox clones the previewed app from (ng-v0 bridge, piece 2). */
+export interface PreviewSeed {
+  url: string;
+  ref: string;
+}
+
 /** The C1 preview loop's live state (E2E-5 surfaces). */
 export interface PreviewStatus {
   round: number;
@@ -306,6 +312,11 @@ export interface PreviewStatus {
   digest: string | null;
   state: 'none' | 'building' | 'deploying' | 'ready' | 'accepted';
   feedback: PreviewFeedbackItem[];
+  // ng-v0 bridge: true when the requester may edit this preview in a sandbox
+  // (import-edit enabled + parked at the accept gate). `seed` is the clone
+  // source for that sandbox — null unless editable.
+  editable?: boolean;
+  seed?: PreviewSeed | null;
 }
 
 /** Derived run-state for an in-flight build (ADR 0014 — computed server-side, never stored). */

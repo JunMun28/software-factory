@@ -4226,3 +4226,114 @@ approved. Preview it by injecting `.seg.work` in the DOM.
 factory is blocked on the *submitter* answering. The wording reads like the
 machine is busy. Either the state text should say who it is waiting on, or the
 interview should count as active. Needs a product call.
+
+## ng-v0 bridge piece 2 — POST /preview/import-edit (factory side, 2026-07-21)
+
+Direct-apply import of an ng-v0 sandbox edit. New table `import_edits`
+(migration a2f4c6e8b0d2, both dialects), settings flag `FACTORY_IMPORT_EDIT`
+(default off, gated behind `preview_enabled()`), transition `import_edit`
+(resume at REVIEW, not architecture), workspace bundle helpers, async gate in
+`KubeJobRunner._drive_import_edits`.
+
+### Deviations (conservative choices where the doc was silent)
+
+- **Gate is async (pipeline), so red rejection is a NOTIFICATION, not the HTTP
+  422.** The design doc (piece 2) shows a synchronous "422 carries the gate
+  output". The task directed the pipeline-async path ("store the pending import
+  … let the pipeline grade the temp ref, rather than blocking the HTTP request").
+  Consequence: the HTTP call returns **202 Accepted** (pending grade); a red gate
+  is surfaced later via `notifications.notify_import_rejected` + an append-only
+  `gate_event`, and the requester keeps editing in the sandbox. The doc's 422 is
+  repurposed for synchronous body/chain validation failures.
+- **The "factory gate" on the temp ref = the GREEN (test) gate**, run as its own
+  uniquely-named Job `sf-<ref>-import-r<n>-gate` (`import_gate_job_manifest`,
+  SF_STAGE=green, SF_SHA=imported head). It re-proves the imported head passes
+  tests. The subsequent REVIEW re-run (piece-2 step 6) is the *second* gate and
+  is the existing pipeline review stage — I supersede the old review StageJob
+  rows so review re-runs on the imported diff without re-entering
+  architecture/build. So "gate and review re-run, build skipped" (the invariant)
+  holds: green-test gate on the temp ref, then review on the landed branch.
+- **preview_round is bumped in the `import_edit` transition itself** (mirroring
+  `request_changes`), not later in the pipeline — so a landed import immediately
+  reads round N+1 and the review→begin_preview path builds the next round with
+  no double-bump.
+- **Fast-forward ordering:** the `import_edit` CAS is staged first; the git
+  work-branch fast-forward is applied only after the CAS wins, and the whole DB
+  transaction rolls back if the fast-forward is no longer clean — so the spec
+  record and the branch move are atomic (invariant: no import lands without its
+  spec record). A CAS loss (requester raced accept/request-changes/cancel) marks
+  the import `superseded` and leaves the work branch untouched.
+- **Wall-clock / vanished import gate:** exceeding the gate wall clock rejects
+  the import conservatively (requester re-tries); a vanished Job re-spawns
+  (bounded by the same deadline). An arbitrary driver exception is logged and
+  retried next tick (never escalates the request off its accept gate).
+- **Actor:** the import is machine-driven (epoch-fenced) but attributed to the
+  REQUESTER (`ImportEdit.actor`, taken from operator_id-or-reporter like the
+  other preview endpoints), never Factory — per the identity invariant.
+- **One in-flight import per request** (a second POST while one is
+  pending/grading is a 409 double-fire, not a new edit).
+
+## ng-v0 bridge UX (2026-07-21)
+
+The UI wiring for docs/design/ng-v0-bridge.md v2 "UX", across three workspaces.
+Backend halves (orchestrator seed/export + factory import-edit) were already
+built; this layer is additive and read-only on the factory side.
+
+Files changed / added:
+- Factory API (read-only additions): `api/app/schemas.py` (new `PreviewSeedOut`;
+  `PreviewStatusOut` gains `editable: bool` + `seed: PreviewSeedOut | None`),
+  `api/app/routers/gates.py` (`preview_status` computes editable/seed).
+  New pytest: `api/tests/test_import_edit.py::test_preview_status_exposes_seed_when_editable`.
+- Shared model: `packages/shared/src/lib/models.ts` (new `PreviewSeed`;
+  `PreviewStatus` gains optional `editable`/`seed`), re-exported in `public-api.ts`.
+- Intake: `apps/intake/src/app/core/ngv0.config.ts` (config constants),
+  `apps/intake/src/app/core/ngv0-bridge.service.ts` (edit URL + send-back flow),
+  `apps/intake/src/app/submitter/request-detail.ts` (button enable + Send-back +
+  result line). Specs: `request-detail.spec.ts`, `ngv0-bridge.service.spec.ts`.
+- ng-v0 UI (app-preview/ui): `types/orchestrator-events.ts` (ChatSummary gains
+  optional seedUrl/seedRef), `services/chat.service.ts` (`createSeededChat`),
+  `pages/chat-new-page/chat-new-page.ts` (new `/chats/new` route),
+  `app.routes.ts` (route, before `chats/:id`), `layout/workspace-toolbar/`
+  ("seeded from <rid>" badge). Specs added/extended accordingly.
+
+Config constants (names + dev defaults):
+- Intake `NG_V0_UI_BASE = 'http://localhost:4200'` (app-preview/ui `ng serve` port).
+- Intake `ORCHESTRATOR_BASE = 'http://127.0.0.1:7071'` (Hono orchestrator).
+
+Deviations / conservative choices where the doc was silent:
+- **Where the editable/seed flag lives:** added to `PreviewStatusOut` (the
+  requester's existing preview payload the intake card already reads), not to
+  `RequestDetail`. `editable` requires `import_edit_enabled() and
+  preview_enabled() and gate==accept_preview and a previewed head sha`;
+  `preview_enabled()` already implies `GIT_REMOTE_BASE`, so the seed URL is
+  always well-formed. Seed URL = `GIT_REMOTE_BASE/<ref.lower()>` (matches
+  kube_jobs/deploy_manifests), ref = pdeploy/pbuild envelope sha.
+- **Send-back "Send back to the factory" visibility:** probed once per previewed
+  sha (guarded by `probedRef`) via orchestrator GET /chats filtered on
+  `seedRef == previewed sha`, last match wins (a re-seed appends a newer chat).
+  If the orchestrator is unreachable the probe fails closed (button hidden).
+- **Transport split:** orchestrator calls go cross-origin to ORCHESTRATOR_BASE
+  via HttpClient (no factory auth token — the interceptor only attaches to `/api`
+  URLs); the final import-edit POST is relative `/api/...` so it rides the auth
+  interceptor. Vocabulary: every string I author avoids 'gate'/'bundle' (button
+  copy, success line, and the bridge's own no-chat/unreachable messages). Per the
+  contract I surface the factory's 409/422 `detail` verbatim; a few backend
+  details still contain 'gate'/'bundle' (e.g. chain-mismatch), but those are edge
+  errors the happy path never reaches — the normal concurrent case is
+  branch-moved → "re-seed from the new preview", already plain. Left as
+  passthrough because the task explicitly says to show the server's detail text.
+- **`/chats/new` route ordering:** placed before `chats/:id` so 'new' is not
+  parsed as a chat id. A red seed (422) flips to a readable error state showing
+  `gateOutput`, never an infinite spinner.
+- **ChatSummary seed fields optional in the ui type:** made `seedUrl?`/`seedRef?`
+  optional to avoid editing 44 existing ChatSummary literals in ui specs (the
+  backend always returns them at runtime).
+- **Session-scoped test DB pollution (found + fixed):** the api `client` fixture
+  is `scope="session"` (shared SQLite). My new test parks a request at the accept
+  gate with a succeeded pdeploy (a "live preview" shape) which a later global
+  preview sweep in test_preview_loop acted on, failing two unrelated tests only
+  under full-suite ordering. Fixed by neutralizing the request in a `finally`
+  (delete its StageJobs, clear gate, stage->done). Full api suite: 876 passed,
+  4 skipped.
+- **app-preview/ui deps:** that workspace vendors its own package.json and had no
+  node_modules in this env; ran `npm install` there to execute its vitest suite.

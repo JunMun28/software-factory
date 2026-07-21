@@ -29,6 +29,7 @@ export type {
   MissionStats,
   Operator,
   PreviewFeedbackItem,
+  PreviewSeed,
   PreviewStatus,
   ProgressEvent,
   PrototypeAnnotation,
