@@ -190,6 +190,24 @@ class AttachmentOut(BaseModel):
     created_at: datetime
 
 
+class DraftOut(BaseModel):
+    """An intake somebody started and did not finish.
+
+    Deliberately thin: this feeds a "continue where you left off" list, so it carries
+    what you need to recognise the request and one field to route back into it. The
+    full record is a click away at /api/requests/{id}."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    ref: str
+    title: str
+    type: str
+    # the step to resume at — derived from persisted state, never from the client,
+    # so a stale tab cannot send someone to a step they have not reached
+    step: str
+    answered: int
+    updated_at: datetime
+
+
 class RequestOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

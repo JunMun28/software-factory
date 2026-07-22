@@ -10,6 +10,7 @@ import {
   Attachment,
   ClassifyResult,
   CommentItem,
+  DraftRequest,
   FactoryRequest,
   Health,
   InterviewState,
@@ -115,6 +116,13 @@ export class Api {
   }
   request(id: number) {
     return this.http.get<RequestDetail>(`${BASE}/requests/${id}`);
+  }
+  /** Intakes this person started and did not finish. `requests()` hides drafts on
+   *  purpose; this is the only way back to one after the tab is gone. */
+  draftRequests(mine?: string): Observable<DraftRequest[]> {
+    const params: Record<string, string> = {};
+    if (mine) params['mine'] = mine;
+    return this.http.get<DraftRequest[]>(`${BASE}/requests/drafts`, { params });
   }
   createRequest(body: object) {
     return this.http.post<RequestDetail>(`${BASE}/requests`, body);

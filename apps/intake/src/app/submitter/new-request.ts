@@ -8,21 +8,27 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
-import { Api, Icon } from '@sf/shared';
+import { Api, DraftRequest, Icon } from '@sf/shared';
+import { Session } from '../core/session.service';
 import { IntakeDraft } from './intake-draft.service';
 import { SubShell } from './sub-shell';
 
 /** Glyph choices per intensity tier for the hero's ignition field — bright
- *  cells get dense brand letters, dim cells crumble into punctuation. */
+ *  cells get heavy-ink glyphs, dim cells crumble into punctuation. Each tier
+ *  is a wide alphabet of roughly equal ink weight: the tier already carries
+ *  the density, so the pick within it only has to look unrepeating. The brand
+ *  letters (S, F) stay seeded through the bright tiers but no longer dominate
+ *  them — weighting them 3-in-4 turned the bottom band, which is entirely the
+ *  brightest tier, into visible rows of "SSSF". */
 const FX_TIERS: readonly [number, readonly string[]][] = [
-  [0.78, ['S', 'S', 'S', 'F']],
-  [0.58, ['S', 'S', '#', 'F']],
-  [0.4, ['#', '8', '0', 'S']],
-  [0.24, ['X', '8', '0', '+']],
-  [0.1, ['+', '=', '·', 'x']],
+  [0.78, ['S', 'F', '8', '#', '@', 'B', '%', 'W', 'N', '&']],
+  [0.58, ['S', 'F', '#', '8', '0', '&', 'K', 'H', '$']],
+  [0.4, ['#', '8', '0', 'S', 'X', 'A', 'E', 'P', '6']],
+  [0.24, ['X', '8', '0', '+', 'x', 'v', 'z', 'c', '7']],
+  [0.1, ['+', '=', '·', 'x', '-', ':', '~', "'", ',']],
 ];
 const FX_CELL_W = 21;
 const FX_CELL_H = 17;
@@ -84,7 +90,7 @@ function fxHash(x: number, y: number): number {
  *  ⌘↵ / Ctrl↵ submits. */
 @Component({
   selector: 'sf-new-request',
-  imports: [SubShell, FormsModule, Icon],
+  imports: [SubShell, FormsModule, Icon, RouterLink],
   host: {
     '(document:keydown.meta.enter)': 'kbdSubmit()',
     '(document:keydown.control.enter)': 'kbdSubmit()',
@@ -185,11 +191,89 @@ function fxHash(x: number, y: number): number {
           <span class="hint">{{
             saving() ? 'Saving…' : 'Press ' + kbdLabel + ' to continue'
           }}</span>
+          <!-- Offered, never forced. Every answer is already saved server-side, so
+               this is only the way BACK to it — auto-resuming would hijack someone
+               who walked away from a request on purpose. -->
+          @if (drafts().length) {
+            <section class="resume" aria-labelledby="resume-h">
+              <h2 class="resume__h" id="resume-h">Continue where you left off</h2>
+              <ul class="resume__list">
+                @for (d of drafts(); track d.id) {
+                  <li>
+                    <a class="resume__item" [routerLink]="['/submit', d.id, d.step]">
+                      <span class="resume__title">{{ d.title || 'Untitled request' }}</span>
+                      <span class="resume__meta">
+                        {{ d.ref }} · {{ d.answered ? d.answered + ' answered' : 'not started' }} ·
+                        {{ stepLabel(d.step) }}
+                      </span>
+                    </a>
+                  </li>
+                }
+              </ul>
+            </section>
+          }
         </section>
       </div>
     </sub-shell>
   `,
   styles: `
+    /* Continue where you left off — quiet by construction. This page exists to start
+       something NEW; the resume list is an offer sitting under the composer, never a
+       thing competing with it. Neutral surfaces only (house rule: purple is the mark,
+       the primary action and small tags — never a fill for a list row). */
+    .resume {
+      margin: 34px auto 0;
+      max-width: 560px;
+      text-align: left;
+    }
+    .resume__h {
+      margin: 0 0 10px;
+      font: 500 12px/1.4 var(--mono, ui-monospace, monospace);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .resume__list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 8px;
+    }
+    .resume__item {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 11px 14px;
+      border-radius: var(--radius, 10px);
+      background: var(--surface);
+      box-shadow: inset 0 0 0 1px var(--border);
+      text-decoration: none;
+      transition:
+        box-shadow var(--dur, 140ms) var(--ease, ease),
+        transform var(--dur, 140ms) var(--ease, ease);
+    }
+    .resume__item:hover {
+      box-shadow: inset 0 0 0 1px var(--border-strong, var(--muted));
+      transform: translateY(-1px);
+    }
+    .resume__title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--fg1);
+    }
+    .resume__meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .resume__item {
+        transition: none;
+      }
+      .resume__item:hover {
+        transform: none;
+      }
+    }
     @property --ang {
       syntax: '<angle>';
       inherits: false;
@@ -397,10 +481,32 @@ export class NewRequest {
 
   dragOver = signal(false);
 
+  /** Unfinished intakes belonging to this person. The server hides drafts from the
+   *  normal list, so without this an interview became unreachable the moment the tab
+   *  closed — even though every answer was already stored. */
+  drafts = signal<DraftRequest[]>([]);
+
+  private session = inject(Session);
+
+  stepLabel(step: DraftRequest['step']): string {
+    return {
+      interview: 'Answering questions',
+      prototype: 'Designing the mock',
+      review: 'Ready to review',
+    }[step];
+  }
+
   private descTa = viewChild.required<ElementRef<HTMLTextAreaElement>>('descTa');
   private fx = viewChild.required<ElementRef<HTMLCanvasElement>>('fx');
 
   constructor() {
+    // Unfinished intakes, offered as a way back. Best-effort by design: a failure
+    // here must never block someone starting a NEW request, which is what this page
+    // is for. The draft in hand is filtered out — you are already in it.
+    this.api.draftRequests(this.session.user().name).subscribe({
+      next: (d) => this.drafts.set(d.filter((x) => x.id !== this.draft.requestId)),
+      error: () => this.drafts.set([]),
+    });
     // a restored draft may already hold a long description — size the field to it
     afterNextRender(() => {
       this.growDesc();

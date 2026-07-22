@@ -17,6 +17,7 @@ export type {
   AuditItem,
   ClassifyResult,
   CommentItem,
+  DraftRequest,
   Evidence,
   FactoryRequest,
   Health,
@@ -84,4 +85,15 @@ export { Theme } from './lib/theme.service';
 export type { ThemeChoice } from './lib/theme.service';
 
 // ---- UI kit primitives ----
-export { Autofocus, Avatar, Glyph, Icon, Mark, Pill, Sig, TrackChip, TypeChip } from './lib/kit';
+export {
+  Autofocus,
+  Avatar,
+  Glyph,
+  GlyphField,
+  Icon,
+  Mark,
+  Pill,
+  Sig,
+  TrackChip,
+  TypeChip,
+} from './lib/kit';

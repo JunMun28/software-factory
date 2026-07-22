@@ -111,6 +111,18 @@ export interface AuditItem {
   created_at: string;
 }
 
+/** An intake somebody started and did not finish. `step` is derived on the server
+ *  from what is persisted, so a stale tab cannot resume into a step never reached. */
+export interface DraftRequest {
+  id: number;
+  ref: string;
+  title: string;
+  type: string;
+  step: 'interview' | 'prototype' | 'review';
+  answered: number;
+  updated_at: string;
+}
+
 export interface FactoryRequest {
   id: number;
   ref: string;
@@ -273,7 +285,13 @@ export interface ProgressEvent {
     | 'comment'
     | 'step_summary'
     | 'steer_note'
-    | 'verification';
+    | 'verification'
+    /* The architect's PLAN.md excerpt + digest. Only emitted by the kube runner
+       with a git remote configured — the simulated runner records the same
+       milestone without an excerpt to quote. */
+    | 'architecture_plan'
+    /* The frozen SPEC.md for one contract version. */
+    | 'spec_snapshot';
   stage: string;
   actor: string;
   bot: boolean;

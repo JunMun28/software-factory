@@ -19,6 +19,8 @@ describe('NewRequest continue', () => {
       createRequest: vi.fn(() => of({ id: 71 })),
       updateRequest: vi.fn(() => of({})),
       apps: vi.fn(() => of([])),
+      // the page offers unfinished intakes as a way back; none in these cases
+      draftRequests: vi.fn(() => of([])),
     };
     await TestBed.configureTestingModule({
       imports: [NewRequest],
