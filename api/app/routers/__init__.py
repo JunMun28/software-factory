@@ -1,4 +1,4 @@
-"""Domain routers for the Software Factory API (ADR 0007).
+"""Domain routers for the AIRES API (ADR 0007).
 
 Each module in this package owns one cohesive slice of the URL surface:
 - system    — /api/health, /api/simulator/tick

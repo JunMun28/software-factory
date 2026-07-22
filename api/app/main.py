@@ -1,4 +1,4 @@
-"""Software Factory API — FastAPI backend (ADR 0007) over the two-axis event log (ADR 0008)."""
+"""AIRES API — FastAPI backend (ADR 0007) over the two-axis event log (ADR 0008)."""
 import asyncio
 import contextlib
 import logging
@@ -80,7 +80,7 @@ def create_app(*, auto_tick: float | None = None, runner: AgentRunner | None = N
         if task:
             task.cancel()
 
-    app = FastAPI(title="Software Factory API", lifespan=lifespan)
+    app = FastAPI(title="AIRES API", lifespan=lifespan)
     # Auth BEFORE CORS in code: the last middleware added is outermost, so CORS
     # wraps the auth wall — preflight never hits token validation (auth.py).
     app.add_middleware(EntraAuthMiddleware)

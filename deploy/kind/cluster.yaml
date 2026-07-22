@@ -1,4 +1,4 @@
-# kind cluster for the Software Factory (spec §2, local profile).
+# kind cluster for AIRES (spec §2, local profile).
 # CRITICAL: the default CNI (kindnet) silently DOES NOT enforce NetworkPolicy —
 # it is disabled here and Calico installed by `task kind-up`; enforcement is
 # then PROVEN by scripts/calico-probe.sh, never assumed.

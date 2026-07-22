@@ -18,7 +18,7 @@ TEAM_REGISTRY = [
     },
     {
         "team": "Factory Apps",
-        "scope": "Internal workflow applications built by the software factory",
+        "scope": "Internal workflow applications built by AIRES",
         "contact": "factory-apps@example.invalid",
         "queue": "FACTORY",
     },

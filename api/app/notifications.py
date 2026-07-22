@@ -68,7 +68,7 @@ def _notify(db: Session, req: Request, subject: str, body: str) -> None:
     link = f"{_env('CONSOLE_BASE_URL', 'http://localhost:4202').rstrip('/')}/requests/{req.id}"
     for operator in recipients:
         message = EmailMessage()
-        message["From"] = _env("SMTP_FROM", "software-factory@localhost")
+        message["From"] = _env("SMTP_FROM", "aires@localhost")
         message["To"] = operator.email
         message["Subject"] = subject
         message.set_content(f"{body} {link}")
@@ -89,7 +89,7 @@ def _notify_requester(req: Request, subject: str, body: str) -> None:
         f"/submit/{req.id}"
     )
     message = EmailMessage()
-    message["From"] = _env("SMTP_FROM", "software-factory@localhost")
+    message["From"] = _env("SMTP_FROM", "aires@localhost")
     message["To"] = req.reporter
     message["Subject"] = subject
     message.set_content(f"{body} {link}")
@@ -107,7 +107,7 @@ def notify_gate_raised(db: Session, req: Request) -> None:
     if req.gate == "accept_preview":
         _notify_requester(
             req,
-            "Software Factory: preview needs your review",
+            "AIRES: preview needs your review",
             f"{req.ref} {req.title} has a live preview ready for review.",
         )
         return
@@ -120,7 +120,7 @@ def notify_gate_raised(db: Session, req: Request) -> None:
     _notify(
         db,
         req,
-        f"Software Factory: {gate_name} needs approval",
+        f"AIRES: {gate_name} needs approval",
         f"{req.ref} {req.title} is waiting at the {gate_name}.",
     )
 
@@ -130,7 +130,7 @@ def notify_import_rejected(req: Request, reason: str) -> None:
     they keep editing in the sandbox where they already were (ng-v0 bridge)."""
     _notify_requester(
         req,
-        "Software Factory: sandbox edit needs another pass",
+        "AIRES: sandbox edit needs another pass",
         f"{req.ref} {req.title}: the factory gate did not pass your imported "
         f"edit. {reason.strip()[:400]} Keep editing in the sandbox and send it "
         "back when ready.",
@@ -141,6 +141,6 @@ def notify_escalation(db: Session, req: Request) -> None:
     _notify(
         db,
         req,
-        "Software Factory: a request needs a human",
+        "AIRES: a request needs a human",
         f"{req.ref} {req.title} needs a human: {req.needs_human_reason or 'the run stalled'}.",
     )

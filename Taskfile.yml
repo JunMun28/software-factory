@@ -1,4 +1,4 @@
-# Software Factory — local dev & verification (cross-platform).
+# AIRES — local dev & verification (cross-platform).
 #
 # Task (https://taskfile.dev) replaces the Unix-shell Makefile so dev/verify run
 # natively on Windows: Task embeds its own shell (mvdan/sh), so these recipes need

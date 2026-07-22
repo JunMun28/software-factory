@@ -1,17 +1,19 @@
-# CODEOWNERS — review ownership for the Software Factory monorepo (ADR 0017).
+# CODEOWNERS — review ownership for the AIRES monorepo (ADR 0017).
 #
 # GitHub matches the LAST matching rule per file. Order is therefore important:
 # the default `*` rule comes first, then the protected paths override it.
 #
-# Owner handle: @JunMun28 is the repo's git user. Swap it for a GitHub team
-# (e.g. @your-org/intake-owners) once a team exists — change one place here.
+# TODO: replace the placeholder handles below with real GitHub teams in the
+# owning org before enabling branch protection. They are intentionally NOT a
+# personal account — CODEOWNERS pointing at one person makes that person a
+# single point of failure for every review.
 
 # Default owner for everything not matched by a more specific rule below.
-*                       @JunMun28
+*                       @your-org/software-factory
 
 # --- Model 1 protected paths (ADR 0017 "Keeping the Intake app stable") ---
 # The Intake app must stay very stable, and @sf/shared is a load-bearing
 # contract that ripples into BOTH apps at build time. No change reaches these
 # paths without the owner's approval.
-/apps/intake/           @JunMun28
-/packages/shared/       @JunMun28
+/apps/intake/           @your-org/intake-owners
+/packages/shared/       @your-org/intake-owners
