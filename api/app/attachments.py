@@ -27,7 +27,12 @@ _IMAGE_SIGS: list[tuple[bytes, str]] = [
 ]
 _IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 # text formats have no signature — allow by extension if the bytes are UTF-8 text.
-_TEXT_EXT = {".txt": "text/plain", ".log": "text/plain", ".md": "text/markdown", ".csv": "text/csv"}
+# The tabular/structured entries matter for sample data: a requester exporting a few rows
+# to hand the prototype gets .csv/.tsv/.json far more often than anything else, and only a
+# recognised text mime is inlined for models that cannot open files (see text_preview).
+_TEXT_EXT = {".txt": "text/plain", ".log": "text/plain", ".md": "text/markdown",
+             ".csv": "text/csv", ".tsv": "text/tab-separated-values",
+             ".json": "application/json", ".yaml": "text/yaml", ".yml": "text/yaml"}
 _ZIP_EXT = {".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 _SAFE = re.compile(r"[^A-Za-z0-9._ -]+")
@@ -67,6 +72,34 @@ def sniff(data: bytes, filename: str) -> tuple[str, str]:
 
 def path_of(att: Attachment) -> Path:
     return settings.UPLOADS / str(att.request_id) / att.stored
+
+
+def is_inlinable_text(att: Attachment) -> bool:
+    """Whether this attachment's bytes can be pasted into a prompt. Keyed off the sniffed
+    mime, never the filename — the same trust anchor the image path uses. PDFs and Office
+    files are ZIP/binary and stay out: guessing at their bytes would feed the model noise."""
+    return att.kind != "image" and (
+        att.mime.startswith("text/") or att.mime == "application/json"
+    )
+
+
+def text_preview(att: Attachment, limit: int) -> tuple[str, bool] | None:
+    """(text, was_truncated) for an inlinable attachment, or None if it can't be read.
+
+    The CLI brains get a working directory and open files themselves; the API brain has no
+    filesystem, so without this a spreadsheet of sample data would reach the model as nothing
+    but a filename — and a prototype built on "there is a file called orders.csv" is exactly
+    the generic mock that asking for sample data was meant to avoid."""
+    if not is_inlinable_text(att):
+        return None
+    try:
+        raw = path_of(att).read_bytes()[: limit * 4]  # UTF-8 is at most 4 bytes per char
+    except OSError:
+        return None
+    text = raw.decode("utf-8", errors="ignore")  # a byte-slice can split a character
+    if not text.strip():
+        return None
+    return text[:limit], len(text) > limit or len(raw) == limit * 4
 
 
 def save(db: Session, r: Request, *, filename: str, data: bytes, source: str) -> Attachment:

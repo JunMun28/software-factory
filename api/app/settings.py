@@ -50,10 +50,36 @@ API_PROTOTYPE_MODEL = os.environ.get(
     "FACTORY_API_PROTOTYPE_MODEL", "claude-sonnet-5"
 ).strip()
 SPEC_MODEL = os.environ.get("FACTORY_SPEC_MODEL", "claude-opus-4-8").strip()
-# Read-only vs write is a HARD guarantee, enforced by a factory-owned config pointed at
+# Optional model gateway (LiteLLM). When set, every API-brain call is posted to the
+# gateway's Anthropic-compatible route instead of api.anthropic.com — model routing,
+# keys, budgets and cross-provider fallback then live in one place instead of in this
+# codebase. Unset (the default) talks to Anthropic directly, which is what the tests,
+# the smoke lifecycle and every offline path assume. The model names above are still
+# the ones sent on the wire; the gateway maps them to whatever actually serves them.
+LLM_BASE_URL = os.environ.get("FACTORY_LLM_BASE_URL", "").strip()
+LLM_KEY = os.environ.get("FACTORY_LLM_KEY", "").strip()
+# Which path BUILDS the prototype. "cli" hands the agent prototype.html to edit on disk,
+# so an edit turn costs a diff instead of the document twice; "api" keeps the older
+# contract where the model retypes the whole document into its reply.
+#
+# Defaults to "api" on evidence, not preference. Measured 2026-07-22 on opencode+gpt-5.5:
+# a first build took 168s bare, but the same build through this code — with attachments
+# mounted and step-by-step narration requested so the requester sees progress — blew past
+# a 420s bound and was killed. A default that times out is worse than a slower-to-improve
+# one: the requester silently gets the scripted floor. Flip to "cli" per-environment to
+# exercise the file path; the whole implementation is live and tested behind this switch.
+PROTOTYPE_VIA = os.environ.get("FACTORY_PROTOTYPE_VIA", "api").strip().lower()
+# The permission mode is a HARD guarantee, enforced by a factory-owned config pointed at
 # via OPENCODE_CONFIG (never the operator's global agents). deny = fail-closed sandbox.
+#
+# Three modes, and the middle one is the point: the prototype step needs the agent to WRITE
+# a file, and nothing more. Its working directory holds files the submitter uploaded, whose
+# text is also in the prompt — so a cell reading "run this command" is a live injection
+# vector, and `bash: deny` is what makes it inert. RW stays reserved for the pipeline
+# stages, which operate on factory-owned git workspaces rather than arbitrary uploads.
 OPENCODE_CONFIG_DIR = API_DIR / "app" / "opencode"
 OPENCODE_RO_CONFIG = OPENCODE_CONFIG_DIR / "factory-readonly.json"
+OPENCODE_PROTO_CONFIG = OPENCODE_CONFIG_DIR / "factory-prototype.json"  # edit, no shell
 OPENCODE_RW_CONFIG = OPENCODE_CONFIG_DIR / "factory-write.json"
 WORKSPACES = Path(os.environ.get("FACTORY_WORKSPACES", str(API_DIR / "workspaces")))
 SAMPLE = Path(os.environ.get("FACTORY_SAMPLE", str(REPO_DIR / "sample")))
@@ -84,7 +110,13 @@ INTERVIEW_EFFORT = os.environ.get("FACTORY_INTERVIEW_EFFORT", "").strip()
 # preamble types out live, like the interview) — opus is thinking-heavy and slow, which stalls the
 # live typewriter on this interactive step. Set FACTORY_PROTOTYPE_MODEL=claude-opus-4-8 to trade
 # streaming/latency for max quality. Applies to the claude CLI path; codex keeps CODEX_MODEL.
-PROTOTYPE_TIMEOUT = int(os.environ.get("FACTORY_PROTOTYPE_TIMEOUT", "240"))
+# 240s was tuned for the old contract, where the model typed the document into its reply.
+# Building it as a FILE is slower for a first draft: measured 2026-07-22, opencode+gpt-5.5
+# took 168s to write a 25 KB mock, so a 240s bound left almost no headroom and a normal run
+# would time out into the scripted floor — visible to the requester as a generic mock and to
+# nobody as an error. Edit turns stay quick (a diff, not a document); this bound is sized for
+# the first build.
+PROTOTYPE_TIMEOUT = int(os.environ.get("FACTORY_PROTOTYPE_TIMEOUT", "420"))
 PROTOTYPE_MODEL = os.environ.get("FACTORY_PROTOTYPE_MODEL", "claude-sonnet-5").strip()
 SIM_INTERVAL = float(os.environ.get("SIM_INTERVAL", "0") or 0)
 # run-state health (spec 2026-06-12 §5): an in-flight run whose latest step
@@ -102,6 +134,10 @@ UPLOADS = Path(os.environ.get("FACTORY_UPLOADS", str(API_DIR / "uploads")))
 ATTACH_MAX_BYTES = int(os.environ.get("FACTORY_ATTACH_MAX_BYTES", str(100 * 1024 * 1024)))  # 100 MB
 ATTACH_MAX_COUNT = int(os.environ.get("FACTORY_ATTACH_MAX_COUNT", "5"))
 ATTACH_MAX_IMAGES = int(os.environ.get("FACTORY_ATTACH_MAX_IMAGES", "4"))  # passed to codex --image
+# Per-file cap on text pasted into an API prompt (~5k tokens). Sample data only has to show
+# the shape — the columns, the value formats, a few real rows — so a head of the file buys
+# almost all of the benefit, and a 100 MB export must never become a 100 MB prompt.
+ATTACH_INLINE_TEXT_CHARS = int(os.environ.get("FACTORY_ATTACH_INLINE_TEXT_CHARS", "20000"))
 
 # ---------- Kubernetes runner (Plan B1, spec §2/§5/§6) ----------
 KUBE_NAMESPACE = os.environ.get("FACTORY_KUBE_NAMESPACE", "software-factory")
