@@ -2,6 +2,7 @@
 
 Routes:
   GET   /api/requests                    — list requests (excludes drafts)
+  GET   /api/requests/drafts             — unfinished intakes, to resume one
   POST  /api/requests                    — create a new draft request
   GET   /api/requests/{rid}              — detail view (with duplicate hint)
   PATCH /api/requests/{rid}              — update a draft/submitted request
@@ -54,7 +55,9 @@ from ..interview import (
     Question,
     ScriptedBrain,
     answered_count,
+    closing_question,
     get_brain,
+    interview_exhausted,
     is_stop_signal,
     pending_payload,
     question_budget,
@@ -72,6 +75,7 @@ from ..models import (
 from ..schemas import (
     ClassifyIn,
     ClassifyOut,
+    DraftOut,
     EscalateIn,
     EvidenceOut,
     InterviewAnswer,
@@ -184,8 +188,7 @@ def _generate_pending_sync(db: Session, r: Request) -> Question | None:
     q = current_question(r)
     if q is not None:
         return q
-    answered_at_start = answered_count(r)
-    if answered_at_start >= question_ceiling(r) or r.pending_question == DONE_SENTINEL:
+    if interview_exhausted(r):
         return None
     _resolve_interview(db, r)
     db.refresh(r)
@@ -456,7 +459,7 @@ def interview_state(db: Session, r: Request, *, generate: bool = True) -> Interv
             st.escalation = {"to_type": prop["to_type"], "why": str(prop.get("why") or "")[:200]}
         return st
 
-    if answered_count(r) >= question_ceiling(r) or r.pending_question == DONE_SENTINEL:
+    if interview_exhausted(r):
         if generate and not interview_gen.SYNC:
             summary_gen.ensure_summary(r.id)  # warm the Review summary while "done" shows
         return build(done=True, q=None, thinking=False)
@@ -480,9 +483,7 @@ def _sse(event: str, data: dict) -> str:
 
 def _resolved(r: Request) -> bool:
     """The interview is done, or a question is already waiting — nothing to generate."""
-    return (current_question(r) is not None
-            or answered_count(r) >= question_ceiling(r)
-            or r.pending_question == DONE_SENTINEL)
+    return current_question(r) is not None or interview_exhausted(r)
 
 
 def _sse_worker(rid: int, queue: "asyncio.Queue", loop: "asyncio.AbstractEventLoop", *,
@@ -602,7 +603,7 @@ def _resolve_interview(db: Session, r: Request, on_delta=None) -> None:
         record_budget_call(
             request_id=rid, kind="question", model=model_for_kind("question")
         )
-        q = ScriptedBrain().next_question(r)
+        q = ScriptedBrain().next_question(r) or closing_question(r)
         _persist_generated_question(
             db,
             rid=rid,
@@ -632,7 +633,7 @@ def _resolve_interview(db: Session, r: Request, on_delta=None) -> None:
         _persist_generated_question(
             db,
             rid=rid,
-            payload=pending_payload(q),
+            payload=pending_payload(q or closing_question(r)),
             answered_at_start=answered_at_start,
             type_at_start=type_at_start,
             ceiling_at_start=ceiling_at_start,
@@ -715,6 +716,48 @@ def get_classification(rid: int, db: Session = Depends(get_db)):
     )
 
 
+def _resume_step(r: Request) -> str:
+    """Where an unfinished intake picks up, derived from what is persisted.
+
+    Server-derived on purpose: the client cannot be trusted to say how far it got,
+    and a tab restored from yesterday would otherwise route someone into a step
+    they never reached."""
+    if not interview_exhausted(r):
+        return "interview"
+    if r.type == "new":
+        return "prototype"  # the New track designs a mock before Review
+    return "review"
+
+
+@router.get("/api/requests/drafts", response_model=list[DraftOut])
+def list_drafts(mine: str | None = None, limit: int = 20, db: Session = Depends(get_db)):
+    """Intakes somebody started and did not finish.
+
+    /api/requests deliberately hides drafts — an unsubmitted request is not yet a
+    request anybody should act on. But hiding it everywhere left no way back to it:
+    close the tab and a half-finished interview became unreachable even though every
+    answer was already on the server. This is the way back.
+
+    Declared BEFORE /api/requests/{rid} so "drafts" is matched as a literal, not
+    parsed as a request id.
+    """
+    q = db.query(Request).filter(Request.status == transitions.DRAFT)
+    if mine:
+        q = q.filter(Request.reporter == mine)
+    rows = q.order_by(Request.updated_at.desc()).limit(min(limit, 100)).all()
+    out = []
+    for r in rows:
+        # An empty shell — created by opening the page and leaving — is noise, not
+        # work in progress. Something has to have been said for it to be resumable.
+        if not (r.description or "").strip() and not r.turns:
+            continue
+        out.append(DraftOut(
+            id=r.id, ref=r.ref, title=r.title, type=r.type,
+            step=_resume_step(r), answered=answered_count(r), updated_at=r.updated_at,
+        ))
+    return out
+
+
 @router.get("/api/requests", response_model=list[RequestOut])
 def list_requests(mine: str | None = None, active: bool = False, limit: int = 500,
                   db: Session = Depends(get_db)):
@@ -773,10 +816,15 @@ def create_request(body: RequestCreate, db: Session = Depends(get_db)):
     identity = current_identity()
     reporter = identity["name"] if identity else body.reporter
     reporter_initials = identity["initials"] if identity else body.reporter_initials
-    # persist-first (PRD hardening #4): the Request exists before anything else
-    for attempt in (0, 1):
+    # persist-first (PRD hardening #4): the Request exists before anything else.
+    # Ref allocation is read-then-write, so a burst of simultaneous creates collides on
+    # the UNIQUE ref. One retry was not enough — every loser recomputed the SAME number
+    # and collided again (8 concurrent creates → 2 × HTTP 500, measured 2026-07-22).
+    # Retry with a widening spread so the herd scatters instead of re-colliding.
+    for attempt in range(6):
         r = Request(
-            ref=next_ref(db), title=body.title or "(untitled request)", description=body.description,
+            ref=next_ref(db, spread=(1 << attempt) - 1), title=body.title or "(untitled request)",
+            description=body.description,
             type=body.type, urgency=body.urgency, reach=body.reach,
             impact_metric=body.impact_metric, impact_value=body.impact_value, app_id=body.app_id,
             new_app_name=body.new_app_name, bug_where=body.bug_where,
@@ -787,9 +835,9 @@ def create_request(body: RequestCreate, db: Session = Depends(get_db)):
         try:
             db.commit()
             break
-        except IntegrityError:  # a concurrent create raced us to the same ref — once is forgivable
+        except IntegrityError:  # a concurrent create raced us to this ref — widen and retry
             db.rollback()
-            if attempt:
+            if attempt == 5:
                 raise
     return to_out(r, RequestDetail)
 

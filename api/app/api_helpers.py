@@ -9,6 +9,7 @@ router that fires the runner calls pipeline() inside the endpoint body
 (never at import time, so there is no startup-ordering hazard).
 """
 
+import random
 import re
 
 from fastapi import HTTPException
@@ -82,10 +83,20 @@ def get_request(db: Session, rid: int) -> Request:
     return r
 
 
-def next_ref(db: Session) -> str:
+def next_ref(db: Session, spread: int = 0) -> str:
+    """The next REQ-nnnn. Read-then-write, so concurrent creates CAN pick the same
+    number; `requests.ref` is UNIQUE, so the loser's insert fails and the caller retries.
+
+    `spread` is what makes a retry converge. Without it every loser recomputes the
+    identical number and collides again on the next pass — measured 2026-07-22, eight
+    simultaneous creates produced two HTTP 500s because a single dead-on retry was no
+    retry at all. Widening the window each attempt scatters the herd instead. Gaps in
+    the sequence are fine: a ref identifies a request, it does not count them."""
     last = db.query(Request).order_by(Request.id.desc()).first()
     try:
         n = max(2045, int(last.ref.split("-")[1]) + 1) if last else 2045
     except (IndexError, ValueError):  # tolerate non-standard refs left by manual cleanup
         n = 2045 + last.id
+    if spread:
+        n += random.randint(0, spread)
     return f"REQ-{n}"
