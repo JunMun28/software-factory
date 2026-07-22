@@ -1,7 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
-  <g fill="#BD03F7">
-    <circle cx="3.5" cy="3.5" r="1.55"/><circle cx="9" cy="3.5" r="1.55"/><circle cx="14.5" cy="3.5" r="1.55"/>
-    <circle cx="3.5" cy="9" r="1.55"/><circle cx="9" cy="9" r="1.55"/><circle cx="14.5" cy="9" r="1.55"/>
-    <circle cx="3.5" cy="14.5" r="1.55"/><circle cx="9" cy="14.5" r="1.55"/><circle cx="14.5" cy="14.5" r="1.55"/>
-  </g>
+<!-- AIRES favicon — the mark knocked white out of an accent tile. A tile rather
+     than a bare stroke because a favicon sits on browser chrome we do not
+     control: light tabs, dark tabs, pinned states. The tile guarantees contrast
+     in all of them, where a dark-on-transparent mark would vanish on a dark tab.
+     Stroke is heavier than the in-app mark (6 -> 6 on a tighter path) because
+     detail below ~16px collapses. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="11" fill="#BD03F7" />
+  <path
+    d="M12 31 L20 19 L28 31 L37 18"
+    fill="none"
+    stroke="#fff"
+    stroke-width="6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="37" cy="18" r="4.2" fill="#fff" />
 </svg>

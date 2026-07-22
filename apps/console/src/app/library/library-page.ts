@@ -441,10 +441,13 @@ function matchesState(request: FactoryRequest, state: LibraryState): boolean {
       color: var(--fg1);
       background: var(--surface-2);
     }
+    /* neutral, not purple: a segmented control's active state is exactly what
+       the design system forbids tinting. Depth (surface-3 + strong border)
+       separates it from :hover's surface-2 without spending the accent. */
     .chips button.active {
-      color: var(--accent-tx);
-      background: var(--accent-tint);
-      border-color: var(--accent-tint-bd);
+      color: var(--fg1);
+      background: var(--surface-3);
+      border-color: var(--border-strong);
     }
     .row-head,
     .library-row {

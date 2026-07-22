@@ -42,7 +42,7 @@ describe('Dossier chapter projection', () => {
       event(2, 'gate_event', 'architecture', { actor: 'Kim Park', bot: false }),
       event(3, 'escalation', 'build', { actor: 'Factory' }),
       event(4, 'steer_note', 'build', { actor: 'Aisha Rahman', bot: false }),
-      event(5, 'comment', 'build', { actor: 'Jun Mun', bot: false }),
+      event(5, 'comment', 'build', { actor: 'Dana Reyes', bot: false }),
       event(6, 'step_summary', 'build', {
         payload: { step: 2, of: 5, label: 'implementing the change' },
       }),
@@ -68,7 +68,7 @@ describe('Dossier chapter projection', () => {
       ['Kim Park', '2026-07-13T02:00:00Z'],
       ['Factory', '2026-07-13T03:00:00Z'],
       ['Aisha Rahman', '2026-07-13T04:00:00Z'],
-      ['Jun Mun', '2026-07-13T05:00:00Z'],
+      ['Dana Reyes', '2026-07-13T05:00:00Z'],
     ]);
   });
 
@@ -220,8 +220,8 @@ async function pageFixture(
         provide: Session,
         useValue: {
           operatorId: () => 7,
-          operator: () => ({ id: 7, name: 'Jun Mun', initials: 'JM', hue: '#520170' }),
-          user: () => ({ name: 'Jun Mun', initials: 'JM', color: '#520170' }),
+          operator: () => ({ id: 7, name: 'Dana Reyes', initials: 'DR', hue: '#520170' }),
+          user: () => ({ name: 'Dana Reyes', initials: 'DR', color: '#520170' }),
         },
       },
       { provide: Theme, useValue: { resolved: () => 'light', set: vi.fn() } },
@@ -297,5 +297,164 @@ describe('Dossier actions and explicit comments', () => {
     expect(api['comment']).toHaveBeenCalledWith(42, 'Please keep the migration note.', 7);
     expect(api['comments']).toHaveBeenCalledWith(42);
     expect(api['trace']).toHaveBeenCalledWith(42, 0, 500);
+  });
+});
+
+describe('The plan (from intake)', () => {
+  const withPlan = (over: Partial<RequestDetail> = {}) =>
+    detail({
+      spec_lines: [
+        { text: 'Pick a Friday slot and swap turns.', prov: 'Q1', assume: false },
+        { text: 'A new repository will be provisioned.', prov: null, assume: true },
+      ],
+      ...over,
+    });
+
+  it('shows each spec line with the answer it traces to', async () => {
+    const { fixture } = await pageFixture({ request: vi.fn(() => of(withPlan())) });
+    const lines = [...fixture.nativeElement.querySelectorAll('.lines li')] as HTMLElement[];
+    expect(lines).toHaveLength(2);
+    expect(lines[0].querySelector('.txt')?.textContent).toContain('Pick a Friday slot');
+    expect(lines[0].querySelector('.prov')?.textContent?.trim()).toBe('Q1');
+  });
+
+  it('flags a line the Factory assumed rather than leaving it unattributed', async () => {
+    const { fixture } = await pageFixture({ request: vi.fn(() => of(withPlan())) });
+    const assumed = fixture.nativeElement.querySelector('.lines li.assumed') as HTMLElement;
+    expect(assumed.querySelector('.prov.assume')?.textContent?.trim()).toBe('Assumption');
+  });
+
+  it('embeds the visual plan without letting it reach the console', async () => {
+    const { fixture } = await pageFixture({
+      request: vi.fn(() =>
+        of(withPlan({ prototype_html: '<h1>Mock</h1>', prototype_status: 'edited' })),
+      ),
+    });
+    const frame = fixture.nativeElement.querySelector('.mock iframe') as HTMLIFrameElement;
+    // submitter-authored HTML: scripts may run, same-origin access must not
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
+    expect(fixture.nativeElement.querySelector('.mock .edited')?.textContent).toContain('Edited');
+  });
+
+  it('omits the mock when the submitter skipped it', async () => {
+    const { fixture } = await pageFixture({
+      request: vi.fn(() =>
+        of(withPlan({ prototype_html: '<h1>stale</h1>', prototype_status: 'skipped' })),
+      ),
+    });
+    expect(fixture.nativeElement.querySelector('.mock')).toBeNull();
+    // the spec lines still stand on their own
+    expect(fixture.nativeElement.querySelectorAll('.lines li')).toHaveLength(2);
+  });
+
+  it('hides the whole section when intake produced neither', async () => {
+    const { fixture } = await pageFixture({
+      request: vi.fn(() => of(detail({ spec_lines: [], prototype_html: null }))),
+    });
+    expect(fixture.nativeElement.querySelector('.plan')).toBeNull();
+  });
+});
+
+describe('Architecture (what the architect produced)', () => {
+  const archTrace = (extra: ProgressEvent[] = []) => [
+    event(2, 'milestone_summary', 'architecture', {
+      title: 'Architecture plan drafted — PLAN.md committed',
+      payload: { fields: { Artifacts: 'PLAN.md', ADRs: '2 drafted' } },
+    }),
+    event(3, 'milestone_summary', 'architecture', {
+      title: 'ADRs signed; plan validated against SPEC.md',
+      payload: { fields: { Gate: 'Sign ADRs · passed', Next: 'Test authoring' } },
+    }),
+    ...extra,
+  ];
+  const withTrace = (items: ProgressEvent[]) => ({
+    trace: vi.fn(() => of({ items, cursor: items.length })),
+  });
+
+  it('reports the artifacts the stage actually recorded', async () => {
+    const { fixture } = await pageFixture(withTrace(archTrace()));
+    const facts = [...fixture.nativeElement.querySelectorAll('.arch-facts div')] as HTMLElement[];
+    const asText = facts.map(
+      (f) => `${f.querySelector('dt')?.textContent}=${f.querySelector('dd')?.textContent}`,
+    );
+    expect(asText).toContain('Artifacts=PLAN.md');
+    expect(asText).toContain('ADRs=2 drafted');
+    // later milestones add to the same set rather than replacing it
+    expect(asText).toContain('Next=Test authoring');
+  });
+
+  it('quotes PLAN.md when the runner captured an excerpt', async () => {
+    const { fixture } = await pageFixture(
+      withTrace(
+        archTrace([
+          event(4, 'architecture_plan', 'architecture', {
+            title: 'Architecture plan ready',
+            payload: {
+              plan_excerpt: '# PLAN\n- one table for slots',
+              plan_digest: 'sha256:abc123',
+              pr_url: 'https://example.test/pr/1',
+            },
+          }),
+        ]),
+      ),
+    );
+    const pre = fixture.nativeElement.querySelector('.planmd pre') as HTMLElement;
+    expect(pre.textContent).toContain('one table for slots');
+    expect(fixture.nativeElement.querySelector('.planmd .digest')?.textContent).toContain(
+      'sha256:abc123',
+    );
+    expect(fixture.nativeElement.querySelector('.planmd a')?.getAttribute('href')).toBe(
+      'https://example.test/pr/1',
+    );
+  });
+
+  it('says why there is no excerpt rather than showing an empty panel', async () => {
+    const { fixture } = await pageFixture(withTrace(archTrace()));
+    expect(fixture.nativeElement.querySelector('.planmd')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.arch .none')?.textContent).toContain(
+      'No PLAN.md excerpt was captured',
+    );
+  });
+
+  it('quotes each rejection, because that is why the plan looks the way it does', async () => {
+    const { fixture } = await pageFixture(
+      withTrace(
+        archTrace([
+          event(5, 'gate_event', 'architecture', {
+            actor: 'Jun Mun Wong',
+            title: 'Architecture rejected — refining the plan',
+            payload: { gate: 'approve_architecture', reason: 'Keep the data model simpler.' },
+          }),
+        ]),
+      ),
+    );
+    const quotes = [
+      ...fixture.nativeElement.querySelectorAll('.refines blockquote'),
+    ] as HTMLElement[];
+    expect(quotes).toHaveLength(1);
+    expect(quotes[0].textContent).toContain('Keep the data model simpler.');
+    expect(quotes[0].querySelector('cite')?.textContent).toContain('Jun Mun Wong');
+    expect(fixture.nativeElement.querySelector('.refines__t')?.textContent).toContain('1 time');
+  });
+
+  it('does not count a plain gate event as a rejection', async () => {
+    const { fixture } = await pageFixture(
+      withTrace(
+        archTrace([
+          event(5, 'gate_event', 'architecture', {
+            title: 'Waiting at the architecture gate',
+            payload: { gate: 'approve_architecture', plan_event_id: null },
+          }),
+        ]),
+      ),
+    );
+    expect(fixture.nativeElement.querySelector('.refines')).toBeNull();
+  });
+
+  it('hides the section entirely when architecture has not run', async () => {
+    const { fixture } = await pageFixture(
+      withTrace([event(1, 'step_summary', 'spec', { title: 'reading the request' })]),
+    );
+    expect(fixture.nativeElement.querySelector('.arch')).toBeNull();
   });
 });

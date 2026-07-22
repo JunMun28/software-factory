@@ -3,6 +3,7 @@
 export { Autofocus } from './autofocus';
 export { Avatar } from './avatar';
 export { Glyph } from './glyph';
+export { GlyphField } from './glyph-field';
 export { Icon } from './icon';
 export { Mark } from './mark';
 export { Pill } from './pill';

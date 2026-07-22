@@ -22,6 +22,14 @@ export const routes: Routes = [
     canActivate: [adminGuard],
     loadComponent: () => import('./floor/floor-page').then((m) => m.FloorPage),
   },
+  /* The previous tabbed Overview, kept reachable while the new one settles.
+     Same page component and the same action plumbing — only the body differs. */
+  {
+    path: 'overview-classic',
+    canActivate: [adminGuard],
+    data: { classic: true },
+    loadComponent: () => import('./floor/floor-page').then((m) => m.FloorPage),
+  },
   {
     path: 'library',
     canActivate: [adminGuard],

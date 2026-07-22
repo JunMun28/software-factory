@@ -11,6 +11,8 @@ import { Store } from '../core/store.service';
 import { FloorContent } from './floor-content';
 import { FloorPage } from './floor-page';
 import { BoardView } from './board-view';
+import { OverviewContent } from './overview-content';
+import { RequestModal } from './request-modal';
 import { RowActions } from './row-actions';
 import {
   DISPLAY_STAGES,
@@ -682,5 +684,175 @@ describe('Floor page', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'Discards the work after Build and redoes that stage.',
     );
+  });
+});
+
+describe('Overview (A6) rendering', () => {
+  async function renderOverview(m: MissionOut, requests: FactoryRequest[] = []) {
+    await TestBed.configureTestingModule({
+      imports: [OverviewContent],
+      providers: [
+        provideRouter([]),
+        { provide: Theme, useValue: { resolved: () => 'dark', set: vi.fn() } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(OverviewContent);
+    fixture.componentRef.setInput('mission', m);
+    fixture.componentRef.setInput('requests', requests);
+    fixture.detectChanges();
+    return fixture;
+  }
+  const h1 = (f: ComponentFixture<OverviewContent>) =>
+    (f.nativeElement.querySelector('h1') as HTMLElement).textContent?.replace(/\s+/g, ' ').trim();
+
+  it('names both counts a person must act on', async () => {
+    const fixture = await renderOverview(mission(), [
+      request({ id: 1, ref: 'SF-1', stage: 'review', gate: 'approve_merge' }),
+      request({ id: 2, ref: 'SF-2', stage: 'spec', gate: 'approve_spec' }),
+      request({ id: 3, ref: 'SF-3', needs_human: true, gate: null }),
+    ]);
+    expect(h1(fixture)).toBe('2 requests need review, 1 has an error.');
+  });
+
+  it('drops the error clause rather than printing a zero', async () => {
+    const fixture = await renderOverview(mission(), [
+      request({ id: 1, ref: 'SF-1', stage: 'review', gate: 'approve_merge' }),
+    ]);
+    expect(h1(fixture)).toBe('1 request needs review.');
+  });
+
+  it('gives the error clause its own noun when it stands alone', async () => {
+    // "1 has an error" has no subject once the review clause is gone
+    const fixture = await renderOverview(mission(), [
+      request({ id: 2, ref: 'SF-2', needs_human: true, gate: null }),
+    ]);
+    expect(h1(fixture)).toBe('1 request has an error.');
+  });
+
+  it('says so plainly when the board is clear', async () => {
+    const fixture = await renderOverview(mission(), [
+      request({ id: 1, stage: 'build', status: 'approved', gate: null }),
+    ]);
+    expect(h1(fixture)).toBe('Nothing is waiting on you.');
+  });
+
+  it('states five figures, with shipped counted separately from open', async () => {
+    const fixture = await renderOverview(mission(), [
+      request({ id: 1, ref: 'SF-1', stage: 'review', gate: 'approve_merge' }),
+      request({ id: 2, ref: 'SF-2', stage: 'done', status: 'done', gate: null }),
+    ]);
+    const figs = [...fixture.nativeElement.querySelectorAll('.fig')] as HTMLElement[];
+    expect(figs.map((f) => f.querySelector('.l')?.textContent)).toEqual([
+      'Awaiting your review',
+      'Error',
+      'Being built',
+      'Open requests',
+      'Shipped this week',
+    ]);
+    const n = (i: number) => figs[i].querySelector('.n')?.textContent;
+    expect(n(0)).toBe('1'); // the gate
+    expect(n(3)).toBe('1'); // open excludes the shipped one
+    expect(n(4)).toBe('1'); // shipped
+  });
+
+  it('keeps shipped in the Deploy lane — shipped is a status, not a stage', async () => {
+    const fixture = await renderOverview(mission(), [
+      request({ id: 1, ref: 'SF-1', stage: 'done', status: 'done', gate: null }),
+    ]);
+    const lanes = [...fixture.nativeElement.querySelectorAll('.rail .st')] as HTMLElement[];
+    expect(lanes).toHaveLength(5);
+    expect(lanes[4].textContent).toContain('Deploy');
+    expect(lanes[4].querySelector('.h b')?.textContent).toBe('1');
+  });
+
+  it('surfaces the rarest status first so a truncated lane still shows it', async () => {
+    const many = Array.from({ length: 8 }, (_, i) =>
+      request({ id: 10 + i, ref: `G-${i}`, stage: 'spec', gate: 'approve_spec' }),
+    );
+    const fixture = await renderOverview(mission(), [
+      ...many,
+      request({
+        id: 99,
+        ref: 'ERR',
+        title: 'The stalled one',
+        stage: 'spec',
+        needs_human: true,
+        gate: null,
+      }),
+    ]);
+    const first = fixture.nativeElement.querySelector('.rail .st li .t') as HTMLElement;
+    expect(first.textContent).toContain('The stalled one');
+    expect(fixture.nativeElement.querySelector('.rail .st .more')?.textContent).toContain('3 more');
+  });
+
+  it('emits the row when a request is clicked, so the page can open its sheet', async () => {
+    const fixture = await renderOverview(mission(), [
+      request({
+        id: 7,
+        ref: 'SF-7',
+        title: 'Export payroll',
+        stage: 'review',
+        gate: 'approve_merge',
+      }),
+    ]);
+    const opened: number[] = [];
+    fixture.componentInstance.opened.subscribe((row) => opened.push(row.id));
+    (fixture.nativeElement.querySelector('.rail li button') as HTMLButtonElement).click();
+    expect(opened).toEqual([7]);
+  });
+
+  it('gives every request row an accessible name', async () => {
+    const fixture = await renderOverview(mission(), [
+      request({ id: 7, title: 'Export payroll', stage: 'review', gate: 'approve_merge' }),
+    ]);
+    const btn = fixture.nativeElement.querySelector('.rail li button') as HTMLButtonElement;
+    expect(btn.getAttribute('aria-label')).toBe('Export payroll, gate. Open request.');
+  });
+});
+
+describe('Request sheet', () => {
+  async function renderSheet(row: ReturnType<typeof deriveRow>) {
+    await TestBed.configureTestingModule({
+      imports: [RequestModal],
+      providers: [provideRouter([])],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(RequestModal);
+    fixture.componentRef.setInput('row', row);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('offers exactly the verbs the row kind allows, plus the dossier', async () => {
+    const fixture = await renderSheet(
+      deriveRow(request({ stage: 'review', gate: 'approve_merge' }), null),
+    );
+    const verbs = [...fixture.nativeElement.querySelectorAll('.acts .act')].map((b) =>
+      (b as HTMLElement).textContent?.trim(),
+    );
+    expect(verbs).toEqual(['Approve', 'Send back', 'Open dossier']);
+  });
+
+  it('offers the recovery verbs for a stalled request', async () => {
+    const fixture = await renderSheet(
+      deriveRow(
+        request({ needs_human: true, needs_human_reason: 'Spec failed 3×', gate: null }),
+        null,
+      ),
+    );
+    expect(fixture.nativeElement.textContent).toContain('Spec failed 3×');
+    const verbs = [...fixture.nativeElement.querySelectorAll('.acts .act')].map((b) =>
+      (b as HTMLElement).textContent?.trim(),
+    );
+    expect(verbs).toEqual(['Retry stage', 'Send back to…', 'Take over', 'Cancel', 'Open dossier']);
+  });
+
+  it('emits the verb rather than acting, so the page owns the confirm', async () => {
+    const fixture = await renderSheet(
+      deriveRow(request({ stage: 'review', gate: 'approve_merge' }), null),
+    );
+    const seen: string[] = [];
+    fixture.componentInstance.act.subscribe((a) => seen.push(a.verb));
+    (fixture.nativeElement.querySelector('.acts .act') as HTMLButtonElement).click();
+    expect(seen).toEqual(['approve']);
   });
 });

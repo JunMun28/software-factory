@@ -399,7 +399,7 @@ const HUES = ['#6E5A8A', '#7C5CFC', '#0F766E', '#B45309', '#B42318', '#2563EB'];
     .app-title button:hover,
     .close-app:hover,
     .cancel-app:hover {
-      background: var(--accent-tint);
+      background: var(--surface-2);
     }
     dl {
       display: grid;

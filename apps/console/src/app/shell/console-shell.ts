@@ -1,6 +1,6 @@
 import { Component, HostListener, computed, inject, input, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
-import { Api, Autofocus, Poll, Theme } from '@sf/shared';
+import { Api, Autofocus, Mark, Poll, Theme } from '@sf/shared';
 
 import { INTAKE_URL, intakeNewRequestUrl } from '../core/intake-url';
 import { Heartbeat } from '../core/heartbeat.service';
@@ -8,12 +8,12 @@ import { Session } from '../core/session.service';
 
 @Component({
   selector: 'sf-console-shell',
-  imports: [RouterLink, RouterLinkActive, Autofocus],
+  imports: [RouterLink, RouterLinkActive, Autofocus, Mark],
   template: `
     <div class="wrap" [class.wide]="wide()">
       <header class="bar">
-        <a class="mark" routerLink="/" aria-label="Software Factory, Overview"
-          ><i></i><span class="mark-name">Software Factory</span></a
+        <a class="mark" routerLink="/" aria-label="AIRES, Overview"
+          ><sf-mark [size]="22" /><span class="mark-name">AIRES</span></a
         >
         <nav aria-label="Primary navigation">
           <a routerLink="/" [routerLinkActiveOptions]="{ exact: true }" routerLinkActive="active"
@@ -58,7 +58,7 @@ import { Session } from '../core/session.service';
         </button>
         <!-- Who you are, in words. Approving a gate is irreversible and gets
              attributed by name ("Already approved by Kim Park"), and two of the
-             seeded operators read "Jun Mun Wong" and "Jun Wong" — a 30px
+             seeded operators read "Dana M. Reyes" and "Dana Reyes" — a 30px
              monogram is not enough to tell them apart before you act. -->
         @if (session.operator(); as operator) {
           <a
@@ -132,19 +132,18 @@ import { Session } from '../core/session.service';
       min-height: 63px;
       border-bottom: 1px solid var(--hairline);
     }
+    /* Brand lockup — mark then wordmark, nothing between them, shared with the
+       intake app so the two surfaces read as one product. */
     .mark {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 9px;
       color: var(--fg1);
-      font: 700 15.5px var(--display);
+      font:
+        700 15.5px 'Archivo',
+        var(--display);
+      letter-spacing: -0.01em;
       text-decoration: none;
-    }
-    .mark i {
-      width: 10px;
-      height: 10px;
-      border-radius: 3px;
-      background: var(--accent);
     }
     nav {
       display: flex;

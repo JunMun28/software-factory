@@ -36,8 +36,8 @@ function req(over: Partial<FactoryRequest> = {}): FactoryRequest {
     gate: 'approve_spec',
     needs_human: false,
     needs_human_reason: null,
-    reporter: 'Jun',
-    reporter_initials: 'JM',
+    reporter: 'Dana',
+    reporter_initials: 'DR',
     labels: null,
     send_back_question: null,
     send_back_response: null,
@@ -294,7 +294,7 @@ describe('CancelConfirm', () => {
     const text = el.textContent ?? '';
     expect(text).toContain('Cancel this request?');
     expect(text).toContain('Fix the export');
-    expect(text).toContain('Jun');
+    expect(text).toContain('Dana');
     el.querySelector<HTMLButtonElement>('.btn.danger')!.click();
     expect(f.componentInstance.confirms).toBe(1);
   });

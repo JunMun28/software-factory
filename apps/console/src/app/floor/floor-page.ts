@@ -23,7 +23,9 @@ import {
   floorActionOutcome,
 } from '../shared/action-outcome';
 import { FloorContent } from './floor-content';
-import { OverviewView, RowAction } from './floor-view';
+import { OverviewContent } from './overview-content';
+import { RequestModal } from './request-modal';
+import { OverviewRow, OverviewView, RowAction } from './floor-view';
 
 /* Tab order, and therefore the ←/→ cycling order. Keep in step with the
    `views` array in floor-content, and keep the default first. */
@@ -38,6 +40,8 @@ const LEGACY_VIEWS: Readonly<Record<string, OverviewView>> = { stack: 'list', li
   imports: [
     ConsoleShell,
     FloorContent,
+    OverviewContent,
+    RequestModal,
     ApproveModal,
     SendBackModal,
     SendBackStageModal,
@@ -47,19 +51,35 @@ const LEGACY_VIEWS: Readonly<Record<string, OverviewView>> = { stack: 'list', li
   template: `
     <sf-console-shell active="floor" [wide]="true">
       @if (mission(); as m) {
-        <sf-floor-content
-          [mission]="m"
-          [requests]="store.requests()"
-          [view]="view()"
-          [intakeUrl]="intakeUrl"
-          [actionOutcomes]="actionOutcomes()"
-          (viewChange)="setView($event)"
-          (act)="handleAction($event)"
-        />
+        @if (classic()) {
+          <sf-floor-content
+            [mission]="m"
+            [requests]="store.requests()"
+            [view]="view()"
+            [intakeUrl]="intakeUrl"
+            [actionOutcomes]="actionOutcomes()"
+            (viewChange)="setView($event)"
+            (act)="handleAction($event)"
+          />
+        } @else {
+          <sf-overview-content
+            [mission]="m"
+            [requests]="store.requests()"
+            [actionOutcomes]="actionOutcomes()"
+            (opened)="inspecting.set($event)"
+          />
+        }
       } @else {
         <p class="loading" role="status">Bringing the line into view…</p>
       }
     </sf-console-shell>
+    @if (inspecting(); as row) {
+      <sf-request-modal
+        [row]="row"
+        (dismissed)="inspecting.set(null)"
+        (act)="inspecting.set(null); handleAction($event)"
+      />
+    }
     @if (confirming(); as gate) {
       <sf-approve-modal
         [r]="gate.request"
@@ -134,6 +154,15 @@ export class FloorPage {
   sendingStageBack = signal<FactoryRequest | null>(null);
   actionOutcomes = signal<Record<number, FloorActionOutcome>>({});
   intakeUrl = intakeNewRequestUrl(inject(INTAKE_URL));
+  /** the request whose sheet is open on the new Overview */
+  inspecting = signal<OverviewRow | null>(null);
+
+  /** The previous tabbed Overview (List | Board | Progress), kept at
+   *  /overview-classic while the new one settles. Route data, so the two share
+   *  every bit of action plumbing below rather than duplicating a page. */
+  classic = toSignal(this.route.data.pipe(map((d) => !!d['classic'])), {
+    initialValue: !!this.route.snapshot.data['classic'],
+  });
 
   /** The chosen view lives in the URL (?view=stack|line|progress) so it is
    *  shareable and survives a reload; default stack. */
@@ -150,7 +179,8 @@ export class FloorPage {
       !!this.retrying() ||
       !!this.takingOver() ||
       !!this.sendingStageBack() ||
-      !!this.cancelling(),
+      !!this.cancelling() ||
+      !!this.inspecting(),
   );
 
   constructor() {

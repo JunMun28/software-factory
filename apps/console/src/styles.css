@@ -1,5 +1,5 @@
 /* ============================================================
-   SOFTWARE FACTORY — high-fidelity build
+   AIRES — high-fidelity build
    Grounded in the Micron Atlas design system (light-surface,
    one reserved purple accent, status-by-shape glyphs).
    Two faces, one system: Submitter (calm, light) + Admin
@@ -7,36 +7,38 @@
    Needs-human; at most one of each per surface.
    ============================================================ */
 
-/* ---- Micron Basis (licensed brand sans) + JetBrains Mono ---- */
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* ---- Archivo (SIL OFL) + JetBrains Mono ----
+   All self-hosted from /fonts: no request leaves the origin, so the app works
+   behind a corporate proxy and offline, and nothing is leaked per page view.
+   JetBrains Mono is variable, so one file per subset covers 400-600; the
+   unicode-ranges below are Google's own, kept so accented characters still
+   resolve to latin-ext exactly as they did over the CDN. */
 @font-face {
-  font-family: 'Micron Basis';
-  src: url('/fonts/MicronBasis-Light.otf') format('opentype');
-  font-weight: 300;
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-latin.woff2') format('woff2');
+  font-weight: 100 800;
   font-display: swap;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
-  font-family: 'Micron Basis';
-  src: url('/fonts/MicronBasis-Regular.otf') format('opentype');
-  font-weight: 400;
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-latin-ext.woff2') format('woff2');
+  font-weight: 100 800;
   font-display: swap;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
 }
+/* Archivo — the wordmark and the whole type system. Self-hosted like every
+   other face here so the app still makes zero external requests. Variable
+   (latin subset), so one 34KB file covers the whole weight axis. SIL OFL. */
 @font-face {
-  font-family: 'Micron Basis';
-  src: url('/fonts/MicronBasis-Medium.otf') format('opentype');
-  font-weight: 500;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Micron Basis';
-  src: url('/fonts/MicronBasis-Bold.otf') format('opentype');
-  font-weight: 600 700;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Micron Basis';
-  src: url('/fonts/MicronBasis-Black.otf') format('opentype');
-  font-weight: 800 900;
+  font-family: 'Archivo';
+  src: url('/fonts/Archivo-variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
   font-display: swap;
 }
 
@@ -100,8 +102,8 @@
   --fill-wait: #cdccd7; /* held by the requester — drawn hollow */
 
   /* type */
-  --display: 'Micron Basis', 'Space Grotesk', system-ui, sans-serif;
-  --body: 'Micron Basis', 'Hanken Grotesk', system-ui, sans-serif;
+  --display: 'Archivo', 'Space Grotesk', system-ui, sans-serif;
+  --body: 'Archivo', 'Hanken Grotesk', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   /* radii */

@@ -130,6 +130,127 @@ import { DossierChapter, buildDossierChapters } from './dossier-view';
             }
           </header>
 
+          <!-- What the submitter agreed to before any of this ran. The spec
+               lines and the mock both come straight off the intake form; they
+               are what the timeline below is the story OF, so they sit first. -->
+          @if (r.spec_lines.length || hasMock(r)) {
+            <section class="plan" aria-labelledby="plan-title">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Agreed at intake</p>
+                  <h2 id="plan-title">The plan</h2>
+                </div>
+                <p>Every line traces to an answer, or is marked as an assumption.</p>
+              </div>
+
+              <div class="plan-grid" [class.solo]="!hasMock(r)">
+                @if (r.spec_lines.length) {
+                  <ol class="lines">
+                    @for (line of r.spec_lines; track $index) {
+                      <li [class.assumed]="line.assume">
+                        <span class="txt">{{ line.text }}</span>
+                        @if (line.assume) {
+                          <span
+                            class="prov assume"
+                            title="No answer covered this — the Factory assumed it"
+                            >Assumption</span
+                          >
+                        } @else if (line.prov) {
+                          <span class="prov" [title]="'From answer ' + line.prov">{{
+                            line.prov
+                          }}</span>
+                        }
+                      </li>
+                    }
+                  </ol>
+                } @else {
+                  <p class="none">No spec lines were recorded for this request.</p>
+                }
+
+                @if (hasMock(r)) {
+                  <figure class="mock">
+                    <figcaption>
+                      <span>Visual plan</span>
+                      @if (r.prototype_status === 'edited') {
+                        <span class="edited">Edited by the submitter</span>
+                      }
+                      <button type="button" (click)="mockOpen.set(true)">Full screen</button>
+                    </figcaption>
+                    <!-- sandboxed without allow-same-origin: the mock is
+                         submitter-authored HTML and must not reach this app -->
+                    <iframe
+                      [srcdoc]="r.prototype_html!"
+                      sandbox="allow-scripts"
+                      title="Visual plan from intake"
+                      loading="lazy"
+                    ></iframe>
+                  </figure>
+                }
+              </div>
+            </section>
+          }
+
+          <!-- How it will be built. Sits between the plan and the timeline
+               because that is the order the decisions were made in. -->
+          @if (architecture(); as a) {
+            <section class="arch" aria-labelledby="arch-title">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">How it will be built</p>
+                  <h2 id="arch-title">Architecture</h2>
+                </div>
+                <p>The smallest design that satisfies every line of the plan above.</p>
+              </div>
+
+              @if (a.facts.length) {
+                <dl class="arch-facts">
+                  @for (f of a.facts; track f[0]) {
+                    <div>
+                      <dt>{{ f[0] }}</dt>
+                      <dd>{{ f[1] }}</dd>
+                    </div>
+                  }
+                </dl>
+              }
+
+              @if (a.excerpt) {
+                <figure class="planmd">
+                  <figcaption>
+                    <span>PLAN.md</span>
+                    @if (a.digest) {
+                      <span class="digest mono">{{ a.digest }}</span>
+                    }
+                    @if (a.prUrl) {
+                      <a [href]="a.prUrl" target="_blank" rel="noopener">Open PR</a>
+                    }
+                  </figcaption>
+                  <pre>{{ a.excerpt }}</pre>
+                </figure>
+              } @else {
+                <p class="none">
+                  No PLAN.md excerpt was captured for this run — the simulated runner records the
+                  architecture milestones without a file to quote. The decisions are in the timeline
+                  below.
+                </p>
+              }
+
+              @if (a.refines.length) {
+                <div class="refines">
+                  <p class="refines__t">
+                    Sent back {{ a.refines.length }}
+                    {{ a.refines.length === 1 ? 'time' : 'times' }} before this plan
+                  </p>
+                  @for (rf of a.refines; track rf.at) {
+                    <blockquote>
+                      {{ rf.reason }}
+                      <cite>{{ rf.by }}</cite>
+                    </blockquote>
+                  }
+                </div>
+              }
+            </section>
+          }
+
           <section class="story" aria-labelledby="story-title">
             <div class="section-heading">
               <div>
@@ -358,6 +479,15 @@ import { DossierChapter, buildDossierChapters } from './dossier-view';
     @if (cancelling() && request(); as r) {
       <sf-cancel-confirm [r]="r" (kept)="cancelling.set(false)" (confirmed)="cancel()" />
     }
+    @if (mockOpen() && request(); as r) {
+      <div class="mock-full" role="dialog" aria-modal="true" aria-label="Visual plan, full screen">
+        <div class="mock-full__bar">
+          <span>Visual plan · {{ r.ref }}</span>
+          <button type="button" (click)="mockOpen.set(false)">Close</button>
+        </div>
+        <iframe [srcdoc]="r.prototype_html!" sandbox="allow-scripts" title="Visual plan"></iframe>
+      </div>
+    }
   `,
   styles: `
     :host {
@@ -505,9 +635,234 @@ import { DossierChapter, buildDossierChapters } from './dossier-view';
       color: var(--fg2);
       font-weight: 600;
     }
+    .plan,
+    .arch,
     .story,
     .comments {
       margin-top: 48px;
+    }
+
+    /* ── architecture ── */
+    .arch-facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 28px;
+      margin: 0 0 18px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--hairline);
+    }
+    .arch-facts div {
+      min-width: 0;
+    }
+    .arch-facts dt {
+      color: var(--faint);
+      font: 500 10.5px var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .arch-facts dd {
+      margin: 3px 0 0;
+      color: var(--fg1);
+      font-size: 13px;
+    }
+    .planmd {
+      margin: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+    }
+    .planmd figcaption {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--hairline);
+      color: var(--muted);
+      font: 500 11px var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .planmd .digest {
+      color: var(--faint);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .planmd figcaption a {
+      margin-left: auto;
+      color: var(--accent-link);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    /* the excerpt is a file, so it keeps its own line breaks and scrolls
+       sideways rather than reflowing into something it is not */
+    .planmd pre {
+      margin: 0;
+      max-height: 340px;
+      overflow: auto;
+      padding: 14px 16px;
+      color: var(--fg2);
+      font: 400 12.5px/1.6 var(--mono);
+      white-space: pre;
+    }
+    .refines {
+      margin-top: 18px;
+    }
+    .refines__t {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+    .refines blockquote {
+      margin: 0 0 8px;
+      padding: 10px 14px;
+      color: var(--fg2);
+      background: var(--surface-2);
+      border-radius: var(--r);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .refines cite {
+      display: block;
+      margin-top: 6px;
+      color: var(--faint);
+      font-size: 11.5px;
+      font-style: normal;
+    }
+
+    /* ── the plan: spec lines beside the mock they describe ── */
+    .plan-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+      gap: 28px;
+      align-items: start;
+    }
+    .plan-grid.solo {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lines {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      border-top: 1px solid var(--hairline);
+    }
+    .lines li {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: baseline;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--hairline);
+    }
+    .lines .txt {
+      font-size: 13.5px;
+      line-height: 1.5;
+      color: var(--fg1);
+    }
+    .lines li.assumed .txt {
+      color: var(--fg2);
+    }
+    /* provenance is the point of this list: every line either traces to an
+       answer or is flagged as something the Factory filled in */
+    .prov {
+      flex: none;
+      color: var(--accent-tx);
+      font: 500 10.5px var(--mono);
+      letter-spacing: 0.04em;
+    }
+    .prov.assume {
+      color: var(--amber-tx);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .none {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .mock {
+      margin: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      background: var(--surface);
+    }
+    .mock figcaption {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--hairline);
+      font: 500 11px var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .mock .edited {
+      color: var(--accent-tx);
+    }
+    .mock figcaption button {
+      margin-left: auto;
+      padding: 3px 9px;
+      color: var(--fg1);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--r);
+      font: 600 10.5px var(--body);
+      letter-spacing: 0;
+      text-transform: none;
+      cursor: pointer;
+    }
+    .mock figcaption button:hover {
+      background: var(--surface-2);
+    }
+    .mock iframe {
+      display: block;
+      width: 100%;
+      height: 300px;
+      border: 0;
+      background: #fff;
+    }
+
+    .mock-full {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+    }
+    .mock-full__bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font: 500 12px var(--mono);
+      color: var(--muted);
+    }
+    .mock-full__bar button {
+      margin-left: auto;
+      padding: 5px 12px;
+      color: var(--fg1);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--r);
+      font: 600 12.5px var(--body);
+      cursor: pointer;
+    }
+    .mock-full iframe {
+      flex: 1;
+      width: 100%;
+      border: 0;
+      background: #fff;
+    }
+
+    @media (max-width: 900px) {
+      .plan-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
     .section-heading {
       display: flex;
@@ -881,6 +1236,53 @@ export class DossierPage {
   comments = signal<CommentItem[]>([]);
   traceTruncated = signal(false);
   chapters = computed(() => buildDossierChapters(this.events()));
+
+  /* ── what the architect produced ──
+     The PLAN.md excerpt only exists when the kube runner has a git remote to
+     read it from; the simulated runner records the same milestones without an
+     excerpt to quote. So this reports whatever the stage actually left behind
+     rather than assuming the richest case, and the section hides entirely when
+     architecture has not run. */
+  architecture = computed(() => {
+    const arch = this.events().filter((e) => e.stage === 'architecture');
+    if (!arch.length) return null;
+
+    const plan = arch.filter((e) => e.kind === 'architecture_plan').at(-1);
+    const payload = (plan?.payload ?? {}) as Record<string, unknown>;
+
+    // milestone `fields` accumulate across redrafts — later rounds win
+    const facts = new Map<string, string>();
+    for (const e of arch) {
+      if (e.kind !== 'milestone_summary') continue;
+      const fields = ((e.payload ?? {}) as Record<string, unknown>)['fields'];
+      if (fields && typeof fields === 'object') {
+        for (const [k, v] of Object.entries(fields as Record<string, unknown>)) {
+          facts.set(k, String(v));
+        }
+      }
+    }
+
+    // a rejection at the architecture gate IS the design conversation — the
+    // reason is why the plan on screen looks the way it does
+    const refines = arch
+      .filter((e) => {
+        const p = (e.payload ?? {}) as Record<string, unknown>;
+        return e.kind === 'gate_event' && p['gate'] === 'approve_architecture' && !!p['reason'];
+      })
+      .map((e) => ({
+        by: e.actor,
+        at: e.created_at,
+        reason: String(((e.payload ?? {}) as Record<string, unknown>)['reason']),
+      }));
+
+    return {
+      excerpt: (payload['plan_excerpt'] as string | null) ?? null,
+      digest: (payload['plan_digest'] as string | null) ?? null,
+      prUrl: (payload['pr_url'] as string | null) ?? null,
+      facts: [...facts.entries()],
+      refines,
+    };
+  });
   openChapter = signal<string | null>(null);
   actionOutcome = signal<{ kind: 'conflict' | 'error'; message: string } | null>(null);
   commentText = signal('');
@@ -896,6 +1298,13 @@ export class DossierPage {
   takingOver = signal(false);
   sendingStageBack = signal(false);
   cancelling = signal(false);
+  mockOpen = signal(false);
+
+  /** A mock exists only if the submitter actually produced one — "skipped" and
+   *  an empty string both mean there is nothing to show. */
+  hasMock(r: RequestDetail): boolean {
+    return !!r.prototype_html?.trim() && r.prototype_status !== 'skipped';
+  }
 
   isInFlight = inFlight;
 

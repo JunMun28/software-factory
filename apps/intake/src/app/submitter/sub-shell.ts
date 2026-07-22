@@ -24,8 +24,8 @@ import { IntakeDraft } from './intake-draft.service';
     <div class="sub">
       <div class="sub-top">
         <button class="sub-brand" type="button" (click)="home()" title="New request">
-          <sf-mark [size]="23" />
-          <span>Stream</span>
+          <sf-mark [size]="22" />
+          <span>AIRES</span>
         </button>
         <nav class="sub-nav">
           <button [class.on]="active() === 'new'" (click)="startNew()">New request</button>

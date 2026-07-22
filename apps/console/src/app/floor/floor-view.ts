@@ -72,6 +72,9 @@ export interface OverviewRow {
   activity: string | null;
   /** compact time in current stage, e.g. "4h" — null for shipped rows */
   age: string | null;
+  /** time in current stage in weeks, for bucketing. Derived from the timestamp,
+   *  not parsed back out of `age` — the display string is lossy. */
+  weeks: number;
   /** one SegState per displayed stage */
   segs: SegState[];
   /** sort keys, not rendered */
@@ -124,6 +127,9 @@ export function deriveRow(r: FactoryRequest, run: RunState | null): OverviewRow 
     segs: segStates(stageIndex),
     age: r.stage_entered_at ? timeAgo(r.stage_entered_at) : null,
     enteredMs: r.stage_entered_at ? Date.parse(r.stage_entered_at) : 0,
+    weeks: r.stage_entered_at
+      ? Math.max(0, (Date.now() - Date.parse(r.stage_entered_at)) / 604800000)
+      : 0,
     updatedMs: Date.parse(r.updated_at) || 0,
     request: r,
   };
