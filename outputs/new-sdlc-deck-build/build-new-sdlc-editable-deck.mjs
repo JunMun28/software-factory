@@ -2,9 +2,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const { Presentation, PresentationFile } = await import(pathToFileURL("/Users/wongjunmun/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/.pnpm/@oai+artifact-tool@file+local-deps+-oai-artifact-tool-oai-artifact_tool-2.8.11.tgz/node_modules/@oai/artifact-tool/dist/artifact_tool.mjs").href);
+const { Presentation, PresentationFile } = await import(pathToFileURL("<codex-runtime-cache>@oai+artifact-tool@file+local-deps+-oai-artifact-tool-oai-artifact_tool-2.8.11.tgz/node_modules/@oai/artifact-tool/dist/artifact_tool.mjs").href);
 
-const ROOT = "/Users/wongjunmun/development/ai-development/software-factory";
+const ROOT = "the repo root";
 const BUILD = path.join(ROOT, "outputs/new-sdlc-deck-build");
 const QA_DIR = path.join(BUILD, "qa-editable");
 const FINAL_PPTX = path.join(ROOT, "outputs/new-sdlc-agentic-engineering-software-factory-editable.pptx");
@@ -239,7 +239,7 @@ const deck = [
     subtitle: "Software Factory makes direction, verification, and supervision first-class product surfaces.",
     type: "vision",
     items: [["For builders", "turn a request into a supervised SDLC run"], ["For teams", "standardize context, gates, and review expectations"], ["For leaders", "see work health, risk, cost, and approval points"], ["For the platform", "swap brains and runners without changing the domain model"]],
-    project: "/Users/wongjunmun/development/ai-development/software-factory",
+    project: "the repo root",
     commands: ["make verify", "FACTORY_RUNNER=claude uv run uvicorn app.main:app --port 8000"],
   },
 ];

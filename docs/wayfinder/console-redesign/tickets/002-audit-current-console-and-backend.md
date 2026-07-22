@@ -3,7 +3,7 @@ id: 002
 title: "Research: audit the current console and supervision backend"
 labels: [wayfinder:research]
 status: closed
-assignee: junmun (session 132e3c43)
+assignee: unassigned (session 132e3c43)
 resolved: 2026-07-10
 blocked-by: []
 ---

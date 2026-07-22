@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AIRES — 70 mark concepts</title>
+
+    <!-- PROTOTYPE — throwaway. Question: what should the AIRES brand mark be,
+         now that the app is no longer called "Stream" and the Stacked S initial
+         no longer matches the name? All 70 concepts, one page. Mark data lives
+         in marks.js. Delete this folder once a winner is folded into
+         packages/shared/src/lib/kit/mark.ts. -->
+
+    <style>
+      @font-face { font-family: 'Archivo'; src: url('../hero-ascii-bg/fonts/Archivo-variable.woff2') format('woff2-variations'); font-weight: 100 900; font-display: swap; }
+
+      :root[data-theme='light'] {
+        --bg: #fff; --surface: #fff; --surface-2: #f6f5f8; --fg1: #16141a;
+        --muted: #6b6675; --faint: #8f8a99; --border: #e6e3ec; --hairline: #efedf3;
+        --a500: #bd03f7; --a300: #e173fa;
+      }
+      :root[data-theme='dark'] {
+        --bg: #0e0d11; --surface: #16151a; --surface-2: #1e1c24; --fg1: #f3f1f7;
+        --muted: #a09aad; --faint: #7d7789; --border: #2b2833; --hairline: #232029;
+        --a500: #cb45f8; --a300: #e173fa;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 0 28px 90px;
+        font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+        background: var(--bg); color: var(--fg1); -webkit-font-smoothing: antialiased;
+      }
+      header {
+        position: sticky; top: 0; z-index: 5; background: var(--bg);
+        border-bottom: 1px solid var(--hairline); padding: 20px 0 14px; margin-bottom: 22px;
+      }
+      .htop { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+      h1 { font-size: 25px; font-weight: 800; margin: 0; letter-spacing: -0.015em; }
+      .sub { font-size: 13px; color: var(--muted); flex: 1; min-width: 260px; line-height: 1.5; }
+      .toggle {
+        font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+        background: var(--surface-2); color: var(--fg1);
+        border: 1px solid var(--border); border-radius: 999px; padding: 7px 15px;
+      }
+      /* family jump-nav — 70 cards is too many to scan blind */
+      .jump { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      .jump a {
+        font-size: 11.5px; font-weight: 600; text-decoration: none;
+        color: var(--muted); background: var(--surface-2);
+        border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+      }
+      .jump a:hover { color: var(--fg1); }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(252px, 1fr)); gap: 15px; }
+      .card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 12px; padding: 17px 17px 14px;
+        display: flex; flex-direction: column; gap: 12px;
+      }
+      .study {
+        height: 94px; display: flex; align-items: center; justify-content: center;
+        background: var(--surface-2); border-radius: 9px; color: var(--fg1);
+      }
+      .meta { display: flex; align-items: baseline; gap: 8px; }
+      .num { font-size: 11px; font-weight: 700; color: var(--faint); font-variant-numeric: tabular-nums; }
+      .name { font-size: 15px; font-weight: 700; }
+      .idea { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin: -5px 0 0; }
+      .flag { font-size: 11.5px; font-weight: 600; color: #f0a832; margin: -4px 0 0; }
+      .sizes { display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--hairline); padding-top: 11px; margin-top: auto; }
+      .nav { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 17px; letter-spacing: -0.01em; }
+      .fav { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+      .fav span, .lock { font-size: 10.5px; color: var(--faint); }
+      .fam {
+        grid-column: 1 / -1; margin: 20px 0 -2px; scroll-margin-top: 130px;
+        display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+      }
+      .fam:first-child { margin-top: 0; }
+      .fam h2 {
+        font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--a500); margin: 0;
+      }
+      .fam .rnd {
+        font-size: 10.5px; font-weight: 600; color: var(--faint);
+        border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px;
+      }
+      .fam p { flex-basis: 100%; margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="htop">
+        <!-- count is derived so it can never go stale as marks are added -->
+        <h1 id="h1">AIRES</h1>
+        <div class="sub">
+          Each shown at study size, then at <strong>23px</strong> (its real size in the
+          nav) and 16px (favicon). A mark that only works big is not a candidate.
+          Accent = <code>--a500</code>, one element per mark.
+        </div>
+        <button class="toggle" id="t">Light mode</button>
+      </div>
+      <nav class="jump" id="jump"></nav>
+    </header>
+    <div class="grid" id="grid"></div>
+
+    <script src="marks.js"></script>
+    <script>
+      const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const draw = (m, px, w) =>
+        `<svg width="${px}" height="${px}" viewBox="0 0 48 48" style="flex:0 0 auto;display:block">${m.svg(w)}</svg>`;
+      // wordmarks are all different widths — each carries its own viewBox width
+      const drawWide = (m, h) =>
+        `<svg height="${h}" viewBox="0 0 ${m.vw || 92} 26" style="flex:0 0 auto;display:block">${m.svg()}</svg>`;
+
+      document.getElementById('h1').textContent =
+        `AIRES — ${MARKS.filter((m) => !m.fam).length} marks`;
+      document.title = document.getElementById('h1').textContent;
+
+      let i = 0;
+      document.getElementById('grid').innerHTML = MARKS.map((m) => {
+        if (m.fam) {
+          return `<div class="fam" id="${slug(m.fam)}">
+            <h2>${m.fam}</h2><span class="rnd">round ${m.round}</span>
+            ${m.note ? `<p>${m.note}</p>` : ''}
+          </div>`;
+        }
+        i++;
+        const small = m.wide
+          ? `<div class="nav">${drawWide(m, 17)}</div>
+             <div class="fav"><span class="lock">lockup — no square form</span></div>`
+          : `<div class="nav">${draw(m, 23, 6)}<span>AIRES</span></div>
+             <div class="fav">${draw(m, 16, 7)}<span>16px</span></div>`;
+        return `<div class="card">
+          <div class="study">${m.wide ? drawWide(m, 46) : draw(m, 64, 5)}</div>
+          <div class="meta"><span class="num">${String(i).padStart(2, '0')}</span><span class="name">${m.n}</span></div>
+          <p class="idea">${m.idea}</p>
+          ${m.fails ? `<p class="flag">⚠ fails ${m.fails}</p>` : ''}
+          <div class="sizes">${small}</div>
+        </div>`;
+      }).join('');
+
+      document.getElementById('jump').innerHTML = MARKS.filter((m) => m.fam)
+        .map((m) => `<a href="#${slug(m.fam)}">${m.fam}</a>`)
+        .join('');
+
+      const root = document.documentElement;
+      const btn = document.getElementById('t');
+      btn.onclick = () => {
+        const dark = root.dataset.theme === 'dark';
+        root.dataset.theme = dark ? 'light' : 'dark';
+        btn.textContent = dark ? 'Dark mode' : 'Light mode';
+      };
+    </script>
+  </body>
+</html>

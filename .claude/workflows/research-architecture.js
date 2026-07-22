@@ -8,7 +8,7 @@ export const meta = {
   ],
 }
 
-const ROOT = '/Users/wongjunmun/development/ai-development/software-factory'
+const ROOT = 'the repo root (your current working directory)'
 
 const FINDINGS = {
   type: 'object',
@@ -44,7 +44,7 @@ const VERDICT = {
   },
 }
 
-const COMMON = `You are auditing the Software Factory at ${ROOT} — an autonomous agentic software factory: a FastAPI + SQLAlchemy + SQLite backend (api/app/), an Angular 22 signals-based SPA (web/src/app/), and a Claude Code headless runtime that actually builds software in git workspaces (api/app/claude_runner.py, claude_exec.py, claude_brain.py). Design docs: CONTEXT.md and docs/adr/0001..0012 (0006 resumability, 0007 stack+seams, 0008 event log, 0011 Claude runtime, 0012 feed). It has 38 pytest + 14 vitest tests, Docker compose, CI.
+const COMMON = `You are auditing the Software Factory, rooted at ${ROOT} — an autonomous agentic software factory: a FastAPI + SQLAlchemy + SQLite backend (api/app/), an Angular 22 signals-based SPA (web/src/app/), and a Claude Code headless runtime that actually builds software in git workspaces (api/app/claude_runner.py, claude_exec.py, claude_brain.py). Design docs: CONTEXT.md and docs/adr/0001..0012 (0006 resumability, 0007 stack+seams, 0008 event log, 0011 Claude runtime, 0012 feed). It has 38 pytest + 14 vitest tests, Docker compose, CI.
 
 Judge it as a PRODUCTION-BOUND INTERNAL TOOL for a small team (tens of users, hundreds of requests, a handful of concurrent agent pipelines) — not hyperscale. SQLite and polling are deliberate ADR choices with documented swap seams; do not flag the choice itself, but DO flag where the current code would break, corrupt, stall, or become unmaintainable even at that modest scale.
 

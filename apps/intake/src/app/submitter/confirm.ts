@@ -18,6 +18,7 @@ const STAGES = ['Submitted', 'Architecture design', 'Building', 'In review', 'De
         style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:18px;padding-top:40px"
       >
         <span
+          class="pop-check"
           style="width:60px;height:60px;border-radius:50%;background:var(--green-bg);display:flex;align-items:center;justify-content:center"
         >
           <sf-glyph type="check" [size]="34" color="var(--green)" />

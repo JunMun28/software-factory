@@ -1,14 +1,14 @@
-# Handoff — AI Software Factory build
+# Handoff — AI AIRES build
 
 **Date:** 2026-06-05
-**Owner:** wongjunmun
-**Next session focus:** Turn the validated research blueprint into a runnable, governed multi-agent SDLC pipeline scaffold in this directory (`/Users/wongjunmun/development/ai-development/software-factory`).
+**Owner:** the repo maintainers
+**Next session focus:** Turn the validated research blueprint into a runnable, governed multi-agent SDLC pipeline scaffold in this directory (the repo root).
 
 ---
 
 ## 1. Goal
 
-Build a "software factory" — an autonomous-but-governed AI pipeline covering the full SDLC for an **engineering team/org**:
+Build a "AIRES" — an autonomous-but-governed AI pipeline covering the full SDLC for an **engineering team/org**:
 
 requirements → architecture → TDD implementation → code review/validation → deployment.
 
@@ -19,7 +19,7 @@ requirements → architecture → TDD implementation → code review/validation 
 A deep-research pass (28 sources, 134 claims, 25 adversarially verified) is **complete**. Do **not** re-run it. Key outputs:
 
 - **Full cited research dataset** (8 verified findings + refuted list + 28 sources):
-  `/private/tmp/claude-501/-Users-wongjunmun-development-ai-development-atlas-design-system/61322f2c-0efa-4809-8126-050c835f8694/tasks/w0qw79g6l.output`
+  `<scratch path, since expired>`
   ⚠️ This is in OS temp and may be cleaned up — copy it into this repo (`research/findings.json`) early next session if you want it preserved.
 - The synthesized **survey + reference blueprint** was delivered in the prior conversation turn (Part A landscape survey, Part B blueprint). The blueprint is summarized below so you don't need the transcript.
 

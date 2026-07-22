@@ -7,14 +7,14 @@ def test_operator_list_and_create(client):
     assert any(operator["name"] == "Kim Park" for operator in seeded.json())
 
     created = client.post("/api/operators", json={
-        "name": "Jun Mun Wong",
+        "name": "Dana M. Reyes",
         "initials": "JMW",
         "hue": "#4F46E5",
         "email": "jun@example.com",
     })
     assert created.status_code == 201
     assert created.json() | {"id": created.json()["id"], "created_at": created.json()["created_at"]} == created.json()
-    assert created.json()["name"] == "Jun Mun Wong"
+    assert created.json()["name"] == "Dana M. Reyes"
 
 
 def test_approve_resolves_operator_and_projects_decided_by(client):

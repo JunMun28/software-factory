@@ -1,4 +1,4 @@
-# Building an AI Software Factory — Research Report & Reference Blueprint
+# Building an AI AIRES — Research Report & Reference Blueprint
 
 **Date:** 2026-06-05
 **Scope:** End-to-end, autonomous-but-governed AI SDLC pipeline for an engineering team/org —
@@ -24,7 +24,7 @@ The blueprint in Part B is constructed **only from ✅ verified primitives**, wi
 
 ## A.1 The convergent pattern
 
-Every credible source agrees an "AI software factory" is **not one autonomous mega-agent**. It is a
+Every credible source agrees an "AI AIRES" is **not one autonomous mega-agent**. It is a
 **pipeline of narrow, single-responsibility agents**, each with:
 
 - its **own isolated context window**,

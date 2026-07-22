@@ -189,7 +189,7 @@ def notify_gate_raised(db: Session, req: Request) -> None:
         "approve_deploy": "deploy gate",
     }.get(req.gate, "spec gate")
     _notify(db, req,
-            f"Software Factory: {gate_name} needs approval",
+            f"AIRES: {gate_name} needs approval",
             f"{req.ref} {req.title} is waiting at the {gate_name}.")
 ```
 
@@ -998,8 +998,8 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ---
 
 ### Critical Files for Implementation
-- /Users/wongjunmun/development/ai-development/software-factory/api/app/transitions.py (`GATE_APPROVE_DEPLOY`, `raise_deploy_gate`/`claim_deploy`, `begin_deploy`+event rework, DECISIVE_ACTIONS)
-- /Users/wongjunmun/development/ai-development/software-factory/api/app/kube_runner.py (`approve_merge` raises the deploy gate + GitHub merge; `_drive_deploys` `gate IS NULL` guard; repo/PR/fetch integration)
-- /Users/wongjunmun/development/ai-development/software-factory/api/app/routers/gates.py (peel `deploy` into `claim_deploy` + `begin_deploy` with approver audit; replay routing)
-- /Users/wongjunmun/development/ai-development/software-factory/api/app/github.py (new — `ensure_repo`/`open_pr`/`merge_pr` + `FakeGitHub`) and /Users/wongjunmun/development/ai-development/software-factory/api/app/workspace.py (GitHub push/fetch mirror plumbing)
-- /Users/wongjunmun/development/ai-development/software-factory/packages/shared/src/lib/models.ts + apps/console/src/app/shared/gate-modals.ts (additive `approve_deploy` gate surfacing; implement in a clean worktree) and /Users/wongjunmun/development/ai-development/software-factory/docker/sf-agent/entrypoint.sh + api/app/kube_jobs.py (stage-pod GitHub-token Secret + URL injection)
+- api/app/transitions.py (`GATE_APPROVE_DEPLOY`, `raise_deploy_gate`/`claim_deploy`, `begin_deploy`+event rework, DECISIVE_ACTIONS)
+- api/app/kube_runner.py (`approve_merge` raises the deploy gate + GitHub merge; `_drive_deploys` `gate IS NULL` guard; repo/PR/fetch integration)
+- api/app/routers/gates.py (peel `deploy` into `claim_deploy` + `begin_deploy` with approver audit; replay routing)
+- api/app/github.py (new — `ensure_repo`/`open_pr`/`merge_pr` + `FakeGitHub`) and api/app/workspace.py (GitHub push/fetch mirror plumbing)
+- packages/shared/src/lib/models.ts + apps/console/src/app/shared/gate-modals.ts (additive `approve_deploy` gate surfacing; implement in a clean worktree) and docker/sf-agent/entrypoint.sh + api/app/kube_jobs.py (stage-pod GitHub-token Secret + URL injection)

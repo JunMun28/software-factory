@@ -1,4 +1,4 @@
-# Software Factory
+# AIRES
 
 An autonomous-but-governed AI pipeline that carries a unit of work through the full
 SDLC — requirements → architecture → TDD implementation → review → deploy — as a chain

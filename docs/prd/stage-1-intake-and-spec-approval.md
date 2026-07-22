@@ -1,6 +1,6 @@
 # PRD — Stage 1: Intake & Spec Approval (the Factory front door)
 
-> Scope: the web-app front door and the in-app Spec-approval slice of the Software Factory.
+> Scope: the web-app front door and the in-app Spec-approval slice of AIRES.
 > Boundary: ends the moment the **Stage 2 trigger fires** (an approved `SPEC.md` committed to a
 > fresh branch + PR). Stages 2–6 are out of scope. Uses the [CONTEXT.md](../../CONTEXT.md)
 > glossary and respects ADRs [0001](../adr/0001-copilot-first-ci-enforced-factory.md),

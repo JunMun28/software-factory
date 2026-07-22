@@ -256,8 +256,8 @@ import { SubShell } from './sub-shell';
       align-items: center;
       gap: 9px;
       padding: 12px 16px;
-      background: var(--accent-tint);
-      border-bottom: 1px solid var(--accent-tint-bd);
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
     }
     .rv__av {
       width: 22px;
@@ -406,7 +406,7 @@ import { SubShell } from './sub-shell';
     }
     .pv__btn:hover,
     .pv__edit:hover {
-      background: var(--accent-tint);
+      background: var(--surface-2);
     }
     .pv__frame {
       height: 460px;

@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overview — futuristic prototype (3 variants)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<!--
+  PROTOTYPE — throwaway. Question: "what would a futuristic Overview look like?"
+  Three variants on one page, switch with ?variant=A|B|C, the bottom bar, or ←/→.
+  Real data (28 live requests) is embedded from data.js so density is honest.
+  Inter stands in for Archivo. Dark-only on purpose: the reference
+  (Mission Command) is a dark cockpit. Verdict goes in NOTES.md.
+-->
+<style>
+  :root {
+    --bg: #0a0a10;
+    --panel: rgba(24, 22, 38, 0.55);
+    --panel-2: rgba(30, 28, 46, 0.7);
+    --bd: rgba(150, 140, 200, 0.16);
+    --bd2: rgba(160, 150, 210, 0.3);
+    --fg: #eceaf6;
+    --fg2: #b6b2ce;
+    --dim: #9c98bb; /* 6.6:1 on --bg */
+    --faint: #7d79a0; /* 4.6:1 — the original #5d5a74 measured 2.99 and was unreadable */
+
+    --purple: #bd03f7;
+    --purple-lo: #7c3aed;
+    --cyan: #22d3ee;
+    --amber: #f0a832;
+    --red: #f0655a;
+    --green: #3ddc97;
+
+    --glow-p: rgba(189, 3, 247, 0.45);
+    --glow-c: rgba(34, 211, 238, 0.45);
+    --glow-a: rgba(240, 168, 50, 0.5);
+    --glow-r: rgba(240, 101, 90, 0.5);
+    --glow-g: rgba(61, 220, 151, 0.45);
+
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Inter', system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  .mono { font-family: var(--mono); font-variant-ligatures: none; }
+
+  /* the grid + aurora that every variant sits on */
+  .field {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(900px 500px at 12% -5%, rgba(124,58,237,0.20), transparent 60%),
+      radial-gradient(800px 500px at 92% 8%, rgba(34,211,238,0.12), transparent 60%),
+      linear-gradient(rgba(150,140,200,0.05) 1px, transparent 1px) 0 0 / 100% 44px,
+      linear-gradient(90deg, rgba(150,140,200,0.05) 1px, transparent 1px) 0 0 / 44px 100%;
+  }
+  .view { position: relative; z-index: 1; display: none; }
+  .view.on { display: block; }
+
+  .eyebrow {
+    font: 600 10px var(--mono);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  /* ══════════ VARIANT A — Mission Control cockpit ══════════ */
+  .a-wrap { padding: 26px 30px 130px; max-width: 1500px; margin: 0 auto; }
+  .a-top { display: flex; align-items: flex-end; gap: 20px; margin-bottom: 20px; }
+  .a-top h1 {
+    margin: 4px 0 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
+  }
+  .a-top .sub { color: var(--dim); font: 500 12px var(--mono); }
+  .a-clock {
+    margin-left: auto; text-align: right;
+    font: 700 26px var(--mono); letter-spacing: 0.04em;
+    color: var(--cyan); text-shadow: 0 0 18px var(--glow-c);
+  }
+  .a-clock small { display: block; font: 500 9.5px var(--mono); letter-spacing: 0.2em; color: var(--faint); text-shadow: none; }
+
+  .a-gauges { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+  .gauge {
+    position: relative; overflow: hidden;
+    padding: 14px 16px;
+    background: var(--panel);
+    border: 1px solid var(--bd);
+    border-radius: 12px;
+    backdrop-filter: blur(12px);
+  }
+  .gauge::before {
+    content: ''; position: absolute; inset: 0 auto auto 0; height: 1px; width: 100%;
+    background: linear-gradient(90deg, transparent, var(--edge, var(--bd2)), transparent);
+  }
+  .gauge .k { font: 600 9.5px var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--faint); }
+  .gauge .v { margin-top: 6px; font: 700 34px var(--mono); line-height: 1; letter-spacing: -0.02em; }
+  .gauge .s { margin-top: 4px; font-size: 11px; color: var(--dim); }
+  .gauge.hot { --edge: var(--amber); }
+  .gauge.hot .v { color: var(--amber); text-shadow: 0 0 22px var(--glow-a); }
+  .gauge.bad { --edge: var(--red); }
+  .gauge.bad .v { color: var(--red); text-shadow: 0 0 22px var(--glow-r); }
+  .gauge.ok .v { color: var(--fg); }
+  .gauge.cy { --edge: var(--cyan); }
+  .gauge.cy .v { color: var(--cyan); text-shadow: 0 0 22px var(--glow-c); }
+
+  /* live agent strip */
+  .a-live {
+    display: flex; align-items: center; gap: 18px;
+    padding: 14px 18px; margin-bottom: 22px;
+    background: linear-gradient(90deg, rgba(124,58,237,0.16), rgba(34,211,238,0.06));
+    border: 1px solid var(--bd2);
+    border-radius: 12px;
+  }
+  .a-live .tag {
+    font: 600 9.5px var(--mono); letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--cyan); padding: 4px 9px; border: 1px solid var(--cyan); border-radius: 5px;
+  }
+  .a-live .idle { color: var(--dim); font: 500 12.5px var(--mono); }
+  .a-live .bar { flex: 1; height: 3px; border-radius: 3px; background: rgba(150,140,200,0.16); overflow: hidden; }
+  .a-live .bar i { display: block; height: 100%; width: 0%; background: var(--cyan); box-shadow: 0 0 12px var(--glow-c); }
+
+  /* the pipeline rail */
+  .a-rail { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .node { text-align: center; }
+  .ring {
+    position: relative; width: 66px; height: 66px; margin: 0 auto 10px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    border: 2px solid var(--rc, var(--bd2));
+    font: 700 22px var(--mono);
+    color: var(--rc, var(--fg));
+    box-shadow: 0 0 26px -6px var(--rg, transparent), inset 0 0 22px -12px var(--rg, transparent);
+  }
+  .ring.zero { color: var(--faint); border-color: rgba(150,140,200,0.14); }
+  .node .nm { font: 600 12px var(--sans); letter-spacing: 0.01em; }
+  .node .ct { margin-top: 2px; font: 500 10px var(--mono); color: var(--faint); }
+  .a-cols { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-top: 16px; align-items: start; }
+  .a-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .ccard {
+    padding: 10px 11px; min-width: 0;
+    background: var(--panel);
+    border: 1px solid var(--bd);
+    border-left: 2px solid var(--cc, var(--bd2));
+    border-radius: 9px;
+    backdrop-filter: blur(10px);
+  }
+  .ccard .r { display: flex; justify-content: space-between; font: 500 9.5px var(--mono); color: var(--faint); }
+  .ccard .t { margin-top: 4px; font-size: 12px; line-height: 1.35; color: var(--fg);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ccard .st { margin-top: 6px; font: 600 9px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--cc, var(--dim)); }
+  .a-more { padding: 6px 2px; font: 500 10.5px var(--mono); color: var(--faint); }
+
+  /* ══════════ VARIANT B — Orbital radar ══════════ */
+  .b-wrap { display: grid; grid-template-columns: 1fr 340px; gap: 0; height: 100vh; }
+  .b-stage { position: relative; display: grid; place-items: center; overflow: hidden; }
+  .b-side {
+    border-left: 1px solid var(--bd);
+    background: rgba(16, 14, 26, 0.6);
+    backdrop-filter: blur(14px);
+    padding: 26px 22px; overflow-y: auto;
+  }
+  .radar { position: relative; width: min(76vh, 700px); aspect-ratio: 1; }
+  .radar svg { width: 100%; height: 100%; overflow: visible; }
+  .sweep { transform-origin: 50% 50%; animation: sweep 7s linear infinite; }
+  @keyframes sweep { to { transform: rotate(360deg); } }
+  .blip { cursor: pointer; transition: r 140ms ease; }
+  .blip:hover { filter: brightness(1.5); }
+  .ringlbl { font: 600 9px var(--mono); letter-spacing: 0.16em; fill: var(--faint); text-transform: uppercase; }
+  .b-core { font: 700 30px var(--mono); fill: var(--fg); text-anchor: middle; }
+  .b-corelbl { font: 600 8.5px var(--mono); letter-spacing: 0.2em; fill: var(--faint); text-anchor: middle; }
+  .b-side h2 { margin: 0 0 3px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+  .b-legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 20px; }
+  .b-legend span { display: inline-flex; align-items: center; gap: 6px; font: 500 10.5px var(--mono); color: var(--dim); }
+  .b-legend i { width: 8px; height: 8px; border-radius: 50%; }
+  .brow {
+    display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid rgba(150,140,200,0.08);
+  }
+  .brow i { width: 8px; height: 8px; border-radius: 50%; }
+  .brow .t { min-width: 0; font-size: 12px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* the block child needs its own clipping — it does not inherit the parent's
+     ellipsis, so long titles were being chopped mid-word instead of trailing off */
+  .brow .t b { display: block; font-weight: 500; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+  .brow .g { font: 500 10px var(--mono); color: var(--faint); }
+
+  /* ══════════ VARIANT C — Telemetry terminal ══════════ */
+  .c-wrap { padding: 0; font-family: var(--mono); }
+  .c-bar {
+    display: flex; align-items: center; gap: 26px;
+    padding: 11px 22px;
+    border-bottom: 1px solid var(--bd);
+    background: rgba(14, 12, 22, 0.8);
+    font: 500 11px var(--mono); letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .c-bar .b { color: var(--purple); font-weight: 700; letter-spacing: 0.24em; }
+  .c-bar .m { color: var(--faint); }
+  .c-bar .m b { color: var(--fg); font-weight: 600; }
+  .c-bar .m.amb b { color: var(--amber); }
+  .c-bar .m.red b { color: var(--red); }
+  .c-bar .live { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; color: var(--green); }
+  .c-bar .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--glow-g); animation: blip 1.4s ease-in-out infinite; }
+  @keyframes blip { 50% { opacity: 0.25; } }
+
+  .c-grid { display: grid; grid-template-columns: 1fr 380px; height: calc(100vh - 41px); }
+  .c-main { overflow-y: auto; padding: 0 0 120px; }
+  .c-head, .c-line {
+    display: grid;
+    grid-template-columns: 92px 1fr 128px 108px 62px 74px;
+    gap: 14px; align-items: center;
+    padding: 0 22px;
+  }
+  .c-head {
+    position: sticky; top: 0; z-index: 2;
+    height: 30px;
+    background: rgba(10,10,16,0.94);
+    border-bottom: 1px solid var(--bd);
+    font: 600 9.5px var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--faint);
+  }
+  .c-line {
+    height: 30px; font-size: 11.5px; color: var(--fg2);
+    border-bottom: 1px solid rgba(150,140,200,0.05);
+    cursor: default;
+  }
+  .c-line:hover { background: rgba(124,58,237,0.10); }
+  .c-line .ref { color: var(--faint); }
+  .c-line .ttl { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .c-line .app { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .c-line .age { text-align: right; color: var(--faint); }
+  .st-tag { font: 600 9.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+  .st-gate { color: var(--amber); }
+  .st-stuck { color: var(--red); }
+  .st-wait { color: var(--dim); }
+  .st-done { color: var(--green); }
+  .st-active { color: var(--cyan); }
+  .meter { display: flex; gap: 2px; }
+  .meter i { flex: 1; height: 8px; border-radius: 1px; background: rgba(150,140,200,0.10); }
+  .meter i.f { background: var(--dim); }
+  .meter i.c-gate { background: var(--amber); box-shadow: 0 0 8px var(--glow-a); }
+  .meter i.c-stuck { background: var(--red); box-shadow: 0 0 8px var(--glow-r); }
+  .meter i.c-done { background: var(--green); }
+  .meter i.c-wait { background: transparent; box-shadow: inset 0 0 0 1px var(--dim); }
+  .meter i.c-active { background: var(--cyan); box-shadow: 0 0 8px var(--glow-c); }
+
+  .c-feed {
+    border-left: 1px solid var(--bd);
+    background: rgba(14, 12, 22, 0.55);
+    padding: 14px 16px; overflow-y: auto;
+  }
+  .c-feed h3 { margin: 0 0 12px; font: 600 9.5px var(--mono); letter-spacing: 0.2em; text-transform: uppercase; color: var(--faint); }
+  .ev { display: grid; grid-template-columns: 56px 1fr; gap: 10px; padding: 7px 0; font-size: 11px; border-bottom: 1px solid rgba(150,140,200,0.06); }
+  .ev .ts { color: var(--faint); }
+  .ev .tx { color: var(--fg2); line-height: 1.4; }
+  .ev .tx b { color: var(--fg); font-weight: 600; }
+
+  /* ══════════ switcher (obviously not part of the design) ══════════ */
+  .sw {
+    position: fixed; z-index: 99; left: 50%; bottom: 22px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 4px;
+    padding: 5px; border-radius: 999px;
+    background: #f4f3f7; color: #17171b;
+    box-shadow: 0 10px 34px -8px rgba(0,0,0,0.7);
+    font-family: var(--sans);
+  }
+  .sw button {
+    width: 30px; height: 30px; border: 0; border-radius: 50%;
+    background: transparent; color: #17171b; cursor: pointer; font-size: 15px; line-height: 1;
+  }
+  .sw button:hover { background: rgba(0,0,0,0.09); }
+  .sw .lbl { padding: 0 12px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .sw .lbl small { color: #6c6c78; font-weight: 500; }
+</style>
+</head>
+<body>
+
+<div class="field"></div>
+
+<!-- ══════════════════ A — MISSION CONTROL ══════════════════ -->
+<section class="view" id="v-A">
+  <div class="a-wrap">
+    <div class="a-top">
+      <div>
+        <div class="eyebrow">Software Factory · Mission Control</div>
+        <h1>Overview</h1>
+        <div class="sub" id="a-sub"></div>
+      </div>
+      <div class="a-clock"><span id="a-clock">--:--:--</span><small>Factory uptime</small></div>
+    </div>
+
+    <div class="a-gauges">
+      <div class="gauge hot"><span class="k">Your decision</span><span class="v" id="a-g1">0</span><span class="s">gates waiting on you</span></div>
+      <div class="gauge bad"><span class="k">Needs a human</span><span class="v" id="a-g2">0</span><span class="s">stalled / escalated</span></div>
+      <div class="gauge cy"><span class="k">On the line</span><span class="v" id="a-g3">0</span><span class="s">requests in flight</span></div>
+      <div class="gauge ok"><span class="k">Shipped</span><span class="v" id="a-g4">0</span><span class="s">this week</span></div>
+    </div>
+
+    <div class="a-live">
+      <span class="tag">Agent // now</span>
+      <span class="idle">No agent running — every request is blocked behind a human gate</span>
+      <span class="bar"><i></i></span>
+      <span class="idle mono">0 / 0 active</span>
+    </div>
+
+    <div class="eyebrow" style="margin-bottom:12px">Pipeline · 6 stages</div>
+    <div class="a-rail" id="a-rail"></div>
+    <div class="a-cols" id="a-cols"></div>
+  </div>
+</section>
+
+<!-- ══════════════════ B — ORBITAL RADAR ══════════════════ -->
+<section class="view" id="v-B">
+  <div class="b-wrap">
+    <div class="b-stage">
+      <div class="radar"><svg id="b-svg" viewBox="0 0 600 600"></svg></div>
+    </div>
+    <aside class="b-side">
+      <div class="eyebrow">Orbital view</div>
+      <h2>The line, from above</h2>
+      <p style="margin:6px 0 0;font-size:12.5px;color:var(--dim);line-height:1.5">
+        Each ring is a stage. Requests travel outward as they progress; the
+        outermost ring is shipped. Colour is who the line is waiting on.
+      </p>
+      <div class="b-legend">
+        <span><i style="background:var(--amber)"></i>your gate</span>
+        <span><i style="background:var(--red)"></i>stuck</span>
+        <span><i style="background:var(--dim)"></i>submitter</span>
+        <span><i style="background:var(--cyan)"></i>working</span>
+        <span><i style="background:var(--green)"></i>shipped</span>
+      </div>
+      <div class="eyebrow" style="margin-bottom:6px">Waiting on you</div>
+      <div id="b-list"></div>
+    </aside>
+  </div>
+</section>
+
+<!-- ══════════════════ C — TELEMETRY TERMINAL ══════════════════ -->
+<section class="view" id="v-C">
+  <div class="c-wrap">
+    <div class="c-bar">
+      <span class="b">SF//FACTORY</span>
+      <span class="m">ON LINE <b id="c-m1">0</b></span>
+      <span class="m amb">GATES <b id="c-m2">0</b></span>
+      <span class="m red">STALLED <b id="c-m3">0</b></span>
+      <span class="m">SHIPPED/WK <b id="c-m4">0</b></span>
+      <span class="m">CYCLE <b>4d</b></span>
+      <span class="live"><i></i>TICK <span id="c-tick">0</span>s</span>
+    </div>
+    <div class="c-grid">
+      <div class="c-main">
+        <div class="c-head">
+          <span>REF</span><span>REQUEST</span><span>APP</span><span>PIPELINE</span><span>AGE</span><span>STATE</span>
+        </div>
+        <div id="c-rows"></div>
+      </div>
+      <aside class="c-feed">
+        <h3>Event stream</h3>
+        <div id="c-feed"></div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<div class="sw" id="sw">
+  <button id="prev" aria-label="Previous variant">←</button>
+  <span class="lbl" id="lbl"></span>
+  <button id="next" aria-label="Next variant">→</button>
+</div>
+
+<script src="data.js"></script>
+<script>
+// must match the console's DISPLAY_STAGES (+ done at index 5) — the data's
+// `stage` field is that projection, so relabelling here would lie about it
+const STAGES = ['Spec','Arch','Build','Review','Deploy','Done'];
+const KIND_COLOR = { gate:'var(--amber)', stuck:'var(--red)', wait:'var(--dim)', active:'var(--cyan)', done:'var(--green)', owned:'var(--purple)' };
+const KIND_GLOW  = { gate:'var(--glow-a)', stuck:'var(--glow-r)', wait:'transparent', active:'var(--glow-c)', done:'var(--glow-g)', owned:'var(--glow-p)' };
+const KIND_WORD  = { gate:'YOUR GATE', stuck:'STUCK', wait:'SUBMITTER', active:'WORKING', done:'SHIPPED', owned:'HUMAN' };
+
+const live    = REQS.filter(r => r.kind !== 'done');
+const gates   = REQS.filter(r => r.kind === 'gate');
+const stuck   = REQS.filter(r => r.kind === 'stuck');
+const shipped = REQS.filter(r => r.kind === 'done');
+
+/* ── A ── */
+document.getElementById('a-sub').textContent =
+  `${live.length} in flight · ${gates.length} awaiting your decision · ${stuck.length} stalled`;
+document.getElementById('a-g1').textContent = gates.length;
+document.getElementById('a-g2').textContent = stuck.length;
+document.getElementById('a-g3').textContent = live.length;
+document.getElementById('a-g4').textContent = shipped.length;
+
+const byStage = STAGES.map((_, i) => REQS.filter(r => r.stage === i));
+document.getElementById('a-rail').innerHTML = STAGES.map((s, i) => {
+  const rs = byStage[i];
+  const hot = rs.find(r => r.kind === 'stuck') || rs.find(r => r.kind === 'gate') || rs[0];
+  const c = rs.length ? (KIND_COLOR[hot.kind] || 'var(--bd2)') : null;
+  const g = rs.length ? (KIND_GLOW[hot.kind] || 'transparent') : 'transparent';
+  return `<div class="node">
+    <div class="ring ${rs.length ? '' : 'zero'}" style="${c ? `--rc:${c};--rg:${g}` : ''}">${rs.length}</div>
+    <div class="nm">${s}</div>
+    <div class="ct">${rs.length ? (rs.filter(r=>r.kind==='gate').length ? rs.filter(r=>r.kind==='gate').length+' at gate' : rs.length+' held') : 'standby'}</div>
+  </div>`;
+}).join('');
+document.getElementById('a-cols').innerHTML = byStage.map(rs => `<div class="a-col">${
+  rs.slice(0, 5).map(r => `<div class="ccard" style="--cc:${KIND_COLOR[r.kind]}">
+      <div class="r"><span>${r.ref}</span><span>${r.age}</span></div>
+      <div class="t">${r.title}</div>
+      <div class="st">${KIND_WORD[r.kind]}</div>
+    </div>`).join('') +
+  (rs.length > 5 ? `<div class="a-more">+${rs.length - 5} more</div>` : '')
+}</div>`).join('');
+
+const t0 = Date.now();
+setInterval(() => {
+  const s = Math.floor((Date.now() - t0) / 1000) + 7412;
+  const p = n => String(n).padStart(2, '0');
+  document.getElementById('a-clock').textContent =
+    `${p(Math.floor(s/3600))}:${p(Math.floor(s/60)%60)}:${p(s%60)}`;
+  document.getElementById('c-tick').textContent = s % 60;
+}, 1000);
+
+/* ── B ── radar: ring per stage, blips placed round it */
+(() => {
+  const svg = document.getElementById('b-svg');
+  const cx = 300, cy = 300, r0 = 74, step = 40;
+  let out = '';
+  out += `<defs><radialGradient id="core"><stop offset="0%" stop-color="rgba(124,58,237,.55)"/><stop offset="100%" stop-color="transparent"/></radialGradient>
+    <linearGradient id="sw" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="rgba(34,211,238,0)"/><stop offset="100%" stop-color="rgba(34,211,238,.30)"/></linearGradient></defs>`;
+  out += `<circle cx="${cx}" cy="${cy}" r="${r0 - 12}" fill="url(#core)"/>`;
+  // rings + labels
+  STAGES.forEach((s, i) => {
+    const r = r0 + i * step;
+    out += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(150,140,200,.14)" stroke-width="1"/>`;
+    out += `<text class="ringlbl" x="${cx + 5}" y="${cy - r - 5}">${s}</text>`;
+  });
+  // spokes
+  for (let a = 0; a < 360; a += 30) {
+    const rad = a * Math.PI / 180, rr = r0 + 5 * step;
+    out += `<line x1="${cx}" y1="${cy}" x2="${cx + Math.cos(rad)*rr}" y2="${cy + Math.sin(rad)*rr}" stroke="rgba(150,140,200,.05)"/>`;
+  }
+  // sweep
+  out += `<g class="sweep"><path d="M ${cx} ${cy} L ${cx + r0 + 5*step} ${cy} A ${r0+5*step} ${r0+5*step} 0 0 0 ${cx + Math.cos(-0.6)*(r0+5*step)} ${cy + Math.sin(-0.6)*(r0+5*step)} Z" fill="url(#sw)"/></g>`;
+  // blips — spread each stage's requests around its ring
+  STAGES.forEach((s, i) => {
+    const rs = REQS.filter(r => r.stage === i);
+    const r = r0 + i * step;
+    rs.forEach((q, j) => {
+      const a = (j / Math.max(rs.length, 1)) * Math.PI * 2 - Math.PI / 2 + i * 0.35;
+      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+      const c = KIND_COLOR[q.kind], big = q.kind === 'stuck' || q.kind === 'gate';
+      out += `<circle class="blip" cx="${x}" cy="${y}" r="${big ? 6 : 4}" fill="${c}"
+        style="filter:drop-shadow(0 0 ${big ? 9 : 5}px ${c})"><title>${q.ref} — ${q.title} (${KIND_WORD[q.kind]})</title></circle>`;
+    });
+  });
+  out += `<text class="b-core" x="${cx}" y="${cy + 4}">${gates.length}</text>`;
+  out += `<text class="b-corelbl" x="${cx}" y="${cy + 22}">AWAITING YOU</text>`;
+  svg.innerHTML = out;
+
+  document.getElementById('b-list').innerHTML = gates.concat(stuck).slice(0, 14).map(r =>
+    `<div class="brow"><i style="background:${KIND_COLOR[r.kind]};box-shadow:0 0 8px ${KIND_COLOR[r.kind]}"></i>
+      <span class="t"><b>${r.title}</b>${r.app}</span><span class="g">${r.age}</span></div>`).join('');
+})();
+
+/* ── C ── */
+document.getElementById('c-m1').textContent = live.length;
+document.getElementById('c-m2').textContent = gates.length;
+document.getElementById('c-m3').textContent = stuck.length;
+document.getElementById('c-m4').textContent = shipped.length;
+document.getElementById('c-rows').innerHTML = REQS.map(r => {
+  const meter = STAGES.slice(0, 5).map((_, i) =>
+    i < r.stage ? '<i class="f"></i>' : i === r.stage ? `<i class="c-${r.kind}"></i>` : '<i></i>').join('');
+  return `<div class="c-line">
+    <span class="ref">${r.ref}</span>
+    <span class="ttl">${r.title}</span>
+    <span class="app">${r.app}</span>
+    <span class="meter">${meter}</span>
+    <span class="age">${r.age}</span>
+    <span class="st-tag st-${r.kind}">${KIND_WORD[r.kind]}</span>
+  </div>`;
+}).join('');
+const FEED = [
+  ['10:37', '<b>Spec approved</b> by Dana M. Reyes — REQ-2136 · repo ready, SPEC.md PR open'],
+  ['10:42', '<b>Architecture rejected</b> by Dana M. Reyes — refining the plan'],
+  ['10:44', 'Acceptance contract v0 recorded — 7 criteria'],
+  ['10:51', '<b>Escalation</b> REQ-2043 — spec generation failed 3×'],
+  ['11:02', 'Gate opened — REQ-2120 awaiting merge approval'],
+  ['11:15', 'Heartbeat ok · tick age 4.5s · leader epoch 189'],
+  ['11:20', '<b>19 gates</b> now waiting on an operator'],
+];
+document.getElementById('c-feed').innerHTML = FEED.map(([t, x]) =>
+  `<div class="ev"><span class="ts">${t}</span><span class="tx">${x}</span></div>`).join('');
+
+/* ── switcher ── */
+const NAMES = { A: 'Mission control', B: 'Orbital radar', C: 'Telemetry terminal' };
+const KEYS = ['A', 'B', 'C'];
+function show(k) {
+  KEYS.forEach(x => document.getElementById('v-' + x).classList.toggle('on', x === k));
+  document.getElementById('lbl').innerHTML = `${k} <small>— ${NAMES[k]}</small>`;
+  const u = new URL(location); u.searchParams.set('variant', k); history.replaceState({}, '', u);
+}
+function cycle(d) {
+  const cur = new URL(location).searchParams.get('variant') || 'A';
+  show(KEYS[(KEYS.indexOf(cur) + d + KEYS.length) % KEYS.length]);
+}
+document.getElementById('prev').onclick = () => cycle(-1);
+document.getElementById('next').onclick = () => cycle(1);
+addEventListener('keydown', e => {
+  if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+  if (e.key === 'ArrowLeft') cycle(-1);
+  if (e.key === 'ArrowRight') cycle(1);
+});
+show(new URL(location).searchParams.get('variant') || 'A');
+</script>
+</body>
+</html>

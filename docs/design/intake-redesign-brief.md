@@ -1,7 +1,7 @@
 # Intake App — Purpose & Redesign Brief
 
 A self-contained brief for redesigning the **Intake app** (the submitter front door
-of the Software Factory). Written for a designer who knows nothing about this system.
+of AIRES). Written for a designer who knows nothing about this system.
 It describes **what each screen is for and why** — not how it's currently built — plus
 the few rules a redesign must not break.
 
@@ -9,7 +9,7 @@ the few rules a redesign must not break.
 
 ## 1. What this app is, in one breath
 
-The Intake app is the **front door** of an autonomous-but-governed "software factory."
+The Intake app is the **front door** of an autonomous-but-governed "AIRES."
 A non-technical employee comes here with a problem or an idea ("the expense export is
 broken", "I want a headcount dashboard"), describes it in plain words, answers a few
 short AI follow-up questions, and submits. That submission becomes a structured

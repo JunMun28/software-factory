@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overview — A / Ignition, four compositions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<!--
+  PROTOTYPE — throwaway. Variant A (Ignition) kept as the direction. Ten
+  compositions were built; four survived review — A1 Ledger, A2 Marquee,
+  A6 Distribution, A7 Sentence. Original numbers kept so references hold.
+  Constant across them: the ignition glyph field, real Archivo, the
+  canonical token set, the thesis headline, and the five-stage rail. What
+  varies is how the four figures are stated.
+  Switch: ?variant=1|2|6|7, the bottom bar, or ←/→.
+  Data: ?data=live (real 28) | full (synthetic 33, all stages populated).
+-->
+<style>
+  @font-face { font-family: 'Archivo'; src: url('../hero-ascii-bg/fonts/Archivo-variable.woff2') format('woff2-variations'); font-weight: 100 900; font-display: swap; }
+
+  :root{
+    --k:#000; --w:#fff; --ow:#f0f0ee;
+    --g-a:#262626; --g-b:#4d4d4d; --g-c:#8c8c8c; --g-d:#bfbfbf;
+    --acc:#bd03f7; --cy:#32c8ff;
+    --s-gate:#ffbe1e; --s-stuck:#ff5a4d; --s-wait:#8c8c8c; --s-done:#78f05a;
+    --p0:#08060c; --p1:#100c18; --p2:#181222; --p3:#241a33;
+    --line:rgba(189,3,247,.20); --line2:rgba(240,240,238,.10);
+    --t0:11px; --t1:14px; --t2:19px; --t3:25px; --t4:34px; --t5:45px; --t6:60px; --t7:80px;
+    --sans:'Archivo',Arial,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;background:var(--k)}
+  body{overflow-x:hidden;font-family:var(--sans);color:var(--ow)}
+  .view{display:none;min-height:100vh}
+  .view.on{display:block}
+  .tnum{font-variant-numeric:tabular-nums}
+  canvas.fx{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+  .z{position:relative;z-index:1}
+  .pad{padding:26px 34px 130px}
+
+  /* constants across all ten */
+  .mast{display:flex;align-items:center;gap:18px}
+  /* the real AIRES lockup, matching the shipped shell: mark, hairline rule,
+     wide-tracked light caps. The tracking is what makes weight 300 read as
+     deliberate rather than thin. */
+  .mast .bm{display:flex;align-items:center;gap:11px;color:var(--ow);
+    font:300 var(--t1) var(--sans);letter-spacing:.24em;padding-left:.24em}
+  .mast .bm svg{flex:0 0 auto}
+  .mast .bm .rule{width:1px;height:16px;background:var(--line2);flex:0 0 auto}
+  .mast .cr{margin-left:auto;font:500 var(--t0) var(--mono);letter-spacing:.18em;color:var(--g-c);text-transform:uppercase}
+  .kick{font:500 var(--t0) var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--acc)}
+  h1{margin:0;font-weight:800;letter-spacing:-.022em;line-height:1.02;text-wrap:balance}
+  .lede{max-width:54ch;font-size:var(--t1);line-height:1.55;color:var(--g-d);font-weight:300}
+  .a-gate{color:var(--s-gate)} .a-stuck{color:var(--s-stuck)} .a-cy{color:var(--cy)} .a-done{color:var(--s-done)}
+
+  /* the stage rail, shared but skinnable */
+  .rail{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+  /* No accent rule here. The status-mix bar IS the rule above each stage —
+     one element doing both jobs. A purple line would be a second horizontal
+     stroke carrying nothing, and would spend the reserved brand accent on
+     decoration next to a bar that actually encodes data. */
+  .rail .st{padding-top:0}
+  .rail .st .h{display:flex;align-items:baseline;gap:8px}
+  .rail .st .h b{font-size:var(--t2);font-weight:700}
+  .rail .st .h span{font:400 var(--t0) var(--mono);color:var(--g-c);letter-spacing:.1em;text-transform:uppercase}
+  /* the status mix of a stage, stated before its titles — a stage can hold
+     three different statuses and a truncated list will not show that */
+  .rail .mix{display:flex;gap:2px;height:3px;margin:0 0 12px}
+  .rail .mix i{min-width:3px}
+  .rail .standby{margin-top:9px;font:400 9px var(--mono);letter-spacing:.1em;
+    text-transform:uppercase;color:var(--g-b)}
+  .rail ul{list-style:none;margin:11px 0 0;padding:0;display:flex;flex-direction:column;gap:7px}
+  .rail li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:baseline;
+    font-size:var(--t0);line-height:1.4}
+  .rail li .t{position:relative;padding-left:11px;color:var(--g-d);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rail li .t::before{content:'';position:absolute;left:0;top:5px;width:4px;height:4px;
+    border-radius:50%;background:var(--dot,var(--g-b))}
+  /* the word, not just the dot — status must survive greyscale */
+  .rail li .w{font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dot,var(--g-b))}
+  .rail .more{margin-top:8px;font:400 9.5px var(--mono);letter-spacing:.08em;color:var(--g-b)}
+
+  /* ── 1 · LEDGER — figures on one rule, no boxes at all ── */
+  .v1 .fig{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid var(--line2);margin:34px 0 0}
+  .v1 .fig>div{padding:18px 22px 18px 0;border-right:1px solid var(--line2)}
+  .v1 .fig>div:last-child{border-right:0}
+  .v1 .fig .n{font:700 var(--t5) var(--mono);line-height:.94;letter-spacing:-.035em}
+  .v1 .fig .l{margin-top:8px;font-size:var(--t0);letter-spacing:.14em;text-transform:uppercase;color:var(--g-c)}
+
+  /* ── 2 · MARQUEE — one figure owns the page, three are footnotes ── */
+  .v2 .huge{display:flex;align-items:flex-start;gap:28px;margin:26px 0 0}
+  /* Purple A — the brand accent, spent once, on the largest thing on the page.
+     Deliberately NOT a status colour: this figure sums gates AND stalled, so
+     amber or red would claim all ten are one or the other. Purple carries no
+     status meaning, so it emphasises without asserting. 4.52:1 on black, past
+     the 3:1 large-text floor. The row below carries the amber/red split. */
+  .v2 .huge .n{font:900 clamp(90px,17vw,210px) var(--sans);line-height:.82;letter-spacing:-.05em;color:var(--acc)}
+  .v2 .huge .say{padding-top:22px}
+  .v2 .huge .say h1{font-size:var(--t4);max-width:15ch}
+  .v2 .minor{display:flex;gap:34px;margin-top:26px;padding-top:16px;border-top:1px solid var(--line2)}
+  .v2 .minor div{font-size:var(--t0);letter-spacing:.12em;text-transform:uppercase;color:var(--g-c)}
+  .v2 .minor b{display:block;font:700 var(--t3) var(--mono);letter-spacing:-.02em;margin-bottom:5px}
+
+  /* ── 6 · DISTRIBUTION — each figure carries its own age histogram ── */
+  /* No box, no fill, no dividers — the figures sit straight on the page and the
+     gap does the separating. Keeps A6 visually distinct from A1, which uses
+     vertical rules between its figures. */
+  .v6 .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:0 30px;margin-top:34px}
+  .v6 .cards>div{min-width:0}
+  .v6 .a6head{padding:44px 0 0}
+  .v6 .a6head h1{font-size:var(--t5);max-width:20ch}
+  /* head 2 and 5 replace the lede with a metric line — figures inline in the
+     sentence, colour-linked to the same statuses used everywhere else */
+  .v6 .a6head .meta{margin:14px 0 0;font-size:var(--t1);font-weight:300;color:var(--g-c)}
+  .v6 .a6head .meta b{font-weight:700;margin-right:2px}
+  /* head 5 is a label, not a headline — the figures below carry the page */
+  .v6 .a6head.min h1{font-size:var(--t3);max-width:none}
+  .v6 .a6head.min .meta{margin-top:8px;font:400 var(--t0) var(--mono);
+    letter-spacing:.1em;text-transform:uppercase;color:var(--g-b)}
+  /* Separating the two halves — chosen from five studies (see NOTES.md).
+     A real section heading at --t3 plus a 92px gap: the figures read as the
+     summary, the stage list as the detail under a named section. The heading is
+     what does the work; without it the gap alone still let the two five-wide
+     rows echo each other. */
+  .v6 .sechead{margin:92px 0 0;font-size:var(--t3);font-weight:700;letter-spacing:-.015em}
+  .v6 .a6bottom{margin-top:26px}
+  .v6 .n{font:700 var(--t4) var(--mono);line-height:1;letter-spacing:-.03em}
+  .v6 .l{margin-top:7px;font-size:var(--t0);letter-spacing:.14em;text-transform:uppercase;color:var(--g-c)}
+  /* Area + line over the six age buckets. Straight segments between buckets,
+     not a smoothed curve: the data is six discrete bins and a spline would
+     invent shape between them. preserveAspectRatio is none so it fills the
+     card, hence non-scaling-stroke to stop the line thickening horizontally. */
+  .v6 .hist{height:38px;margin-top:14px}
+  .v6 .hist svg{display:block;width:100%;height:100%}
+  .v6 .hist .ar{fill:var(--hb,var(--g-a));opacity:.20}
+  .v6 .hist .ln{fill:none;stroke:var(--hb,var(--g-a));stroke-width:1.5;
+    vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}
+  .v6 .hist .base{stroke:var(--line2);stroke-width:1;vector-effect:non-scaling-stroke}
+  .v6 .hist .pk{fill:var(--hb,var(--g-a))}
+  .v6 .hl{margin-top:6px;font:400 9.5px var(--mono);color:var(--g-b);letter-spacing:.1em}
+
+  /* ── 7 · SENTENCE — the figures live inside the prose ── */
+  .v7 .say{margin:40px 0 0}
+  /* the measure has to live on the element that carries the display size — a
+     ch limit on the wrapper resolves against the wrapper's inherited 14px and
+     collapses the line to two words. */
+  .v7 .say p{margin:0;max-width:15ch;font-size:clamp(30px,4.4vw,58px);line-height:1.14;
+    font-weight:300;letter-spacing:-.02em;color:var(--g-d)}
+  .v7 .say b{font-weight:800;color:var(--w)}
+  .v7 .say .n{font-weight:800;font-variant-numeric:tabular-nums}
+  .v7 .foot{margin-top:44px;padding-top:16px;border-top:1px solid var(--line2);
+    display:flex;gap:30px;flex-wrap:wrap;font:400 var(--t0) var(--mono);color:var(--g-c);letter-spacing:.1em;text-transform:uppercase}
+
+  /* switcher — outside the design language on purpose */
+  .sw{position:fixed;z-index:99;left:50%;bottom:20px;transform:translateX(-50%);
+    display:flex;align-items:center;gap:3px;padding:5px;border-radius:999px;
+    background:#fbfbfd;color:#17171b;box-shadow:0 12px 38px -10px rgba(0,0,0,.8),0 0 0 1px rgba(0,0,0,.1);
+    font-family:system-ui,sans-serif}
+  .sw button{width:30px;height:30px;border:0;border-radius:50%;background:transparent;color:#17171b;cursor:pointer;font-size:15px}
+  .sw button:hover{background:rgba(0,0,0,.08)}
+  .sw button:focus-visible{outline:2px solid #bd03f7;outline-offset:1px}
+  .sw .lbl{padding:0 13px;font-size:12.5px;font-weight:600;white-space:nowrap}
+  .sw .lbl small{color:#6c6c78;font-weight:500}
+  /* which dataset is on screen — synthetic data must never pass as live */
+  .sw .data{width:auto;padding:0 10px;height:24px;margin-left:4px;border-radius:999px;
+    font:600 9.5px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;
+    border:1px solid rgba(0,0,0,.16);background:#fff}
+  .sw .data.demo{background:#2b0140;border-color:#2b0140;color:#f0c8ff}
+  .sw .data.live{background:#e7f7ec;border-color:#bfe3ca;color:#12632c}
+  .sw .head{width:auto;padding:0 10px;height:24px;margin-left:4px;border-radius:999px;
+    font:600 9.5px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;
+    border:1px solid rgba(0,0,0,.16);background:#fff;white-space:nowrap}
+  .sw .head[disabled]{opacity:.32;cursor:default}
+  @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<canvas class="fx" id="fx" aria-hidden="true"></canvas>
+<main id="stage"></main>
+<div class="sw">
+  <button id="prev" aria-label="Previous composition">←</button>
+  <span class="lbl" id="lbl"></span>
+  <button id="next" aria-label="Next composition">→</button>
+  <button id="headBtn" class="head" type="button"
+    title="A6 only — cycle the heading treatment and copy"></button>
+  <button id="dataBtn" class="data" type="button"
+    title="Switch between the real 28 requests and a synthetic full pipeline"></button>
+</div>
+
+<script src="data.js"></script>
+<script src="data-full.js"></script>
+<script>
+/* Five stages, matching the console's DISPLAY_STAGES. There is no Done lane:
+   shipped is a STATUS, not a stage — a request that has deployed is still in
+   Deploy, it has just finished. Both datasets index shipped as 5, so it folds
+   back into Deploy (4) on read. */
+const STAGES=['Spec','Arch','Build','Review','Deploy'];
+const laneOf=r=>Math.min(r.stage,STAGES.length-1);
+
+/* Two datasets. `live` is the real 28 pulled from the API — a degenerate
+   distribution: 20 stuck in Spec, three stages empty, and no `active` request
+   at all, so the working state never renders. `full` is synthetic and fills
+   every stage. Never let the synthetic one masquerade as live: the marker in
+   the switcher states which is on screen. */
+let DATA='full', REQS_ACTIVE=[], live=[], gates=[], stuck=[], working=[], shipped=[], byStage=[],
+    maxW=1, THESIS='', LEDE='';
+function derive(){
+  REQS_ACTIVE = DATA==='live' ? REQS : REQS_FULL;
+  live   = REQS_ACTIVE.filter(r=>r.kind!=='done');
+  gates  = REQS_ACTIVE.filter(r=>r.kind==='gate');
+  stuck  = REQS_ACTIVE.filter(r=>r.kind==='stuck');
+  working= REQS_ACTIVE.filter(r=>r.kind==='active');
+  shipped= REQS_ACTIVE.filter(r=>r.kind==='done');
+  byStage= STAGES.map((_,i)=>REQS_ACTIVE.filter(r=>laneOf(r)===i));
+  maxW   = Math.max(...REQS_ACTIVE.map(wk),1);
+  THESIS = `${gates.length} requests are waiting on a person.`;
+  LEDE = working.length
+    ? `${working.length} are being built right now. The rest have cleared the machine and stopped at a gate that only you can open.`
+    : `Nothing is being built right now. Every one of them has cleared the machine and stopped at a gate that only you can open.`;
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const wk=r=>{const m=/^(\d+)([hdw])$/.exec(r.age||'');if(!m)return 0;const n=+m[1];
+  return m[2]==='h'?n/168:m[2]==='d'?n/7:n;};
+const DOT={gate:'var(--s-gate)',stuck:'var(--s-stuck)',wait:'var(--s-wait)',active:'var(--cy)',done:'var(--s-done)'};
+
+/* the ignition glyph field — carried from the intake hero, constant on all ten */
+const TIERS=[[.78,['S','F','8','#','@','B','%','W','N','&']],[.58,['S','F','#','8','0','&','K','H','$']],
+  [.4,['#','8','0','S','X','A','E','P','6']],[.24,['X','8','0','+','x','v','z','c','7']],
+  [.1,['+','=','·','x','-',':','~',"'",',']]];
+(function(){
+  const cv=document.getElementById('fx'),cx=cv.getContext('2d'),CW=21,CH=17;
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let cols=0,rows=0,t=0;
+  function size(){const d=devicePixelRatio||1;cv.width=innerWidth*d;cv.height=innerHeight*d;
+    cx.setTransform(d,0,0,d,0,0);cols=Math.ceil(innerWidth/CW);rows=Math.ceil(innerHeight/CH);}
+  size();addEventListener('resize',size);
+  function draw(){
+    cx.clearRect(0,0,innerWidth,innerHeight);
+    cx.font='500 13px "JetBrains Mono", monospace';cx.textBaseline='top';
+    for(let y=0;y<rows;y++){
+      const base=Math.pow(y/rows,2.6);
+      for(let x=0;x<cols;x++){
+        const n=(Math.sin(x*.37+t*.6)+Math.cos(y*.29-t*.45)+Math.sin((x+y)*.19+t*.3))/3;
+        const v=base*(.62+n*.38); if(v<.06) continue;
+        const tier=TIERS.find(([th])=>v>=th)||TIERS[TIERS.length-1];
+        const g=tier[1][(x*31+y*17+((x+y)%7))%tier[1].length];
+        const mix=Math.min(v*1.25,1);
+        cx.fillStyle=`rgba(${Math.round(140-mix*90)},${Math.round(3+mix*197)},${Math.round(120+mix*135)},${.05+v*.30})`;
+        cx.fillText(g,x*CW,y*CH);
+      }
+    }
+    if(!reduce){t+=.012;requestAnimationFrame(draw);}
+  }
+  draw();
+})();
+
+/* the shipped AIRES mark: one folded stroke with the accent landing off its end */
+const MARK=`<svg viewBox="0 0 48 48" width="22" height="22" aria-hidden="true">
+  <path d="M9 32 L19 17 L28 32 L39 16" fill="none" stroke="currentColor" stroke-width="6"
+    stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="39" cy="16" r="3.7" fill="var(--acc)"/></svg>`;
+const MAST=sub=>`<div class="mast"><span class="bm">${MARK}<i class="rule"></i>AIRES</span>
+  <span class="cr">${sub}</span></div>`;
+/* Urgency order, so a truncated list still surfaces the variety in a stage.
+   Taking the first six in data order hid the one stalled request behind
+   fifteen identical gates. */
+const RANK={stuck:0,gate:1,owned:2,wait:3,active:4,draft:5,done:6};
+const MIXWORD={stuck:'error',gate:'gate',owned:'human',wait:'submitter',active:'working',done:'shipped'};
+const RAIL=()=>{
+  return `<div class="rail">${STAGES.map((s,i)=>{
+  const rs=byStage[i].slice().sort((a,b)=>RANK[a.kind]-RANK[b.kind]||wk(b)-wk(a));
+  const mix=[...new Set(rs.map(r=>r.kind))].sort((a,b)=>RANK[a]-RANK[b])
+    .map(k=>({k,n:rs.filter(r=>r.kind===k).length}));
+  const shown=rs.slice(0,6);
+  return `<div class="st ${rs.length?'':'q'}">
+    ${rs.length?`<div class="mix" title="${mix.map(m=>`${m.n} ${MIXWORD[m.k]}`).join(' · ')}">${
+        mix.map(m=>`<i style="flex:${m.n};background:${DOT[m.k]}"></i>`).join('')}</div>`
+      :`<div class="mix"><i style="flex:1;background:var(--g-a)"></i></div>`}
+    <div class="h"><b class="tnum">${rs.length}</b><span>${s}</span></div>
+    ${rs.length?'':'<div class="standby">standby</div>'}
+    <ul>${shown.map(r=>`<li style="--dot:${DOT[r.kind]}">
+        <span class="t">${esc(r.title)}</span><span class="w">${MIXWORD[r.kind]}</span></li>`).join('')}</ul>
+    ${rs.length>shown.length?`<div class="more">+${rs.length-shown.length} more</div>`:''}
+  </div>`;}).join('')}</div>`;};
+/* Real age distribution — six buckets from fresh to oldest. No invented trend.
+   Drawn as an area with a line on top; the peak bucket gets a dot so the shape
+   has an anchor. An empty set collapses to a flat baseline, which is the honest
+   picture of "none of these exist" rather than a hidden or broken chart. */
+const hist=set=>{
+  const b=[0,0,0,0,0,0];
+  set.forEach(r=>{const i=Math.min(Math.floor(wk(r)/maxW*6),5);b[i]++;});
+  const m=Math.max(...b,1), W=100, H=30, PAD=2;
+  const x=i=>+(i/(b.length-1)*W).toFixed(2);
+  const y=v=>+(H-PAD-(v/m)*(H-PAD)).toFixed(2);
+  const pts=b.map((v,i)=>`${x(i)},${y(v)}`);
+  const peak=b.indexOf(Math.max(...b));
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <path class="ar" d="M0,${H} L${pts.join(' L')} L${W},${H} Z"/>
+    <line class="base" x1="0" y1="${H}" x2="${W}" y2="${H}"/>
+    <polyline class="ln" points="${pts.join(' ')}"/>
+    ${set.length?`<circle class="pk" cx="${x(peak)}" cy="${y(b[peak])}" r="1.6"
+      vector-effect="non-scaling-stroke"/>`:''}
+  </svg>`;
+};
+
+const V={};
+
+V[1]=()=>`<section class="view v1 pad z">${MAST('Overview / ledger')}
+  <div style="padding:44px 0 0"><div class="kick">State of the line</div>
+    <h1 style="font-size:var(--t5);max-width:16ch">${THESIS}</h1>
+    <p class="lede">${LEDE}</p></div>
+  <div class="fig">
+    <div><div class="n a-gate tnum">${gates.length}</div><div class="l">Awaiting your review</div></div>
+    <div><div class="n a-stuck tnum">${stuck.length}</div><div class="l">Error</div></div>
+    <div><div class="n a-cy tnum">${working.length}</div><div class="l">Being built</div></div>
+    <div><div class="n tnum">${live.length}</div><div class="l">Open requests</div></div>
+    <div><div class="n tnum">${shipped.length}</div><div class="l">Shipped this week</div></div>
+  </div>
+  <div style="margin-top:40px">${RAIL()}</div></section>`;
+
+/* The headline figure is the operator's whole workload — gates awaiting review
+   PLUS anything stalled — because both demand the same thing: you. The split
+   between them is stated in the row underneath, which is also where the
+   "awaiting your review" label now lives. */
+V[2]=()=>{const attention=gates.length+stuck.length;
+  return `<section class="view v2 pad z">${MAST('Overview / one number')}
+  <div class="huge"><div class="n tnum">${attention}</div>
+    <div class="say">
+      <h1>requests need your attention.</h1>
+      <p class="lede">${LEDE}</p></div></div>
+  <div class="minor">
+    <div><b class="a-gate tnum">${gates.length}</b>Awaiting your review</div>
+    <div><b class="a-stuck tnum">${stuck.length}</b>Error</div>
+    <div><b class="a-cy tnum">${working.length}</b>Being built</div>
+    <div><b class="tnum">${live.length}</b>Open requests</div>
+    <div><b class="tnum">${shipped.length}</b>Shipped this week</div>
+  </div>
+  <div style="margin-top:38px">${RAIL()}</div></section>`;};
+
+/* ── A6 ──
+   The two halves were both five-wide rows sitting on top of each other, so
+   "Awaiting your review" lined up under "Spec" and implied a relationship that
+   does not exist — one row is statuses, the other is stages. Five separations
+   were tried; "scale + air" was chosen and is now the only one. The named
+   section heading is what does the work: the gap alone still let the two rows
+   read as one grid. Studies and reasoning in NOTES.md. */
+const A6FIGS=()=>`<div class="cards">
+    <div><div class="n a-gate tnum">${gates.length}</div><div class="l">Awaiting your review</div>
+      <div class="hist" style="--hb:var(--s-gate)">${hist(gates)}</div><div class="hl">FRESH → ${Math.round(maxW)}W</div></div>
+    <div><div class="n a-stuck tnum">${stuck.length}</div><div class="l">Error</div>
+      <div class="hist" style="--hb:var(--s-stuck)">${hist(stuck)}</div><div class="hl">FRESH → ${Math.round(maxW)}W</div></div>
+    <div><div class="n a-cy tnum">${working.length}</div><div class="l">Being built</div>
+      <div class="hist" style="--hb:var(--cy)">${hist(working)}</div><div class="hl">FRESH → ${Math.round(maxW)}W</div></div>
+    <div><div class="n tnum">${live.length}</div><div class="l">Open requests</div>
+      <div class="hist" style="--hb:var(--g-b)">${hist(live)}</div><div class="hl">FRESH → ${Math.round(maxW)}W</div></div>
+    <div><div class="n tnum">${shipped.length}</div><div class="l">Shipped this week</div>
+      <div class="hist" style="--hb:var(--s-done)">${hist(shipped)}</div><div class="hl">FRESH → ${Math.round(maxW)}W</div></div>
+  </div>`;
+
+/* ── A6 head studies (?head=1..5, HEAD pill) ──
+   The original read "9 requests are waiting on a person" / "Each figure carries
+   how long its requests have been sitting" — narrative, and it anthropomorphised
+   the queue. These five are operational registers, all deriving from the data so
+   none of them can go stale. */
+const oldestGate=()=>gates.slice().sort((a,b)=>wk(b)-wk(a))[0]?.age||'—';
+const HEADNAME={1:'Operational',2:'Summary',3:'Directive',4:'Metric-led',5:'Minimal'};
+const HEADS={
+  /* States both things a person has to act on. Built clause by clause because
+     each count can be 0, 1 or many, and a derived headline must not produce
+     "0 have errors" or a dangling comma on a quiet day. */
+  1:()=>{
+    const g=gates.length, e=stuck.length;
+    const gc=`${g} ${g===1?'request needs':'requests need'} review`;
+    // the noun lives in the first clause, so the error clause has to carry its
+    // own when it stands alone — otherwise "1 has an error." has no subject
+    const ecShort=`${e} ${e===1?'has an error':'have errors'}`;
+    const ecAlone=`${e} ${e===1?'request has an error':'requests have errors'}`;
+    const line = g&&e ? `${gc}, ${ecShort}.`
+      : g ? `${gc}.`
+      : e ? `${ecAlone}.`
+      : 'Nothing is waiting on you.';
+    return `<div class="a6head"><div class="kick">Pipeline status</div>
+      <h1>${line}</h1>
+      <p class="lede">Figures below show time in current stage, from newest through
+        ${Math.round(maxW)} weeks.</p></div>`;},
+
+  2:()=>`<div class="a6head"><h1>${gates.length} of ${REQS_ACTIVE.length} requests
+      are held pending review.</h1>
+    <p class="meta"><b class="a-cy tnum">${working.length}</b> in build
+      · <b class="a-stuck tnum">${stuck.length}</b> in error
+      · <b class="tnum">${shipped.length}</b> delivered this week</p></div>`,
+
+  3:()=>`<div class="a6head"><div class="kick">Action required</div>
+    <h1>${gates.length + stuck.length} requests need an operator decision.</h1>
+    <p class="lede">No stage advances until these are cleared. The oldest has been
+      held ${oldestGate()}.</p></div>`,
+
+  4:()=>`<div class="a6head"><div class="kick">Time in stage</div>
+    <h1>Request distribution by status and age.</h1>
+    <p class="lede">Each series spans the full range, from newest through
+      ${Math.round(maxW)} weeks in current stage.</p></div>`,
+
+  5:()=>`<div class="a6head min"><h1>Pipeline</h1>
+    <p class="meta">${REQS_ACTIVE.length} requests
+      · ${gates.length} awaiting review
+      · oldest held ${oldestGate()}</p></div>`,
+};
+const A6HEAD=()=>HEADS[HEAD]();
+
+V[6]=()=>`<section class="view v6 pad z">${MAST('Overview / distribution')}
+  ${A6HEAD()}${A6FIGS()}
+  <h2 class="sechead">The line, stage by stage</h2>
+  <div class="a6bottom">${RAIL()}</div></section>`;
+
+V[7]=()=>`<section class="view v7 pad z">${MAST('Overview / plain words')}
+  <div class="say"><div class="kick" style="margin-bottom:18px">State of the line</div>
+    <p><span class="n a-gate">${gates.length}</span> of <span class="n">${REQS_ACTIVE.length}</span> requests
+      are <b>waiting on you</b>. <span class="n a-stuck">${stuck.length}</span>
+      ${stuck.length === 1 ? 'has' : 'have'} <b>errored</b>.
+      ${working.length === 0
+        ? '<b>Nothing</b> is being built.'
+        : `<span class="n a-cy">${working.length}</span> ${working.length === 1 ? 'is' : 'are'} <b>being built</b>.`}
+      <span class="n">${live.length}</span> ${live.length === 1 ? 'is' : 'are'} still open and
+      <span class="n">${shipped.length}</span> shipped this week.</p></div>
+  <div class="foot">
+    <span>${working.length} running</span><span>Epoch 189</span><span>Tick 4.5s</span>
+    <span>Oldest gate ${gates.slice().sort((a,b)=>wk(b)-wk(a))[0]?.age||'—'}</span></div>
+  <div style="margin-top:40px">${RAIL()}</div></section>`;
+
+/* ── switcher ── */
+/* The four that survived review. Original numbers kept on purpose — renumbering
+   would break every reference to them in NOTES.md and in conversation. */
+const NAMES={1:'Ledger',2:'Marquee',6:'Distribution',7:'Sentence'};
+const KEYS=Object.keys(NAMES);
+let HEAD=1;
+function show(k){
+  if(!KEYS.includes(String(k))) k='1';
+  derive();
+  document.getElementById('stage').innerHTML=V[k]();
+  document.querySelector('.view').classList.add('on');
+  document.getElementById('lbl').innerHTML=`A${k} <small>— ${NAMES[k]}</small>`;
+  const b=document.getElementById('dataBtn');
+  const demo=DATA!=='live';
+  b.className='data '+(demo?'demo':'live');
+  b.textContent=demo?`demo ${REQS_ACTIVE.length}`:`live ${REQS_ACTIVE.length}`;
+  const hb=document.getElementById('headBtn');
+  hb.disabled=k!=='6';
+  hb.textContent=`head ${HEAD}/5 · ${HEADNAME[HEAD]}`;
+  const u=new URL(location);u.searchParams.set('variant',k);
+  u.searchParams.set('data',DATA);u.searchParams.set('head',HEAD);
+  history.replaceState({},'',u);scrollTo(0,0);
+}
+const cur=()=>new URL(location).searchParams.get('variant')||'1';
+const cycle=d=>show(KEYS[(KEYS.indexOf(String(cur()))+d+KEYS.length)%KEYS.length]);
+document.getElementById('prev').onclick=()=>cycle(-1);
+document.getElementById('next').onclick=()=>cycle(1);
+document.getElementById('dataBtn').onclick=()=>{DATA=DATA==='live'?'full':'live';show(cur());};
+document.getElementById('headBtn').onclick=()=>{HEAD=HEAD%5+1;show(cur());};
+DATA=new URL(location).searchParams.get('data')==='live'?'live':'full';
+HEAD=Math.min(Math.max(parseInt(new URL(location).searchParams.get('head'),10)||1,1),5);
+addEventListener('keydown',e=>{if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName)||e.target.isContentEditable)return;
+  if(e.key==='ArrowLeft')cycle(-1);if(e.key==='ArrowRight')cycle(1);});
+show(cur());
+</script>
+</body>
+</html>

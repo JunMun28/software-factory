@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import httpx
 from sqlalchemy import func, select
 
+from app import settings
 from app.db import SessionLocal, migrate
 from app.models import Request
 
@@ -521,6 +522,11 @@ def test_summary_uses_low_effort_sonnet_without_sampling_params(monkeypatch):
 
 
 def test_prototype_streams_with_large_sonnet_budget(monkeypatch):
+    # These two exercise the API brain's own fenced-block prototype contract, which is
+    # now the non-default path: FACTORY_PROTOTYPE_VIA defaults to "cli" so the mock is
+    # built as a file by the agent CLI. Pin the setting rather than deleting the tests —
+    # the API contract is still live as the escape hatch.
+    monkeypatch.setattr(settings, "PROTOTYPE_VIA", "api")
     messages = _FakeMessages(
         chunks=[
             "Built the reporting screen.\n===PROTO===\n"
@@ -832,6 +838,7 @@ def test_failed_brain_call_claim_honors_retry_cooldown():
 
 
 def test_prototype_retry_records_each_api_call_while_generation_is_claimed(monkeypatch):
+    monkeypatch.setattr(settings, "PROTOTYPE_VIA", "api")
     migrate()
     from app.brain_calls import active_call, claim_call, finish_call
     from app.models import BrainCall

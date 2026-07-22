@@ -550,7 +550,7 @@
 {"kind":"textbox","id":"sh/fmlkjm1c","slide":24,"text":"swap brains and runners without changing the domain model","textPreview":"swap brains and runners without changing the domain model","textChars":57,"textLines":1,"bbox":[952,354,234,74]}
 {"kind":"shape","id":"sh/r2p8nqxs","slide":24,"bbox":[58,472,1162,142]}
 {"kind":"textbox","id":"sh/2hwfyxob","slide":24,"text":"Project","textPreview":"Project","textChars":7,"textLines":1,"bbox":[78,500,130,22]}
-{"kind":"textbox","id":"sh/94fu18jq","slide":24,"text":"/Users/wongjunmun/development/ai-development/software-factory","textPreview":"/Users/wongjunmun/development/ai-development/software-factory","textChars":61,"textLines":1,"bbox":[220,496,960,28]}
+{"kind":"textbox","id":"sh/94fu18jq","slide":24,"text":"the repo root","textPreview":"the repo root","textChars":61,"textLines":1,"bbox":[220,496,960,28]}
 {"kind":"textbox","id":"sh/kjm1cfa9","slide":24,"text":"Useful commands","textPreview":"Useful commands","textChars":15,"textLines":1,"bbox":[78,542,130,46]}
 {"kind":"textbox","id":"sh/ra5gbq1o","slide":24,"text":"make verify\nFACTORY_RUNNER=claude uv run uvicorn app.main:app --port 8000","textPreview":"make verify | FACTORY_RUNNER=claude uv run uvicorn app.main:app --port 8000","textChars":73,"textLines":2,"bbox":[220,538,960,58]}
 {"kind":"notes","id":"nt/6vl662","slide":24,"text":""}

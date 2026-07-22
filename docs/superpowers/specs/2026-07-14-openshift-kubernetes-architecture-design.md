@@ -1,4 +1,4 @@
-# Software Factory on Kubernetes — Architecture Design (v2)
+# AIRES on Kubernetes — Architecture Design (v2)
 
 **Date:** 2026-07-14
 **Status:** approved — brainstormed, adversarially reviewed (Codex + 4 independent
@@ -10,7 +10,7 @@ review passes), amended, owner-approved with four architect amendments
 
 ## 1. Goal
 
-Run the whole Software Factory on Kubernetes — the factory, the opencode agents that
+Run the whole AIRES on Kubernetes — the factory, the opencode agents that
 execute pipeline stages, and every app the factory produces. **Local-first**: the
 primary development environment is kind on a personal Mac, built **production-shaped**
 (owner's explicit choice: pay the migration cost once, up front) so promotion to the

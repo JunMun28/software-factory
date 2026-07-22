@@ -56,7 +56,7 @@ Review fix on top of the codex pass (a real crash the unit tests missed):
   Caught only by live navigation — a reminder that green vitest ≠ working route.
 
 Verified live: /requests/9 (shipped) renders signed chapters ("Spec approved by
-Kim P. — decided by Kim P. · Jul 10 · 11:32 PM", "Merge approved by Jun Wong");
+Kim P. — decided by Kim P. · Jul 10 · 11:32 PM", "Merge approved by Dana Reyes");
 "Raw evidence ↓" opens the drawer and sets `#chapter-7`; all Dossier data calls
 200; /requests/4 (escalated) header shows Retry/Send back to…/Take over/Cancel +
 Comment; Family light + dark at 1440 and 375 px. pytest 185, console 66 (9 files,

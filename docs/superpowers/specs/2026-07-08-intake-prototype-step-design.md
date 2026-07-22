@@ -1,7 +1,7 @@
 # Intake Prototype step — design (grilling doc)
 
 **Status:** design complete — awaiting build approval (2026-07-08)
-**Author:** Jun Mun + Claude (grill-with-docs / domain-modeling)
+**Author:** Dana Reyes + Claude (grill-with-docs / domain-modeling)
 **Related:** intake wizard (`apps/intake`), interview brain seam (ADR 0007), review/summary step.
 
 ## Why

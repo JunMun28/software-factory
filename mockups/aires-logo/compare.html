@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AIRES — compare & configure</title>
+
+    <!-- PROTOTYPE — throwaway. Head-to-head view for two marks from marks.js,
+         plus a full wordmark type configurator. Every control writes to the URL,
+         so a combination you like can be bookmarked or pasted back to Claude.
+         e.g. compare.html?a=22&b=71&face=Quicksand&wt=700&tr=2&sz=40 -->
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=M+PLUS+Rounded+1c:wght@400;500;700;800;900&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@400;500;600;700;800&family=Comfortaa:wght@400;500;600;700&family=Varela+Round&family=Fredoka:wght@400;500;600;700&family=Signika:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800;900&family=Figtree:wght@400;500;600;700;800;900&family=Manrope:wght@400;500;600;700;800&family=Urbanist:wght@400;500;600;700;800;900&family=Lexend:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      @font-face { font-family: 'Archivo'; src: url('../hero-ascii-bg/fonts/Archivo-variable.woff2') format('woff2-variations'); font-weight: 100 900; font-display: swap; }
+
+      :root[data-theme='light'] {
+        --bg: #fff; --surface: #fff; --surface-2: #f6f5f8; --fg1: #16141a;
+        --muted: #6b6675; --faint: #8f8a99; --border: #e6e3ec; --hairline: #efedf3;
+        --a500: #bd03f7;
+      }
+      :root[data-theme='dark'] {
+        --bg: #0e0d11; --surface: #16151a; --surface-2: #1e1c24; --fg1: #f3f1f7;
+        --muted: #a09aad; --faint: #7d7789; --border: #2b2833; --hairline: #232029;
+        --a500: #cb45f8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 0 30px 70px;
+        font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+        background: var(--bg); color: var(--fg1); -webkit-font-smoothing: antialiased;
+      }
+      header {
+        position: sticky; top: 0; z-index: 9; background: var(--bg);
+        border-bottom: 1px solid var(--hairline); padding: 16px 0 14px; margin-bottom: 24px;
+      }
+      .htop { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+      h1 { font-size: 21px; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
+      a.back { font-size: 13px; color: var(--a500); text-decoration: none; font-weight: 600; }
+      .spacer { flex: 1; }
+
+      /* ── config panel ── */
+      .cfg {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+        gap: 10px 16px; background: var(--surface); border: 1px solid var(--border);
+        border-radius: 12px; padding: 13px 16px;
+      }
+      .f { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+      .f > label {
+        font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+        text-transform: uppercase; color: var(--faint);
+        display: flex; justify-content: space-between; gap: 8px;
+      }
+      .f > label b { color: var(--a500); font-variant-numeric: tabular-nums; font-weight: 700; }
+      select, button {
+        font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+        background: var(--surface-2); color: var(--fg1);
+        border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; width: 100%;
+      }
+      button.pill { border-radius: 999px; width: auto; padding: 7px 14px; }
+      input[type='range'] { width: 100%; accent-color: var(--a500); margin: 0; }
+
+      /* ── comparison ── */
+      .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+      .col { display: flex; flex-direction: column; gap: 15px; }
+      .big {
+        aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+        background: var(--surface-2); border: 1px solid var(--border); border-radius: 16px;
+      }
+      .label { display: flex; align-items: baseline; gap: 9px; }
+      .label .num { font-size: 12px; font-weight: 700; color: var(--faint); }
+      .label .nm { font-size: 19px; font-weight: 800; letter-spacing: -0.01em; }
+      .idea { font-size: 13px; color: var(--muted); line-height: 1.5; margin: -8px 0 0; }
+      .box {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 12px; padding: 16px 18px 15px;
+      }
+      .cap { display: block; font-size: 10.5px; color: var(--faint); margin-bottom: 12px; }
+      /* the lockup: mark + wordmark, every property driven by the config panel */
+      .set { display: flex; align-items: center; gap: var(--gap); }
+      .wm {
+        font-family: var(--face); font-weight: var(--wt);
+        letter-spacing: var(--tr); font-size: var(--sz);
+        line-height: 1; white-space: nowrap;
+      }
+      .row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+      .nav { display: flex; align-items: center; gap: 9px; }
+      .nav .wm { font-size: 17px; }
+      .tile {
+        width: 56px; height: 56px; border-radius: 13px; background: var(--a500);
+        display: flex; align-items: center; justify-content: center; color: #fff; flex: 0 0 auto;
+      }
+      .abreast {
+        margin-top: 26px; padding: 26px; border-radius: 16px;
+        background: var(--surface-2); border: 1px solid var(--border);
+        display: flex; align-items: center; justify-content: center; gap: 54px; flex-wrap: wrap;
+      }
+      .abreast .cap { width: 100%; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="htop">
+        <h1>Compare &amp; configure</h1>
+        <a class="back" href="index.html">← all marks</a>
+        <div class="spacer"></div>
+        <button class="pill" id="reset">Reset</button>
+        <button class="pill" id="copy">Copy config</button>
+        <button class="pill" id="theme">Light mode</button>
+      </div>
+      <div class="cfg" id="cfg"></div>
+    </header>
+
+    <div class="duo" id="duo"></div>
+    <div class="abreast" id="abreast"></div>
+
+    <script src="marks.js"></script>
+    <script>
+      const ONLY = MARKS.filter((m) => !m.fam);
+
+      /* Typefaces grouped by what question they answer. Rounded first (the
+         brief), geometric as the not-round control, mono because the hero's
+         ASCII field speaks that language, Archivo last as the incumbent. */
+      const FACES = {
+        Rounded: ['Quicksand', 'M PLUS Rounded 1c', 'Nunito', 'Baloo 2', 'Comfortaa', 'Varela Round', 'Fredoka', 'Signika'],
+        Geometric: ['Outfit', 'Poppins', 'Figtree', 'Manrope', 'Urbanist', 'Lexend', 'Space Grotesk'],
+        Mono: ['JetBrains Mono'],
+        Brand: ['Archivo'],
+      };
+      const CASES = { upper: 'AIRES', title: 'Aires', lower: 'aires' };
+
+      /* Every control lives here: [key, label, type, default, min, max, step].
+         Adding a knob means adding one row — the panel and URL sync are generic. */
+      const CTRLS = [
+        ['a', 'mark left', 'mark', 22],
+        ['b', 'mark right', 'mark', 71],
+        ['face', 'typeface', 'face', 'Quicksand'],
+        ['wt', 'weight', 'range', 700, 300, 900, 100],
+        ['tr', 'tracking', 'range', 2, -50, 150, 1],
+        ['sz', 'wordmark size', 'range', 40, 20, 76, 1],
+        ['gap', 'gap', 'range', 17, 0, 44, 1],
+        ['sw', 'mark stroke', 'range', 5, 2, 9, 0.5],
+        ['ms', 'mark size', 'range', 54, 24, 100, 1],
+        ['case', 'case', 'case', 'upper'],
+      ];
+
+      const q = new URLSearchParams(location.search);
+      const S = {};
+      CTRLS.forEach(([k, , type, def]) => {
+        const raw = q.get(k);
+        S[k] = raw === null ? def : type === 'range' || type === 'mark' ? +raw : raw;
+      });
+
+      const fmt = { tr: (v) => (v / 1000).toFixed(3) + 'em', sz: (v) => v + 'px', gap: (v) => v + 'px', ms: (v) => v + 'px' };
+
+      function buildPanel() {
+        document.getElementById('cfg').innerHTML = CTRLS.map(([k, lab, type, , min, max, step]) => {
+          let input;
+          if (type === 'mark') {
+            input = `<select data-k="${k}">${ONLY.map((m, i) => `<option value="${i + 1}"${S[k] === i + 1 ? ' selected' : ''}>${String(i + 1).padStart(2, '0')} ${m.n}</option>`).join('')}</select>`;
+          } else if (type === 'face') {
+            input = `<select data-k="${k}">${Object.entries(FACES).map(([g, list]) => `<optgroup label="${g}">${list.map((f) => `<option${S[k] === f ? ' selected' : ''}>${f}</option>`).join('')}</optgroup>`).join('')}</select>`;
+          } else if (type === 'case') {
+            input = `<select data-k="${k}">${Object.entries(CASES).map(([v, t]) => `<option value="${v}"${S[k] === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+          } else {
+            input = `<input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${S[k]}" />`;
+          }
+          const shown = type === 'range' ? `<b data-v="${k}">${(fmt[k] || String)(S[k])}</b>` : '';
+          return `<div class="f"><label>${lab}${shown}</label>${input}</div>`;
+        }).join('');
+
+        document.getElementById('cfg').oninput = (e) => {
+          const k = e.target.dataset.k;
+          if (!k) return;
+          const isNum = e.target.type === 'range' || k === 'a' || k === 'b';
+          S[k] = isNum ? +e.target.value : e.target.value;
+          const v = document.querySelector(`[data-v="${k}"]`);
+          if (v) v.textContent = (fmt[k] || String)(S[k]);
+          render();
+        };
+        document.getElementById('cfg').onchange = document.getElementById('cfg').oninput;
+      }
+
+      const draw = (m, px, w) =>
+        m.wide
+          ? `<svg height="${px * 0.42}" viewBox="0 0 ${m.vw || 92} 26" style="display:block">${m.svg()}</svg>`
+          : `<svg width="${px}" height="${px}" viewBox="0 0 48 48" style="display:block">${m.svg(w)}</svg>`;
+
+      function render() {
+        const r = document.documentElement.style;
+        r.setProperty('--face', `'${S.face}', 'Archivo', sans-serif`);
+        r.setProperty('--wt', S.wt);
+        r.setProperty('--tr', (S.tr / 1000).toFixed(3) + 'em');
+        r.setProperty('--sz', S.sz + 'px');
+        r.setProperty('--gap', S.gap + 'px');
+
+        const word = CASES[S.case];
+        const pair = [ONLY[S.a - 1], ONLY[S.b - 1]];
+        const nums = [S.a, S.b];
+
+        document.getElementById('duo').innerHTML = pair
+          .map((m, k) => `
+            <div class="col">
+              <div class="big">${draw(m, 300, S.sw)}</div>
+              <div class="label"><span class="num">${String(nums[k]).padStart(2, '0')}</span><span class="nm">${m.n}</span></div>
+              <p class="idea">${m.idea}</p>
+              <div class="box">
+                <span class="cap">lockup — configured (${S.face} ${S.wt} · ${S.sz}px · mark ${S.ms}px)</span>
+                <div class="set">${draw(m, S.ms, S.sw)}<span class="wm">${word}</span></div>
+              </div>
+              <div class="box">
+                <span class="cap">true size — nav 23px · favicon 16px · icon tile</span>
+                <div class="row">
+                  <div class="nav">${draw(m, 23, 6)}<span class="wm">${word}</span></div>
+                  ${draw(m, 16, 7)}
+                  <span class="tile">${draw(m, 34, 6)}</span>
+                </div>
+              </div>
+            </div>`)
+          .join('');
+
+        document.getElementById('abreast').innerHTML =
+          `<span class="cap">same size, side by side — judge them against each other, not in isolation</span>` +
+          pair.map((m) => draw(m, 150, S.sw)).join('');
+
+        const p = new URLSearchParams();
+        CTRLS.forEach(([k]) => p.set(k, S[k]));
+        history.replaceState(null, '', '?' + p);
+      }
+
+      document.getElementById('reset').onclick = () => {
+        CTRLS.forEach(([k, , , def]) => (S[k] = def));
+        buildPanel();
+        render();
+      };
+      document.getElementById('copy').onclick = async (e) => {
+        await navigator.clipboard.writeText(location.href).catch(() => {});
+        e.target.textContent = 'Copied';
+        setTimeout(() => (e.target.textContent = 'Copy config'), 1200);
+      };
+      const root = document.documentElement, tb = document.getElementById('theme');
+      tb.onclick = () => {
+        const dark = root.dataset.theme === 'dark';
+        root.dataset.theme = dark ? 'light' : 'dark';
+        tb.textContent = dark ? 'Dark mode' : 'Light mode';
+      };
+
+      buildPanel();
+      render();
+    </script>
+  </body>
+</html>

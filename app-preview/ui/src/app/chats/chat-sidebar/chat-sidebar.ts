@@ -63,7 +63,7 @@ import { WorkspaceShellService } from '../../services/workspace-shell.service';
         [attr.aria-hidden]="mobileSidebarInert() ? 'true' : null"
       >
         <div class="flex h-[50px] shrink-0 items-center gap-2 px-3">
-          <img class="size-6 rounded-full" src="/personal-avatar.png" alt="Jun Mun" />
+          <img class="size-6 rounded-full" src="/personal-avatar.png" alt="Dana Reyes" />
           <span data-testid="workspace-label" class="min-w-0 flex-1 truncate text-sm font-medium">Personal</span>
           <button
             type="button"
@@ -145,8 +145,8 @@ import { WorkspaceShellService } from '../../services/workspace-shell.service';
       </div>
 
       <div class="flex h-[50px] shrink-0 items-center gap-2 border-t border-sidebar-border px-3">
-        <img class="size-6 rounded-full" src="/personal-avatar.png" alt="Jun Mun" />
-        <span class="min-w-0 flex-1 truncate text-sm">Jun Mun</span>
+        <img class="size-6 rounded-full" src="/personal-avatar.png" alt="Dana Reyes" />
+        <span class="min-w-0 flex-1 truncate text-sm">Dana Reyes</span>
         <button
           type="button"
           class="workspace-icon-button"

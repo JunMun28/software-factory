@@ -51,9 +51,9 @@ and a compliant device (Conditional Access blocks the automated browser).
 
 All under **Entra ID → App registrations**, all **single tenant**.
 
-### 1a. `software-factory-api` (the resource)
+### 1a. `aires-api` (the resource)
 
-1. New registration, name `software-factory-api`, no redirect URI.
+1. New registration, name `aires-api`, no redirect URI.
 2. **Expose an API** → set Application ID URI to the default
    `api://<api-client-id>` → add scope `access_as_user` (admins + users can
    consent).
@@ -69,7 +69,7 @@ All under **Entra ID → App registrations**, all **single tenant**.
 2. **Authentication → Add a platform → Single-page application**. Redirect
    URIs: `http://localhost:4202` (dev) + the deployed console URL later.
    Auth code + PKCE is the default; leave implicit grant OFF.
-3. **API permissions** → My APIs → `software-factory-api` → delegated
+3. **API permissions** → My APIs → `aires-api` → delegated
    `access_as_user` → **Grant admin consent**.
 
 ### 1c. `software-factory-intake` (SPA)
@@ -79,7 +79,7 @@ Same as 1b with name `software-factory-intake` and redirect URI
 
 ### 1d. Assign people
 
-**Enterprise applications → software-factory-api → Users and groups**: assign
+**Enterprise applications → aires-api → Users and groups**: assign
 each person a role from 1a. Console decision-makers get `Factory.Admin`;
 read-only console users get `Factory.Viewer`; everyone who may submit gets
 `Factory.Submitter`. (One person can hold several.)

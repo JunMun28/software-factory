@@ -42,7 +42,7 @@ const FEATURED = ['Analytics command center', 'AI landing page', 'Reading dashbo
     <div class="min-h-dvh bg-background text-foreground">
       <header class="flex h-14 items-center justify-between border-b border-border px-5">
         <a routerLink="/" class="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium hover:bg-muted">New Chat</a>
-        <span class="text-sm text-muted-foreground">Jun Mun</span>
+        <span class="text-sm text-muted-foreground">Dana Reyes</span>
       </header>
 
       <div class="border-b border-border">

@@ -1723,7 +1723,7 @@ One image serves stage AND gate Jobs (spec §5; gates just get no LLM egress/cre
 `docker/sf-agent/prompts/architecture.md`:
 
 ```markdown
-You are the architect stage of a software factory. Read SPEC.md and the code under src/.
+You are the architect stage of AIRES. Read SPEC.md and the code under src/.
 Write PLAN.md: a short implementation plan — which functions in src/ change or get added,
 what the public behavior must be, and which tests will prove it. Do NOT change any code.
 Keep it under 40 lines. End by confirming PLAN.md is written.
@@ -2057,7 +2057,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - [ ] **Step 1: Write `deploy/kind/cluster.yaml`**
 
 ```yaml
-# kind cluster for the Software Factory (spec §2, local profile).
+# kind cluster for AIRES (spec §2, local profile).
 # CRITICAL: the default CNI (kindnet) silently DOES NOT enforce NetworkPolicy —
 # it is disabled here and Calico installed by `task kind-up`; enforcement is
 # then PROVEN by scripts/calico-probe.sh, never assumed.

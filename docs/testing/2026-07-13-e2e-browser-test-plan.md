@@ -1,4 +1,4 @@
-# Software Factory — End-to-End Browser Test Plan
+# AIRES — End-to-End Browser Test Plan
 
 **Date:** 2026-07-13 · **Status:** plan (not yet executed) · **Driver:** agent browser (`mcp__Claude_Browser__*`)
 

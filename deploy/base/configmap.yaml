@@ -25,5 +25,7 @@ data:
   FACTORY_KANIKO_IMAGE: "gcr.io/kaniko-project/executor:v1.23.2"
   FACTORY_APP_INGRESS_DOMAIN: "localtest.me"
   FACTORY_REGISTRY_PROXY: "sf-registry-proxy:5000"
-  FACTORY_GITHUB_OWNER: "JunMun28"    # GitHub mode activates only when the
-                                      # sf-github-token Secret also exists
+  # TODO: set to the owning GitHub org before enabling GitHub mode. Left as a
+  # placeholder deliberately: GitHub mode activates only when the
+  # sf-github-token Secret also exists, so a placeholder here stays inert.
+  FACTORY_GITHUB_OWNER: "your-github-org"

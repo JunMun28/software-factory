@@ -1160,8 +1160,8 @@
         28
       ],
       "geometry": "rect",
-      "text": "/Users/wongjunmun/development/ai-development/software-factory",
-      "textPreview": "/Users/wongjunmun/development/ai-development/software-factory",
+      "text": "the repo root",
+      "textPreview": "the repo root",
       "resolvedFontSize": 16,
       "resolvedTextStyle": {
         "anchor": 1,
@@ -1184,14 +1184,14 @@
         "lines": [
           {
             "index": 1,
-            "text": "/Users/wongjunmun/development/ai-development/software-factory"
+            "text": "the repo root"
           }
         ]
       },
       "paragraphs": [
         {
           "index": 1,
-          "text": "/Users/wongjunmun/development/ai-development/software-factory",
+          "text": "the repo root",
           "resolvedTextStyle": {
             "fontSize": 16,
             "color": "#F4F8FB",
@@ -1201,7 +1201,7 @@
           "runs": [
             {
               "index": 1,
-              "text": "/Users/wongjunmun/development/ai-development/software-factory",
+              "text": "the repo root",
               "fontSize": 16,
               "color": "#F4F8FB",
               "bold": true,

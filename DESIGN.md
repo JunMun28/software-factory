@@ -1,4 +1,4 @@
-# Software Factory — design system (implemented in apps/intake/src/styles.css and apps/console/src/styles.css)
+# AIRES — design system (implemented in apps/intake/src/styles.css and apps/console/src/styles.css)
 
 ## Color (light, single accent)
 - Canvas `--bg #FAF9FB` · surface `#FFFFFF` · wells `#F4F3F7` / `#ECEBF1`
@@ -9,7 +9,7 @@
   (success only). One amber + one red max per surface; purple never replaces them.
 
 ## Type
-- Display/body: "Micron Basis" (300–900, local OTF), mono: JetBrains Mono
+- Display/body: "Archivo" (variable 100–900, local woff2, SIL OFL), mono: JetBrains Mono
 - Admin body 13–14px dense rows; Submitter body 15–16px; headings 600, tracking -0.01em
 - Mono for REQ refs, repos, diffs, keycaps; `font-variant-ligatures: none`
 

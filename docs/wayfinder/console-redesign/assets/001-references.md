@@ -1,6 +1,6 @@
 # World-class control-room and agent-fleet references
 
-This note asks what an internal software factory should borrow from mature product tools,
+This note asks what an internal AIRES should borrow from mature product tools,
 incident-response systems, agent observability products, and high-performance control rooms.
 It uses only primary material: official documentation, product pages, changelogs, first-party
 technical writing, NASA publications, and ISA material. Recommendations are design deductions

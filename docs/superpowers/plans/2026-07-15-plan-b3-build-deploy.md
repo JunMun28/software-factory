@@ -1324,8 +1324,8 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ---
 
 ### Critical Files for Implementation
-- /Users/wongjunmun/development/ai-development/software-factory/api/app/kube_runner.py (approve_merge fork + `_drive_deploys` build/deploy driver + role-filtered loops)
-- /Users/wongjunmun/development/ai-development/software-factory/api/app/deploy_manifests.py (new — factory-owned build Job + app Deployment/Service/Ingress, allowlist)
-- /Users/wongjunmun/development/ai-development/software-factory/api/app/kube_client.py (seam v3: apply / rollout_ready / delete_by_label + `parse_digest` in kube_jobs.py)
-- /Users/wongjunmun/development/ai-development/software-factory/deploy/base/networkpolicies.yaml (build-walls + app-walls + registry-walls) and deploy/base/registry.yaml + deploy/kind/cluster.yaml (containerd mirror)
-- /Users/wongjunmun/development/ai-development/software-factory/scripts/kind-smoke.sh (extend: produced-app pod Running + HTTP through the ingress) with sample/ (Dockerfile + app.py) as the containerized template
+- api/app/kube_runner.py (approve_merge fork + `_drive_deploys` build/deploy driver + role-filtered loops)
+- api/app/deploy_manifests.py (new — factory-owned build Job + app Deployment/Service/Ingress, allowlist)
+- api/app/kube_client.py (seam v3: apply / rollout_ready / delete_by_label + `parse_digest` in kube_jobs.py)
+- deploy/base/networkpolicies.yaml (build-walls + app-walls + registry-walls) and deploy/base/registry.yaml + deploy/kind/cluster.yaml (containerd mirror)
+- scripts/kind-smoke.sh (extend: produced-app pod Running + HTTP through the ingress) with sample/ (Dockerfile + app.py) as the containerized template

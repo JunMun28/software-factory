@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AIRES — 10 identity directions (zigzag mark)</title>
+
+    <!-- PROTOTYPE — throwaway. Question: the zigzag (mark 22) is chosen. What
+         identity goes around it — typeface, case, arrangement, colour treatment?
+         The MARK IS CONSTANT in all ten; only the identity varies. Each direction
+         is shown as a display lockup and in the real intake nav at true size,
+         because the nav is where this actually lives (sub-shell.ts).
+         Delete this folder once a direction is folded into
+         packages/shared/src/lib/kit/mark.ts + sub-shell.ts. -->
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700&family=M+PLUS+Rounded+1c:wght@800&family=Baloo+2:wght@700;800&family=Outfit:wght@300;700;800&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      @font-face { font-family: 'Archivo'; src: url('../hero-ascii-bg/fonts/Archivo-variable.woff2') format('woff2-variations'); font-weight: 100 900; font-display: swap; }
+
+      :root[data-theme='light'] {
+        --bg: #fff; --surface: #fff; --surface-2: #f6f5f8; --fg1: #16141a; --fg2: #3f3a49;
+        --muted: #6b6675; --faint: #8f8a99; --border: #e6e3ec; --hairline: #efedf3;
+        --a500: #bd03f7; --a300: #e173fa; --navbg: rgba(255,255,255,.72);
+      }
+      :root[data-theme='dark'] {
+        --bg: #0e0d11; --surface: #16151a; --surface-2: #1e1c24; --fg1: #f3f1f7; --fg2: #cdc6dd;
+        --muted: #a09aad; --faint: #7d7789; --border: #2b2833; --hairline: #232029;
+        --a500: #cb45f8; --a300: #e173fa; --navbg: rgba(30,28,36,.72);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 0 28px 80px;
+        font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+        background: var(--bg); color: var(--fg1); -webkit-font-smoothing: antialiased;
+      }
+      header {
+        position: sticky; top: 0; z-index: 9; background: var(--bg);
+        border-bottom: 1px solid var(--hairline); padding: 20px 0 15px; margin-bottom: 24px;
+        display: flex; align-items: baseline; gap: 15px; flex-wrap: wrap;
+      }
+      h1 { font-size: 24px; font-weight: 800; margin: 0; letter-spacing: -0.015em; }
+      .sub { font-size: 13px; color: var(--muted); flex: 1; min-width: 250px; line-height: 1.5; }
+      .sub a { color: var(--a500); font-weight: 600; text-decoration: none; }
+      button {
+        font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+        background: var(--surface-2); color: var(--fg1);
+        border: 1px solid var(--border); border-radius: 999px; padding: 7px 15px;
+      }
+
+      .list { display: flex; flex-direction: column; gap: 18px; }
+      .v {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 14px; overflow: hidden;
+        display: grid; grid-template-columns: minmax(280px, 380px) 1fr;
+      }
+      @media (max-width: 900px) { .v { grid-template-columns: 1fr; } }
+      .stage {
+        background: var(--surface-2); border-right: 1px solid var(--border);
+        padding: 34px 28px; display: flex; align-items: center; justify-content: center; min-height: 168px;
+      }
+      @media (max-width: 900px) { .stage { border-right: 0; border-bottom: 1px solid var(--border); } }
+      .info { padding: 18px 22px 20px; display: flex; flex-direction: column; gap: 11px; }
+      .hd { display: flex; align-items: baseline; gap: 9px; }
+      .hd .num { font-size: 11.5px; font-weight: 700; color: var(--faint); font-variant-numeric: tabular-nums; }
+      .hd .nm { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; }
+      .why { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0; }
+      .spec { font-size: 11.5px; color: var(--faint); font-family: 'JetBrains Mono', monospace; line-height: 1.6; margin: 0; }
+      .flag { font-size: 12px; font-weight: 600; color: #f0a832; margin: 0; }
+
+      /* the real intake nav (sub-shell.ts): floating glass pill, brand left */
+      .navwrap { margin-top: 3px; border-radius: 10px; background: var(--bg); border: 1px solid var(--hairline); padding: 11px 14px; }
+      .navcap { display: block; font-size: 10px; color: var(--faint); margin-bottom: 8px; letter-spacing: .06em; text-transform: uppercase; }
+      .nav { display: flex; align-items: center; gap: 14px; }
+      .navpill {
+        display: flex; gap: 3px; background: var(--navbg); border: 1px solid var(--border);
+        border-radius: 999px; padding: 3px; margin-left: auto;
+      }
+      .navpill span { font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 5px 11px; border-radius: 999px; }
+      .navpill span.on { background: var(--surface); color: var(--fg1); }
+
+      /* shared lockup primitives — each direction composes these differently */
+      .lk { display: flex; align-items: center; }
+      .lk.col { flex-direction: column; }
+      .wd { line-height: 1; white-space: nowrap; }
+      .tile { display: flex; align-items: center; justify-content: center; background: var(--a500); color: #fff; flex: 0 0 auto; }
+      .ring { display: flex; align-items: center; justify-content: center; border: 2px solid var(--border); border-radius: 999px; flex: 0 0 auto; }
+      .tag { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+      .rule { height: 1px; background: var(--border); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>AIRES — 10 identity directions</h1>
+      <div class="sub">
+        The <strong>zigzag mark (22) is constant in all ten</strong> — only the identity
+        around it changes: typeface, case, arrangement, colour. Each shows a display
+        lockup and the <strong>real intake nav at true size</strong>, which is where it
+        actually lives. <a href="index.html">← all 88 marks</a>
+        <a href="compare.html">· configurator</a>
+      </div>
+      <button id="t">Light mode</button>
+    </header>
+
+    <div class="list" id="list"></div>
+
+    <script>
+      /* THE CONSTANT: mark 22 Zigzag. One function, any size/weight/colour. */
+      const zig = (px, w = 6, dot = 'var(--a500)', ink = 'currentColor') => `
+        <svg width="${px}" height="${px}" viewBox="0 0 48 48" style="flex:0 0 auto;display:block">
+          <path d="M9 32 L19 17 L28 32 L39 16" fill="none" stroke="${ink}" stroke-width="${w}"
+                stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="39" cy="16" r="${w * 0.62}" fill="${dot}"/>
+        </svg>`;
+
+      const V = [
+        {
+          n: 'Incumbent',
+          why: 'The current system, unchanged: Archivo Black, tight tracking, caps. The control every other direction has to beat.',
+          spec: 'Archivo 800 · -0.015em · caps · mark 5',
+          big: `<div class="lk" style="gap:16px">${zig(56, 5)}<span class="wd" style="font-weight:800;font-size:42px;letter-spacing:-.015em">AIRES</span></div>`,
+          nav: `<div class="lk" style="gap:9px">${zig(23, 6)}<span class="wd" style="font-weight:800;font-size:17px;letter-spacing:-.015em">AIRES</span></div>`,
+        },
+        {
+          n: 'Rounded',
+          why: 'M PLUS Rounded 1c. The mark uses round line caps and a circular dot; a rounded-terminal face is the honest pair for it.',
+          spec: "M PLUS Rounded 1c 800 · 0.005em · caps · mark 5.5",
+          big: `<div class="lk" style="gap:16px">${zig(56, 5.5)}<span class="wd" style="font-family:'M PLUS Rounded 1c';font-weight:800;font-size:42px;letter-spacing:.005em">AIRES</span></div>`,
+          nav: `<div class="lk" style="gap:9px">${zig(23, 6)}<span class="wd" style="font-family:'M PLUS Rounded 1c';font-weight:800;font-size:17px">AIRES</span></div>`,
+        },
+        {
+          n: 'Lowercase rhyme',
+          why: 'Lowercase "aires" — the dot on the i and the mark\'s accent dot become the same motif. The one direction where the purple dot reads as a system, not a flourish.',
+          spec: "Baloo 2 800 · lowercase · mark 5.5",
+          big: `<div class="lk" style="gap:15px">${zig(56, 5.5)}<span class="wd" style="font-family:'Baloo 2';font-weight:800;font-size:44px">aires</span></div>`,
+          nav: `<div class="lk" style="gap:9px">${zig(23, 6)}<span class="wd" style="font-family:'Baloo 2';font-weight:800;font-size:18px">aires</span></div>`,
+        },
+        {
+          n: 'Stacked',
+          why: 'Mark above the word, centred, with a rule. Reads as a masthead — good for a login screen or an about page, weaker in a horizontal nav.',
+          spec: 'Archivo 700 · 0.22em · caps · stacked',
+          big: `<div class="lk col" style="gap:9px">${zig(50, 5)}
+                  <div class="rule" style="width:104px"></div>
+                  <span class="wd" style="font-weight:700;font-size:19px;letter-spacing:.22em;padding-left:.22em">AIRES</span></div>`,
+          nav: `<div class="lk col" style="gap:3px">${zig(20, 6)}
+                  <span class="wd" style="font-weight:700;font-size:9px;letter-spacing:.18em;padding-left:.18em">AIRES</span></div>`,
+          flag: 'Stacked costs vertical space the 58px nav bar does not have.',
+        },
+        {
+          n: 'Tile',
+          why: 'Mark knocked white out of a purple tile. This is the app-icon / favicon answer — the only direction that survives being placed on an arbitrary background.',
+          spec: 'tile r=13 · #fff mark · Archivo 800',
+          big: `<div class="lk" style="gap:16px">
+                  <span class="tile" style="width:60px;height:60px;border-radius:15px">${zig(38, 6, '#fff', '#fff')}</span>
+                  <span class="wd" style="font-weight:800;font-size:40px;letter-spacing:-.015em">AIRES</span></div>`,
+          nav: `<div class="lk" style="gap:9px">
+                  <span class="tile" style="width:25px;height:25px;border-radius:7px">${zig(17, 7, '#fff', '#fff')}</span>
+                  <span class="wd" style="font-weight:800;font-size:17px;letter-spacing:-.015em">AIRES</span></div>`,
+        },
+        {
+          n: 'Terminal',
+          why: 'JetBrains Mono, lowercase, bracketed. Matches the hero\'s ASCII glyph field and the mono refs already in the UI. Says "engineering tool", not "product".',
+          spec: "JetBrains Mono 700 · lowercase · brackets",
+          big: `<div class="lk" style="gap:13px">${zig(48, 5.5)}
+                  <span class="wd" style="font-family:'JetBrains Mono';font-weight:700;font-size:34px">[<span style="color:var(--a500)">·</span>]aires</span></div>`,
+          nav: `<div class="lk" style="gap:8px">${zig(22, 6)}
+                  <span class="wd" style="font-family:'JetBrains Mono';font-weight:700;font-size:15px">[<span style="color:var(--a500)">·</span>]aires</span></div>`,
+        },
+        {
+          n: 'Contained',
+          why: 'Mark inside a ring. Self-contained, so it works as an avatar or a favicon without a tile. The ring also stops the zigzag reading as a stray N.',
+          spec: 'ring 2px · Quicksand 700 · 0.02em',
+          big: `<div class="lk" style="gap:16px">
+                  <span class="ring" style="width:62px;height:62px">${zig(38, 5.5)}</span>
+                  <span class="wd" style="font-family:Quicksand;font-weight:700;font-size:40px;letter-spacing:.02em">AIRES</span></div>`,
+          nav: `<div class="lk" style="gap:9px">
+                  <span class="ring" style="width:26px;height:26px;border-width:1.5px">${zig(16, 7)}</span>
+                  <span class="wd" style="font-family:Quicksand;font-weight:700;font-size:17px;letter-spacing:.02em">AIRES</span></div>`,
+        },
+        {
+          n: 'Gradient',
+          why: 'The mark carries the hero gradient (--hero-grad) instead of flat ink. Ties the logo to the landing page — but the dot loses its job as the only accent.',
+          spec: 'linearGradient #1a0140→#bd03f7 · Outfit 800',
+          big: `<div class="lk" style="gap:16px">
+                  <svg width="56" height="56" viewBox="0 0 48 48" style="display:block">
+                    <defs><linearGradient id="g1" x1="0" y1="1" x2="1" y2="0">
+                      <stop offset="0" stop-color="#6e0196"/><stop offset=".6" stop-color="#bd03f7"/><stop offset="1" stop-color="#4b16e0"/>
+                    </linearGradient></defs>
+                    <path d="M9 32 L19 17 L28 32 L39 16" fill="none" stroke="url(#g1)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="39" cy="16" r="3.1" fill="#4b16e0"/></svg>
+                  <span class="wd" style="font-family:Outfit;font-weight:800;font-size:41px">AIRES</span></div>`,
+          nav: `<div class="lk" style="gap:9px">
+                  <svg width="23" height="23" viewBox="0 0 48 48" style="display:block">
+                    <path d="M9 32 L19 17 L28 32 L39 16" fill="none" stroke="url(#g1)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="39" cy="16" r="3.7" fill="#4b16e0"/></svg>
+                  <span class="wd" style="font-family:Outfit;font-weight:800;font-size:17px">AIRES</span></div>`,
+          flag: 'A gradient mark cannot be recoloured for dark tiles, print, or single-colour use.',
+        },
+        {
+          n: 'Institutional',
+          why: 'Wide-tracked light caps, generous gap, a hairline divider. Quiet and corporate — the closest to how an internal platform usually presents itself.',
+          spec: 'Outfit 300 · 0.3em · caps · divider',
+          big: `<div class="lk" style="gap:20px">${zig(50, 4.5)}
+                  <span class="rule" style="width:1px;height:44px"></span>
+                  <span class="wd" style="font-family:Outfit;font-weight:300;font-size:34px;letter-spacing:.3em;padding-left:.3em">AIRES</span></div>`,
+          nav: `<div class="lk" style="gap:11px">${zig(22, 5.5)}
+                  <span class="rule" style="width:1px;height:17px"></span>
+                  <span class="wd" style="font-family:Outfit;font-weight:300;font-size:14px;letter-spacing:.24em;padding-left:.24em">AIRES</span></div>`,
+          flag: 'Measured: contrast is fine (17.3:1 on dark). The risk is optical — weight 300 at 14px looks fragile next to the mark, not unreadable.',
+        },
+        {
+          n: 'With descriptor',
+          why: 'Wordmark plus a set-out descriptor. Nobody knows what AIRES stands for on first sight; this is the only direction that tells them.',
+          spec: 'Archivo 800 + 10px 0.18em descriptor',
+          big: `<div class="lk" style="gap:16px">${zig(54, 5)}
+                  <span style="display:flex;flex-direction:column;gap:5px">
+                    <span class="wd" style="font-weight:800;font-size:38px;letter-spacing:-.015em">AIRES</span>
+                    <span class="tag">Request &amp; Execution</span></span></div>`,
+          nav: `<div class="lk" style="gap:9px">${zig(23, 6)}
+                  <span style="display:flex;flex-direction:column;gap:1px">
+                    <span class="wd" style="font-weight:800;font-size:15px;letter-spacing:-.015em">AIRES</span>
+                    <span class="tag" style="font-size:7.5px;letter-spacing:.14em">Request &amp; Execution</span></span></div>`,
+          flag: 'Measured: the descriptor lands at 4.49:1 — just under the 4.5:1 floor — at 7.5px. It fails accessibility as drawn. Needs a lighter grey step, or drop it below a breakpoint.',
+        },
+      ];
+
+      document.getElementById('list').innerHTML = V.map((v, i) => `
+        <div class="v">
+          <div class="stage">${v.big}</div>
+          <div class="info">
+            <div class="hd"><span class="num">${String(i + 1).padStart(2, '0')}</span><span class="nm">${v.n}</span></div>
+            <p class="why">${v.why}</p>
+            <p class="spec">${v.spec}</p>
+            ${v.flag ? `<p class="flag">⚠ ${v.flag}</p>` : ''}
+            <div class="navwrap">
+              <span class="navcap">real intake nav · true size</span>
+              <div class="nav">
+                ${v.nav}
+                <div class="navpill"><span class="on">New request</span><span>My requests</span></div>
+              </div>
+            </div>
+          </div>
+        </div>`).join('');
+
+      const root = document.documentElement, b = document.getElementById('t');
+      b.onclick = () => {
+        const d = root.dataset.theme === 'dark';
+        root.dataset.theme = d ? 'light' : 'dark';
+        b.textContent = d ? 'Dark mode' : 'Light mode';
+      };
+    </script>
+  </body>
+</html>

@@ -380,7 +380,7 @@ import { Session } from '../core/session.service';
           <sf-mark [size]="34" />
         </div>
         <div>
-          <h1 style="font-size:28px">Software Factory</h1>
+          <h1 style="font-size:28px">AIRES</h1>
           <p style="font-size:16px;color:var(--muted);margin:8px 0 0">
             Tell us what you need built.
           </p>

@@ -43,7 +43,7 @@ import { SubShell } from './sub-shell';
           <section class="panel pt__chat">
             <div class="chat__head">
               <span class="chat__av"><sf-mark [size]="14" color="#fff" /></span>
-              <div class="chat__who"><b>Intake assistant</b><span>Stream</span></div>
+              <div class="chat__who"><b>Intake assistant</b><span>AIRES</span></div>
             </div>
             <div class="chat__thread scroll" #thread data-lenis-prevent>
               @for (t of turns(); track t.order) {
@@ -392,9 +392,9 @@ import { SubShell } from './sub-shell';
       cursor: default;
     }
     .fs-selbtn.on {
-      background: var(--accent-tint);
-      border-color: var(--accent);
-      color: var(--accent-tx);
+      background: var(--surface-3);
+      border-color: var(--border-strong);
+      color: var(--fg1);
     }
     .chips {
       display: flex;
@@ -406,9 +406,9 @@ import { SubShell } from './sub-shell';
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      background: var(--accent-tint);
-      color: var(--accent-link);
-      border: 1px solid var(--accent);
+      background: var(--surface-2);
+      color: var(--fg1);
+      border: 1px solid var(--border);
       font-size: 12px;
       padding: 3px 8px;
       border-radius: 999px;

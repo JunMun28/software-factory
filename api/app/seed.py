@@ -21,7 +21,7 @@ def seed(db: Session) -> None:
     if not db.scalar(select(func.count()).select_from(Operator)):
         db.add_all([
             Operator(name="Kim Park", initials="KP", hue="#6E5A8A", email="kim.park@micron.com"),
-            Operator(name="Jun Wong", initials="JW", hue="#7C5CFC", email="jun.wong@micron.com"),
+            Operator(name="Dana Reyes", initials="DR", hue="#7C5CFC", email="dana.reyes@micron.com"),
         ])
         db.commit()
     if db.query(App).count():

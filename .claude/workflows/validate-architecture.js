@@ -9,7 +9,7 @@ export const meta = {
   ],
 }
 
-const ROOT = '/Users/wongjunmun/development/ai-development/software-factory'
+const ROOT = 'the repo root (your current working directory)'
 
 const VERDICT = {
   type: 'object',
@@ -60,7 +60,7 @@ const gate = await agent(
 
 const verdicts = await parallel(GUARANTEES.map((g) => () =>
   agent(
-    `You are an adversarial verifier for the Software Factory repo at ${ROOT}. ` +
+    `You are an adversarial verifier for the Software Factory repo, rooted at ${ROOT}. ` +
     'Try to REFUTE the following architecture guarantee by reading the actual current code (do not trust the claim text — open the files). ' +
     'If you can construct a concrete sequence (request lifecycle, thread interleaving, restart, malicious agent output) that violates it, the guarantee does not hold.\n\n' +
     `GUARANTEE: ${g.claim}\n\n` +

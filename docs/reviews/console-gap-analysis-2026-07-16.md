@@ -94,7 +94,7 @@ to build" rows.**
 
 ## Gap 5 — Nothing tracks what shipped (product)
 
-A software factory's output is *running software*, and the console loses
+AIRES's output is *running software*, and the console loses
 interest at "Done."
 
 - Library answers "what happened to request X." Nothing answers **"what is

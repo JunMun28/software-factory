@@ -3,7 +3,7 @@ id: 005
 title: "Prototype: visual identity directions for the control room"
 labels: [wayfinder:prototype]
 status: closed
-assignee: junmun (session 132e3c43)
+assignee: unassigned (session 132e3c43)
 resolved: 2026-07-11
 blocked-by: [001]
 ---

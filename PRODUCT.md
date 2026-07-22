@@ -1,9 +1,9 @@
-# Software Factory — product context
+# AIRES — product context
 
 register: product
 
 ## Product purpose
-The operator console for an autonomous-but-governed AI software factory. Requests flow
+The operator console for an autonomous-but-governed AI AIRES. Requests flow
 requirements → architecture → TDD build → review → deploy, with humans gating the
 irreversible (spec approval, merge/deploy). Full design rationale: docs/design/ui-ux/.
 
@@ -15,7 +15,7 @@ irreversible (spec approval, merge/deploy). Full design rationale: docs/design/u
 
 ## Brand & tone
 Micron Atlas lineage: light surfaces, near-white warm canvas, Micron purple #BD03F7
-as the single accent, Micron Basis type, JetBrains Mono for refs/repos. Mission-control
+as the single accent, Archivo type, JetBrains Mono for refs/repos. Mission-control
 restraint: quiet, precise, fast. The only loud colors are amber (a gate waiting on you)
 and red (needs-human), at most one of each per surface.
 

@@ -3,7 +3,7 @@ id: 004
 title: "Grilling: information architecture from zero"
 labels: [wayfinder:grilling]
 status: closed
-assignee: junmun (session 132e3c43)
+assignee: unassigned (session 132e3c43)
 resolved: 2026-07-11
 blocked-by: [003]
 ---

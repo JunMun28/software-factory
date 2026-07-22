@@ -8,7 +8,7 @@ software-factory repo root. It is self-contained.
 ## Mission
 
 You are running a full end-to-end audit and improvement program for the
-Software Factory. The product promise: a non-technical user submits a request,
+AIRES. The product promise: a non-technical user submits a request,
 and the factory plans, architects, builds, reviews, previews, and deploys a
 working app — with humans only at the decision points, never at the keyboard.
 

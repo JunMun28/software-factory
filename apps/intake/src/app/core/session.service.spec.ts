@@ -67,9 +67,9 @@ describe('Session', () => {
 
 describe('userFromAccount (SEC-01 Entra mapping)', () => {
   it('maps name, initials, email, and the admin role', () => {
-    const u = userFromAccount('Jun Mun Wong', 'someone@example.com', ['admin']);
-    expect(u.name).toBe('Jun Mun Wong');
-    expect(u.initials).toBe('JMW');
+    const u = userFromAccount('Dana M. Reyes', 'someone@example.com', ['admin']);
+    expect(u.name).toBe('Dana M. Reyes');
+    expect(u.initials).toBe('DMR');
     expect(u.email).toBe('someone@example.com');
     expect(u.role).toBe('admin');
   });

@@ -3571,7 +3571,7 @@ to sign-in, so zero naked /api calls pre-redirect.
 
 Live walk (signed in, scripted brain): idea -> 3-question wizard -> interview
 (live Plan rewrite) -> prototype (chat + edit ack) -> review -> submit.
-REQ-2136 pending_approval@approve_spec, 7 spec lines, reporter Jun Mun Wong
+REQ-2136 pending_approval@approve_spec, 7 spec lines, reporter Dana M. Reyes
 (JMW) from the token — spoofed body values ignored (tested).
 
 Gaps logged for later slices:
@@ -3673,7 +3673,7 @@ LIVE WALK (dev stack, sim, signed in as the Entra admin): approve spec →
 architecture walked → GATE RAISED (t+24s) → "Ask the agent for changes" with
 a real note → rejected_architecture audit + pending_feedback staged → stage
 re-walked → GATE RE-RAISED (t+16s) → "Approve & continue build" →
-approved_architecture by Jun Mun Wong → stage=build. The full refine
+approved_architecture by Dana M. Reyes → stage=build. The full refine
 conversation is in the timeline.
 
 CORRECTION (same day): the suspected "dossier doesn't live-refresh" finding
@@ -4151,7 +4151,7 @@ Three reasons, in order of weight:
 
 1. **Safety.** Approving a gate is irreversible and attributed by name — the 409
    conflict banner literally reads "Already approved by Kim Park". Two seeded
-   operators are "Jun Mun Wong" (JMW) and "Jun Wong" (JW). A 30px monogram is
+   operators are "Dana M. Reyes" (JMW) and "Dana Reyes" (JW). A 30px monogram is
    not enough to confirm who you are before you act on someone's behalf.
 2. **The hues fought the palette.** Operator hues are `#B0632E` (essentially the
    amber that means "a gate waits on you") and `#7C5CFC` (near the brand accent).
@@ -4478,3 +4478,216 @@ Deviations / conservative choices where the doc was silent:
   comment's intent (explaining why the old guard was insufficient) but reworded
   it to "the old failed-only guard" instead of naming the removed function, so
   the machine-checkable Done criterion holds. No behavior change.
+
+## Deviations — opencode prototype builder (2026-07-22)
+
+- **bash stays denied for the prototype builder.** The ask was "allow opencode to
+  edit". Reusing `factory-write.json` would also have granted `bash: allow` on a
+  working directory holding submitter uploads whose text is in the prompt — an
+  injection-to-RCE path. Took the conservative option: a third config,
+  `factory-prototype.json` (`edit: allow, bash: deny, webfetch: deny`). Proven
+  sufficient live — opencode wrote a file with bash denied.
+- **codex cannot honour the no-bash mode.** `--sandbox workspace-write` grants both;
+  there is no edit-only sandbox. The guarantee is real on opencode (the ADR 0024
+  default) and claude (`--disallowed-tools Bash`), and degrades on codex. Noted at
+  the call site rather than silently pretending otherwise.
+
+## Deviations — pre-move de-identification (2026-07-22)
+
+Scope: strip the licensed brand typeface and every personal identifier so the
+tree can be re-based into a company repo. No git-history rewrite — the plan of
+record is to export the working tree and `git init` fresh, so history surgery
+(and the 34-worktree blast radius it implied) was skipped entirely.
+
+- **Micron Basis → Archivo, not a system-font fallback.** Archivo was already
+  vendored for the wordmark, is SIL OFL, and covers 100–900 from one 34KB
+  variable woff2 — so it replaces the five licensed OTFs at every weight with
+  no fallback gaps and no new external request. All 15 OTFs deleted; `*.otf`
+  and `*.ttf` added to `.gitignore` so a brand font cannot come back by
+  accident.
+- **Mockups were rewritten, not deleted.** Every mockup referencing the OTFs
+  was repointed at Archivo (60 single-line `@font-face` declarations across 22
+  files). They are throwaway design scratch, but leaving 404ing font
+  references behind is worse than fixing them.
+- **`mockups/aires-logo/typefaces.html` — row removed, not renamed.** That page
+  is a typeface *comparison* grid where "Micron Basis" was a candidate row
+  labelled "the incumbent", and Archivo was already a separate row. A blind
+  rename would have produced a duplicate Archivo entry, so the incumbent row
+  was dropped instead.
+- **Scope grew to the real name.** The initial sweep matched the account handle
+  as one word and missed the spaced-out name forms, which were seeded as demo
+  data: an operator in
+  `api/app/seed.py`, fixtures in four specs, an `alt` attribute in
+  `app-preview/`, and four console mockups. All now read "Dana Reyes" /
+  "Dana M. Reyes" — the pair is deliberately still confusable, because
+  `console-shell.ts` documents that similar operator names are exactly why the
+  30px monogram is not enough on an irreversible gate.
+- **Fixed a pre-existing bug found in passing.** `apps/intake/src/styles.css`
+  had `@import 'lenis/dist/lenis.css'` sitting after the `@font-face` block —
+  CSS drops any `@import` that follows another rule, so the Lenis smooth-scroll
+  styles were being silently discarded. Introduced by the in-flight font
+  self-hosting work, not by this pass. Moved to the top of the file.
+- **Left alone deliberately.** The Micron *brand* (purple ramp, "Micron Atlas"
+  lineage, `micron/<slug>` repo owner, `@micron.com` fixtures) is untouched —
+  removing it was never chosen, and whether it should go depends on whether the
+  destination org is Micron's own. The two disclosures in `.github/workflows/ci.yml`
+  and the Azure runbooks are owned by `plans/019-pre-push-secret-hygiene.md`,
+  which another session is executing; touching them here would have collided.
+- **FACTORY_PROTOTYPE_VIA defaults to "api", not "cli".** The ask was for opencode to
+  build the prototype, and it does — the file-based path is implemented, tested and
+  live-proven to write files with bash denied. But measured 2026-07-22 the first build
+  through this code exceeded a 420s bound and was killed (168s for the same build run
+  bare, without mounted attachments or the progress narration). Shipping a default that
+  times out would hand the requester the scripted floor with no error, so the switch
+  ships off. Flip per-environment to exercise it.
+- **Streaming is block-level, not a typewriter.** opencode `run --format json` emits each
+  text part once, complete (measured: a 789-char paragraph in one event) — there are no
+  token deltas to forward. The stream carries the agent's narration interleaved with its
+  tool calls, which is progress, not typing. Asking for that narration is also the
+  leading suspect for the slowdown above: each narrated step is another model round trip.
+
+---
+
+# Implementation notes — A6 Overview shipped to the console (2026-07-22)
+
+The prototype in `mockups/overview-futuristic` (wave 3, variant A6 "Distribution")
+is now the console Overview. Verdict and the ten-composition history live in that
+folder's NOTES.md; this records what changed in the app.
+
+## What shipped
+
+- **`overview-content.ts`** — the new Overview. Headline stating both counts a
+  person must act on, five figures each carrying a real age distribution, then
+  the five-stage rail under a named section heading.
+- **`request-modal.ts`** — clicking a request opens a sheet (ref, state, title,
+  app / stage / time-in-stage, live activity, then exactly the verbs its kind
+  allows plus Open dossier). It only *emits* verbs; the page still owns every
+  confirm modal and api call, so the approve → evidence-modal flow is unchanged.
+- **`packages/shared/.../glyph-field.ts`** — the intake hero's ignition field as
+  a kit component, theme-aware, with `intensity` and `origin` inputs.
+- **`/overview-classic`** — the previous tabbed Overview (Progress | List |
+  Board), unchanged and still reachable.
+
+## Decisions
+
+- **Both themes, not dark-only.** The prototype was pure black; the port uses the
+  console's own tokens throughout, so light works properly rather than being an
+  inversion. The glyph field was already theme-aware in intake (alpha 0.5 dark /
+  0.16 light) and that behaviour carried over.
+- **Rows open a modal**, not an inline popover (user's call). The rail is a quiet
+  list and a popover growing inside a column pushed the grid around.
+- **One page component, two bodies.** `/` and `/overview-classic` both load
+  `FloorPage`; a `data: { classic: true }` route flag picks the body. All the
+  action plumbing, polling and confirm modals are shared rather than duplicated.
+- **`weeks` added to `OverviewRow`**, derived from `stage_entered_at`, not parsed
+  back out of the `age` display string — the display string is lossy ("6w" could
+  be anything from 42 to 48 days) and the distributions bucket on it.
+
+## Deviations
+
+- **The glyph field is duplicated, not extracted.** The canonical implementation
+  is still in `apps/intake/.../new-request.ts`; the kit component is a copy.
+  Intake is being actively edited in a parallel session, and refactoring it to
+  consume the shared component would have collided. **Follow-up: point intake at
+  `sf-glyph-field` and delete its private copy.**
+- **The field needed retuning for this page.** At intake's hero strength it
+  drowned the stage rail — it is designed for a mostly-empty band. Shipped at
+  `intensity=0.2`, `origin=1.4`, confined to a 470px band and masked out before
+  the rail. Verified readable in both themes.
+- **`--fill-live` is unused by the new Overview**; it uses `--cyan` for "being
+  built", per the Micron rule that cyan carries data movement. The token is still
+  used by the classic Progress view.
+
+## Verify
+
+`task verify` green: 922 pytest, 107 intake / 103 console / 96 shared vitest,
+both builds, lifecycle smoke. Console tests went 91 → 103: the new Overview's
+headline branches (including the zero cases), the five figures, shipped counted
+in the Deploy lane, urgency ordering surfacing a stalled request above eight
+gates, row aria-labels, and the request sheet's verb sets.
+
+## Follow-up: the Dossier now shows the plan and visual plan
+
+The intake form already produced both, and `RequestDetail` already carried both
+— `spec_lines` and `prototype_html` were fetched on every Dossier load and
+**rendered nowhere**. The Dossier showed only Timeline and Comments, so the
+thing the request was actually agreed on was invisible to the approver.
+
+New **"The plan / Agreed at intake"** section, above the Timeline because the
+plan is what the timeline is the story *of*:
+
+- **The plan** — each `SpecLine` with its provenance: the answer it came from
+  (`Q1`, `Q2`…) or an amber **Assumption** tag where the Factory filled a gap
+  itself. That provenance is the point of the list; it is what lets an approver
+  see which parts nobody actually agreed to.
+- **The visual plan** — `prototype_html` in an iframe, with a full-screen view.
+
+Shown whenever either artifact exists, rather than gating on stage: the plan
+stays the reference long after Spec, and a merge-gate approver needs it as much
+as a spec-gate one.
+
+**Security.** The mock is submitter-authored HTML, so both iframes are
+`sandbox="allow-scripts"` with **no** `allow-same-origin` — scripts may run
+inside the frame but cannot reach the console's DOM, storage or session.
+Verified live: `contentDocument` is null (opaque origin). A test pins the
+sandbox attribute so it cannot be loosened without the test failing.
+
+`prototype_status: 'skipped'` hides the mock even when stale HTML is still on
+the row, and the whole section is omitted when intake produced neither.
+
+Console tests 103 → 108. `task verify` green: 925 pytest, 107/108/96 vitest,
+both builds, smoke. Checked live in both themes against real seeded requests
+(REQ-2136, REQ-2082).
+
+## Follow-up: the Dossier now shows the architecture design
+
+New **"Architecture / How it will be built"** section, between the plan and the
+timeline — the order the decisions were actually made in.
+
+It reports what the stage left behind rather than assuming the richest case:
+
+- **Artifacts** — the `fields` off the architecture milestones (PLAN.md, ADRs
+  drafted, gate outcome, what's next). Accumulated across redrafts, later wins.
+- **PLAN.md** — the excerpt + content digest + PR link, when captured.
+- **Refine rounds** — every rejection at the architecture gate, quoted with its
+  author. This is the design conversation: the reason is *why the current plan
+  looks the way it does*, and it was previously buried in the timeline.
+
+### Two real findings on the way
+
+**The `ProgressEvent` kind union in `@sf/shared` was wrong.** It listed eight
+kinds; the API emits ten. `architecture_plan` and `spec_snapshot` were missing —
+and `spec_snapshot` is present in live data right now, so the console has been
+receiving events whose type it did not model. Both added.
+
+**The PLAN.md excerpt does not exist in this environment.** `_emit_architecture_plan`
+only runs under the kube runner with `GIT_REMOTE_BASE` set — it reads the file
+out of the git workspace. The simulated runner records the same milestones with
+nothing to quote. Rather than ship a section that silently renders empty on every
+local run, the excerpt panel is replaced by a sentence saying so and pointing at
+the timeline. Both paths are covered by tests, since only one is reachable here.
+
+Also worth noting: `evidence()` returns architecture data **only while the gate
+is open** (`r.gate == "approve_architecture"`), so it is not a durable source
+once approved. The section reads the trace instead, which is append-only and
+survives the decision.
+
+Console tests 108 → 114. `task verify` green: 925 pytest, 107/114/96 vitest,
+both builds, smoke. Checked live against REQ-2136, which has a real architecture
+rejection recorded.
+
+## Deviations — resume + OpenShift verification (2026-07-22)
+
+- **Resume is an offer, not automatic.** Auto-resuming would hijack someone who
+  abandoned a request on purpose, so unfinished intakes surface as a "Continue where
+  you left off" list under the composer. The answers were never lost — every one is
+  written server-side as it is given; the gap was that `/api/requests` hides drafts,
+  leaving them unreachable once the tab closed. New endpoint: GET /api/requests/drafts.
+- **The resume step is derived server-side**, not sent by the client, so a tab restored
+  from yesterday cannot route someone into a step they never reached.
+- **RBAC added to CRC to deploy:** rolebinding `sf-image-pusher`
+  (`system:image-builder` → `software-factory:default`). The namespace's default
+  ServiceAccount could not push to the internal registry. Namespace-scoped.
+- **factory-api on CRC now runs `sf-api:crcfix`**, not `:dev` — a tag built from this
+  working tree to prove the concurrency fix on OpenShift. Rebuild/retag `:dev` before
+  treating the cluster as canonical again.

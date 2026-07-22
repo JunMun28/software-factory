@@ -1,7 +1,7 @@
 # Self-Harness (arXiv 2606.09498) — integration analysis
 
 **Date:** 2026-07-16
-**Question:** Should the Software Factory adopt the Self-Harness paradigm, so that every
+**Question:** Should AIRES adopt the Self-Harness paradigm, so that every
 piece of feedback is recorded and the factory's agent harness (prompts, runtime policies)
 improves over time?
 **Method:** 14-agent workflow — 3 codebase mappers, 3 independent integration designs

@@ -56,7 +56,7 @@ Once a directory exists, the agent can drive steps 1–5 in the browser.
 
 1. **portal.azure.com → Microsoft Entra ID → App registrations → New
    registration.**
-   - Name: `software-factory-api`
+   - Name: `aires-api`
    - Supported account types: **Single tenant** (this directory only).
    - Redirect URI: leave blank for now (API is a resource server, not a web
      client) — add the console SPA's URI later if you wire interactive login.
@@ -68,7 +68,7 @@ Once a directory exists, the agent can drive steps 1–5 in the browser.
    enabled).
 4. **App roles** (for OPERATE-04 role wall to line up with Entra, optional but
    recommended): add `operator` and `admin` app roles, assignable to Users.
-   Assign the right people under **Enterprise applications → software-factory-api
+   Assign the right people under **Enterprise applications → aires-api
    → Users and groups**.
 5. **Certificates & secrets**: only if the API must call Graph/Entra back —
    otherwise skip (validating inbound tokens needs no client secret).

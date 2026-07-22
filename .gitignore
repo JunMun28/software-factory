@@ -18,3 +18,10 @@ workspaces/
 # Attachment uploads — runtime data (ADR 0022), like the DB
 api/uploads/
 .impeccable/
+
+# Licensed/proprietary typefaces must never be committed. Every face we ship is
+# self-hosted and openly licensed (Archivo + JetBrains Mono, both .woff2), so a
+# .otf/.ttf appearing here is almost always a brand font that cannot be
+# redistributed. Add an explicit exception if that ever stops being true.
+*.otf
+*.ttf

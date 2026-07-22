@@ -177,9 +177,10 @@ import { IntakeDraft } from './intake-draft.service';
                             <span class="dock__d">{{ o.d }}</span>
                           }
                         </span>
-                        @if (hi() === i) {
-                          <span class="dock__ret" aria-hidden="true">↩</span>
-                        }
+                        <!-- always rendered, only faded: adding it on highlight
+                             stole width from the label and re-wrapped the text
+                             under the cursor -->
+                        <span class="dock__ret" aria-hidden="true">↩</span>
                       </button>
                     }
                     <div class="dock__opt dock__row">
@@ -639,10 +640,18 @@ import { IntakeDraft } from './intake-draft.service';
       color: var(--muted);
       margin-left: 6px;
     }
+    /* Reserves its width on every option so the highlight cannot reflow the
+       label. Visibility only — never display/@if, which would resize the row
+       under the cursor as the user arrows through the list. */
     .dock__ret {
       color: var(--faint);
       font-size: 13px;
       flex: 0 0 auto;
+      opacity: 0;
+      transition: opacity var(--dur-i) var(--ease);
+    }
+    .dock__opt.on .dock__ret {
+      opacity: 1;
     }
     .dock__row {
       justify-content: space-between;

@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AIRES — 12 drawn wordmarks</title>
+
+    <!-- PROTOTYPE — throwaway. Round 7.
+         Question: the mark is settled (round 6). The word beside it is still
+         Archivo 700 — a bought typeface. What if the letters were DRAWN
+         instead, built from the mark's own construction?
+         12 wordmarks. The mark never changes. Card 00 is Archivo, the control.
+         Single file on purpose: the preview pane resolves file:// sub-resources
+         from its own snapshot and ignores cache-busting query strings, so a
+         separate letters.js silently served stale letterforms across edits. -->
+    <!--
+         Delete this file once a winner is folded into
+         packages/shared/src/lib/kit/ and apps/*/src/styles.css. -->
+
+    <style>
+      @font-face { font-family: 'Archivo'; src: url('../../apps/intake/public/fonts/Archivo-variable.woff2') format('woff2-variations'); font-weight: 100 900; font-display: swap; }
+
+      :root[data-theme='light'] {
+        --bg: #fff; --surface: #fff; --surface-2: #f6f5f8; --fg1: #16141a;
+        --muted: #6b6675; --faint: #8f8a99; --border: #e6e3ec; --hairline: #efedf3;
+        --a500: #bd03f7;
+      }
+      :root[data-theme='dark'] {
+        --bg: #0e0d11; --surface: #16151a; --surface-2: #1e1c24; --fg1: #f3f1f7;
+        --muted: #a09aad; --faint: #7d7789; --border: #2b2833; --hairline: #232029;
+        --a500: #cb45f8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 0 28px 90px;
+        font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+        background: var(--bg); color: var(--fg1); -webkit-font-smoothing: antialiased;
+      }
+      header {
+        position: sticky; top: 0; z-index: 5; background: var(--bg);
+        border-bottom: 1px solid var(--hairline); padding: 20px 0 14px; margin-bottom: 22px;
+      }
+      .htop { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+      h1 { font-size: 25px; font-weight: 800; margin: 0; letter-spacing: -0.015em; }
+      .sub { font-size: 13px; color: var(--muted); flex: 1; min-width: 280px; line-height: 1.5; }
+      .toggle {
+        font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+        background: var(--surface-2); color: var(--fg1);
+        border: 1px solid var(--border); border-radius: 999px; padding: 7px 15px;
+      }
+      .jump { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      .jump a {
+        font-size: 11.5px; font-weight: 600; text-decoration: none;
+        color: var(--muted); background: var(--surface-2);
+        border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+      }
+      .jump a:hover { color: var(--fg1); }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 15px; }
+      .card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 12px; padding: 17px 17px 14px;
+        display: flex; flex-direction: column; gap: 12px;
+      }
+      .card.control { border-color: var(--a500); }
+      .study {
+        height: 104px; display: flex; align-items: center; justify-content: center;
+        background: var(--surface-2); border-radius: 9px; color: var(--fg1);
+        overflow: hidden;
+      }
+      /* display lockup: mark 50 / gap 21 / wordmark 37.5 tall — the real nav's
+         22 / 9 / 16.5 scaled ×2.27 */
+      .lock { display: flex; align-items: center; gap: 21px; }
+      .meta { display: flex; align-items: baseline; gap: 8px; }
+      .num { font-size: 11px; font-weight: 700; color: var(--faint); font-variant-numeric: tabular-nums; }
+      .name { font-size: 15px; font-weight: 700; }
+      .knob { font-size: 10.5px; font-weight: 600; color: var(--a500); margin-left: auto; }
+      .idea { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin: -5px 0 0; }
+      .flag { font-size: 11.5px; font-weight: 600; color: #f0a832; margin: -4px 0 0; }
+      .sizes {
+        display: flex; align-items: center; gap: 16px;
+        border-top: 1px solid var(--hairline); padding-top: 11px; margin-top: auto;
+      }
+      /* exact replica of .sub-brand in apps/intake/src/styles.css */
+      .nav {
+        display: flex; align-items: center; gap: 9px;
+        font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+        font-weight: 700; font-size: 17px; letter-spacing: -0.01em;
+      }
+      .alone { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+      .alone span { font-size: 10.5px; color: var(--faint); white-space: nowrap; }
+      .fam {
+        grid-column: 1 / -1; margin: 20px 0 -2px; scroll-margin-top: 130px;
+        display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+      }
+      .fam:first-child { margin-top: 0; }
+      .fam h2 {
+        font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--a500); margin: 0;
+      }
+      .fam p { flex-basis: 100%; margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="htop">
+        <h1 id="h1">AIRES</h1>
+        <div class="sub">
+          The mark is <strong>frozen</strong>. Only the letters change — drawn as SVG,
+          not set in a typeface. Each shown as a display lockup, then in a replica of
+          the real nav at <strong>true size</strong> (22px mark, cap height 12.4px),
+          then the word <em>alone</em>, to test whether it holds without the mark.
+        </div>
+        <button class="toggle" id="t">Light mode</button>
+      </div>
+      <nav class="jump" id="jump"></nav>
+    </header>
+    <div class="grid" id="grid"></div>
+
+    <script>
+/* PROTOTYPE — throwaway. Round 7: the AIRES wordmark DRAWN, not set.
+   The mark is frozen (round 6 settled it). Only the letters change.
+
+   ── the coordinate system ───────────────────────────────────────────────
+   Every wordmark draws into viewBox "0 0 <vw> <vh>", vh = 24 unless a
+   variant says otherwise:
+
+        y = 3    cap line
+        y = 21   baseline          (cap height 18)
+
+   Those numbers are not arbitrary. In the real nav the mark is 22px and
+   Archivo 700 sits at 17px, whose cap height measures 12.4px. Render this
+   viewBox 16.5px tall and the cap height lands on 12.4px exactly — AND a
+   stroke of 4 here measures 2.75px, which is precisely what the 22px mark's
+   stroke-6 measures. So `s = 4` literally means "the same weight as the
+   mark". Every drawn variant is therefore comparable to the mark and to
+   Archivo at once, without eyeballing anything.
+
+   Letters are STROKED, not filled — same construction as the mark itself
+   (one path, round caps, round joins). That is the whole thesis of the
+   drawn families: the wordmark should be built the way the mark is built.
+
+   Each entry: { n, knob, idea, build() -> {vw, svg}, vh?, fused?, fails? }
+   Family separators are { fam, note }. */
+
+const A = 'var(--a500)';
+const MARK_D = 'M9 32 L19 17 L28 32 L39 16';
+
+/* the mark dropped into wordmark units. Scale 0.6667 turns its stroke-6 into
+   a stroke-4 and its 36.7-unit visual width into 24.5. The -3.75 y-shift
+   centres its optical middle on the cap band's middle. */
+const MK = 0.6667;
+const MARK_W = 24.5;
+const mp = (x, y) => [x * MK - 4, y * MK - 3.75]; // mark point -> word units
+
+const r = (n) => Math.round(n * 100) / 100;
+const TOP = 3;
+const BOT = 21;
+
+function markG(x, mono) {
+  const c = mono || 'currentColor';
+  return `<g transform="translate(${r(x - 4)} -3.75) scale(${MK})">
+    <path d="${MARK_D}" fill="none" stroke="${c}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="39" cy="16" r="3.72" fill="${mono || A}"/></g>`;
+}
+
+/* ── the parametric alphabet ──────────────────────────────────────────────
+   Five geometric capitals on the cap band, parameterised by stroke weight
+   and per-letter width. `square` swaps R's bowl and S's spine for mitred
+   folds — the same corner treatment the mark uses. */
+function alpha(s, o = {}) {
+  const t = TOP + s / 2;
+  const b = BOT - s / 2;
+  const aw = o.aw ?? 14, rw = o.rw ?? 12.6, ew = o.ew ?? 11.4, sw = o.sw ?? 12.2;
+  const barY = o.barY ?? 14.2, midY = o.midY ?? 11.6;
+  const L = {};
+
+  L.I = { w: s, d: `M${r(s / 2)} ${r(t)} V${r(b)}` };
+  L.E = {
+    w: ew,
+    d: `M${r(ew - s / 2)} ${r(t)} H${r(s / 2)} V${r(b)} H${r(ew - s / 2)} M${r(s / 2)} ${r(midY)} H${r(ew - s / 2 - 1.1)}`,
+  };
+
+  /* pointed A — the crossbar is solved for where the legs actually are at
+     barY, so it never overshoots or falls short as the width changes */
+  const f = (b - barY) / (b - t);
+  const ax = s / 2 + (aw / 2 - s / 2) * f;
+  L.A = {
+    w: aw,
+    d: `M${r(s / 2)} ${r(b)} L${r(aw / 2)} ${r(t)} L${r(aw - s / 2)} ${r(b)} M${r(ax)} ${r(barY)} H${r(aw - ax)}`,
+  };
+
+  if (o.square) {
+    const bb = t + (b - t) * 0.5;
+    L.R = {
+      w: rw,
+      d: `M${r(s / 2)} ${r(b)} V${r(t)} H${r(rw - s / 2)} V${r(bb)} H${r(s / 2)} M${r(s / 2 + 1.8)} ${r(bb)} L${r(rw - s / 2)} ${r(b)}`,
+    };
+    L.S = {
+      w: sw,
+      d: `M${r(sw - s / 2)} ${r(t)} H${r(s / 2)} V${r(midY)} H${r(sw - s / 2)} V${r(b)} H${r(s / 2)}`,
+    };
+  } else {
+    const x1 = s / 2 + 0.6;
+    const bb = t + (b - t) * 0.52;
+    const rx = rw - s / 2 - x1, ry = (bb - t) / 2;
+    L.R = {
+      w: rw,
+      d: `M${r(s / 2)} ${r(b)} V${r(t)} H${r(x1)} A${r(rx)} ${r(ry)} 0 0 1 ${r(x1)} ${r(bb)} H${r(s / 2)} M${r(x1 + rx * 0.55)} ${r(bb)} L${r(rw - s / 2)} ${r(b)}`,
+    };
+    /* S as two arcs off one spine — 250° of travel each, so the terminals
+       cut at the same angle top and bottom */
+    const cx = sw / 2, sx = sw / 2 - s / 2, sy = (b - t) / 4;
+    L.S = {
+      w: sw,
+      d: `M${r(cx + 0.94 * sx)} ${r(t + 0.62 * sy)} A${r(sx)} ${r(sy)} 0 1 0 ${r(cx)} ${r(t + 2 * sy)} A${r(sx)} ${r(sy)} 0 1 1 ${r(cx - 0.94 * sx)} ${r(b - 0.62 * sy)}`,
+    };
+  }
+  return L;
+}
+
+/* Where the I sits so that it TOUCHES the A's right leg at mid-height instead
+   of standing clear of it. Two earlier attempts failed and are worth recording:
+   a stencil/"cut" alphabet (at cap height 18 with the mark's stroke there is no
+   room for five cut segments — every counter is narrower than two cuts), and a
+   true merge where the A's right leg stood up straight and doubled as the I —
+   which simply read as "ARES", because a vertical right leg still looks like
+   part of the A. Touching keeps both letters legible; merging loses one. */
+function bindIx(s, aw) {
+  const t = TOP + s / 2, b = BOT - s / 2;
+  const midY = (t + b) / 2;
+  const legX = aw / 2 + (aw - s / 2 - aw / 2) * ((midY - t) / (b - t)); // A's right leg at mid
+  return r(legX + s - s / 2); // I's left edge lands on the A's right edge
+}
+
+/* lay glyphs out left to right and return the assembled inner SVG */
+function glyph(g, x, s, o = {}) {
+  return `<g transform="translate(${r(x)} 0)"><path d="${g.d}" fill="none" stroke="${o.stroke || 'currentColor'}" stroke-width="${s}" stroke-linecap="${o.cap || 'round'}" stroke-linejoin="${o.join || 'round'}"/></g>`;
+}
+
+function setWord(L, s, tr, o = {}) {
+  const order = o.order || ['A', 'I', 'R', 'E', 'S'];
+  let x = o.x0 || 0;
+  const parts = o.pre ? [o.pre] : [];
+  order.forEach((ch) => {
+    parts.push(glyph(L[ch], x, s, o));
+    x += L[ch].w + tr;
+  });
+  if (o.post) parts.push(o.post(x - tr));
+  return { vw: r(Math.max(x - tr, o.minW || 0)), svg: parts.join('') };
+}
+
+const WORDS = [
+  { fam: 'Control', note: 'Where the wordmark stands today — a licensed typeface, chosen not drawn.' },
+  {
+    n: 'Archivo 700', knob: 'stock font', control: true, font: true,
+    idea: 'What ships. Nothing here belongs to AIRES — any project can buy the same letters.',
+  },
+
+  {
+    fam: 'Drawn — mark and letters stay separate',
+    note: 'Letters built the way the mark is built: one stroke, round caps, the mark’s exact weight. The mark still works alone.',
+  },
+  {
+    n: 'Monoline', knob: 's = mark',
+    idea: 'Geometric capitals at the mark’s own stroke weight. The honest baseline — same DNA, nothing clever.',
+    build: () => setWord(alpha(4), 4, 2.8),
+  },
+  {
+    n: 'Folded', knob: 'curves → mitres',
+    idea: 'R’s bowl and S’s spine become mitred folds. Now every corner in the lockup is the same corner the mark turns.',
+    build: () => setWord(alpha(4, { square: true }), 4, 2.8),
+  },
+  {
+    n: 'Condensed', knob: 'width ↓',
+    idea: 'Narrower letters, tighter tracking. Buys back nav width and reads as engineered rather than friendly.',
+    build: () => setWord(alpha(3.6, { aw: 10.8, rw: 9.6, ew: 8.8, sw: 9.4 }), 3.6, 2.2),
+  },
+  {
+    n: 'Wide', knob: 'width ↑ + tracking',
+    idea: 'Letters opened out and spaced. Institutional and calm; the mark has to carry all the energy.',
+    build: () => setWord(alpha(3.6, { aw: 17.5, rw: 15.4, ew: 14.2, sw: 15 }), 3.6, 4.6),
+  },
+  {
+    n: 'Heavy', knob: 's ×1.6',
+    idea: 'Stroke pushed to 6.4. Counters tighten and the word gets poster weight — the best survivor at small sizes.',
+    build: () => setWord(alpha(6.4, { aw: 16, rw: 14, ew: 12.8, sw: 13.6, midY: 11.8 }), 6.4, 3.4),
+  },
+  {
+    n: 'AI Bind', knob: 'A + I tucked',
+    idea: 'The I slides in until it touches the A’s leg, so the two letters share an edge. A font can kern but it cannot overlap — this only exists because the word is drawn.',
+    build: () => {
+      const s = 4, L = alpha(s), tr = 2.8;
+      const parts = [glyph(L.A, 0, s)];
+      let x = bindIx(s, L.A.w);
+      parts.push(glyph(L.I, x, s));
+      x += L.I.w + tr;
+      ['R', 'E', 'S'].forEach((ch) => {
+        parts.push(glyph(L[ch], x, s));
+        x += L[ch].w + tr;
+      });
+      return { vw: r(x - tr), svg: parts.join('') };
+    },
+  },
+  {
+    n: 'Tittle', knob: 'I gets the dot',
+    idea: 'The I is shortened and the accent dot sits on top of it, so the brand dot rhymes twice: once in the mark, once in the word.',
+    build: () => {
+      const s = 4, L = alpha(s);
+      L.I = {
+        w: s,
+        d: `M${r(s / 2)} ${r(TOP + s / 2 + 3.4)} V${r(BOT - s / 2)}`,
+        dot: `<circle cx="${r(s / 2)}" cy="${r(TOP + s / 2 - 0.4)}" r="${r(s * 0.55)}" fill="${A}"/>`,
+      };
+      const parts = [];
+      let x = 0;
+      ['A', 'I', 'R', 'E', 'S'].forEach((ch) => {
+        parts.push(glyph(L[ch], x, s));
+        if (L[ch].dot) parts.push(`<g transform="translate(${r(x)} 0)">${L[ch].dot}</g>`);
+        x += L[ch].w + 2.8;
+      });
+      return { vw: r(x - 2.8), svg: parts.join('') };
+    },
+  },
+  {
+    n: 'Dot Counter', knob: 'crossbar → dot',
+    idea: 'The A’s crossbar is replaced by the accent dot, sitting in the counter. Round 5’s idea, applied to the word instead of the mark.',
+    build: () => {
+      const s = 4, L = alpha(s);
+      L.A = {
+        w: 14,
+        d: `M${r(s / 2)} ${r(BOT - s / 2)} L7 ${r(TOP + s / 2)} L${r(14 - s / 2)} ${r(BOT - s / 2)}`,
+        dot: `<circle cx="7" cy="15" r="${r(s * 0.62)}" fill="${A}"/>`,
+      };
+      const parts = [];
+      let x = 0;
+      ['A', 'I', 'R', 'E', 'S'].forEach((ch) => {
+        parts.push(glyph(L[ch], x, s));
+        if (L[ch].dot) parts.push(`<g transform="translate(${r(x)} 0)">${L[ch].dot}</g>`);
+        x += L[ch].w + 2.8;
+      });
+      return { vw: r(x - 2.8), svg: parts.join('') };
+    },
+  },
+
+  {
+    fam: 'Fused — mark and letters are one object',
+    note: 'The lockup stops being a pair. Stronger as a signature, but the mark no longer stands alone — the tile in apps/*/public/mark.svg would have to carry the icon job by itself.',
+  },
+  {
+    n: 'Mark as A', knob: 'mark replaces A', fused: true,
+    idea: 'The mark takes the A’s slot and the word reads straight through it. Nothing is repeated, and the mark is load-bearing.',
+    build: () => {
+      const s = 4, L = alpha(s), tr = 2.8;
+      let x = MARK_W + tr + 0.6;
+      const parts = [markG(0)];
+      ['I', 'R', 'E', 'S'].forEach((ch) => {
+        parts.push(glyph(L[ch], x, s));
+        x += L[ch].w + tr;
+      });
+      return { vw: r(x - tr), svg: parts.join('') };
+    },
+  },
+  {
+    n: 'Fold-in', knob: 'one continuous path', fused: true,
+    idea: 'The mark’s final rise does not stop — it keeps climbing and becomes the A’s left leg. Mark and word are literally one stroke.',
+    fails: 'legibility — reads “AAIRES”',
+    build: () => {
+      const s = 4, L = alpha(s), tr = 2.8;
+      const t = TOP + s / 2, b = BOT - s / 2, barY = 14.2;
+      /* the mark rides 2.2 lower here than it does beside the word. Without
+         that drop its own peak sits almost level with the A's apex and the
+         lockup reads "AAIRES" — two peaks, no hierarchy. Dropped, the apex is
+         clearly the tallest point and the mark reads as a run-up to it. */
+      const DY = 2.2;
+      const mp2 = (x, y) => [x * MK - 4, y * MK - 3.75 + DY];
+      const p0 = mp2(9, 32), p1 = mp2(19, 17), p2 = mp2(28, 32), p3 = mp2(39, 16);
+      /* extend p2→p3 until it reaches the cap line: that intersection is the A's apex */
+      const dx = p3[0] - p2[0], dy = p3[1] - p2[1];
+      const apexX = p2[0] + dx * ((t - p2[1]) / dy);
+      const legW = 6.4;
+      const footX = apexX + legW;
+      /* crossbar solved against the two real legs at barY */
+      const lx = apexX - (apexX - p2[0]) * ((barY - t) / (p2[1] - t));
+      const rx = apexX + legW * ((barY - t) / (b - t));
+      const path = `M${r(p0[0])} ${r(p0[1])} L${r(p1[0])} ${r(p1[1])} L${r(p2[0])} ${r(p2[1])} L${r(apexX)} ${r(t)} L${r(footX)} ${r(b)} M${r(lx)} ${barY} H${r(rx)}`;
+      let x = footX + s / 2 + tr;
+      const parts = [
+        `<path d="${path}" fill="none" stroke="currentColor" stroke-width="${s}" stroke-linecap="round" stroke-linejoin="round"/>`,
+        `<circle cx="${r(p0[0])}" cy="${r(p0[1])}" r="${r(s * 0.62)}" fill="${A}"/>`,
+      ];
+      ['I', 'R', 'E', 'S'].forEach((ch) => {
+        parts.push(glyph(L[ch], x, s));
+        x += L[ch].w + tr;
+      });
+      return { vw: r(x - tr), svg: parts.join('') };
+    },
+  },
+  {
+    n: 'Underline', knob: '+ shared rule', fused: true, vh: 27,
+    idea: 'A rule runs under mark and word together, binding them into one block. Reads as a masthead, not a logo.',
+    build: () => {
+      const s = 4, L = alpha(s), tr = 2.8;
+      let x = MARK_W + 5.5;
+      const parts = [markG(0)];
+      ['A', 'I', 'R', 'E', 'S'].forEach((ch) => {
+        parts.push(glyph(L[ch], x, s));
+        x += L[ch].w + tr;
+      });
+      const vw = r(x - tr);
+      parts.push(`<path d="M1.2 24.8 H${r(vw - 1.2)}" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>`);
+      return { vw, svg: parts.join('') };
+    },
+  },
+  {
+    n: 'Knockout', knob: 'white on accent', fused: true, vh: 32,
+    idea: 'Mark and word knocked white out of one accent block. The only variant that survives an arbitrary background — the app-icon answer, widened.',
+    build: () => {
+      const s = 4, L = alpha(s), tr = 2.8, pad = 6;
+      let x = MARK_W + 5.5;
+      const parts = [markG(0, '#fff')];
+      ['A', 'I', 'R', 'E', 'S'].forEach((ch) => {
+        parts.push(glyph(L[ch], x, s, { stroke: '#fff' }));
+        x += L[ch].w + tr;
+      });
+      const inner = r(x - tr);
+      const vw = r(inner + pad * 2);
+      return {
+        vw,
+        svg: `<rect width="${vw}" height="32" rx="7" fill="${A}"/><g transform="translate(${pad} 4)">${parts.join('')}</g>`,
+      };
+    },
+  },
+];
+    </script>
+    <script>
+      const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const MARK = (px) =>
+        `<svg width="${px}" height="${px}" viewBox="0 0 48 48" style="flex:0 0 auto;display:block">
+           <path d="${MARK_D}" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+           <circle cx="39" cy="16" r="3.72" fill="${A}"/></svg>`;
+
+      /* h = height of one cap-band (24-unit) box; a taller vh scales up to match */
+      const wordSVG = (w, built, h) => {
+        const vh = w.vh || 24;
+        return `<svg height="${(h * vh) / 24}" viewBox="0 0 ${built.vw} ${vh}" style="flex:0 0 auto;display:block">${built.svg}</svg>`;
+      };
+
+      document.getElementById('h1').textContent =
+        `AIRES — ${WORDS.filter((w) => !w.fam && !w.control).length} drawn wordmarks`;
+      document.title = document.getElementById('h1').textContent;
+
+      let i = -1;
+      document.getElementById('grid').innerHTML = WORDS.map((w) => {
+        if (w.fam) {
+          return `<div class="fam" id="${slug(w.fam)}"><h2>${w.fam}</h2>${w.note ? `<p>${w.note}</p>` : ''}</div>`;
+        }
+        i++;
+
+        let study, nav, alone;
+        if (w.font) {
+          // the control renders as real text, so it is judged as it actually ships
+          study = `<div class="lock">${MARK(50)}<span style="font-weight:700;font-size:39px;letter-spacing:-0.01em;line-height:1">AIRES</span></div>`;
+          nav = `${MARK(22)}<span>AIRES</span>`;
+          alone = `<span style="font-weight:700;font-size:17px;letter-spacing:-0.01em">AIRES</span>`;
+        } else {
+          const built = w.build();
+          if (w.fused) {
+            study = wordSVG(w, built, 37.5);
+            nav = wordSVG(w, built, 16.5);
+            alone = `<span>fused — no separate word</span>`;
+          } else {
+            study = `<div class="lock">${MARK(50)}${wordSVG(w, built, 37.5)}</div>`;
+            nav = `${MARK(22)}${wordSVG(w, built, 16.5)}`;
+            alone = wordSVG(w, built, 16.5);
+          }
+        }
+
+        return `<div class="card${w.control ? ' control' : ''}">
+          <div class="study">${study}</div>
+          <div class="meta">
+            <span class="num">${String(i).padStart(2, '0')}</span>
+            <span class="name">${w.n}</span>
+            <span class="knob">${w.knob}</span>
+          </div>
+          <p class="idea">${w.idea}</p>
+          ${w.fails ? `<p class="flag">⚠ fails ${w.fails}</p>` : ''}
+          <div class="sizes">
+            <div class="nav">${nav}</div>
+            <div class="alone">${alone}</div>
+          </div>
+        </div>`;
+      }).join('');
+
+      document.getElementById('jump').innerHTML = WORDS.filter((w) => w.fam)
+        .map((w) => `<a href="#${slug(w.fam)}">${w.fam}</a>`)
+        .join('');
+
+      const root = document.documentElement;
+      const btn = document.getElementById('t');
+      btn.onclick = () => {
+        const dark = root.dataset.theme === 'dark';
+        root.dataset.theme = dark ? 'light' : 'dark';
+        btn.textContent = dark ? 'Dark mode' : 'Light mode';
+      };
+    </script>
+  </body>
+</html>

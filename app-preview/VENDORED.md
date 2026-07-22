@@ -9,9 +9,15 @@ production.
 
 | | |
 |---|---|
-| Repo | `github.com/JunMun28/ng-v0` |
+| Repo | `ng-v0` (prototype repo — see the ownership note below) |
 | Commit | `f22d7e76b6f86368b254ec4502894a0a125d31ce` (`f22d7e7`) |
 | Copied | 2026-07-20 |
+
+> **Ownership — resolve before this ships.** `ng-v0` was a personal prototype
+> repo, not a company one. Vendoring it here means this tree contains code
+> whose copyright ownership has not been formally assigned. Confirm the
+> provenance and relicense/reassign it (or re-derive the directory) before
+> the repo moves to a company org.
 
 The source tree had four uncommitted paths at copy time — `implementation-notes.md`,
 `docs/parity/`, `ui/playwright-report/`, `ui/test-results/` — none of them source,

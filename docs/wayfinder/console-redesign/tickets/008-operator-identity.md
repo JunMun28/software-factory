@@ -60,9 +60,9 @@ Review fixes on top of the codex pass:
 - Restored `test_illegal_approve_rejected`'s 409 state-guard coverage (it now
   sends a valid operator so it reaches the state check, not just the 422).
 
-Verified live: first-visit `/`→`/studio` redirect; picking Jun Wong stored the
+Verified live: first-visit `/`→`/studio` redirect; picking Dana Reyes stored the
 pointer and stamped the JW mark (#7C5CFC); a merge approval returned 200 and
-Recently showed "Shipped · Migrate auth to SSO · by Jun Wong · now" with
+Recently showed "Shipped · Migrate auth to SSO · by Dana Reyes · now" with
 shipped-this-week = 1; seeded rows honestly show their recorded actor. Studio
 verified light + dark. pytest 166, console 46, shared 85, intake 33 green;
 console + intake build green; console lint green.

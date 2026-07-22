@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AIRES — 20 typefaces</title>
+
+    <!-- PROTOTYPE — throwaway. The mark (zigzag) and the LAYOUT (#02: mark,
+         gap, wordmark — nothing between them) are both fixed. Only the typeface
+         varies. Each card shows the display lockup and the real intake nav at
+         true size. Delete once a face is folded into apps/*/src/styles.css. -->
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@800&family=Quicksand:wght@700&family=Nunito:wght@800&family=Baloo+2:wght@800&family=Fredoka:wght@600&family=Comfortaa:wght@700&family=Varela+Round&family=Outfit:wght@700&family=Poppins:wght@700&family=Urbanist:wght@800&family=Lexend:wght@700&family=Figtree:wght@800&family=Manrope:wght@800&family=Sora:wght@700&family=Plus+Jakarta+Sans:wght@800&family=Space+Grotesk:wght@700&family=DM+Sans:wght@800&family=Archivo:wght@700&family=Inter:wght@800&family=JetBrains+Mono:wght@700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      @font-face { font-family: 'Archivo'; src: url('../hero-ascii-bg/fonts/Archivo-variable.woff2') format('woff2-variations'); font-weight: 100 900; font-display: swap; }
+
+      :root[data-theme='light'] {
+        --bg: #fff; --surface: #fff; --surface-2: #f6f5f8; --fg1: #16141a;
+        --muted: #6b6675; --faint: #8f8a99; --border: #e6e3ec; --hairline: #efedf3;
+        --a500: #bd03f7; --navbg: rgba(255,255,255,.72);
+      }
+      :root[data-theme='dark'] {
+        --bg: #0e0d11; --surface: #16151a; --surface-2: #1e1c24; --fg1: #f3f1f7;
+        --muted: #a09aad; --faint: #7d7789; --border: #2b2833; --hairline: #232029;
+        --a500: #cb45f8; --navbg: rgba(30,28,36,.72);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 0 26px 80px;
+        font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+        background: var(--bg); color: var(--fg1); -webkit-font-smoothing: antialiased;
+      }
+      header {
+        position: sticky; top: 0; z-index: 9; background: var(--bg);
+        border-bottom: 1px solid var(--hairline); padding: 20px 0 14px; margin-bottom: 22px;
+        display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      }
+      h1 { font-size: 23px; font-weight: 800; margin: 0; letter-spacing: -0.015em; }
+      .sub { font-size: 12.5px; color: var(--muted); flex: 1; min-width: 230px; line-height: 1.5; }
+      .sub a { color: var(--a500); font-weight: 600; text-decoration: none; }
+      .ctl { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--faint); }
+      input[type='range'] { width: 96px; accent-color: var(--a500); }
+      button {
+        font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+        background: var(--surface-2); color: var(--fg1);
+        border: 1px solid var(--border); border-radius: 999px; padding: 7px 14px;
+      }
+
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(316px, 1fr)); gap: 15px; }
+      .c {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 13px; padding: 0 0 14px; overflow: hidden;
+      }
+      .stage {
+        background: var(--surface-2); border-bottom: 1px solid var(--border);
+        padding: 26px 20px; display: flex; align-items: center; justify-content: center; min-height: 104px;
+      }
+      .meta { padding: 13px 18px 0; }
+      .hd { display: flex; align-items: baseline; gap: 8px; }
+      .hd .num { font-size: 11px; font-weight: 700; color: var(--faint); font-variant-numeric: tabular-nums; }
+      .hd .nm { font-size: 14.5px; font-weight: 700; }
+      .hd .tagx {
+        margin-left: auto; font-size: 9.5px; font-weight: 700; letter-spacing: .07em;
+        text-transform: uppercase; color: var(--faint);
+        border: 1px solid var(--border); border-radius: 999px; padding: 2px 7px;
+      }
+      .note { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 7px 0 0; }
+      .navwrap { margin: 12px 18px 0; border-radius: 9px; background: var(--bg); border: 1px solid var(--hairline); padding: 10px 12px; }
+      .navcap { display: block; font-size: 9.5px; color: var(--faint); margin-bottom: 7px; letter-spacing: .06em; text-transform: uppercase; }
+      .navrow { display: flex; align-items: center; gap: 12px; }
+      .pill {
+        display: flex; gap: 3px; background: var(--navbg); border: 1px solid var(--border);
+        border-radius: 999px; padding: 3px; margin-left: auto;
+      }
+      .pill span { font-size: 11px; font-weight: 600; color: var(--muted); padding: 4px 9px; border-radius: 999px; }
+      .pill span.on { background: var(--surface); color: var(--fg1); }
+
+      /* THE FIXED LAYOUT (#02): mark, gap, wordmark. Nothing between them. */
+      .lk { display: flex; align-items: center; gap: var(--gap, 9px); }
+      .wd { line-height: 1; white-space: nowrap; letter-spacing: -0.01em; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>AIRES — 20 typefaces</h1>
+      <div class="sub">
+        Mark and <strong>layout #02 fixed</strong> (mark · gap · wordmark). Only the
+        typeface changes. Each card: display lockup + the real intake nav at true size.
+        <a href="identity.html">← identity directions</a>
+      </div>
+      <div class="ctl">
+        <label for="s">stroke</label><input type="range" id="s" min="2" max="9" step="0.25" value="6" /><span id="sv">6</span>
+      </div>
+      <div class="ctl">
+        <label for="g">gap</label><input type="range" id="g" min="4" max="18" value="9" /><span id="gv">9</span>
+      </div>
+      <button id="t">Light mode</button>
+    </header>
+    <div class="grid" id="grid"></div>
+
+    <script>
+      /* the mark — Zigzag (22). Matches packages/shared/src/lib/kit/mark.ts. */
+      const zig = (px, w = 6) => `
+        <svg width="${px}" height="${px}" viewBox="0 0 48 48" style="flex:0 0 auto;display:block">
+          <path d="M9 32 L19 17 L28 32 L39 16" fill="none" stroke="currentColor"
+                stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="39" cy="16" r="${w * 0.62}" fill="var(--a500)"/>
+        </svg>`;
+
+      /* [face, weight, group, note]. Weight is per-face: 800 in one family is
+         not 800 in another, so each is set to whatever actually matches the
+         mark's stroke rather than one shared number. */
+      const F = [
+        ['M PLUS Rounded 1c', 800, 'Rounded', 'Round terminals, heavy enough to hold the lockup.'],
+        ['Quicksand', 700, 'Rounded', 'Geometric circles — closest match to the mark’s geometry.'],
+        ['Nunito', 800, 'Rounded', 'Rounded but humanist; warmer, less mechanical.'],
+        ['Baloo 2', 800, 'Rounded', 'Chunky and friendly. The most informal here.'],
+        ['Fredoka', 600, 'Rounded', 'Soft and wide. Reads consumer, not internal tool.'],
+        ['Comfortaa', 700, 'Rounded', 'The roundest. Very soft — likely too soft.'],
+        ['Varela Round', 400, 'Rounded', 'Single weight only, so it can never go heavier.'],
+        ['Outfit', 700, 'Geometric', 'Clean geometric, near-perfect circles. Neutral.'],
+        ['Poppins', 700, 'Geometric', 'Geometric with a tall x-height. Very widely used.'],
+        ['Urbanist', 800, 'Geometric', 'Low-contrast geometric, slightly condensed.'],
+        ['Lexend', 700, 'Geometric', 'Designed for reading speed; open apertures.'],
+        ['Figtree', 800, 'Geometric', 'Geometric with soft corners — a middle path.'],
+        ['Manrope', 800, 'Geometric', 'Semi-geometric, distinctive flat-sided round forms.'],
+        ['Sora', 700, 'Geometric', 'Technical, slightly quirky. Made for product UI.'],
+        ['Plus Jakarta Sans', 800, 'Geometric', 'Geometric with subtle humanist detail.'],
+        ['Space Grotesk', 700, 'Technical', 'Quirky grotesque — already used in this repo’s mockups.'],
+        ['DM Sans', 800, 'Technical', 'Low-contrast grotesque, tight and modern.'],
+        ['Archivo', 700, 'Technical', 'Grotesque built for high performance at small sizes.'],
+        ['Inter', 800, 'Technical', 'The default UI face of the last decade. Safe, invisible.'],
+        ['JetBrains Mono', 700, 'Mono', 'Monospace — matches the ASCII hero field’s voice.'],
+      ];
+
+      /* Stroke is a viewBox unit, so one value gives the same OPTICAL weight at
+         every px size — the display mark and the 22px nav mark can share it. */
+      let SW = 6;
+
+      function render() {
+        document.getElementById('grid').innerHTML = F.map(([f, w, g, note], i) => `
+          <div class="c">
+            <div class="stage">
+              <div class="lk">${zig(46, SW)}<span class="wd" style="font-family:'${f}';font-weight:${w};font-size:36px">AIRES</span></div>
+            </div>
+            <div class="meta">
+              <div class="hd">
+                <span class="num">${String(i + 1).padStart(2, '0')}</span>
+                <span class="nm">${f}</span>
+                <span class="tagx">${g} ${w}</span>
+              </div>
+              <p class="note">${note}</p>
+            </div>
+            <div class="navwrap">
+              <span class="navcap">real intake nav · true size</span>
+              <div class="navrow">
+                <div class="lk">${zig(22, SW)}<span class="wd" style="font-family:'${f}';font-weight:${w};font-size:17px">AIRES</span></div>
+                <div class="pill"><span class="on">New request</span><span>My requests</span></div>
+              </div>
+            </div>
+          </div>`).join('');
+      }
+
+      const gr = document.getElementById('g');
+      gr.oninput = () => {
+        document.documentElement.style.setProperty('--gap', gr.value + 'px');
+        document.getElementById('gv').textContent = gr.value;
+      };
+      const st = document.getElementById('s');
+      st.oninput = () => {
+        SW = +st.value;
+        document.getElementById('sv').textContent = SW;
+        render();
+      };
+      const root = document.documentElement, b = document.getElementById('t');
+      b.onclick = () => {
+        const d = root.dataset.theme === 'dark';
+        root.dataset.theme = d ? 'light' : 'dark';
+        b.textContent = d ? 'Dark mode' : 'Light mode';
+      };
+      render();
+    </script>
+  </body>
+</html>

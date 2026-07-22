@@ -1,4 +1,4 @@
-# AGENTS.md — agent-facing guide to the Software Factory repo
+# AGENTS.md — agent-facing guide to the AIRES repo
 
 This is the single entry point for any AI agent (or human) starting cold.
 It consolidates the operational knowledge that was spread across ADR 0011,
@@ -10,7 +10,7 @@ for the quickstart.
 
 ## 1. What this repo is
 
-**Software Factory** is an autonomous-but-governed AI pipeline that carries
+**AIRES** is an autonomous-but-governed AI pipeline that carries
 a unit of work through the full SDLC — requirements → architecture → TDD
 implementation → review → deploy — with humans gating the irreversible
 boundaries.  The two deterministic seams (brain, runner) let every feature

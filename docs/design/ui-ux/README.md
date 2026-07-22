@@ -1,4 +1,4 @@
-# Software Factory — UI/UX Design Documentation
+# AIRES — UI/UX Design Documentation
 
 > Design document only — **no code yet**. Research-backed (Linear + Slack + best practice), produced by a multi-agent design workflow. Respects ADR-0004 (milestone summaries, not streaming), ADR-0007 (FastAPI + Angular, polling now), ADR-0008 (two-axis progress_event log).
 
@@ -43,7 +43,7 @@ Everywhere below, read the former "indigo" accent as Micron purple `#BD03F7`.
 
 I have all the research I need. The task is to condense it into one tight design foundation. Writing it now.
 
-# Software Factory — Design Foundation
+# AIRES — Design Foundation
 
 The single source of truth every screen spec builds on. App = **Intake form** (Submitters: MS SSO, conditional form, AI interview, draft spec) + **Control center** (Admins: Kanban, Approval queue/Triage, per-app Progress feed, Needs-me inbox, Request/Work-item detail, App registry). North star: **Linear's speed + restraint, Slack's feed legibility, milestone summaries not streaming, polling now.** Built for a handful of Admins — do not over-build.
 
@@ -176,7 +176,7 @@ Amber and red are the **only** loud colors in the whole product.
 
 ---
 
-**Grounding files (absolute):** `/Users/wongjunmun/development/ai-development/software-factory/CONTEXT.md` · `/docs/prd/stage-1-intake-and-spec-approval.md` · `/docs/design/control-center-linear-slack.md` · `/docs/adr/0004-progress-reporting-via-milestone-summaries.md` · `/docs/adr/0007-web-app-stack.md` · `/docs/adr/0008-two-axis-progress-event-log.md`
+**Grounding files (absolute):** `CONTEXT.md` · `/docs/prd/stage-1-intake-and-spec-approval.md` · `/docs/design/control-center-linear-slack.md` · `/docs/adr/0004-progress-reporting-via-milestone-summaries.md` · `/docs/adr/0007-web-app-stack.md` · `/docs/adr/0008-two-axis-progress-event-log.md`
 
 
 ## Guardrails (must hold)

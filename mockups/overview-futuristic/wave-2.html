@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overview — Micron futuristic (10 structures)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<!--
+  PROTOTYPE — throwaway. Ten structures, ONE visual language: Micron.
+  Tokens are the canonical ones (jm-design/micron-tokens.css):
+    #bd03f7 Purple A is the ONLY accent.
+    #32c8ff cyan is reserved for data / input MOVEMENT — which is precisely
+    what a pipeline is, so it carries flow here and nothing else.
+    Semiotic green/yellow/red carry status only. Type scale 1.333.
+  Archivo is loaded from the sibling hero-ascii-bg mockup. The ignition
+  glyph field is carried over from the intake app's hero.
+  Switch: ?variant=A..J, the bottom bar, or ←/→.
+-->
+<style>
+  @font-face { font-family: 'Archivo'; src: url('../hero-ascii-bg/fonts/Archivo-variable.woff2') format('woff2-variations'); font-weight: 100 900; font-display: swap; }
+
+  :root {
+    /* canonical Micron */
+    --k:#000000; --w:#ffffff; --ow:#f0f0ee;
+    --g-a:#262626; --g-b:#4d4d4d; --g-c:#8c8c8c; --g-d:#bfbfbf;
+    --acc:#bd03f7;            /* Purple A — the only accent */
+    --cy:#32c8ff;             /* data / input movement only */
+    --dv-pb:#ff8cff; --dv-gb:#78f05a; --dv-yb:#ffbe1e;
+    --sem-r:#ec0b00;
+    /* purple-biased near-blacks: neutrals chosen, not inherited */
+    --p0:#08060c; --p1:#100c18; --p2:#181222; --p3:#241a33;
+    --line:rgba(189,3,247,.20); --line2:rgba(240,240,238,.10);
+    /* status on black — semiotic hues lifted for legibility on the dark ground */
+    --s-gate:#ffbe1e; --s-stuck:#ff5a4d; --s-wait:#8c8c8c; --s-live:#32c8ff; --s-done:#78f05a;
+    /* 1.333 perfect fourth */
+    --t0:11px; --t1:14px; --t2:19px; --t3:25px; --t4:34px; --t5:45px; --t6:60px;
+    --sans:'Archivo','Plus Jakarta Sans',Arial,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html,body { margin:0; background:var(--k); }
+  body { overflow-x:hidden; font-family:var(--sans); color:var(--ow); }
+  .view { display:none; min-height:100vh; }
+  .view.on { display:block; }
+  .tnum { font-variant-numeric:tabular-nums; }
+  canvas.fx { position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+  .z { position:relative; z-index:1; }
+
+  /* shared chrome */
+  .mast { display:flex; align-items:baseline; gap:18px; padding:26px 34px 0; }
+  .mast .bm { display:flex; align-items:center; gap:10px; font-weight:700; font-size:var(--t1); letter-spacing:.02em; }
+  .mast .bm i { width:9px; height:9px; border-radius:2px; background:var(--acc); box-shadow:0 0 12px rgba(189,3,247,.8); }
+  .mast .cr { margin-left:auto; font:500 var(--t0) var(--mono); letter-spacing:.18em; color:var(--g-c); text-transform:uppercase; }
+  h1.big { margin:0; font-weight:800; font-size:var(--t4); line-height:1.02; letter-spacing:-.02em; }
+  .kick { font:500 var(--t0) var(--mono); letter-spacing:.24em; text-transform:uppercase; color:var(--acc); }
+
+  /* ══ A · IGNITION — the intake hero field, carried into the console ══ */
+  #v-A .wrap { padding:0 34px 130px; }
+  #v-A .hero { padding:56px 0 34px; }
+  #v-A .hero h1 { font-size:var(--t5); max-width:16ch; }
+  #v-A .hero p { max-width:52ch; font-size:var(--t1); line-height:1.55; color:var(--g-d); font-weight:300; }
+  #v-A .gg { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line2); border:1px solid var(--line2); }
+  #v-A .gg div { background:var(--p0); padding:18px 20px; }
+  #v-A .gg .n { font:700 var(--t4) var(--mono); line-height:1; letter-spacing:-.03em; }
+  #v-A .gg .n.a { color:var(--s-gate); } #v-A .gg .n.r { color:var(--s-stuck); } #v-A .gg .n.c { color:var(--cy); }
+  #v-A .gg .l { margin-top:7px; font-size:var(--t0); letter-spacing:.14em; text-transform:uppercase; color:var(--g-c); }
+  #v-A .rail { display:grid; grid-template-columns:repeat(6,1fr); gap:14px; margin-top:34px; }
+  #v-A .st { border-top:2px solid var(--acc); padding-top:12px; }
+  #v-A .st.q { border-top-color:var(--g-a); }
+  #v-A .st .h { display:flex; align-items:baseline; gap:8px; }
+  #v-A .st .h b { font-size:var(--t2); font-weight:700; }
+  #v-A .st .h span { font:400 var(--t0) var(--mono); color:var(--g-c); letter-spacing:.1em; text-transform:uppercase; }
+  #v-A .st ul { list-style:none; margin:12px 0 0; padding:0; display:flex; flex-direction:column; gap:7px; }
+  #v-A .st li { font-size:var(--t0); line-height:1.4; color:var(--g-d); padding-left:11px; position:relative; }
+  #v-A .st li::before { content:''; position:absolute; left:0; top:5px; width:4px; height:4px; border-radius:50%; background:var(--dot,var(--g-b)); }
+
+  /* ══ B · REACTOR — stages as concentric rings, core = what needs you ══ */
+  #v-B .wrap { display:grid; grid-template-columns:1fr 340px; min-height:100vh; }
+  #v-B .core { display:grid; place-items:center; padding:24px; }
+  #v-B svg { width:min(80vh,760px); aspect-ratio:1; overflow:visible; }
+  #v-B aside { border-left:1px solid var(--line); background:rgba(16,12,24,.72); backdrop-filter:blur(10px); padding:28px 24px; overflow-y:auto; }
+  #v-B .rl { font:500 var(--t0) var(--mono); letter-spacing:.2em; fill:var(--g-b); text-transform:uppercase; }
+  #v-B .cn { font:700 var(--t5) var(--mono); fill:var(--w); text-anchor:middle; }
+  #v-B .cl { font:500 9.5px var(--mono); letter-spacing:.24em; fill:var(--acc); text-anchor:middle; }
+  .qrow { display:grid; grid-template-columns:9px 1fr auto; gap:11px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line2); }
+  .qrow i { width:8px; height:8px; border-radius:50%; }
+  .qrow .t { min-width:0; font-size:var(--t0); color:var(--g-c); }
+  .qrow .t b { display:block; font-weight:500; font-size:12px; color:var(--ow); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .qrow .a { font:400 var(--t0) var(--mono); color:var(--g-b); }
+
+  /* ══ C · TRACE — an oscilloscope channel per stage ══ */
+  #v-C .wrap { padding:26px 34px 130px; }
+  #v-C .scope { margin-top:26px; border:1px solid var(--line); background:
+      linear-gradient(rgba(50,200,255,.045) 1px,transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg,rgba(50,200,255,.045) 1px,transparent 1px) 0 0/28px 100%, var(--p0); }
+  #v-C .ch { display:grid; grid-template-columns:112px 1fr 92px; align-items:center; gap:0; border-bottom:1px solid var(--line2); }
+  #v-C .ch:last-child { border-bottom:0; }
+  #v-C .ch .lb { padding:0 16px; font:500 var(--t0) var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--g-c); }
+  #v-C .ch .tr { position:relative; height:76px; }
+  #v-C .ch .tr svg { position:absolute; inset:0; width:100%; height:100%; }
+  #v-C .ch .rd { padding:0 16px; text-align:right; font:600 var(--t2) var(--mono); }
+  #v-C .ch .rd small { display:block; font:400 9.5px var(--mono); letter-spacing:.14em; color:var(--g-b); text-transform:uppercase; }
+
+  /* ══ D · BOARD — the line as a printed circuit ══ */
+  #v-D .wrap { padding:26px 34px 130px; }
+  #v-D .pcb { position:relative; margin-top:26px; border:1px solid var(--line); background:var(--p0); padding:34px 26px; overflow:hidden; }
+  #v-D .pcb::before { content:''; position:absolute; inset:0;
+    background:radial-gradient(rgba(189,3,247,.10) 1px,transparent 1px) 0 0/22px 22px; }
+  #v-D .pads { position:relative; display:grid; grid-template-columns:repeat(6,1fr); gap:0; }
+  #v-D .pad { position:relative; text-align:center; }
+  #v-D .pad .chip {
+    position:relative; z-index:2; margin:0 auto; width:104px; padding:14px 0;
+    background:var(--p2); border:1px solid var(--acc);
+    box-shadow:0 0 0 4px var(--p0), 0 0 22px -4px rgba(189,3,247,.55);
+  }
+  #v-D .pad.q .chip { border-color:var(--g-a); box-shadow:0 0 0 4px var(--p0); }
+  #v-D .pad .chip b { display:block; font:700 var(--t3) var(--mono); line-height:1; }
+  #v-D .pad .chip span { font:500 9.5px var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--g-c); }
+  #v-D .pad .trace { position:absolute; z-index:1; top:50%; left:50%; right:-50%; height:2px; background:var(--cy); opacity:.55; }
+  #v-D .pad .vias { position:relative; z-index:2; display:flex; flex-wrap:wrap; justify-content:center; gap:5px; margin-top:18px; max-width:130px; margin-inline:auto; }
+  #v-D .via { width:9px; height:9px; border-radius:50%; border:1.5px solid var(--g-b); }
+  #v-D .via.g { background:var(--s-gate); border-color:var(--s-gate); box-shadow:0 0 8px rgba(255,190,30,.6); }
+  #v-D .via.s { background:var(--s-stuck); border-color:var(--s-stuck); box-shadow:0 0 8px rgba(255,90,77,.6); }
+  #v-D .via.d { background:var(--s-done); border-color:var(--s-done); }
+
+  /* ══ E · FLUX — requests as particles moving down lanes ══ */
+  #v-E .wrap { position:relative; padding:26px 34px 130px; }
+  #v-E .lanes { position:relative; margin-top:24px; height:62vh; min-height:420px; border:1px solid var(--line); background:var(--p0); overflow:hidden; }
+  #v-E .lanes canvas { position:absolute; inset:0; width:100%; height:100%; }
+  #v-E .lnames { display:grid; grid-template-columns:repeat(6,1fr); margin-top:10px; }
+  #v-E .lnames span { font:500 var(--t0) var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--g-c); text-align:center; }
+  #v-E .lnames b { display:block; font-family:var(--sans); font-size:var(--t2); font-weight:700; color:var(--ow); }
+
+  /* ══ F · DECK — dense multi-panel telemetry ══ */
+  #v-F .wrap { padding:22px 26px 130px; display:grid; grid-template-columns:repeat(12,1fr); gap:12px; }
+  #v-F .p { background:var(--p1); border:1px solid var(--line2); padding:14px 16px; min-width:0; }
+  #v-F .p.acc { border-color:var(--line); }
+  #v-F .p h3 { margin:0 0 10px; font:500 9.5px var(--mono); letter-spacing:.22em; text-transform:uppercase; color:var(--g-c); }
+  #v-F .p .big { font:700 var(--t5) var(--mono); line-height:.92; letter-spacing:-.03em; }
+  #v-F .p .sub { font-size:var(--t0); color:var(--g-c); margin-top:6px; }
+  #v-F .bars { display:flex; flex-direction:column; gap:6px; }
+  #v-F .b { display:grid; grid-template-columns:52px 1fr 26px; gap:9px; align-items:center; font:400 var(--t0) var(--mono); color:var(--g-c); }
+  #v-F .b .tk { height:7px; background:var(--p3); }
+  #v-F .b .tk i { display:block; height:100%; background:var(--acc); }
+  #v-F .b .tk i.g { background:var(--s-gate); }
+  #v-F .lst { display:flex; flex-direction:column; }
+  #v-F .lst .r { display:grid; grid-template-columns:1fr auto; gap:10px; padding:6px 0; border-bottom:1px solid var(--line2); font-size:var(--t0); }
+  #v-F .lst .r span:first-child { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #v-F .lst .r .w { font-family:var(--mono); color:var(--s-gate); }
+
+  /* ══ G · MATRIX — one cell per request, intensity = time waiting ══ */
+  #v-G .wrap { padding:26px 34px 130px; }
+  #v-G .mx { display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:5px; margin-top:26px; }
+  #v-G .c { aspect-ratio:1; position:relative; border:1px solid var(--line2); padding:8px; overflow:hidden; }
+  #v-G .c .rf { font:500 8.5px var(--mono); color:var(--w); opacity:.75; }
+  #v-G .c .ag { position:absolute; left:8px; bottom:7px; font:600 var(--t0) var(--mono); color:var(--w); }
+  #v-G .c .fl { position:absolute; inset:0; z-index:-1; }
+  #v-G .key { display:flex; align-items:center; gap:12px; margin-top:18px; font:400 var(--t0) var(--mono); color:var(--g-c); letter-spacing:.1em; }
+  #v-G .key .ramp { width:220px; height:8px; background:linear-gradient(90deg,#241a33,var(--acc),var(--dv-pb)); }
+
+  /* ══ H · GRAPH — nodes and edges, stage is the x axis ══ */
+  #v-H .wrap { padding:26px 34px 130px; }
+  #v-H .gr { margin-top:20px; border:1px solid var(--line); background:var(--p0); }
+  #v-H .gr svg { display:block; width:100%; height:66vh; min-height:440px; }
+  #v-H .nl { font:500 var(--t0) var(--mono); letter-spacing:.16em; fill:var(--g-c); text-transform:uppercase; }
+
+  /* ══ I · COLUMN — vertical launch telemetry ══ */
+  #v-I .wrap { display:grid; grid-template-columns:1fr 1fr; gap:0; min-height:100vh; }
+  #v-I .stack { border-right:1px solid var(--line2); padding:26px 30px 130px; }
+  #v-I .seg { display:grid; grid-template-columns:64px 1fr; gap:16px; align-items:stretch; }
+  #v-I .seg .ax { position:relative; }
+  #v-I .seg .ax::before { content:''; position:absolute; left:50%; top:0; bottom:0; width:2px; background:var(--g-a); transform:translateX(-50%); }
+  #v-I .seg.hot .ax::before { background:linear-gradient(var(--acc),var(--cy)); box-shadow:0 0 14px rgba(189,3,247,.6); }
+  #v-I .seg .ax b { position:relative; display:grid; place-items:center; width:34px; height:34px; margin:14px auto 0;
+    border-radius:50%; background:var(--p1); border:1px solid var(--g-a); font:600 var(--t1) var(--mono); }
+  #v-I .seg.hot .ax b { border-color:var(--acc); color:var(--w); box-shadow:0 0 18px -3px rgba(189,3,247,.8); }
+  #v-I .seg .bd { padding:14px 0 26px; min-width:0; }
+  #v-I .seg .bd h3 { margin:0; font-size:var(--t2); font-weight:700; }
+  #v-I .seg .bd .m { font:400 var(--t0) var(--mono); color:var(--g-c); letter-spacing:.1em; text-transform:uppercase; }
+  #v-I .seg .bd ul { list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:5px; }
+  #v-I .seg .bd li { font-size:var(--t0); color:var(--g-d); display:grid; grid-template-columns:1fr auto; gap:10px; }
+  #v-I .seg .bd li span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #v-I .rt { padding:26px 30px 130px; overflow-y:auto; }
+  #v-I .rt .roll { font:400 var(--t0) var(--mono); color:var(--g-c); line-height:1.9; }
+  #v-I .rt .roll b { color:var(--cy); font-weight:500; }
+  #v-I .rt .roll em { font-style:normal; color:var(--s-gate); }
+
+  /* ══ J · SPECTRUM — stage load as an analyser with peak hold ══ */
+  #v-J .wrap { padding:26px 34px 130px; }
+  #v-J .an { margin-top:30px; display:grid; grid-template-columns:repeat(6,1fr); gap:16px; align-items:end; height:52vh; min-height:340px;
+    border-bottom:1px solid var(--acc); }
+  #v-J .bar { position:relative; display:flex; flex-direction:column; justify-content:flex-end; gap:3px; height:100%; }
+  #v-J .bar .seg { background:var(--acc); opacity:.85; }
+  #v-J .bar .seg.g { background:var(--s-gate); }
+  #v-J .bar .seg.s { background:var(--s-stuck); }
+  #v-J .bar .seg.d { background:var(--s-done); }
+  #v-J .bar .peak { position:absolute; left:0; right:0; height:2px; background:var(--cy); box-shadow:0 0 10px var(--cy); }
+  #v-J .bar .cap { position:absolute; left:0; right:0; text-align:center; font:700 var(--t2) var(--mono); }
+  #v-J .lg { display:grid; grid-template-columns:repeat(6,1fr); gap:16px; margin-top:12px; }
+  #v-J .lg span { font:500 var(--t0) var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--g-c); text-align:center; }
+
+  /* switcher — deliberately outside the design language */
+  .sw { position:fixed; z-index:99; left:50%; bottom:20px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:3px; padding:5px; border-radius:999px;
+    background:#fbfbfd; color:#17171b; box-shadow:0 12px 38px -10px rgba(0,0,0,.8),0 0 0 1px rgba(0,0,0,.1);
+    font-family:'Plus Jakarta Sans',system-ui,sans-serif; }
+  .sw button { width:30px; height:30px; border:0; border-radius:50%; background:transparent; color:#17171b; cursor:pointer; font-size:15px; }
+  .sw button:hover { background:rgba(0,0,0,.08); }
+  .sw button:focus-visible { outline:2px solid #bd03f7; outline-offset:1px; }
+  .sw .lbl { padding:0 13px; font-size:12.5px; font-weight:600; white-space:nowrap; }
+  .sw .lbl small { color:#6c6c78; font-weight:500; }
+
+  @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }
+</style>
+</head>
+<body>
+
+<canvas class="fx" id="fx" aria-hidden="true"></canvas>
+
+<section class="view" id="v-A"><div class="z" id="a-root"></div></section>
+<section class="view" id="v-B"><div class="wrap z"><div class="core"><svg id="b-svg" viewBox="0 0 700 700"></svg></div><aside id="b-side"></aside></div></section>
+<section class="view" id="v-C"><div class="wrap z" id="c-root"></div></section>
+<section class="view" id="v-D"><div class="wrap z" id="d-root"></div></section>
+<section class="view" id="v-E"><div class="wrap z" id="e-root"></div></section>
+<section class="view" id="v-F"><div class="wrap z" id="f-root"></div></section>
+<section class="view" id="v-G"><div class="wrap z" id="g-root"></div></section>
+<section class="view" id="v-H"><div class="wrap z" id="h-root"></div></section>
+<section class="view" id="v-I"><div class="wrap z" id="i-root"></div></section>
+<section class="view" id="v-J"><div class="wrap z" id="j-root"></div></section>
+
+<div class="sw">
+  <button id="prev" aria-label="Previous structure">←</button>
+  <span class="lbl" id="lbl"></span>
+  <button id="next" aria-label="Next structure">→</button>
+</div>
+
+<script src="data.js"></script>
+<script>
+const STAGES=['Spec','Arch','Build','Review','Deploy','Done'];
+const live=REQS.filter(r=>r.kind!=='done'), gates=REQS.filter(r=>r.kind==='gate'),
+      stuck=REQS.filter(r=>r.kind==='stuck'), shipped=REQS.filter(r=>r.kind==='done');
+const byStage=STAGES.map((_,i)=>REQS.filter(r=>r.stage===i));
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const wk=r=>{const m=/^(\d+)([hdw])$/.exec(r.age||'');if(!m)return 0;const n=+m[1];
+  return m[2]==='h'?n/168:m[2]==='d'?n/7:n;};
+const maxW=Math.max(...REQS.map(wk),1);
+const DOT={gate:'var(--s-gate)',stuck:'var(--s-stuck)',wait:'var(--s-wait)',active:'var(--s-live)',done:'var(--s-done)'};
+const WORD={gate:'Your gate',stuck:'Stalled',wait:'Submitter',active:'Working',done:'Shipped'};
+const MASThead=sub=>`<div class="mast"><span class="bm"><i></i>Software Factory</span>
+  <span class="cr">${sub}</span></div>`;
+
+/* ── the ignition glyph field, carried from the intake hero ── */
+const TIERS=[[0.78,['S','F','8','#','@','B','%','W','N','&']],[0.58,['S','F','#','8','0','&','K','H','$']],
+  [0.4,['#','8','0','S','X','A','E','P','6']],[0.24,['X','8','0','+','x','v','z','c','7']],
+  [0.1,['+','=','·','x','-',':','~',"'",',']]];
+(function ignition(){
+  const cv=document.getElementById('fx'), cx=cv.getContext('2d');
+  const CW=21, CH=17; let cols,rows,dpr;
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function size(){ dpr=devicePixelRatio||1; cv.width=innerWidth*dpr; cv.height=innerHeight*dpr;
+    cx.setTransform(dpr,0,0,dpr,0,0); cols=Math.ceil(innerWidth/CW); rows=Math.ceil(innerHeight/CH); }
+  size(); addEventListener('resize',size);
+  let t=0;
+  function draw(){
+    cx.clearRect(0,0,innerWidth,innerHeight);
+    cx.font='500 13px "JetBrains Mono", monospace'; cx.textBaseline='top';
+    for(let y=0;y<rows;y++){
+      // glow rises from the bottom edge, exactly as the intake hero does
+      const depth=y/rows;
+      const base=Math.pow(depth,2.6);
+      for(let x=0;x<cols;x++){
+        const n=(Math.sin(x*0.37+t*0.6)+Math.cos(y*0.29-t*0.45)+Math.sin((x+y)*0.19+t*0.3))/3;
+        const v=base*(0.62+n*0.38);
+        if(v<0.06) continue;
+        const tier=TIERS.find(([th])=>v>=th)||TIERS[TIERS.length-1];
+        const g=tier[1][(x*31+y*17+((x+y)%7))%tier[1].length];
+        // purple ground shifting to cyan where the field is most active
+        const mix=Math.min(v*1.25,1);
+        const r=Math.round(50+mix*(50-50)), gg=Math.round(3+mix*(200-3)), b=Math.round(120+mix*(255-120));
+        cx.fillStyle=`rgba(${Math.round(140-mix*90)},${gg},${b},${0.05+v*0.30})`;
+        cx.fillText(g,x*CW,y*CH);
+      }
+    }
+    if(!reduce){ t+=0.012; requestAnimationFrame(draw); }
+  }
+  draw();
+})();
+
+/* ── A · Ignition ── */
+document.getElementById('a-root').innerHTML=`${MASThead('Overview / live')}
+<div class="wrap"><div class="hero">
+  <div class="kick">State of the line</div>
+  <h1 class="big">${gates.length} requests are waiting on a person.</h1>
+  <p>Nothing is being built right now. Every one of them has cleared the machine and
+     stopped at a gate that only you can open.</p>
+</div>
+<div class="gg">
+  <div><div class="n a tnum">${gates.length}</div><div class="l">Awaiting your decision</div></div>
+  <div><div class="n r tnum">${stuck.length}</div><div class="l">Needs a human</div></div>
+  <div><div class="n c tnum">${live.length}</div><div class="l">On the line</div></div>
+  <div><div class="n tnum">${shipped.length}</div><div class="l">Shipped this week</div></div>
+</div>
+<div class="rail">${STAGES.map((s,i)=>{const rs=byStage[i];
+  return `<div class="st ${rs.length?'':'q'}"><div class="h"><b class="tnum">${rs.length}</b><span>${s}</span></div>
+  <ul>${rs.slice(0,6).map(r=>`<li style="--dot:${DOT[r.kind]}">${esc(r.title.slice(0,38))}</li>`).join('')
+    ||'<li style="--dot:var(--g-a);color:var(--g-b)">standby</li>'}</ul></div>`;}).join('')}
+</div></div>`;
+
+/* ── B · Reactor ── */
+(function(){
+  const cx=350,cy=350,r0=88,step=44;
+  let s=`<defs><radialGradient id="cor"><stop offset="0%" stop-color="rgba(189,3,247,.55)"/>
+    <stop offset="100%" stop-color="rgba(189,3,247,0)"/></radialGradient></defs>`;
+  s+=`<circle cx="${cx}" cy="${cy}" r="72" fill="url(#cor)"/>`;
+  STAGES.forEach((st,i)=>{const r=r0+i*step, rs=byStage[i];
+    s+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(240,240,238,.09)"/>`;
+    s+=`<text class="rl" x="${cx+6}" y="${cy-r-7}">${st}</text>`;
+    // an arc whose sweep is this stage's share of the line
+    const frac=rs.length/Math.max(REQS.length,1), a0=-Math.PI/2, a1=a0+frac*Math.PI*2;
+    if(rs.length){
+      const lg=frac>.5?1:0;
+      s+=`<path d="M${cx+Math.cos(a0)*r} ${cy+Math.sin(a0)*r} A${r} ${r} 0 ${lg} 1 ${cx+Math.cos(a1)*r} ${cy+Math.sin(a1)*r}"
+        fill="none" stroke="${rs.some(r2=>r2.kind==='stuck')?'var(--s-stuck)':rs.some(r2=>r2.kind==='gate')?'var(--s-gate)':'var(--cy)'}"
+        stroke-width="7" stroke-linecap="butt" opacity=".92"/>`;
+    }
+    rs.forEach((q,j)=>{const a=a0+((j+.5)/Math.max(rs.length,1))*frac*Math.PI*2;
+      s+=`<circle cx="${cx+Math.cos(a)*r}" cy="${cy+Math.sin(a)*r}" r="3.2" fill="var(--k)"/>`;});
+  });
+  s+=`<circle cx="${cx}" cy="${cy}" r="62" fill="rgba(8,6,12,.85)" stroke="var(--acc)"/>`;
+  s+=`<text class="cn tnum" x="${cx}" y="${cy+10}">${gates.length}</text>`;
+  s+=`<text class="cl" x="${cx}" y="${cy+32}">AWAITING YOU</text>`;
+  document.getElementById('b-svg').innerHTML=s;
+  document.getElementById('b-side').innerHTML=`<div class="kick">Reactor</div>
+    <h1 class="big" style="font-size:var(--t3);margin:6px 0 8px">Load per stage</h1>
+    <p style="font-size:var(--t0);color:var(--g-c);line-height:1.6;font-weight:300">
+      Each ring is a stage and the arc is its share of everything on the line.
+      Spec has swallowed the reactor.</p>
+    <div class="kick" style="margin:20px 0 4px">Waiting on you</div>
+    ${gates.concat(stuck).slice(0,13).map(r=>`<div class="qrow">
+      <i style="background:${DOT[r.kind]};box-shadow:0 0 9px ${DOT[r.kind]}"></i>
+      <span class="t"><b>${esc(r.title)}</b>${esc(r.app)}</span><span class="a">${esc(r.age)}</span></div>`).join('')}`;
+})();
+
+/* ── C · Trace ── */
+(function(){
+  const chans=STAGES.map((s,i)=>{
+    const rs=byStage[i], W=1000, H=76, mid=H/2;
+    // one pulse per request, height by how long it has been sitting
+    let d=`M0 ${mid}`;
+    rs.forEach((r,j)=>{const x=((j+1)/(rs.length+1))*W, h=Math.min(wk(r)/maxW,1)*30+6;
+      const up=r.kind==='stuck'||r.kind==='gate'?-1:1;
+      d+=` L${x-16} ${mid} L${x-8} ${mid+up*h} L${x+8} ${mid+up*h} L${x+16} ${mid}`;});
+    d+=` L${W} ${mid}`;
+    const col=rs.some(r=>r.kind==='stuck')?'var(--s-stuck)':rs.some(r=>r.kind==='gate')?'var(--s-gate)':rs.length?'var(--cy)':'var(--g-a)';
+    return `<div class="ch"><div class="lb">${s}</div>
+      <div class="tr"><svg viewBox="0 0 1000 76" preserveAspectRatio="none">
+        <path d="${d}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke"
+          style="filter:drop-shadow(0 0 6px ${col})"/></svg></div>
+      <div class="rd tnum" style="color:${col}">${String(rs.length).padStart(2,'0')}<small>${
+        rs.filter(r=>r.kind==='gate').length?'at gate':rs.length?'held':'quiet'}</small></div></div>`;
+  }).join('');
+  document.getElementById('c-root').innerHTML=`${MASThead('Trace / time in stage')}
+    <div style="padding:26px 0 0"><div class="kick">Signal</div>
+    <h1 class="big">Every pulse is a request. Height is how long it has been sitting.</h1></div>
+    <div class="scope">${chans}</div>`;
+})();
+
+/* ── D · Board ── */
+document.getElementById('d-root').innerHTML=`${MASThead('Board / routing')}
+  <div style="padding:26px 0 0"><div class="kick">Circuit</div>
+  <h1 class="big">Six stages, wired in series.</h1></div>
+  <div class="pcb"><div class="pads">${STAGES.map((s,i)=>{const rs=byStage[i];
+    return `<div class="pad ${rs.length?'':'q'}">
+      ${i<5?'<span class="trace"></span>':''}
+      <div class="chip"><b class="tnum">${rs.length}</b><span>${s}</span></div>
+      <div class="vias">${rs.slice(0,18).map(r=>`<i class="via ${
+        r.kind==='gate'?'g':r.kind==='stuck'?'s':r.kind==='done'?'d':''}" title="${esc(r.ref)}"></i>`).join('')}</div>
+    </div>`;}).join('')}</div></div>`;
+
+/* ── E · Flux ── */
+document.getElementById('e-root').innerHTML=`${MASThead('Flux / throughput')}
+  <div style="padding:26px 0 0"><div class="kick">Flow</div>
+  <h1 class="big">Where the line is moving, and where it has stopped.</h1></div>
+  <div class="lanes"><canvas id="e-cv"></canvas></div>
+  <div class="lnames">${STAGES.map((s,i)=>`<span><b class="tnum">${byStage[i].length}</b>${s}</span>`).join('')}</div>`;
+(function(){
+  const cv=document.getElementById('e-cv'); if(!cv) return;
+  const cx=cv.getContext('2d');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const parts=REQS.map((r,i)=>({lane:r.stage,y:Math.random(),
+    v:r.kind==='gate'||r.kind==='stuck'?0:0.0016+Math.random()*0.0022,
+    c:r.kind==='gate'?'#ffbe1e':r.kind==='stuck'?'#ff5a4d':r.kind==='done'?'#78f05a':'#32c8ff'}));
+  let b={width:0,height:0};
+  // NB: must not read `b` inside fit() — fit() is called to initialise it
+  function fit(){const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;
+    if(!r.width||!r.height) return;                          // hidden: nothing to measure yet
+    cv.width=r.width*d; cv.height=r.height*d; cx.setTransform(d,0,0,d,0,0); b=r;}
+  fit(); addEventListener('resize',fit);
+  // the lane panel is display:none at load, so it measures 0x0 — re-fit the
+  // moment the variant is actually shown, or the canvas stays blank forever
+  window.__fitFlux=fit;
+  function frame(){
+    cx.clearRect(0,0,b.width,b.height);
+    const lw=b.width/6;
+    for(let i=0;i<6;i++){ cx.fillStyle='rgba(240,240,238,.035)';
+      cx.fillRect(i*lw+lw/2-0.5,0,1,b.height); }
+    parts.forEach(p=>{
+      const x=p.lane*lw+lw/2, y=p.y*b.height;
+      const g=cx.createRadialGradient(x,y,0,x,y,14);
+      g.addColorStop(0,p.c); g.addColorStop(1,'rgba(0,0,0,0)');
+      cx.fillStyle=g; cx.beginPath(); cx.arc(x,y,14,0,7); cx.fill();
+      cx.fillStyle=p.c; cx.beginPath(); cx.arc(x,y,2.6,0,7); cx.fill();
+      if(p.v){ p.y+=p.v; if(p.y>1) p.y=0; }
+    });
+    if(!reduce) requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+/* ── F · Deck ── */
+document.getElementById('f-root').innerHTML=`
+  <div class="p acc" style="grid-column:span 3"><h3>Awaiting your decision</h3>
+    <div class="big tnum" style="color:var(--s-gate)">${gates.length}</div><div class="sub">gates open</div></div>
+  <div class="p acc" style="grid-column:span 3"><h3>Needs a human</h3>
+    <div class="big tnum" style="color:var(--s-stuck)">${stuck.length}</div><div class="sub">escalated</div></div>
+  <div class="p" style="grid-column:span 3"><h3>On the line</h3>
+    <div class="big tnum" style="color:var(--cy)">${live.length}</div><div class="sub">in flight</div></div>
+  <div class="p" style="grid-column:span 3"><h3>Shipped</h3>
+    <div class="big tnum">${shipped.length}</div><div class="sub">this week</div></div>
+  <div class="p" style="grid-column:span 5"><h3>Stage load</h3><div class="bars">${
+    STAGES.map((s,i)=>{const rs=byStage[i],pc=Math.round(rs.length/REQS.length*100);
+      return `<div class="b"><span>${s}</span><span class="tk"><i class="${
+        rs.some(r=>r.kind==='gate')?'g':''}" style="width:${Math.max(pc,1)}%"></i></span>
+        <span class="tnum" style="text-align:right">${rs.length}</span></div>`;}).join('')}</div></div>
+  <div class="p" style="grid-column:span 7"><h3>Oldest at the gate</h3><div class="lst">${
+    gates.slice().sort((a,b)=>wk(b)-wk(a)).slice(0,7).map(r=>`<div class="r">
+      <span>${esc(r.title)}</span><span class="w">${esc(r.age)}</span></div>`).join('')}</div></div>
+  <div class="p" style="grid-column:span 12"><h3>Line integrity</h3>
+    <div class="sub" style="font-size:var(--t1);color:var(--ow)">
+      ${stuck.length} stalled · ${gates.length} blocked on a person · 0 agents running ·
+      epoch 189 · tick 4.5s · leader ok</div></div>`;
+
+/* ── G · Matrix ── */
+document.getElementById('g-root').innerHTML=`${MASThead('Matrix / 28 records')}
+  <div style="padding:26px 0 0"><div class="kick">Field</div>
+  <h1 class="big">One cell per request. The brighter it burns, the longer it has waited.</h1></div>
+  <div class="mx">${REQS.map(r=>{const t=Math.min(wk(r)/maxW,1);
+    const bg=`color-mix(in srgb, var(--acc) ${Math.round(18+t*82)}%, #241a33)`;
+    return `<div class="c" style="background:${bg};border-color:${
+      r.kind==='gate'?'var(--s-gate)':r.kind==='stuck'?'var(--s-stuck)':'var(--line2)'}">
+      <div class="rf">${esc(r.ref.replace('REQ-',''))}</div>
+      <div class="ag tnum">${esc(r.age)}</div></div>`;}).join('')}</div>
+  <div class="key"><span>FRESH</span><span class="ramp"></span><span>${Math.round(maxW)} WEEKS WAITING</span></div>`;
+
+/* ── H · Graph ── */
+(function(){
+  const W=1200,H=560,pad=70, colW=(W-pad*2)/5;
+  let s='';
+  STAGES.forEach((st,i)=>{ const x=pad+i*colW;
+    s+=`<text class="nl" x="${x}" y="30" text-anchor="middle">${st}</text>`;
+    s+=`<line x1="${x}" y1="46" x2="${x}" y2="${H-30}" stroke="rgba(240,240,238,.06)"/>`;});
+  // edges from each node back toward the origin column
+  REQS.forEach((r,i)=>{ const x=pad+r.stage*colW;
+    const rs=byStage[r.stage], j=rs.indexOf(r);
+    const y=70+((j+1)/(rs.length+1))*(H-120);
+    if(r.stage>0){ const px=pad+(r.stage-1)*colW;
+      s+=`<path d="M${px} ${y} C${px+colW*.5} ${y} ${x-colW*.5} ${y} ${x} ${y}"
+        fill="none" stroke="rgba(50,200,255,.16)" stroke-width="1"/>`;}
+  });
+  REQS.forEach(r=>{ const x=pad+r.stage*colW, rs=byStage[r.stage], j=rs.indexOf(r);
+    const y=70+((j+1)/(rs.length+1))*(H-120);
+    const c=r.kind==='gate'?'#ffbe1e':r.kind==='stuck'?'#ff5a4d':r.kind==='done'?'#78f05a':r.kind==='wait'?'#8c8c8c':'#32c8ff';
+    const rad=r.kind==='stuck'?7:r.kind==='gate'?5.5:4;
+    s+=`<circle cx="${x}" cy="${y}" r="${rad}" fill="${c}" style="filter:drop-shadow(0 0 ${rad}px ${c})">
+      <title>${esc(r.ref)} — ${esc(r.title)} (${WORD[r.kind]})</title></circle>`;});
+  document.getElementById('h-root').innerHTML=`${MASThead('Graph / dependency of people')}
+    <div style="padding:26px 0 0"><div class="kick">Topology</div>
+    <h1 class="big">Twenty of twenty-eight never left the first column.</h1></div>
+    <div class="gr"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${s}</svg></div>`;
+})();
+
+/* ── I · Column ── */
+document.getElementById('i-root').innerHTML=`
+  <div class="stack">${MASThead('').replace('padding:26px 34px 0','')}
+    <div style="padding:8px 0 22px"><div class="kick">Ascent</div>
+    <h1 class="big" style="font-size:var(--t3)">Stage by stage, bottom to top.</h1></div>
+    ${STAGES.map((s,i)=>{const rs=byStage[i];
+      return `<div class="seg ${rs.length?'hot':''}">
+        <div class="ax"><b class="tnum">${rs.length}</b></div>
+        <div class="bd"><h3>${s}</h3><div class="m">${
+          rs.filter(r=>r.kind==='gate').length?rs.filter(r=>r.kind==='gate').length+' at gate':rs.length?'held':'standby'}</div>
+        <ul>${rs.slice(0,5).map(r=>`<li><span>${esc(r.title)}</span>
+          <span style="color:${DOT[r.kind]};font-family:var(--mono)">${esc(r.age)}</span></li>`).join('')}</ul></div></div>`;}).join('')}
+  </div>
+  <div class="rt"><div class="kick">Telemetry roll</div>
+    <div class="roll">${REQS.slice(0,26).map(r=>
+      `<div>${String(r.ref).padEnd(9)} <b>${STAGES[r.stage].toUpperCase().padEnd(7)}</b>
+       <em>${WORD[r.kind].toUpperCase().padEnd(10)}</em> ${r.age.padStart(4)}</div>`).join('')}</div></div>`;
+
+/* ── J · Spectrum ── */
+document.getElementById('j-root').innerHTML=`${MASThead('Spectrum / stage load')}
+  <div style="padding:26px 0 0"><div class="kick">Analyser</div>
+  <h1 class="big">The line has one peak, and it is the first stage.</h1></div>
+  <div class="an">${STAGES.map((s,i)=>{const rs=byStage[i];
+    const pc=rs.length/Math.max(...byStage.map(b=>b.length),1);
+    const segs=rs.slice(0,22).map(r=>`<span class="seg ${
+      r.kind==='gate'?'g':r.kind==='stuck'?'s':r.kind==='done'?'d':''}" style="height:${Math.max(100*pc/Math.max(rs.length,1),3)}%"></span>`).join('');
+    // clamp: at full height the label would sit outside the analyser and collide with the headline
+    return `<div class="bar"><span class="cap" style="bottom:calc(${Math.min(pc,0.9)*100}% + 12px);color:${
+      rs.some(r=>r.kind==='stuck')?'var(--s-stuck)':rs.some(r=>r.kind==='gate')?'var(--s-gate)':'var(--cy)'}">${rs.length}</span>
+      ${rs.length?`<span class="peak" style="bottom:calc(${pc*100}% + 4px)"></span>`:''}
+      ${segs}</div>`;}).join('')}</div>
+  <div class="lg">${STAGES.map(s=>`<span>${s}</span>`).join('')}</div>`;
+
+/* ── switcher ── */
+const NAMES={A:'Ignition',B:'Reactor',C:'Trace',D:'Board',E:'Flux',F:'Deck',G:'Matrix',H:'Graph',I:'Column',J:'Spectrum'};
+const KEYS=Object.keys(NAMES);
+function show(k){ if(!KEYS.includes(k)) k='A';
+  KEYS.forEach(x=>document.getElementById('v-'+x).classList.toggle('on',x===k));
+  document.getElementById('lbl').innerHTML=`${k} <small>— ${NAMES[k]}</small>`;
+  const u=new URL(location); u.searchParams.set('variant',k); history.replaceState({},'',u); scrollTo(0,0);
+  if(k==='E'&&window.__fitFlux) requestAnimationFrame(window.__fitFlux); }
+const cur=()=>new URL(location).searchParams.get('variant')||'A';
+const cycle=d=>show(KEYS[(KEYS.indexOf(cur())+d+KEYS.length)%KEYS.length]);
+document.getElementById('prev').onclick=()=>cycle(-1);
+document.getElementById('next').onclick=()=>cycle(1);
+addEventListener('keydown',e=>{ if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName)||e.target.isContentEditable) return;
+  if(e.key==='ArrowLeft') cycle(-1); if(e.key==='ArrowRight') cycle(1); });
+show(cur());
+</script>
+</body>
+</html>

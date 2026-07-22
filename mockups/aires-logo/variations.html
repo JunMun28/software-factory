@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AIRES mark — 20 variations</title>
+
+    <!-- PROTOTYPE — throwaway. Round 6.
+         Question: the shipped mark is the folded stroke
+         (mark.ts: "M9 32 L19 17 L28 32 L39 16" + accent dot off the tip).
+         Which dial on THAT shape — fold count, corner treatment, exit angle,
+         dot treatment — makes it better? Every card here is the same idea,
+         one variable moved. Card 00 is the shipped mark, unchanged, as the
+         control you compare against.
+         Delete this file once a winner is folded back into
+         packages/shared/src/lib/kit/mark.ts. -->
+
+    <style>
+      /* the real wordmark face, loaded from the app itself so the lockups are
+         truthful — Archivo is scoped to "AIRES" only, never to body copy */
+      @font-face { font-family: 'Archivo'; src: url('../../apps/intake/public/fonts/Archivo-variable.woff2') format('woff2-variations'); font-weight: 100 900; font-display: swap; }
+
+      :root[data-theme='light'] {
+        --bg: #fff; --surface: #fff; --surface-2: #f6f5f8; --fg1: #16141a;
+        --muted: #6b6675; --faint: #8f8a99; --border: #e6e3ec; --hairline: #efedf3;
+        --a500: #bd03f7; --a300: #e173fa;
+      }
+      :root[data-theme='dark'] {
+        --bg: #0e0d11; --surface: #16151a; --surface-2: #1e1c24; --fg1: #f3f1f7;
+        --muted: #a09aad; --faint: #7d7789; --border: #2b2833; --hairline: #232029;
+        --a500: #cb45f8; --a300: #e173fa;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 0 28px 90px;
+        font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+        background: var(--bg); color: var(--fg1); -webkit-font-smoothing: antialiased;
+      }
+      header {
+        position: sticky; top: 0; z-index: 5; background: var(--bg);
+        border-bottom: 1px solid var(--hairline); padding: 20px 0 14px; margin-bottom: 22px;
+      }
+      .htop { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+      h1 { font-size: 25px; font-weight: 800; margin: 0; letter-spacing: -0.015em; }
+      .sub { font-size: 13px; color: var(--muted); flex: 1; min-width: 260px; line-height: 1.5; }
+      .toggle {
+        font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+        background: var(--surface-2); color: var(--fg1);
+        border: 1px solid var(--border); border-radius: 999px; padding: 7px 15px;
+      }
+      .jump { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      .jump a {
+        font-size: 11.5px; font-weight: 600; text-decoration: none;
+        color: var(--muted); background: var(--surface-2);
+        border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+      }
+      .jump a:hover { color: var(--fg1); }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(252px, 1fr)); gap: 15px; }
+      .card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 12px; padding: 17px 17px 14px;
+        display: flex; flex-direction: column; gap: 12px;
+      }
+      /* the control gets an accent edge so your eye can re-anchor while scrolling */
+      .card.control { border-color: var(--a500); }
+      .study {
+        height: 94px; display: flex; align-items: center; justify-content: center;
+        background: var(--surface-2); border-radius: 9px; color: var(--fg1);
+      }
+      /* the full lockup — mark + wordmark — at the real nav's proportions
+         (mark 22 / text 17 / gap 9, scaled up ×2.3) */
+      .lock { display: flex; align-items: center; gap: 21px; }
+      .markwrap { position: relative; display: flex; }
+      /* ghost of the shipped mark under every study, so each change is visible
+         as a delta rather than something you have to hold in memory. Only the
+         mark is ghosted — the wordmark is constant across all 20. */
+      .ghost { position: absolute; inset: 0; opacity: 0.16; pointer-events: none; }
+      .word {
+        /* named explicitly, never via var(--display): this page does not define
+           that token, and one undefined var() invalidates the whole declaration
+           — which is how the wordmark silently rendered in the wrong face once */
+        font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+        font-weight: 700; font-size: 39px; letter-spacing: -0.01em; line-height: 1;
+      }
+      .meta { display: flex; align-items: baseline; gap: 8px; }
+      .num { font-size: 11px; font-weight: 700; color: var(--faint); font-variant-numeric: tabular-nums; }
+      .name { font-size: 15px; font-weight: 700; }
+      .knob { font-size: 10.5px; font-weight: 600; color: var(--a500); margin-left: auto; }
+      .idea { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin: -5px 0 0; }
+      .flag { font-size: 11.5px; font-weight: 600; color: #f0a832; margin: -4px 0 0; }
+      .sizes { display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--hairline); padding-top: 11px; margin-top: auto; }
+      /* exact replica of .sub-brand in apps/intake/src/styles.css */
+      .nav {
+        display: flex; align-items: center; gap: 9px;
+        font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+        font-weight: 700; font-size: 17px; letter-spacing: -0.01em;
+      }
+      .fav { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+      .fav span { font-size: 10.5px; color: var(--faint); }
+      /* favicon tile — the mark knocked white out of accent, as public/mark.svg ships it */
+      .tile { background: var(--a500); border-radius: 4px; padding: 0; display: block; }
+      .fam {
+        grid-column: 1 / -1; margin: 20px 0 -2px; scroll-margin-top: 130px;
+        display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+      }
+      .fam:first-child { margin-top: 0; }
+      .fam h2 {
+        font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--a500); margin: 0;
+      }
+      .fam p { flex-basis: 100%; margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="htop">
+        <h1 id="h1">AIRES</h1>
+        <div class="sub">
+          Twenty variations of the <strong>shipped folded stroke</strong> — one variable
+          moved per card, the control ghosted under each mark. Shown as the full
+          lockup, then in a replica of the real nav (<strong>22px</strong> mark, Archivo
+          700) and on the 16px accent favicon tile.
+        </div>
+        <button class="toggle" id="t">Light mode</button>
+      </div>
+      <nav class="jump" id="jump"></nav>
+    </header>
+    <div class="grid" id="grid"></div>
+
+    <script>
+      const A = 'var(--a500)';
+      /* the shipped mark, verbatim from packages/shared/src/lib/kit/mark.ts */
+      const BASE_D = 'M9 32 L19 17 L28 32 L39 16';
+      const line = (d, w, extra = '') =>
+        `<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" ${extra}/>`;
+      const dot = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${A}"/>`;
+      const base = (w) => line(BASE_D, w) + dot(39, 16, w * 0.62);
+
+      const V = [
+        { fam: 'Control', note: 'What ships today. Every card below is this shape with exactly one thing changed.' },
+        {
+          n: 'Folded Stroke', knob: 'shipped', control: true,
+          idea: 'Two folds, mitred corners, rising exit, accent dot off the tip.',
+          svg: base,
+        },
+
+        { fam: 'Geometry — the fold', note: 'Same grammar, different proportions and rhythm.' },
+        {
+          n: 'Steeper', knob: 'amplitude ↑',
+          idea: 'Taller peaks in the same width. More urgent, more graphic — the folds survive smaller.',
+          svg: (w) => line('M10 37 L19 12 L28 37 L38 11', w) + dot(38, 11, w * 0.62),
+        },
+        {
+          n: 'Flatter', knob: 'amplitude ↓',
+          idea: 'Shallow folds. Calmer and more horizontal, but closer to a plain line at 16px.',
+          svg: (w) => line('M8 30 L19 20 L28 30 L40 19', w) + dot(40, 19, w * 0.62),
+          fails: '16px — folds nearly vanish',
+        },
+        {
+          n: 'Narrow', knob: 'width ↓',
+          idea: 'Tighter horizontal span. Sits better beside a wordmark; leaves side margin in a square tile.',
+          svg: (w) => line('M14 33 L21.5 17 L28 33 L35 15', w) + dot(35, 15, w * 0.62),
+        },
+        {
+          n: 'Single Fold', knob: 'folds 2 → 1',
+          idea: 'One valley, then a long climb. The simplest possible reading of “in, turn, out”.',
+          svg: (w) => line('M10 31 L21 19 L38 13', w) + dot(38, 13, w * 0.62),
+        },
+        {
+          n: 'Triple Fold', knob: 'folds 2 → 3',
+          idea: 'More cycles — a run of stages rather than a single turn. Denser, busier.',
+          svg: (w) => line('M7 31 L14 19 L21 30 L28 18 L35 29 L42 15', w) + dot(42, 15, w * 0.62),
+          fails: '16px — collapses into a smear',
+        },
+        {
+          n: 'Staircase', knob: 'valleys climb',
+          idea: 'The second valley sits higher than the first, so the whole mark trends upward, not just its tail.',
+          svg: (w) => line('M9 35 L18 21 L27 28 L39 12', w) + dot(39, 12, w * 0.62),
+        },
+
+        { fam: 'Stroke & corners', note: 'The path skeleton is untouched; only how it is drawn changes.' },
+        {
+          n: 'Smoothed', knob: 'mitre → curve',
+          idea: 'Same skeleton, corners rounded into curves. Softer, more organic; loses some snap.',
+          svg: (w) =>
+            line('M9 32 C13 21 17 17 19 17 C21.5 17 25 26 28 32 C31 26 36 18 39 16', w) +
+            dot(39, 16, w * 0.62),
+        },
+        {
+          n: 'Wave', knob: 'fully curved',
+          idea: 'No corners at all — a continuous wave. Reads as flow, not as machinery.',
+          svg: (w) => line('M9 31 Q18.5 14 28 31 Q34 22 39 16', w) + dot(39, 16, w * 0.62),
+        },
+        {
+          n: 'Heavy', knob: 'stroke ×1.4',
+          idea: 'App-icon weight. Bolder presence in the nav; the mitres stay crisp where a curve would blob.',
+          svg: (w) => line(BASE_D, w * 1.4) + dot(39, 16, w * 0.82),
+        },
+        {
+          n: 'Hairline', knob: 'stroke ×0.62',
+          idea: 'Thin and technical, like a plotted trace. Elegant at hero size, fragile at 16px.',
+          svg: (w) => line(BASE_D, w * 0.62) + dot(39, 16, w * 0.55),
+          fails: '16px — sub-pixel on low-DPI',
+        },
+        {
+          n: 'Squared', knob: 'butt caps + mitre',
+          idea: 'Flat ends, sharp joins, square accent. Harder and more industrial than the rounded original.',
+          svg: (w) =>
+            `<path d="${BASE_D}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="butt" stroke-linejoin="miter"/>
+             <rect x="${39 - w * 0.62}" y="${16 - w * 0.62}" width="${w * 1.24}" height="${w * 1.24}" fill="${A}"/>`,
+        },
+
+        { fam: 'The exit leg', note: 'The final rising stroke is the mark’s whole argument. These change its angle and reach.' },
+        {
+          n: 'Steep Exit', knob: 'exit angle ↑',
+          idea: 'The last leg lifts almost vertically. Lift-off reads harder; the mark gets top-heavy.',
+          svg: (w) => line('M9 32 L19 17 L28 32 L35 9', w) + dot(35, 9, w * 0.62),
+        },
+        {
+          n: 'Long Exit', knob: 'exit length ↑',
+          idea: 'The exit leg outruns everything before it — the folds become a wind-up for the launch.',
+          svg: (w) => line('M7 33 L15 21 L23 31 L41 10', w) + dot(41, 10, w * 0.62),
+        },
+
+        { fam: 'The dot', note: 'The one accent element. Its size and position change what it means.' },
+        {
+          n: 'Detached', knob: 'dot gap',
+          idea: 'The stroke stops short and the dot continues its trajectory — the part that came off the line.',
+          svg: (w) => line('M9 32 L19 17 L27.5 30 L34 21', w) + dot(39.5, 13.5, w * 0.62),
+        },
+        {
+          n: 'Large Dot', knob: 'r ×1.45',
+          idea: 'The dot outweighs the stroke and becomes the primary read — a purple bead on a grey line.',
+          svg: (w) => line(BASE_D, w) + dot(39, 16, w * 0.9),
+        },
+        {
+          n: 'Small Dot', knob: 'r ×0.68',
+          idea: 'A quiet terminal. Feels precise; at 16px it is nearly gone and the mark reads mono.',
+          svg: (w) => line(BASE_D, w) + dot(39, 16, w * 0.42),
+          fails: '16px — accent barely visible',
+        },
+        {
+          n: 'Dot at Entry', knob: 'dot start',
+          idea: 'Accent marks the request coming in rather than the result going out. Same shape, opposite story.',
+          svg: (w) => line(BASE_D, w) + dot(9, 32, w * 0.62),
+        },
+        {
+          n: 'Floating', knob: 'dot lifted',
+          idea: 'The dot has left the stroke entirely and hangs above the tip. Released, not attached.',
+          svg: (w) => line('M9 32 L19 17 L28 32 L38 18', w) + dot(40, 9, w * 0.62),
+        },
+        {
+          n: 'Trail', knob: 'dot → 3',
+          idea: 'Three shrinking dots continue the exit — output as a stream rather than a single unit.',
+          svg: (w) =>
+            line('M9 32 L19 17 L27.5 30 L33.5 21', w) +
+            dot(37, 16, w * 0.62) +
+            dot(41, 11.5, w * 0.42) +
+            dot(44, 8, w * 0.26),
+        },
+        { fam: 'Framing', note: 'Not the stroke or the dot — what sits around them.' },
+        {
+          n: 'Grounded', knob: '+ baseline',
+          idea: 'A floor rule under the fold. Anchors the rise and squares the mark into its tile.',
+          svg: (w) =>
+            line('M9 30 L19 15 L28 30 L39 14', w) +
+            line('M8 40 H40', w * 0.7) +
+            dot(39, 14, w * 0.62),
+        },
+      ];
+
+      const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const draw = (m, px, w, mono) =>
+        `<svg width="${px}" height="${px}" viewBox="0 0 48 48" style="flex:0 0 auto;display:block${mono ? ';color:#fff' : ''}">${m.svg(w)}</svg>`;
+
+      document.getElementById('h1').textContent =
+        `AIRES — ${V.filter((m) => !m.fam && !m.control).length} variations`;
+      document.title = document.getElementById('h1').textContent;
+
+      let i = -1; // control is 00
+      document.getElementById('grid').innerHTML = V.map((m) => {
+        if (m.fam) {
+          return `<div class="fam" id="${slug(m.fam)}">
+            <h2>${m.fam}</h2>${m.note ? `<p>${m.note}</p>` : ''}
+          </div>`;
+        }
+        i++;
+        return `<div class="card${m.control ? ' control' : ''}">
+          <div class="study">
+            <div class="lock">
+              <div class="markwrap">
+                ${m.control ? '' : `<div class="ghost"><svg width="50" height="50" viewBox="0 0 48 48">${base(6)}</svg></div>`}
+                ${draw(m, 50, 6)}
+              </div>
+              <span class="word">AIRES</span>
+            </div>
+          </div>
+          <div class="meta">
+            <span class="num">${String(i).padStart(2, '0')}</span>
+            <span class="name">${m.n}</span>
+            <span class="knob">${m.knob}</span>
+          </div>
+          <p class="idea">${m.idea}</p>
+          ${m.fails ? `<p class="flag">⚠ fails ${m.fails}</p>` : ''}
+          <div class="sizes">
+            <div class="nav">${draw(m, 22, 6)}<span>AIRES</span></div>
+            <div class="fav">
+              <span class="tile">${draw(m, 16, 7, true)}</span><span>16px</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+
+      document.getElementById('jump').innerHTML = V.filter((m) => m.fam)
+        .map((m) => `<a href="#${slug(m.fam)}">${m.fam}</a>`)
+        .join('');
+
+      const root = document.documentElement;
+      const btn = document.getElementById('t');
+      btn.onclick = () => {
+        const dark = root.dataset.theme === 'dark';
+        root.dataset.theme = dark ? 'light' : 'dark';
+        btn.textContent = dark ? 'Dark mode' : 'Light mode';
+      };
+    </script>
+  </body>
+</html>

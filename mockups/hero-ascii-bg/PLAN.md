@@ -24,7 +24,7 @@ then each cell becomes a character — bright cells get dense brand glyphs
 the sampled pixel. A blurred copy of the scene underlays the glyphs for the
 soft glow.
 
-**Run:** serve the repo root (so the Micron Basis fonts resolve), e.g.
+**Run:** serve the repo root (so the Archivo fonts resolve), e.g.
 `python3 -m http.server 4173` from the repo root, then open
 `http://localhost:4173/mockups/hero-ascii-bg/index.html`.
 

@@ -1,7 +1,7 @@
 # New SDLC Agentic Engineering Deck Notes
 
-Source PDF: /Users/wongjunmun/Library/Mobile Documents/com~apple~CloudDocs/file_1461D0C5-3834-4828-8093-75BEA283F902.pdf
-Project repo: /Users/wongjunmun/development/ai-development/software-factory
+Source PDF: <source-pdf, kept out of the repo>
+Project repo: the repo root
 
 Correction applied: earlier abstract image plates were discarded. The final PPTX contains complete slide PNGs with deterministic text and diagrams.
 

@@ -159,6 +159,15 @@ import { GenerationStream } from './generation-stream';
       font-weight: 500;
       color: var(--faint);
     }
+    @keyframes pfact-in {
+      from {
+        opacity: 0;
+        transform: scale(0.96);
+      }
+    }
+    .pfact {
+      animation: pfact-in var(--dur) var(--ease-out) both;
+    }
     .plan__ov {
       font-size: 14.5px;
       line-height: 1.65;
@@ -201,6 +210,33 @@ import { GenerationStream } from './generation-stream';
       border-radius: 50%;
       background: var(--a300);
     }
+    @keyframes psec-in {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+    }
+    .plan__ov,
+    .psec {
+      animation: psec-in var(--dur-s) var(--ease-out) both;
+    }
+    /* .psec are the only <div> children of .plan__live, so nth-of-type counts
+       sections correctly whether or not the overview <p> is present */
+    .psec:nth-of-type(1) {
+      animation-delay: 40ms;
+    }
+    .psec:nth-of-type(2) {
+      animation-delay: 80ms;
+    }
+    .psec:nth-of-type(3) {
+      animation-delay: 120ms;
+    }
+    .psec:nth-of-type(4) {
+      animation-delay: 160ms;
+    }
+    .psec:nth-of-type(n + 5) {
+      animation-delay: 200ms;
+    }
     .plan__sh {
       height: 13px;
       border-radius: 6px;
@@ -238,7 +274,10 @@ import { GenerationStream } from './generation-stream';
     }
     @media (prefers-reduced-motion: reduce) {
       .plan__pulse,
-      .plan__sh {
+      .plan__sh,
+      .plan__ov,
+      .psec,
+      .pfact {
         animation: none;
       }
     }

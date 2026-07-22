@@ -1,6 +1,6 @@
 # Verification workflow
 
-How to confirm the Software Factory app runs, nothing is regressed, and each
+How to confirm the AIRES app runs, nothing is regressed, and each
 feature does what it claims. Three layers: **automated** (one command),
 **guided manual flows** (10 minutes), and **what to look for** per improvement.
 

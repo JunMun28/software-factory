@@ -88,7 +88,7 @@ shared, and log the deviation in `implementation-notes.md` under `## Deviations`
 - [ ] **Step 1: Create the branch**
 
 ```bash
-cd /Users/wongjunmun/development/ai-development/software-factory
+cd <repo-root>
 git checkout main && git checkout -b kit-split
 ```
 

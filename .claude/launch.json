@@ -27,6 +27,16 @@
       "autoPort": false
     },
     {
+      "name": "api-brain",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "set -a; . api/.env.local; set +a; SIM_INTERVAL=8 FACTORY_BRAIN=api FACTORY_INTERVIEW_PREGEN=async uv run --directory api uvicorn app.main:app --port 8000 --reload"
+      ],
+      "port": 8000,
+      "autoPort": false
+    },
+    {
       "name": "api-auth",
       "runtimeExecutable": "sh",
       "runtimeArgs": [
@@ -121,18 +131,6 @@
         "4204"
       ],
       "port": 4204
-    },
-    {
-      "name": "learning-docs",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": [
-        "-m",
-        "http.server",
-        "4457",
-        "--directory",
-        "/Users/wongjunmun/development/ai-development/monorepo-learning"
-      ],
-      "port": 4457
     }
   ]
 }

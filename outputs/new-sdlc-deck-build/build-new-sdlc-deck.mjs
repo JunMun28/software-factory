@@ -4,11 +4,11 @@ import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { chromium } = require("/Users/wongjunmun/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/.pnpm/playwright@1.60.0/node_modules/playwright/index.js");
-const sharp = require("/Users/wongjunmun/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/.pnpm/sharp@0.34.5/node_modules/sharp/lib/index.js");
-const { Presentation, PresentationFile } = await import(pathToFileURL("/Users/wongjunmun/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/.pnpm/@oai+artifact-tool@file+local-deps+-oai-artifact-tool-oai-artifact_tool-2.8.11.tgz/node_modules/@oai/artifact-tool/dist/artifact_tool.mjs").href);
+const { chromium } = require("<codex-runtime-cache>@1.60.0/node_modules/playwright/index.js");
+const sharp = require("<codex-runtime-cache>@0.34.5/node_modules/sharp/lib/index.js");
+const { Presentation, PresentationFile } = await import(pathToFileURL("<codex-runtime-cache>@oai+artifact-tool@file+local-deps+-oai-artifact-tool-oai-artifact_tool-2.8.11.tgz/node_modules/@oai/artifact-tool/dist/artifact_tool.mjs").href);
 
-const ROOT = "/Users/wongjunmun/development/ai-development/software-factory";
+const ROOT = "the repo root";
 const BUILD = path.join(ROOT, "outputs/new-sdlc-deck-build");
 const SLIDES_DIR = path.join(ROOT, "outputs/new-sdlc-agentic-engineering-software-factory-slides");
 const PPTX_PATH = path.join(ROOT, "outputs/new-sdlc-agentic-engineering-software-factory.pptx");
@@ -357,7 +357,7 @@ const slides = [
       ["For leaders", "see work health, risk, cost, and human approval points"],
       ["For the platform", "swap brains and runners without changing the domain model"],
     ],
-    projectPath: "/Users/wongjunmun/development/ai-development/software-factory",
+    projectPath: "the repo root",
     commands: ["make verify", "FACTORY_RUNNER=claude uv run uvicorn app.main:app --port 8000"],
   },
 ];
@@ -643,7 +643,7 @@ async function writeNotes() {
   const notes = [
     "# New SDLC Agentic Engineering Deck Notes",
     "",
-    `Source PDF: /Users/wongjunmun/Library/Mobile Documents/com~apple~CloudDocs/file_1461D0C5-3834-4828-8093-75BEA283F902.pdf`,
+    `Source PDF: <source-pdf, kept out of the repo>`,
     `Project repo: ${ROOT}`,
     "",
     "Correction applied: earlier abstract image plates were discarded. The final PPTX contains complete slide PNGs with deterministic text and diagrams.",

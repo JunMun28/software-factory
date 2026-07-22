@@ -1,4 +1,4 @@
-# Applying "The New SDLC / Agentic Engineering" to the Software Factory
+# Applying "The New SDLC / Agentic Engineering" to AIRES
 
 > **Source:** Google — "The New SDLC With Vibe Coding: From ad-hoc prompting to Agentic Engineering"
 > (Addy Osmani, Shubham Saboo, Sokratis Kartakis; May 2026), 51 pp.
