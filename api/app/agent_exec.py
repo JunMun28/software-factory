@@ -21,6 +21,7 @@ import signal
 import subprocess
 import tempfile
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,7 +58,8 @@ class AgentResult:
     error: str = ""
 
 
-def _claude_cmd(prompt: str, *, allow_edits: bool, max_turns: int, model: str | None = None) -> list[str]:
+def _claude_cmd(prompt: str, *, allow_edits: bool, max_turns: int, model: str | None = None,
+                allow_bash: bool = True) -> list[str]:
     cmd = [
         CLAUDE_BIN, "-p", prompt,
         "--output-format", "json",
@@ -65,6 +67,10 @@ def _claude_cmd(prompt: str, *, allow_edits: bool, max_turns: int, model: str | 
         "--max-turns", str(max_turns),
         "--permission-mode", "bypassPermissions" if allow_edits else "default",
     ]
+    if allow_edits and not allow_bash:
+        # The prototype mode: an editor, no shell. Mirrors factory-prototype.json on the
+        # opencode path so the guarantee holds whichever CLI is configured.
+        cmd += ["--disallowed-tools", "Bash"]
     if not allow_edits:
         # Read-only path = the intake brain (interview + spec), which runs in a
         # throwaway empty cwd. --safe-mode drops the host's Claude Code skills /
@@ -87,6 +93,9 @@ def _codex_cmd(prompt: str, *, allow_edits: bool, last_message: str,
         CODEX_BIN, "exec",
         "--skip-git-repo-check",  # the brain runs outside a repo; workspaces are throwaway repos
         "--color", "never",
+        # NOTE: codex has no edit-without-shell mode — workspace-write grants both. The
+        # no-bash prototype mode is therefore only a real guarantee on opencode (the ADR
+        # 0024 default) and claude; on codex it degrades to full workspace-write.
         "--sandbox", "workspace-write" if allow_edits else "read-only",
         "--output-last-message", last_message,
     ]
@@ -135,10 +144,17 @@ def _opencode_cmd(prompt: str, *, allow_edits: bool, cwd: str | None = None,
     return cmd
 
 
-def _communicate(cmd: list[str], cwd: str | None, timeout: int, env: dict | None = None):
+def _communicate(cmd: list[str], cwd: str | None, timeout: int, env: dict | None = None,
+                 on_line: Callable[[str], None] | None = None):
     """Spawn → wait → kill-the-whole-tree on timeout. Returns (rc, out, err);
     rc is None when the binary is missing, 124 on timeout. `env` (opencode's
-    OPENCODE_CONFIG) fully replaces the child env when given."""
+    OPENCODE_CONFIG) fully replaces the child env when given.
+
+    `on_line` switches to a streaming read: stdout is pumped line by line to the
+    callback as it arrives instead of being buffered to the end. Both pipes get their
+    own pump thread — draining only stdout would deadlock the child once stderr's pipe
+    buffer filled. Without the callback the original single-call path is used
+    unchanged, so every existing caller keeps its exact behaviour."""
     try:
         # own session so a timeout can kill the WHOLE tree — the CLI spawns its
         # own bash/pytest children, and killing only the parent leaves orphans
@@ -147,46 +163,101 @@ def _communicate(cmd: list[str], cwd: str | None, timeout: int, env: dict | None
                                 text=True, start_new_session=True, env=env)
     except FileNotFoundError:
         return None, "", ""
-    try:
-        out, err = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
+    if on_line is None:
         try:
-            os.killpg(proc.pid, signal.SIGKILL)  # session leader ⇒ pgid == pid
-        except ProcessLookupError:
-            pass
-        proc.communicate()  # reap; pipes close once the group is dead
-        log.error("agent stage timed out after %ss — process group %s killed", timeout, proc.pid)
-        return 124, "", ""
-    return proc.returncode, out, err
+            out, err = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return _kill_tree(proc, timeout)
+        return proc.returncode, out, err
+
+    out_lines: list[str] = []
+    err_lines: list[str] = []
+
+    def pump(stream, sink: list[str], notify: bool) -> None:
+        try:
+            for line in stream:
+                sink.append(line)
+                if notify:
+                    try:
+                        on_line(line)
+                    except Exception:
+                        # A failed listener must never cancel the generation it watches.
+                        log.exception("agent stream listener failed")
+        finally:
+            stream.close()
+
+    pumps = [threading.Thread(target=pump, args=(proc.stdout, out_lines, True), daemon=True),
+             threading.Thread(target=pump, args=(proc.stderr, err_lines, False), daemon=True)]
+    for t in pumps:
+        t.start()
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return _kill_tree(proc, timeout)
+    for t in pumps:
+        t.join(timeout=5)  # bounded: the child is already gone, pipes are at EOF
+    return proc.returncode, "".join(out_lines), "".join(err_lines)
+
+
+def _kill_tree(proc, timeout: int):
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)  # session leader ⇒ pgid == pid
+    except ProcessLookupError:
+        pass
+    proc.wait()  # reap; pipes close once the group is dead
+    log.error("agent stage timed out after %ss — process group %s killed", timeout, proc.pid)
+    return 124, "", ""
 
 
 def run_agent(prompt: str, *, cwd: str | None = None, allow_edits: bool = False,
+               allow_bash: bool | None = None, on_delta: Callable[[str], None] | None = None,
                timeout: int = 300, max_turns: int = 25, images: list[str] = (),
                model: str | None = None) -> AgentResult:
     """Run the agent CLI headless; returns its final text. Bounded autonomy:
     timeout always; max_turns additionally caps claude (codex has no turn cap).
     images attach to codex via --image (ADR 0022); the claude path ignores them.
     `model` overrides the CLI's default model for this call (the prototype step runs a
-    higher-taste model than the fast interview one); pass a model id matching the active CLI."""
+    higher-taste model than the fast interview one); pass a model id matching the active CLI.
+
+    `allow_bash` separates "may write files" from "may run commands"; it defaults to
+    `allow_edits`, so every existing call site keeps its exact behaviour. The prototype
+    step is the one caller that wants them apart — writing an HTML document needs an
+    editor, not a shell, and its working directory holds untrusted uploads.
+
+    `on_delta` receives the agent's narration as it arrives (opencode only — see
+    _opencode_delta for what the stream can and cannot give)."""
+    bash_ok = allow_edits if allow_bash is None else allow_bash
     if not _CLI_CAPACITY.acquire(timeout=5):
         return AgentResult(ok=False, text="", error="agent CLI capacity exhausted")
     try:
         cli = agent_cli()
         if cli == "claude":
-            return _run_claude_cli(prompt, cwd=cwd, allow_edits=allow_edits,
-                                   timeout=timeout, max_turns=max_turns, model=model)
-        if cli == "codex":
-            return _run_codex_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout,
-                                  images=images, model=model)
-        return _run_opencode_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout,
+            res = _run_claude_cli(prompt, cwd=cwd, allow_edits=allow_edits, allow_bash=bash_ok,
+                                  timeout=timeout, max_turns=max_turns, model=model)
+        elif cli == "codex":
+            res = _run_codex_cli(prompt, cwd=cwd, allow_edits=allow_edits, timeout=timeout,
                                  images=images, model=model)
+        else:
+            res = _run_opencode_cli(prompt, cwd=cwd, allow_edits=allow_edits, allow_bash=bash_ok,
+                                    timeout=timeout, images=images, model=model,
+                                    on_delta=on_delta)
+        if res.ok and not res.text.strip():
+            # A clean exit with nothing to show for it. Seen for real on 2026-07-22: a
+            # spend-capped model made every CLI call exit 0 with zero bytes, so callers
+            # degraded to their scripted fallbacks with no error anywhere — the outage
+            # was invisible. Callers still decide what an empty reply means (a stage may
+            # legitimately end silent after writing files), but it never passes unlogged.
+            log.warning("%s exited cleanly with no output — model unavailable, capped, "
+                        "or refused? (cwd=%s, model=%s)", cli, cwd, model or "default")
+        return res
     finally:
         _CLI_CAPACITY.release()
 
 
-def _run_claude_cli(prompt: str, *, cwd: str | None, allow_edits: bool,
+def _run_claude_cli(prompt: str, *, cwd: str | None, allow_edits: bool, allow_bash: bool = True,
                     timeout: int, max_turns: int, model: str | None = None) -> AgentResult:
-    cmd = _claude_cmd(prompt, allow_edits=allow_edits, max_turns=max_turns, model=model)
+    cmd = _claude_cmd(prompt, allow_edits=allow_edits, max_turns=max_turns, model=model,
+                      allow_bash=allow_bash)
     rc, out, err = _communicate(cmd, cwd, timeout)
     if rc is None:
         return AgentResult(ok=False, text="", error="claude CLI not found")
@@ -248,14 +319,47 @@ def _parse_opencode_json(out: str) -> str:
     return "".join(parts).strip()
 
 
-def _run_opencode_cli(prompt: str, *, cwd: str | None, allow_edits: bool,
-                      timeout: int, images: list[str] = (), model: str | None = None) -> AgentResult:
+def _opencode_delta(line: str) -> str:
+    """The user-facing text in one opencode NDJSON event, or "" for the rest.
+
+    Measured against opencode 1.17.18 (2026-07-22): `run --format json` does NOT emit
+    token-level deltas — each `text` part arrives once, complete (a 789-character
+    paragraph came through as a single event). What the stream does give is the
+    agent's own narration interleaved with its tool calls across several steps, so a
+    watcher sees "I'll read rows.csv first…" → work → "Created mini.html…" rather than
+    one silent wait. Block-level progress, not a typewriter."""
+    line = line.strip()
+    if not line.startswith("{"):
+        return ""
+    try:
+        ev = json.loads(line)
+    except json.JSONDecodeError:
+        return ""
+    if ev.get("type") != "text":
+        return ""
+    return (ev.get("part") or {}).get("text") or ""
+
+
+def _run_opencode_cli(prompt: str, *, cwd: str | None, allow_edits: bool, allow_bash: bool = True,
+                      timeout: int, images: list[str] = (), model: str | None = None,
+                      on_delta: Callable[[str], None] | None = None) -> AgentResult:
     cmd = _opencode_cmd(prompt, allow_edits=allow_edits, cwd=cwd, images=images, model=model)
-    # OPENCODE_CONFIG is the read-only/write sandbox — a factory file, not the operator's
-    # global agents. Passing our own env means the guarantee cannot be weakened by config drift.
-    config = settings.OPENCODE_RW_CONFIG if allow_edits else settings.OPENCODE_RO_CONFIG
+    # OPENCODE_CONFIG is the permission sandbox — a factory file, not the operator's global
+    # agents. Passing our own env means the guarantee cannot be weakened by config drift.
+    if not allow_edits:
+        config = settings.OPENCODE_RO_CONFIG
+    elif allow_bash:
+        config = settings.OPENCODE_RW_CONFIG
+    else:
+        config = settings.OPENCODE_PROTO_CONFIG
     env = {**os.environ, "OPENCODE_CONFIG": str(config)}
-    rc, out, err = _communicate(cmd, cwd, timeout, env=env)
+    relay = None
+    if on_delta is not None:
+        def relay(line: str) -> None:
+            chunk = _opencode_delta(line)
+            if chunk:
+                on_delta(chunk)
+    rc, out, err = _communicate(cmd, cwd, timeout, env=env, on_line=relay)
     if rc is None:
         return AgentResult(ok=False, text="", error="opencode CLI not found")
     if rc == 124:
