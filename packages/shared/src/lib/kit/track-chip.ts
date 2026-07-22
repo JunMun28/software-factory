@@ -29,6 +29,10 @@ import { Icon } from './icon';
     </button>
   `,
   styles: `
+    /* Neutral surface, never a purple fill: this chip is a settled *state*, and
+       the design system reserves purple for the brand dot, primary actions and
+       small semantic tags. A tinted control also reads as "selected", which this
+       is not — it is the current answer, with an affordance to change it. */
     .tchip {
       display: inline-flex;
       align-items: center;
@@ -36,8 +40,8 @@ import { Icon } from './icon';
       font-family: var(--body);
       font-size: 12.5px;
       color: var(--fg1);
-      background: var(--accent-tint);
-      border: 1px solid var(--accent-tint-bd);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
       border-radius: 999px;
       padding: 5px 12px;
       cursor: pointer;
@@ -46,11 +50,11 @@ import { Icon } from './icon';
         box-shadow var(--dur) var(--ease);
     }
     .tchip:hover {
-      border-color: var(--accent);
-    }
-    .tchip--unsure {
-      background: var(--surface-2);
       border-color: var(--border-strong);
+    }
+    /* unsure differs by TEXT weight, not by fill — both are neutral now */
+    .tchip--unsure {
+      border-style: dashed;
       color: var(--muted);
     }
     .tchip__edit {
