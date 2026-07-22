@@ -22,10 +22,12 @@ def _req(req_type: str, answered: int = 0) -> Request:
 def _fake_brain(monkeypatch, text: str, ok: bool = True):
     calls = {"n": 0, "prompt": None}
 
-    def fake_run(req, prompt, *, timeout):
+    def fake_run(req, prompt, *, timeout, **kwargs):
         calls["n"] += 1
         calls["prompt"] = prompt
-        return AgentResult(ok=ok, text=text)
+        # (result, html) — html is the prototype document the agent left on disk, and is
+        # None for every non-prototype call. See agent_brain._run_with_attachments.
+        return AgentResult(ok=ok, text=text), None
 
     monkeypatch.setattr("app.agent_brain._run_with_attachments", fake_run)
     return AgentBrain(), calls
@@ -36,7 +38,7 @@ def _fake_brain(monkeypatch, text: str, ok: bool = True):
 def test_ceiling_per_type():
     assert question_ceiling(_req("bug")) == 3
     assert question_ceiling(_req("enh")) == 4
-    assert question_ceiling(_req("new")) == 99
+    assert question_ceiling(_req("new")) == 10
     assert question_ceiling(_req("other")) == 4
     assert question_ceiling(_req("mystery")) == 3  # unknown type → default
 
@@ -51,9 +53,9 @@ def test_floor_not_above_ceiling():
 
 def test_stops_at_new_app_ceiling(monkeypatch):
     brain, calls = _fake_brain(monkeypatch, '{"question":"more?"}')
-    assert brain.next_question(_req("new", answered=10)) is not None  # uncapped — 10 is not the ceiling
-    assert brain.next_question(_req("new", answered=99)) is None  # sentinel ceiling still stops it
-    assert calls["n"] == 1  # only the answered=10 call consults the model; the sentinel skips it
+    assert brain.next_question(_req("new", answered=8)) is not None  # under the cap — still asking
+    assert brain.next_question(_req("new", answered=10)) is None  # the cap stops it
+    assert calls["n"] == 1  # only the answered=8 call consults the model; the cap skips it
 
 
 def test_asks_below_ceiling(monkeypatch):
@@ -83,4 +85,16 @@ def test_done_ignored_below_floor(monkeypatch):
 def test_prompt_surfaces_budget_range(monkeypatch):
     brain, calls = _fake_brain(monkeypatch, '{"question":"What is it?"}')
     brain.next_question(_req("new", answered=0))
-    assert "99" in calls["prompt"]  # the ceiling is shown to the model
+    assert "between 3 and 10" in calls["prompt"]  # the budget is shown to the model
+
+
+def test_new_track_prompt_aims_at_the_first_prototype(monkeypatch):
+    """The cap only works if the few questions buy the right things — the New track
+    spends them on what a first mock needs, not on detail the mock itself will surface."""
+    brain, calls = _fake_brain(monkeypatch, '{"question":"What is it?"}')
+    brain.next_question(_req("new", answered=0))
+    assert "FIRST PROTOTYPE" in calls["prompt"]
+
+    brain, calls = _fake_brain(monkeypatch, '{"question":"What is it?"}')
+    brain.next_question(_req("bug", answered=0))  # no prototype step on other tracks
+    assert "FIRST PROTOTYPE" not in calls["prompt"]

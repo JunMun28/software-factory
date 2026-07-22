@@ -22,8 +22,8 @@ def _req(req_type: str, answered: int = 0) -> Request:
 # ── reopen overrides the type ceiling with a small allowance ──
 
 def test_reopen_ceiling_overrides_budget():
-    r = _req("new", answered=4)  # base ceiling 99
-    assert question_ceiling(r) == 99
+    r = _req("new", answered=4)  # base ceiling 10
+    assert question_ceiling(r) == 10
     r.reopen_ceiling = 6  # a reopen caps it near where it resumed — not a full new-app grill
     assert question_ceiling(r) == 6
 

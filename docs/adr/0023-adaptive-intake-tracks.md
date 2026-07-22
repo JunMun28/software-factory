@@ -17,8 +17,23 @@ Two invariants make the adaptivity trustworthy:
    restores them. No re-asking.
 2. **The AI may change how much it asks, never what the request is, without consent.**
    Interview depth is complexity-driven and adjusts silently (ceilings: bug 3, improvement 4,
-   something else 4, new app uncapped — the Submitter can end it conversationally); a type
+   something else 4, new app 10 — the Submitter can also end it conversationally); a type
    change mid-interview is *proposed* via the chip and accepted or declined by the Submitter.
+
+   **Amended 2026-07-21:** the New track's ceiling was originally *uncapped*, on the reasoning
+   that the model's judgment and the Submitter's "that's enough" were the real stops. In
+   practice the grill outlasted the Submitter's patience. It is now 10, and the interview is
+   aimed explicitly at reaching a first prototype rather than a finished spec — the New track
+   continues in the Prototype step, where refining a visible mock collects the remaining
+   detail more cheaply than more questions do.
+
+   The New track also gained a **fixed closing question** asked once the model is finished (or
+   capped) and immediately before Prototype: *do you have any real examples of the information
+   this would hold?* It is deterministic rather than one of the model's questions, and sits
+   outside the budget, for the same reason the basics do — a mock built from the requester's
+   own columns and rows is recognisably theirs, and that is too large a difference to leave to
+   whether the model remembered to ask. An explicit "that's enough" still ends the interview
+   without it.
 
 ## Why recorded
 

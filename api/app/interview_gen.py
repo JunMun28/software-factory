@@ -31,9 +31,10 @@ from .db import SessionLocal
 from .interview import (
     ScriptedBrain,
     answered_count,
+    closing_question,
     get_brain,
+    interview_exhausted,
     pending_payload,
-    question_ceiling,
 )
 from .models import InterviewTurn, Request
 
@@ -82,7 +83,7 @@ def ensure_next_question(rid: int) -> bool:
     try:
         with SessionLocal() as db:
             r = db.get(Request, rid)
-            if r is None or r.pending_question is not None or answered_count(r) >= question_ceiling(r):
+            if r is None or r.pending_question is not None or interview_exhausted(r):
                 return False
             answered_at_start = answered_count(r)
         threading.Thread(target=_generate, args=(rid, answered_at_start), daemon=True).start()
@@ -138,7 +139,7 @@ def _generate(rid: int, answered_at_start: int) -> None:
                     )
                 finally:
                     relay.finish()
-        payload = pending_payload(q)
+        payload = pending_payload(q or closing_question(r))
         with SessionLocal() as db:
             answered_now = _answered_turn_count(rid)
             ceiling_matches = (

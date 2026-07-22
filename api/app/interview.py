@@ -18,8 +18,12 @@ from .models import Request, SpecLine
 QUESTION_BUDGET: dict[str, tuple[int, int]] = {
     "bug": (2, 3),   # a report is usually concrete — a couple of clarifiers
     "enh": (2, 4),   # scale with complexity, capped
-    "new": (3, 99),  # UNCAPPED by design (spec/ADR 0023): the model's judgment and the
-                     # submitter's conversational "that's enough" are the real stops
+    "new": (3, 10),  # was uncapped (ADR 0023). A live run showed the grill outlasting the
+                     # submitter's patience, and it does not need to be exhaustive: the New
+                     # track continues in the Prototype step, where the mock — not more
+                     # questions — is the better instrument for the remaining detail. 10 is
+                     # the hard stop; the model still finishes earlier once it could write a
+                     # confident spec, and "that's enough" still ends it at any point.
     "other": (2, 4),
 }
 DEFAULT_BUDGET = (2, 3)
@@ -107,6 +111,49 @@ def pending_payload(q: Question | None) -> dict:
     if q is None:
         return DONE_SENTINEL
     return {"question": q.question, "sub": q.sub, "options": q.options, "final": q.final}
+
+
+# The New track's closing question, asked once the model has finished (or hit the cap) and
+# immediately before the Prototype step. Deterministic rather than left to the model's
+# judgment: a mock built from the requester's own rows — their column names, their statuses,
+# their dates — is recognisably THEIR product, while one built from invented placeholders
+# reads as a generic template and drags the whole review with it. That is too big a swing to
+# depend on the model remembering to ask. It sits outside QUESTION_BUDGET for the same reason
+# the basics do — it is part of the form, not part of the grill — so a New interview is at
+# most 10 model questions plus this one.
+SAMPLE_DATA_QUESTION = _q(
+    "Last thing before I design it — do you have any real examples of the information this "
+    "would hold?",
+    sub="Attach a spreadsheet, export or screenshot with +, or paste a few rows here. "
+        "Made-up or scrubbed data is fine. Skip if you haven't got any.",
+    final=True,
+)
+
+
+def sample_data_owed(req: Request) -> bool:
+    """Whether the New track still owes its closing sample-data ask. Matched on the question
+    text because it is a fixed constant — no schema column needed to remember one question."""
+    if req.type != "new":
+        return False  # only the New track builds a prototype from the answer
+    return not any(t.question == SAMPLE_DATA_QUESTION.question for t in req.turns)
+
+
+def closing_question(req: Request) -> Question | None:
+    """The question to ask when the brain has run out of them, if any. Callers use
+    `brain.next_question(r) or closing_question(r)` so a finished interview still collects
+    sample data before the prototype is designed."""
+    return SAMPLE_DATA_QUESTION if sample_data_owed(req) else None
+
+
+def interview_exhausted(req: Request) -> bool:
+    """The single definition of 'no more questions are owed' — the guard every generation
+    path shares. An explicit DONE_SENTINEL always wins: it means the brain finished with
+    nothing left to ask, or the submitter said stop, and neither should be talked past."""
+    if req.pending_question == DONE_SENTINEL:
+        return True
+    if answered_count(req) >= question_ceiling(req):
+        return not sample_data_owed(req)  # the cap still leaves room for the closing ask
+    return False
 
 
 # The host app's design tokens (mirrors apps/intake/src/styles.css) — the single source both the
